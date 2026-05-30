@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "821973914074828",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15556517775",
+              "phone_number_id": "1182400218280846"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Lucas Güida"
+                },
+                "wa_id": "5493454954407",
+                "user_id": "AR.1655903705615752"
+              }
+            ],
+            "messages": [
+              {
+                "from": "5493454954407",
+                "from_user_id": "AR.1655903705615752",
+                "id": "wamid.test-text-1",
+                "timestamp": "1780168940",
+                "type": "text",
+                "text": { "body": "Hola" }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

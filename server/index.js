@@ -1,6 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import { buildTwilioXmlResponse, processTwilioWebhook } from './twilioVoiceProcessor.js';
+import { buildMetaVerificationResponse, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import {
   applyActionsToDatabase,
   findTwilioEventById,
@@ -14,9 +14,10 @@ dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
 
 const app = express();
-const port = Number(process.env.TWILIO_WEBHOOK_PORT || 3001);
+const port = Number(process.env.META_WEBHOOK_PORT || process.env.TWILIO_WEBHOOK_PORT || 3001);
+const metaVerifyToken = process.env.META_VERIFY_TOKEN || 'erpvoice_token_secreto';
 
-const createEventId = () => `twilio-event-${Math.random().toString(36).slice(2, 10)}`;
+const createEventId = () => `meta-event-${Math.random().toString(36).slice(2, 10)}`;
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -36,7 +37,7 @@ app.use((req, res, next) => {
 const recentEvents = [];
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'twilio-webhook', port });
+  res.json({ ok: true, service: 'meta-webhook', port });
 });
 
 app.get('/api/state', async (_req, res) => {
@@ -54,6 +55,26 @@ app.get('/api/twilio-events', (_req, res) => {
     .catch((error) => res.status(500).json({ error: error instanceof Error ? error.message : String(error) }));
 });
 
+app.get('/api/meta-events', (_req, res) => {
+  getTwilioEvents()
+    .then((events) => res.json(events))
+    .catch((error) => res.status(500).json({ error: error instanceof Error ? error.message : String(error) }));
+});
+
+app.get('/api/meta-webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === metaVerifyToken) {
+    console.log('[MetaWebhook] verification succeeded');
+    res.status(200).send(buildMetaVerificationResponse(challenge));
+    return;
+  }
+
+  res.sendStatus(403);
+});
+
 app.post('/api/state/apply', async (req, res) => {
   try {
     const sourceText = typeof req.body?.sourceText === 'string' ? req.body.sourceText : '';
@@ -65,68 +86,112 @@ app.post('/api/state/apply', async (req, res) => {
   }
 });
 
-app.post('/api/twilio-webhook', async (req, res) => {
+const handleMetaWebhook = async (req, res) => {
+  res.sendStatus(200);
+  const fastRepliedMessageIds = new Set();
+
+  // Enviar ACK rápido para mensajes de texto para que el usuario reciba respuesta inmediata
   try {
-    const incomingId = req.body?.MessageSid ?? req.body?.SmsMessageSid ?? null;
-    if (incomingId) {
+    const body = req.body ?? {};
+    if (body.object === 'whatsapp_business_account') {
+      const entry = Array.isArray(body.entry) ? body.entry[0] : null;
+      const changes = entry?.changes?.[0]?.value;
+      const message = changes?.messages?.[0];
+
+      if (message && message.type === 'text') {
+        const fromNumber = message.from;
+        const messageId = typeof message.id === 'string' ? message.id : null;
+        const senderName = changes?.contacts?.[0]?.profile?.name || 'Usuario';
+        const textBody = message?.text?.body ?? '';
+
+        console.log(`Texto recibido. Intentando responder a: ${fromNumber}`);
+
+        const responseText = `¡Recibido, ${senderName}! Procesando comando: "${textBody}"`;
+
+        // no await, pero capturamos errores para no bloquear el flujo
+        sendMetaReply({ to: fromNumber, text: responseText })
+          .then((r) => console.log('[MetaWebhook] fast-reply result:', r))
+          .catch((err) => {
+            console.error('[MetaWebhook] fast-reply failed:', err);
+          });
+
+        if (messageId) {
+          fastRepliedMessageIds.add(messageId);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[MetaWebhook] failed to send fast-reply:', err);
+  }
+
+  try {
+    const results = await processMetaWebhook(req.body ?? {});
+
+    for (const result of results) {
+      const incomingId = result.messageId ?? createEventId();
       const existingEvent = await findTwilioEventById(incomingId);
 
       if (existingEvent?.processed && existingEvent.replyText) {
-        res.type('application/xml').status(200).send(buildTwilioXmlResponse(existingEvent.replyText));
-        return;
+        continue;
       }
+
+      const eventRecord = {
+        id: incomingId,
+        at: new Date().toISOString(),
+        fromNumber: result.fromNumber ?? null,
+        body: result.rawMessage ? JSON.stringify(result.rawMessage) : null,
+        numMedia: result.kind === 'audio' ? 1 : 0,
+        kind: result.kind,
+        sourceText: result.sourceText,
+        transcript: result.transcript ?? null,
+        replyText: result.replyText,
+        error: null,
+        actionsJson: result.parsed ? JSON.stringify(result.parsed.actions ?? []) : null,
+        processed: Boolean(result.parsed?.actions?.length),
+      };
+
+      if (result.parsed?.actions?.length) {
+        await applyActionsToDatabase(result.parsed.actions, result.sourceText);
+      }
+
+      await saveTwilioEvent(eventRecord);
+      await markTwilioEventProcessed(eventRecord.id, { processed: eventRecord.processed });
+
+      const alreadyFastReplied = result.kind === 'text' && result.messageId && fastRepliedMessageIds.has(result.messageId);
+
+      if (!alreadyFastReplied) {
+        try {
+          const replyResult = await sendMetaReply({
+            to: result.fromNumber,
+            text: result.replyText,
+          });
+          if (!replyResult?.sent) {
+            console.warn('[MetaWebhook] reply not sent:', replyResult);
+          }
+        } catch (replyError) {
+          console.error('[MetaWebhook] reply failed for event:', incomingId, replyError);
+        }
+      } else {
+        console.log('[MetaWebhook] skipped duplicate text reply for message:', result.messageId);
+      }
+
+      console.log('[MetaWebhook] processed event:', {
+        from: result.fromNumber,
+        kind: result.kind,
+        sourceText: result.sourceText,
+        actions: result.parsed?.actions?.length ?? 0,
+      });
     }
-
-    const result = await processTwilioWebhook(req.body ?? {});
-    const eventRecord = {
-      id: incomingId ?? `twilio-event-${Math.random().toString(36).slice(2, 10)}`,
-      at: new Date().toISOString(),
-      fromNumber: req.body?.From ?? null,
-      body: req.body?.Body ?? null,
-      numMedia: Number(req.body?.NumMedia ?? 0),
-      kind: result.kind,
-      sourceText: result.sourceText,
-      transcript: result.transcript ?? null,
-      replyText: result.replyText,
-      error: null,
-      actionsJson: result.parsed ? JSON.stringify(result.parsed.actions ?? []) : null,
-      processed: Boolean(result.parsed?.actions?.length),
-    };
-
-    if (result.parsed?.actions?.length) {
-      await applyActionsToDatabase(result.parsed.actions, result.sourceText);
-    }
-
-    await saveTwilioEvent(eventRecord);
-    await markTwilioEventProcessed(eventRecord.id, { processed: eventRecord.processed });
-
-    console.log('[TwilioWebhook] processed event:', {
-      from: req.body?.From,
-      kind: result.kind,
-      sourceText: result.sourceText,
-      actions: result.parsed?.actions?.length ?? 0,
-    });
-
-    res.type('application/xml').status(200).send(buildTwilioXmlResponse(result.replyText));
   } catch (error) {
-    console.error('[TwilioWebhook] processing failed:', error);
-
-    const incomingId = req.body?.MessageSid ?? req.body?.SmsMessageSid ?? `twilio-event-${Math.random().toString(36).slice(2, 10)}`;
-    await saveTwilioEvent({
-      id: incomingId,
-      at: new Date().toISOString(),
-      fromNumber: req.body?.From ?? null,
-      body: req.body?.Body ?? null,
-      numMedia: Number(req.body?.NumMedia ?? 0),
-      error: error instanceof Error ? error.message : String(error),
-      processed: false,
-    });
-
-    res.type('application/xml').status(200).send(buildTwilioXmlResponse('Recibí tu mensaje, pero falló el procesamiento.'));
+    console.error('[MetaWebhook] processing failed:', error);
   }
-});
+};
+
+app.post('/api/meta-webhook', handleMetaWebhook);
+app.post('/api/twilio-webhook', handleMetaWebhook);
 
 app.listen(port, () => {
-  console.log(`[TwilioWebhook] listening on http://localhost:${port}`);
-  console.log('[TwilioWebhook] POST /api/twilio-webhook for Twilio WhatsApp messages');
+  console.log(`[MetaWebhook] listening on http://localhost:${port}`);
+  console.log('[MetaWebhook] GET /api/meta-webhook for verification');
+  console.log('[MetaWebhook] POST /api/meta-webhook for WhatsApp Cloud API messages');
 });

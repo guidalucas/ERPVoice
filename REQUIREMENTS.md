@@ -5,7 +5,7 @@ Resumen corto:
 - npm (v9+) o yarn
 - Backend local con Express
 - SQLite local vía `sql.js`
-- Opcional: ngrok para exponer el webhook de Twilio
+- Opcional: ngrok para exponer el webhook de Meta
 
 Dependencias (extraídas de `package.json`):
 
@@ -68,7 +68,7 @@ npm run preview
 Notas útiles:
 - Hay un archivo de ejemplo de variables de entorno: `.env.example`. Duplica y renómbralo a `.env` si necesitas configurar variables privadas antes de ejecutar.
 - El proyecto usa TypeScript y React (`.tsx`) con Vite como bundler y TailwindCSS para estilos.
-- El backend expone `GET /api/state`, `POST /api/state/apply`, `GET /api/twilio-events`, `GET /api/health` y `POST /api/twilio-webhook`.
+- El backend expone `GET /api/state`, `POST /api/state/apply`, `GET /api/meta-events`, `GET /api/health`, `GET /api/meta-webhook` y `POST /api/meta-webhook`.
 - La persistencia vive en `server/data/erpvoice.sqlite`.
 - Si un producto no matchea con el catálogo, se crea uno nuevo automáticamente con stock `0`.
 

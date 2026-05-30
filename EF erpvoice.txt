@@ -1,0 +1,112 @@
+1. Qué es y qué problema resuelve
+
+El proyecto es un MVP de ERP voice-first para stock y cuentas corrientes. La idea central es convertir texto o audio en acciones de negocio como alta de stock, reserva, venta, deuda y cobro. La interfaz principal simula un chat tipo WhatsApp y, en paralelo, hay un dashboard con estado de inventario, transacciones y eventos de Twilio. El frontend arranca en main.tsx y App.tsx, y el backend Express vive en index.js.
+
+En la práctica, no es un ERP completo ni un sistema multiusuario: es un prototipo funcional para capturar lenguaje natural, interpretarlo y reflejarlo en un estado persistido localmente.
+
+2. Stack tecnológico real
+
+El lenguaje principal es TypeScript en el frontend y JavaScript ES modules en el backend. El frontend usa React 18, Vite y Tailwind CSS; el backend usa Express 5, dotenv y sql.js para emular SQLite sobre un archivo local. Eso se ve en package.json, vite.config.ts y database.js.
+
+Groq se usa como motor de IA mediante endpoints compatibles con OpenAI: uno para chat/completions y otro para audio transcriptions. Eso está en voiceModelService.ts para el flujo del frontend y en twilioVoiceProcessor.js para el webhook de Twilio. Twilio no aparece como SDK integrado en el frontend; se consume vía webhook HTTP y descarga de media protegida con auth básica en el backend.
+
+3. Arquitectura general
+
+Hay dos planos que conviven:
+
+Plano UI local: el usuario escribe o graba audio en el simulador de WhatsApp, la app interpreta la frase, propone acciones y espera confirmación.
+Plano integración externa: Twilio llama al webhook local cuando llegan mensajes o audios de WhatsApp, el backend procesa eso, guarda el evento y responde con TwiML XML.
+La UI y el backend comparten el mismo modelo conceptual de acciones, pero no comparten el mismo código de parsing. En el frontend se usa voiceModelService.ts y voiceParserService.ts. En el backend, el flujo vive en twilioVoiceProcessor.js. Eso es importante porque hay duplicación funcional, no una librería común.
+
+4. Flujo funcional del frontend
+
+El simulador principal está en WhatsAppSimulator.tsx. Desde ahí se usa el hook useChatBot.ts, que maneja texto, grabación, transcripción y confirmación.
+
+El flujo típico es este:
+
+El usuario escribe un comando o graba audio.
+Si es audio, el navegador usa MediaRecorder y luego llama al servicio de transcripción.
+El texto transcripto o escrito se manda a Groq si hay credenciales; si no, cae al parser local basado en reglas.
+El resultado se normaliza como ParsedVoicePayload, se enriquece con datos de productos y precios, y se muestra como propuesta pendiente.
+El usuario confirma o cancela.
+Si confirma, el estado local se aplica y además se persiste al backend con POST a /api/state/apply.
+Ese comportamiento está orquestado por AppStore.tsx y por transactionService.ts. El store mantiene productos, clientes, transacciones, mensajes de chat y la propuesta pendiente.
+
+5. Qué hace la IA y qué hace el parser local
+
+La IA intenta convertir frases libres en un JSON con schemaVersion, intent, confidence, requiresConfirmation y un array de actions. El prompt está definido en voiceModelService.ts y también existe una variante equivalente en el backend. Si Groq falla, no hay API key o la respuesta no es válida, el sistema cae a un parser heurístico en español.
+
+El parser local reconoce frases como:
+
+comprar / compré / compraron / llegaron / recibí
+vender / vendí / vendieron
+reservar / dejé / reservé
+me pagó
+me tiene que pagar
+Además, soporta frases compuestas separadas por coma, y / punto / punto y coma / salto de línea. Ese comportamiento está en voiceParserService.ts y en la versión gemela del backend twilioVoiceProcessor.js.
+
+6. Backend, Twilio y ngrok
+
+El backend escucha por defecto en el puerto 3001 y expone estos endpoints:
+
+GET /api/health
+GET /api/state
+POST /api/state/apply
+GET /api/twilio-events
+POST /api/twilio-webhook
+Eso está en index.js. El webhook recibe payloads de Twilio, detecta si llega texto o audio, y si ya procesó un MessageSid evita reprocesarlo y responde con el mismo TwiML.
+
+La ruta de audio de Twilio funciona así:
+
+Twilio envía el webhook con MediaUrl0.
+El backend descarga el archivo con auth básica usando TWILIO_ACCOUNT_SID y TWILIO_AUTH_TOKEN.
+El audio se manda a Groq transcription.
+El texto resultante se manda al parser IA o al parser local.
+Se construye una respuesta resumen en XML para Twilio.
+Se guarda el evento y, si hay acciones, se aplican a la base local.
+ngrok entra como túnel para exponer el webhook local a Twilio. El repo deja claro que el túnel debe apuntar al puerto 3001, no al frontend. Además, vite.config.ts permite explícitamente un host ngrok en allowedHosts y proxyfica /api hacia http://localhost:3001 en desarrollo.
+
+7. Persistencia y modelo de datos
+
+La persistencia real vive en database.js. No usa un motor SQLite nativo sino sql.js, que guarda un archivo local en server/data/erpvoice.sqlite. Eso permite que el backend sea liviano y portable, pero sigue siendo una persistencia local, no un servidor de base de datos tradicional.
+
+El modelo principal es:
+
+Product: id, name, stockAvailable, stockReserved, price
+Client: id, name, debt
+Transaction: id, timestamp, sourceText, actions, summary
+Twilio event: id, at, fromNumber, body, numMedia, kind, sourceText, transcript, replyText, error, actionsJson, processed
+Cuando se aplican acciones, el sistema puede crear productos automáticamente si no existen, ajustar stock disponible y reservado, actualizar deuda de clientes y registrar transacciones con resumen legible. Esa lógica está duplicada conceptualmente entre transactionService.ts y database.js.
+
+8. UI de dashboard y sincronización
+
+El dashboard está en DashboardPanel.tsx. Tiene tres vistas:
+
+Resumen: muestra inventario, cuentas corrientes y últimas transacciones.
+Stock real: muestra métricas agregadas de inventario.
+Twilio: lista eventos recibidos desde el webhook.
+La sincronización de estado desde el backend hacia la UI ocurre con polling. useTwilioEventSync.ts consulta /api/state cada 4 segundos y actualiza el store si detecta cambios. TwilioMessagesPanel.tsx consulta /api/twilio-events cada 5 segundos para listar mensajes y audios recibidos. TwilioSyncBridge.tsx solo monta ese hook.
+
+9. Lectura funcional del negocio
+
+Funcionalmente, el sistema ya cubre estas capacidades:
+
+Capturar instrucciones por texto o voz.
+Interpretar movimientos de inventario y cuentas.
+Pedir confirmación antes de ejecutar cambios desde el chat local.
+Persistir productos, clientes y transacciones en una base local.
+Recibir mensajes y audios reales de WhatsApp vía Twilio.
+Transcribir audio con Groq.
+Responder automáticamente por Twilio con un resumen de lo detectado.
+Visualizar el estado sincronizado en un dashboard.
+El proyecto está orientado a demo operativa, no a producción. El estado se apoya en polling, la base es local, no hay autenticación, y los secretos aparecen configurados vía variables de entorno que además son usadas desde el frontend en algunos casos. Eso último es un riesgo arquitectónico importante porque cualquier valor expuesto como VITE_ termina entrando al bundle del cliente.
+
+10. Observaciones útiles para Gemini
+
+Hay una duplicación clara entre el parser del frontend y el del backend; comparten intención pero no una implementación común.
+El flujo del frontend y el flujo de Twilio son paralelos, no el mismo pipeline.
+Groq es opcional: si falta la key o falla la respuesta, se usa parsing por reglas.
+Twilio se integra por webhook HTTP y TwiML XML, no por SDK pesado.
+ngrok solo está para exponer el backend local al exterior.
+La persistencia es local y monolítica, pensada para prototipo.
+Si quieres, en el siguiente paso te lo convierto a un formato todavía más “entregable” para Gemini, por ejemplo como documento de arquitectura funcional con secciones de objetivo, actores, flujos, reglas de negocio, endpoints y riesgos.

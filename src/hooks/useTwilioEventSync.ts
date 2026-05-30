@@ -8,7 +8,7 @@ type PersistedStateSnapshot = {
   transactions: Transaction[];
 };
 
-const TWILIO_API_BASE = import.meta.env.VITE_TWILIO_API_BASE ?? 'http://localhost:3001';
+const META_API_BASE = import.meta.env.VITE_META_API_BASE ?? import.meta.env.VITE_TWILIO_API_BASE ?? 'http://localhost:3001';
 
 export const useTwilioEventSync = () => {
   const { hydratePersistedState } = useAppStore();
@@ -19,7 +19,7 @@ export const useTwilioEventSync = () => {
 
     const loadSnapshot = async () => {
       try {
-        const response = await fetch(`${TWILIO_API_BASE}/api/state`);
+        const response = await fetch(`${META_API_BASE}/api/state`);
 
         if (!response.ok) {
           return;

@@ -178,6 +178,7 @@ const slugify = (value) =>
 
 const resolveProduct = (products, actionName) => {
   const actionTokens = tokenize(actionName);
+  const actionLower = normalizeText(String(actionName ?? ''));
 
   if (!actionTokens.length) {
     return null;
@@ -188,6 +189,14 @@ const resolveProduct = (products, actionName) => {
 
   for (const product of products) {
     const productTokens = tokenize(product.name);
+    const productLower = normalizeText(String(product.name ?? ''));
+
+    // Exact-ish substring match: prefer strong textual containment
+    if (productLower.includes(actionLower) || actionLower.includes(productLower)) {
+      console.log(`[DB] resolveProduct: substring match '${actionName}' -> '${product.name}'`);
+      return product;
+    }
+
     const score = actionTokens.filter((token) => productTokens.includes(token)).length;
 
     if (score > bestScore) {
@@ -196,6 +205,13 @@ const resolveProduct = (products, actionName) => {
     }
   }
 
+  // Fallback: require at least 2 matching tokens to consider it the same product.
+  if (bestScore < 2) {
+    console.log(`[DB] resolveProduct: no confident match for '${actionName}' (bestScore=${bestScore})`);
+    return null;
+  }
+
+  console.log(`[DB] resolveProduct: matched '${actionName}' -> '${bestProduct?.name}' (score=${bestScore})`);
   return bestProduct ?? null;
 };
 
@@ -215,6 +231,7 @@ const ensureProduct = (products, productName) => {
   }
 
   const product = createProduct(productName, products.length);
+  console.log(`[DB] ensureProduct: creating new product '${product.name}' (id=${product.id})`);
   products.push(product);
   return product;
 };
