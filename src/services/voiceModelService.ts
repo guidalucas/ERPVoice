@@ -49,8 +49,13 @@ const readEnv = () => ({
   apiKey: import.meta.env.VITE_VOICE_MODEL_API_KEY as string | undefined,
   model: import.meta.env.VITE_VOICE_MODEL_NAME as string | undefined,
   transcriptionEndpoint: import.meta.env.VITE_VOICE_TRANSCRIPTION_ENDPOINT as string | undefined,
+  transcriptionApiKey: (import.meta.env.VITE_VOICE_TRANSCRIPTION_API_KEY || import.meta.env.VITE_VOICE_MODEL_API_KEY) as
+    | string
+    | undefined,
   transcriptionModel: import.meta.env.VITE_VOICE_TRANSCRIPTION_MODEL as string | undefined,
 });
+
+const maskKey = (k?: string) => (k ? `${k.slice(0, 8)}...` : 'none');
 
 const extractContent = (responseData: unknown): string | null => {
   if (!responseData || typeof responseData !== 'object') {
@@ -86,9 +91,9 @@ const stripCodeFences = (value: string) =>
 
 export class VoiceModelService {
   async transcribeAudio(audioBlob: Blob): Promise<string | null> {
-    const { apiKey, transcriptionEndpoint, transcriptionModel } = readEnv();
+    const { transcriptionApiKey, transcriptionEndpoint, transcriptionModel } = readEnv();
 
-    if (!apiKey) {
+    if (!transcriptionApiKey) {
       console.log('[VoiceModel] No credentials found, cannot transcribe audio');
       return null;
     }
@@ -98,12 +103,17 @@ export class VoiceModelService {
     formData.append('file', audioBlob, 'voice.webm');
     formData.append('model', transcriptionModel ?? DEFAULT_TRANSCRIPTION_MODEL);
 
-    console.log('[VoiceModel] Transcribing audio:', { endpoint, model: transcriptionModel ?? DEFAULT_TRANSCRIPTION_MODEL, size: audioBlob.size });
+    console.log('[VoiceModel] Transcribing audio:', {
+      endpoint,
+      model: transcriptionModel ?? DEFAULT_TRANSCRIPTION_MODEL,
+      size: audioBlob.size,
+      keyPreview: maskKey(transcriptionApiKey),
+    });
 
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${transcriptionApiKey}`,
       },
       body: formData,
     });
@@ -140,7 +150,7 @@ export class VoiceModelService {
       return voiceParserService.parse(text);
     }
 
-    console.log('[VoiceModel] Calling model:', { endpoint, model });
+    console.log('[VoiceModel] Calling model:', { endpoint, model, keyPreview: maskKey(apiKey) });
     console.log('[VoiceModel] Input text:', text);
 
     const requestBody = {

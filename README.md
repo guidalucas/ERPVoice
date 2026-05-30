@@ -1,12 +1,14 @@
 # VoiceERP
 
-Asistente por voz MVP para gestión ERP: interfaz web tipo chat, reconocimiento y parseo de voz, y servicios para manejar inventarios y transacciones.
+Asistente por voz MVP para gestión ERP: interfaz web tipo chat, reconocimiento y parseo de voz, webhook de Twilio WhatsApp, y persistencia local con SQLite.
 
 ## Características
 
 - Interfaz de chat web con simulador tipo WhatsApp.
 - Captura y parseo de voz para convertir comandos a transacciones.
-- Servicios para inventario y transacciones.
+- Backend Express para Twilio, estado y persistencia.
+- Stock, clientes y transacciones guardados en SQLite.
+- Si un producto no matchea, se crea uno nuevo automáticamente.
 - Arquitectura ligera ideal para prototipos y demos.
 
 ## Rápido inicio
@@ -20,6 +22,44 @@ npm run dev
 
 Abre `http://localhost:5173` (o la URL que muestre Vite) y prueba la interfaz de chat.
 
+Si el puerto ya está ocupado, Vite puede arrancar en otro puerto como `5174`.
+
+## Webhook de Twilio WhatsApp
+
+Para recibir audios y mensajes de WhatsApp desde Twilio, levanta el webhook local en otro puerto:
+
+```bash
+npm run dev:api
+```
+
+El servidor escucha en `http://localhost:3001` por defecto y expone:
+
+- `POST /api/twilio-webhook`
+- `GET /api/health`
+- `GET /api/twilio-events`
+- `GET /api/state`
+- `POST /api/state/apply`
+
+Si quieres levantar web y API al mismo tiempo:
+
+```bash
+npm run dev:all
+```
+
+Para exponer Twilio en local con ngrok, apunta el túnel al puerto del webhook, no al de Vite:
+
+```bash
+ngrok http 3001
+```
+
+Luego configura en Twilio la URL pública resultante, por ejemplo `https://xxxx.ngrok-free.app/api/twilio-webhook`.
+
+## Persistencia
+
+- La base local se guarda en `server/data/erpvoice.sqlite`.
+- Puedes abrirla con DB Browser for SQLite o cualquier cliente compatible.
+- El backend sincroniza productos, clientes, transacciones y eventos Twilio.
+
 ## Estructura principal
 
 - `src/` – código fuente React + servicios
@@ -28,6 +68,7 @@ Abre `http://localhost:5173` (o la URL que muestre Vite) y prueba la interfaz de
   - `src/hooks/` – hooks personalizados (`useChatBot`, `useInventory`)
   - `src/domain/` – tipos y datos de prueba
   - `src/store/` – estado global
+- `server/` – backend Express, persistencia SQLite y webhook de Twilio
 
 ## Contribuir
 
