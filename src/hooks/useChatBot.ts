@@ -56,7 +56,7 @@ const resolveProduct = (products: { name: string; price: number }[], actionName:
   const actionTokens = tokenize(actionName);
 
   if (!actionTokens.length) {
-    return products[0];
+    return null;
   }
 
   let bestProduct: { name: string; price: number } | undefined;
@@ -72,7 +72,7 @@ const resolveProduct = (products: { name: string; price: number }[], actionName:
     }
   }
 
-  return bestProduct ?? products[0];
+  return bestProduct ?? null;
 };
 
 const resolveDebtAmount = (products: { name: string; price: number }[], action: ParsedActionUnion) => {

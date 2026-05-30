@@ -14,11 +14,25 @@ const tokenize = (value: string) =>
     .map((token) => token.replace(/[^a-z0-9]/g, ''))
     .filter((token) => token.length > 2 && !['para', 'con', 'del', 'las', 'los', 'una', 'uno', 'por', 'les'].includes(token));
 
+const slugify = (value: string) =>
+  normalizeText(value)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40) || 'nuevo-producto';
+
+const createProduct = (name: string, index: number): Product => ({
+  id: `product-${slugify(name)}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,
+  name: name.trim(),
+  stockAvailable: 0,
+  stockReserved: 0,
+  price: 0,
+});
+
 const resolveProduct = (products: Product[], actionName: string) => {
   const actionTokens = tokenize(actionName);
 
   if (!actionTokens.length) {
-    return products[0];
+    return null;
   }
 
   let bestProduct: Product | undefined;
@@ -34,7 +48,19 @@ const resolveProduct = (products: Product[], actionName: string) => {
     }
   }
 
-  return bestProduct ?? products[0];
+  return bestProduct ?? null;
+};
+
+const ensureProduct = (products: Product[], productName: string) => {
+  const resolvedProduct = resolveProduct(products, productName);
+
+  if (resolvedProduct) {
+    return { product: resolvedProduct, created: false };
+  }
+
+  const product = createProduct(productName, products.length);
+  products.push(product);
+  return { product, created: true };
 };
 
 const calculateSaleDebt = (products: Product[], sellAction: { productName: string; qty: number }) => {
@@ -91,31 +117,22 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
 
   actions.forEach((action, index) => {
     if (action.type === 'add_stock') {
-      const product = resolveProduct(nextProducts, action.productName);
-
-      if (product) {
-        product.stockAvailable += action.qty;
-      }
+      const { product } = ensureProduct(nextProducts, action.productName);
+      product.stockAvailable += action.qty;
     }
 
     if (action.type === 'reserve_stock') {
-      const product = resolveProduct(nextProducts, action.productName);
-
-      if (product) {
-        const reservationQty = Math.min(product.stockAvailable, action.qty);
-        product.stockAvailable -= reservationQty;
-        product.stockReserved += reservationQty;
-      }
+      const { product } = ensureProduct(nextProducts, action.productName);
+      const reservationQty = Math.min(product.stockAvailable, action.qty);
+      product.stockAvailable -= reservationQty;
+      product.stockReserved += reservationQty;
     }
 
     if ((action as any).type === 'sell' || (action as any).type === 'venta') {
       const sellAction = action as { type: string; productName: string; qty: number };
-      const product = resolveProduct(nextProducts, sellAction.productName);
-
-      if (product) {
-        const sellQty = Math.min(product.stockAvailable, sellAction.qty);
-        product.stockAvailable -= sellQty;
-      }
+      const { product } = ensureProduct(nextProducts, sellAction.productName);
+      const sellQty = Math.min(product.stockAvailable, sellAction.qty);
+      product.stockAvailable -= sellQty;
     }
 
     if (action.type === 'add_debt') {

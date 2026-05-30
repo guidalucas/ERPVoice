@@ -1,6 +1,7 @@
 import { AppStoreProvider } from './store/AppStore';
 import { DashboardPanel } from './components/dashboard/DashboardPanel';
 import { WhatsAppSimulator } from './components/split/WhatsAppSimulator';
+import { TwilioSyncBridge } from './components/dashboard/TwilioSyncBridge';
 
 function Shell() {
   return (
@@ -20,6 +21,7 @@ function Shell() {
 export default function App() {
   return (
     <AppStoreProvider>
+      <TwilioSyncBridge />
       <Shell />
     </AppStoreProvider>
   );
