@@ -12,7 +12,7 @@ type TwilioEvent = {
   error?: string;
 };
 
-const TWILIO_API_BASE = import.meta.env.VITE_TWILIO_API_BASE ?? 'http://localhost:3001';
+const META_API_BASE = import.meta.env.VITE_META_API_BASE ?? import.meta.env.VITE_TWILIO_API_BASE ?? 'http://localhost:3001';
 
 const formatDateTime = (value: string) => {
   try {
@@ -32,7 +32,7 @@ export function TwilioMessagesPanel() {
 
     const loadEvents = async () => {
       try {
-        const response = await fetch(`${TWILIO_API_BASE}/api/twilio-events`);
+        const response = await fetch(`${META_API_BASE}/api/meta-events`);
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -47,7 +47,7 @@ export function TwilioMessagesPanel() {
         }
       } catch (fetchError) {
         if (!cancelled) {
-          setError(fetchError instanceof Error ? fetchError.message : 'No se pudieron leer los eventos de Twilio.');
+          setError(fetchError instanceof Error ? fetchError.message : 'No se pudieron leer los eventos de Meta.');
           setIsLoading(false);
         }
       }
@@ -66,21 +66,21 @@ export function TwilioMessagesPanel() {
     <article className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="font-display text-lg font-bold text-slate-900">Mensajes Twilio</h3>
-          <p className="mt-1 text-xs text-slate-500">Últimos mensajes y audios recibidos desde WhatsApp</p>
+          <h3 className="font-display text-lg font-bold text-slate-900">Mensajes WhatsApp</h3>
+          <p className="mt-1 text-xs text-slate-500">Últimos mensajes y audios recibidos desde Meta Cloud API</p>
         </div>
         <span className="rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-white">
-          {TWILIO_API_BASE.replace(/^https?:\/\//, '')}
+          {META_API_BASE.replace(/^https?:\/\//, '')}
         </span>
       </div>
 
       <div className="mt-4 space-y-3">
-        {isLoading && <div className="rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-sm">Cargando eventos de Twilio...</div>}
+        {isLoading && <div className="rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-sm">Cargando eventos de Meta...</div>}
 
         {!isLoading && error && <div className="rounded-2xl bg-rose-50 p-4 text-sm text-rose-700 shadow-sm">{error}</div>}
 
         {!isLoading && !error && events.length === 0 && (
-          <div className="rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-sm">Todavía no llegaron mensajes desde Twilio.</div>
+          <div className="rounded-2xl bg-white p-4 text-sm text-slate-500 shadow-sm">Todavía no llegaron mensajes desde Meta.</div>
         )}
 
         {events.map((event, index) => (

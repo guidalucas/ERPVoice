@@ -1,0 +1,45 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "821973914074828",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15556517775",
+              "phone_number_id": "1182400218280846"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Lucas Güida"
+                },
+                "wa_id": "5493454954407",
+                "user_id": "AR.1655903705615752"
+              }
+            ],
+            "messages": [
+              {
+                "from": "5493454954407",
+                "from_user_id": "AR.1655903705615752",
+                "id": "wamid.HBgNNTQ5MzQ1NDk1NDQwNxUCABIYFDJBMEE2OTQxQUJEMzAzRUZGN0MyAA==",
+                "timestamp": "1780168940",
+                "type": "audio",
+                "audio": {
+                  "mime_type": "audio/ogg; codecs=opus",
+                  "sha256": "Xn5n8/8Hj5+Az861eKg6GXG28Ud5qIyX+DDQHlR0jtU=",
+                  "id": "1284483393848014",
+                  "url": "https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=1284483393848014&source=webhook&ext=1780169242&hash=ARmsJiEvQ8MOMrSpC6oppSKJnCr_OMlFy64UBDXVPZfrog",
+                  "voice": true
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

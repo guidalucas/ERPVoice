@@ -7,7 +7,7 @@ const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
 
 export function DashboardPanel() {
   const { products, clients, transactions } = useInventory();
-  const [activeTab, setActiveTab] = useState<'resumen' | 'stock' | 'twilio'>('resumen');
+  const [activeTab, setActiveTab] = useState<'resumen' | 'stock' | 'whatsapp'>('resumen');
 
   const tabButtonClass = (tab: typeof activeTab) =>
     `rounded-full px-4 py-2 text-sm font-semibold transition ${activeTab === tab ? 'bg-slate-900 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100'}`;
@@ -24,8 +24,8 @@ export function DashboardPanel() {
           <button type="button" className={tabButtonClass('stock')} onClick={() => setActiveTab('stock')}>
             Stock real
           </button>
-          <button type="button" className={tabButtonClass('twilio')} onClick={() => setActiveTab('twilio')}>
-            Twilio
+          <button type="button" className={tabButtonClass('whatsapp')} onClick={() => setActiveTab('whatsapp')}>
+            WhatsApp / Meta
           </button>
         </div>
       </header>
@@ -87,7 +87,7 @@ export function DashboardPanel() {
           </div>
         )}
 
-        {activeTab === 'twilio' && (
+        {activeTab === 'whatsapp' && (
           <div className="xl:col-span-4">
             <TwilioMessagesPanel />
           </div>
