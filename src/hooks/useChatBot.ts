@@ -52,6 +52,12 @@ const tokenize = (value: string) =>
     .map((token) => token.replace(/[^a-z0-9]/g, ''))
     .filter((token) => token.length > 2 && !['para', 'con', 'del', 'las', 'los', 'una', 'uno', 'por', 'les'].includes(token));
 
+const formatProductMeta = (action: { productType?: string; productModel?: string; size?: string; productName: string }) => {
+  const parts = [action.productType, action.productModel, action.size].filter((value): value is string => Boolean(value));
+
+  return parts.length ? `${parts.join(' / ')} -> ${action.productName}` : action.productName;
+};
+
 const resolveProduct = (products: { name: string; price: number }[], actionName: string) => {
   const actionTokens = tokenize(actionName);
 
@@ -145,15 +151,15 @@ export const useChatBot = () => {
 
     return state.pendingProposal.actions.map((action, index) => {
       if (action.type === 'add_stock') {
-        return `${index + 1}. add_stock -> ${action.productName} (+${action.qty})`;
+        return `${index + 1}. add_stock -> ${formatProductMeta(action)} (+${action.qty})`;
       }
 
       if (action.type === 'reserve_stock') {
-        return `${index + 1}. reserve_stock -> ${action.productName} (-${action.qty})`;
+        return `${index + 1}. reserve_stock -> ${formatProductMeta(action)} (-${action.qty})`;
       }
 
       if (action.type === 'sell') {
-        return `${index + 1}. sell -> ${action.productName} (-${action.qty})`;
+        return `${index + 1}. sell -> ${formatProductMeta(action)} (-${action.qty})`;
       }
 
       if (action.type === 'payment_received') {

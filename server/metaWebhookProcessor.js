@@ -14,10 +14,10 @@ Convertí la frase del usuario en un JSON válido con esta estructura exacta:
   "confidence": number,
   "requiresConfirmation": boolean,
   "actions": [
-    { "type": "add_stock", "productName": string, "qty": number },
-    { "type": "reserve_stock", "productName": string, "qty": number, "clientName"?: string },
-    { "type": "sell", "productName": string, "qty": number },
-    { "type": "add_debt", "clientName": string, "amount": number, "productName"?: string, "qty"?: number }
+    { "type": "add_stock", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number },
+    { "type": "reserve_stock", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number, "clientName"?: string },
+    { "type": "sell", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number },
+    { "type": "add_debt", "clientName": string, "amount": number, "productType"?: string, "productModel"?: string, "size"?: string, "productName"?: string, "qty"?: number }
     { "type": "payment_received", "clientName": string, "amount": number }
   ],
   "missingFields"?: string[],
@@ -35,6 +35,7 @@ Reglas:
 - Si el texto dice que un cliente te tiene que pagar por productos o que todavía no te los pagó, usá sell y también add_debt con clientName, productName, qty y amount 0 si todavía no podés calcularlo.
 - Si ya tenés productName y qty, no pidas precio unitario: devolvé la venta y dejá amount en 0 para que el ERP lo calcule.
 - Si la frase dice "para X" en una reserva, separá X como clientName y dejá solo el producto en productName.
+- Si la frase incluye prenda, modelo y talle, separá productType, productModel y size. Ejemplo: "3 camisetas de boca titular, talle M" -> productType: "Camiseta", productModel: "Boca Titular", size: "M", productName: "Camiseta Boca Titular M".
 - Si una frase tiene dos movimientos, devolvé dos objetos en actions.
 - Ejemplo: "compre 20 camisetas de argentina, les deje 3 al gimnasio" -> [{"type":"add_stock","productName":"camisetas de argentina","qty":20},{"type":"reserve_stock","productName":"camisetas de argentina","qty":3,"clientName":"gimnasio"}].
 
@@ -59,6 +60,63 @@ const normalizeText = (value) =>
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '');
+
+const titleCase = (value) =>
+  String(value ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(' ');
+
+const singularizeProductType = (value) => {
+  const trimmed = String(value ?? '').trim();
+
+  if (trimmed.length <= 3) {
+    return titleCase(trimmed);
+  }
+
+  if (trimmed.endsWith('es')) {
+    return titleCase(trimmed.slice(0, -2));
+  }
+
+  if (trimmed.endsWith('s')) {
+    return titleCase(trimmed.slice(0, -1));
+  }
+
+  return titleCase(trimmed);
+};
+
+const composeProductName = ({ productType, productModel, size, fallback }) => {
+  const values = [productType, productModel, size]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean);
+
+  if (values.length) {
+    return values.join(' ');
+  }
+
+  return String(fallback ?? '').trim();
+};
+
+const parseProductDescriptor = (value) => {
+  const normalized = normalizeText(value).replace(/\s+/g, ' ').trim();
+  const sizeMatch = normalized.match(/(?:,\s*|\s+)talle\s+([a-z0-9]+)\b/i);
+  const size = sizeMatch ? sizeMatch[1].toUpperCase() : undefined;
+  const withoutSize = normalized.replace(/(?:,\s*|\s+)talle\s+[a-z0-9]+\b/i, '').trim();
+  const descriptorParts = withoutSize.split(/\s+de\s+/i);
+  const rawProductType = descriptorParts[0] ?? withoutSize;
+  const rawProductModel = descriptorParts.slice(1).join(' de ') || undefined;
+
+  const productType = rawProductType ? singularizeProductType(rawProductType) : undefined;
+  const productModel = rawProductModel ? titleCase(rawProductModel) : undefined;
+
+  return {
+    productType,
+    productModel,
+    size,
+    productName: composeProductName({ productType, productModel, size, fallback: value }),
+  };
+};
 
 const splitCompoundText = (value) =>
   value
@@ -184,10 +242,22 @@ const parseAction = (value) => {
   const qty = typeof value.qty === 'number' ? value.qty : Number(value.qty);
   const amount = typeof value.amount === 'number' ? value.amount : Number(value.amount);
 
-  if ((value.type === 'add_stock' || value.type === 'reserve_stock' || value.type === 'sell') && typeof value.productName === 'string' && Number.isFinite(qty) && qty > 0) {
+  if (value.type === 'add_stock' || value.type === 'reserve_stock' || value.type === 'sell') {
+    const productType = typeof value.productType === 'string' ? value.productType : undefined;
+    const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
+    const size = typeof value.size === 'string' ? value.size : undefined;
+    const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
+
+    if (!productName || !Number.isFinite(qty) || qty <= 0) {
+      return null;
+    }
+
     return {
       type: value.type,
-      productName: value.productName,
+      productName,
+      productType,
+      productModel,
+      size,
       qty,
       clientName: typeof value.clientName === 'string' ? value.clientName : undefined,
     };
@@ -199,6 +269,9 @@ const parseAction = (value) => {
       clientName: value.clientName,
       amount,
       productName: typeof value.productName === 'string' ? value.productName : undefined,
+      productType: typeof value.productType === 'string' ? value.productType : undefined,
+      productModel: typeof value.productModel === 'string' ? value.productModel : undefined,
+      size: typeof value.size === 'string' ? value.size : undefined,
       qty: Number.isFinite(Number(value.qty)) ? Number(value.qty) : undefined,
     };
   }
@@ -253,12 +326,16 @@ const extractMultipleActionsFromText = (text) => {
     if (addStockMatch) {
       const qty = Number(addStockMatch[1]);
       if (qty > 0) {
+        const productDescriptor = parseProductDescriptor(addStockMatch[2].trim());
         actions.push({
           type: 'add_stock',
-          productName: addStockMatch[2].trim(),
+          productName: productDescriptor.productName,
+          productType: productDescriptor.productType,
+          productModel: productDescriptor.productModel,
+          size: productDescriptor.size,
           qty,
         });
-        lastProductName = addStockMatch[2].trim();
+        lastProductName = productDescriptor.productName;
       }
       continue;
     }
@@ -269,9 +346,13 @@ const extractMultipleActionsFromText = (text) => {
       if (qty > 0) {
         const targetRaw = reserveMatch[2].trim();
         const reservationTarget = splitReservationTarget(targetRaw, lastProductName);
+        const productDescriptor = parseProductDescriptor(reservationTarget.productName);
         actions.push({
           type: 'reserve_stock',
-          productName: reservationTarget.productName === targetRaw && lastProductName ? lastProductName : reservationTarget.productName,
+          productName: reservationTarget.productName === targetRaw && lastProductName ? lastProductName : productDescriptor.productName,
+          productType: productDescriptor.productType,
+          productModel: productDescriptor.productModel,
+          size: productDescriptor.size,
           clientName: reservationTarget.clientName,
           qty,
         });
@@ -283,9 +364,13 @@ const extractMultipleActionsFromText = (text) => {
     if (sellMatch) {
       const qty = Number(sellMatch[1]);
       if (qty > 0) {
+        const productDescriptor = parseProductDescriptor(sellMatch[2].trim());
         actions.push({
           type: 'sell',
-          productName: sellMatch[2].trim(),
+          productName: productDescriptor.productName,
+          productType: productDescriptor.productType,
+          productModel: productDescriptor.productModel,
+          size: productDescriptor.size,
           qty,
         });
       }

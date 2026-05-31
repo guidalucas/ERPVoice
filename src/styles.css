@@ -4,27 +4,98 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: dark;
+  --background: #07111f;
+  --surface: rgba(10, 15, 26, 0.82);
+  --surface-elevated: rgba(15, 23, 42, 0.92);
+  --border: rgba(148, 163, 184, 0.14);
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #19c37d;
+  --warning: #f5b94f;
+  --destructive: #fb7185;
+  --whatsapp: #25d366;
+}
+
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
   font-family: 'Space Grotesk', sans-serif;
-  background: #e2e8f0;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(25, 195, 125, 0.16), transparent 24%),
+    radial-gradient(circle at 88% 0%, rgba(59, 130, 246, 0.14), transparent 22%),
+    radial-gradient(circle at 50% 100%, rgba(148, 163, 184, 0.08), transparent 28%),
+    linear-gradient(180deg, #050b16 0%, #07111f 40%, #0b1220 100%);
+  background-attachment: fixed;
 }
 
 * {
   box-sizing: border-box;
 }
 
+::selection {
+  background: rgba(25, 195, 125, 0.28);
+  color: #ffffff;
+}
+
+@layer components {
+  .erp-shell {
+    @apply rounded-[2rem] border border-white/10 bg-slate-950/70 shadow-glow backdrop-blur-xl;
+  }
+
+  .erp-panel {
+    @apply rounded-[1.5rem] border border-white/10 bg-slate-950/60 p-4 shadow-lg shadow-black/20 backdrop-blur-xl;
+  }
+
+  .erp-card {
+    @apply rounded-3xl border border-white/10 bg-white/5 p-4 shadow-lg shadow-black/20;
+  }
+
+  .erp-card-soft {
+    @apply rounded-2xl border border-white/10 bg-white/5 p-3 shadow-sm shadow-black/20;
+  }
+
+  .erp-input {
+    @apply w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-emerald-400;
+  }
+
+  .erp-button-primary {
+    @apply rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .erp-button-secondary {
+    @apply rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .erp-button-danger {
+    @apply rounded-full border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .erp-chip {
+    @apply inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
 }
 
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 ::-webkit-scrollbar-thumb {
-  background: rgba(15, 23, 42, 0.2);
+  background: rgba(148, 163, 184, 0.24);
   border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.36);
 }

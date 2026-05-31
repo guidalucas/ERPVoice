@@ -5,17 +5,20 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:api": "node server/index.js",
-    "dev:all": "concurrently -n web,api -c cyan,magenta \"npm run dev\" \"npm run dev:api\"",
+    "dev:api": "nodemon server/index.js",
+    "dev:frontback": "node scripts/dev-frontback.js",
+    "dev:ngrok": "node scripts/dev-ngrok.js",
+    "dev:all": "npm run dev:frontback",
+    "start": "node server/index.js",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "pg": "^8.13.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "sql.js": "^1.14.1"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
@@ -24,6 +27,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.21",
     "concurrently": "^10.0.0",
+    "nodemon": "^3.1.10",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",

@@ -1,82 +1,96 @@
 # VoiceERP
 
-Asistente por voz MVP para gestión ERP: interfaz web tipo chat, reconocimiento y parseo de voz, webhook de Meta WhatsApp Cloud API, y persistencia local con SQLite.
+ERP voice-first para stock y cuentas corrientes. Convierte audio o texto en acciones de negocio, las confirma en una UI tipo chat y persiste el estado en PostgreSQL/Supabase.
 
-## Características
+## Qué incluye
 
-- Interfaz de chat web con simulador tipo WhatsApp.
-- Captura y parseo de voz para convertir comandos a transacciones.
-- Backend Express para Meta, estado y persistencia.
-- Stock, clientes y transacciones guardados en SQLite.
-- Si un producto no matchea, se crea uno nuevo automáticamente.
-- Arquitectura ligera ideal para prototipos y demos.
+- Simulador de WhatsApp flotante y desplegable.
+- Parsing de voz con Whisper para transcripción y Llama para estructurar acciones.
+- Dashboard con resumen, stock real, ABM de productos y eventos de WhatsApp.
+- Backend Express para estado, persistencia y webhook de Meta WhatsApp Cloud API.
+- Persistencia en PostgreSQL conectada a Supabase o a un `DATABASE_URL` compatible.
+- Creación automática de productos cuando no hay match suficiente.
 
-## Rápido inicio
+## Arranque rápido
 
-Instala dependencias y levanta el servidor de desarrollo:
+Instala dependencias y levanta frontend + backend en una terminal:
 
 ```bash
 npm install
-npm run dev
+npm run dev:frontback
 ```
 
-Abre `http://localhost:5173` (o la URL que muestre Vite) y prueba la interfaz de chat.
-
-Si el puerto ya está ocupado, Vite puede arrancar en otro puerto como `5174`.
-
-## Webhook de Meta WhatsApp
-
-Para recibir audios y mensajes de WhatsApp desde Meta, levanta el webhook local en otro puerto:
+En otra terminal, levanta ngrok:
 
 ```bash
-npm run dev:api
+npm run dev:ngrok
 ```
 
-El servidor escucha en `http://localhost:3001` por defecto y expone:
+La interfaz queda en `http://localhost:5173` y el backend en `http://localhost:3001`.
 
-- `GET /api/meta-webhook`
-- `POST /api/meta-webhook`
+## Scripts
+
+- `npm run dev` - Vite solo frontend.
+- `npm run dev:api` - backend Express solo.
+- `npm run dev:frontback` - frontend + backend juntos.
+- `npm run dev:ngrok` - túnel ngrok aparte.
+- `npm run dev:all` - frontend + backend y ngrok si está disponible.
+- `npm run build` - build de producción.
+
+## Variables de entorno
+
+Usa `.env.local` para configurar:
+
+- `VITE_VOICE_MODEL_ENDPOINT`
+- `VITE_VOICE_MODEL_API_KEY`
+- `VITE_VOICE_MODEL_NAME`
+- `VITE_VOICE_TRANSCRIPTION_ENDPOINT`
+- `VITE_VOICE_TRANSCRIPTION_MODEL`
+- `META_WEBHOOK_PORT`
+- `META_VERIFY_TOKEN`
+- `META_ACCESS_TOKEN`
+- `META_PHONE_NUMBER_ID`
+- `META_GRAPH_API_VERSION`
+- `SUPABASE_DATABASE_URL`
+- `VITE_META_API_BASE`
+- `NGROK_AUTHTOKEN`
+
+Importante: cualquier variable `VITE_` queda expuesta en el bundle del navegador.
+
+## Webhook de Meta
+
+El webhook principal es `GET/POST /api/meta-webhook` y el backend también expone:
+
 - `GET /api/health`
-- `GET /api/meta-events`
 - `GET /api/state`
 - `POST /api/state/apply`
+- `GET /api/meta-events`
+- `GET /api/twilio-events` por compatibilidad histórica
 
-Si quieres levantar web y API al mismo tiempo:
+La URL pública que imprime ngrok es la que debes cargar en Meta.
 
-```bash
-npm run dev:all
-```
+## Base de datos
 
-Para exponer Meta en local con ngrok, apunta el túnel al puerto del webhook, no al de Vite:
+La persistencia vive en PostgreSQL y se configura con `SUPABASE_DATABASE_URL` o `DATABASE_URL`.
 
-```bash
-ngrok http 3001
-```
+Entidades principales:
 
-Luego configura en Meta la URL pública resultante, por ejemplo `https://xxxx.ngrok-free.app/api/meta-webhook`.
-
-## Persistencia
-
-- La base local se guarda en `server/data/erpvoice.sqlite`.
-- Puedes abrirla con DB Browser for SQLite o cualquier cliente compatible.
-- El backend sincroniza productos, clientes, transacciones y eventos Meta.
+- Productos: `name`, `productType`, `productModel`, `size`, `stockAvailable`, `stockReserved`, `price`
+- Clientes: `name`, `debt`
+- Transacciones: `sourceText`, `actions`, `summary`
+- Eventos Meta: `fromNumber`, `body`, `transcript`, `replyText`, `processed`
 
 ## Estructura principal
 
-- `src/` – código fuente React + servicios
-  - `src/components/` – componentes UI (chat, dashboard, simulador)
-  - `src/services/` – servicios como `voiceModelService.ts`, `voiceParserService.ts`, `transactionService.ts`
-  - `src/hooks/` – hooks personalizados (`useChatBot`, `useInventory`)
-  - `src/domain/` – tipos y datos de prueba
-  - `src/store/` – estado global
-- `server/` – backend Express, persistencia SQLite y webhook de Meta
+- `src/components/split/WhatsAppSimulator.tsx` - simulador flotante desplegable.
+- `src/components/dashboard/` - dashboard, stock real, ABM y panel de eventos.
+- `src/services/` - transcripción, parsing, CRUD de productos.
+- `src/hooks/` - hooks de chat e inventario.
+- `src/store/` - estado global.
+- `server/` - backend Express, persistencia y webhook de Meta.
 
-## Contribuir
+## Notas
 
-1. Crea una rama nueva: `git checkout -b feat/mi-cambio`
-2. Implementa y prueba tus cambios.
-3. Abre un pull request con descripción clara.
-
-## Licencia
-
-MIT — usa y modifica libremente para prototipos y demos.
+- El flujo de voz usa Whisper para transcribir y Llama para producir JSON de acciones.
+- El parser local actúa como fallback si falta la API o la respuesta del modelo no es válida.
+- La UI y el backend comparten el modelo de datos, pero el backend es la fuente de verdad para el estado persistido.

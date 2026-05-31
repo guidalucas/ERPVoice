@@ -2,13 +2,16 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import {
+  createProductRecord,
+  deleteProductRecord,
   applyActionsToDatabase,
   findTwilioEventById,
   getStateSnapshot,
   getTwilioEvents,
   markTwilioEventProcessed,
   saveTwilioEvent,
-} from './database.js';
+  updateProductRecord,
+} from './postgresDatabase.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -44,6 +47,67 @@ app.get('/api/state', async (_req, res) => {
   try {
     const snapshot = await getStateSnapshot();
     res.json(snapshot);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/products', async (req, res) => {
+  try {
+    const product = await createProductRecord({
+      name: req.body?.name,
+      productType: req.body?.productType,
+      productModel: req.body?.productModel,
+      size: req.body?.size,
+      stockAvailable: req.body?.stockAvailable,
+      stockReserved: req.body?.stockReserved,
+      price: req.body?.price,
+    });
+
+    if (!product) {
+      res.status(400).json({ error: 'No se pudo crear el producto' });
+      return;
+    }
+
+    res.status(201).json(product);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.put('/api/products/:id', async (req, res) => {
+  try {
+    const product = await updateProductRecord(req.params.id, {
+      name: req.body?.name,
+      productType: req.body?.productType,
+      productModel: req.body?.productModel,
+      size: req.body?.size,
+      stockAvailable: req.body?.stockAvailable,
+      stockReserved: req.body?.stockReserved,
+      price: req.body?.price,
+    });
+
+    if (!product) {
+      res.status(404).json({ error: 'Producto no encontrado' });
+      return;
+    }
+
+    res.json(product);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+  try {
+    const deleted = await deleteProductRecord(req.params.id);
+
+    if (!deleted) {
+      res.status(404).json({ error: 'Producto no encontrado' });
+      return;
+    }
+
+    res.status(204).send();
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }
@@ -153,6 +217,16 @@ const handleMetaWebhook = async (req, res) => {
       if (result.parsed?.actions?.length) {
         await applyActionsToDatabase(result.parsed.actions, result.sourceText);
       }
+
+      console.log('[MetaWebhook] response debug:', {
+        messageId: incomingId,
+        from: result.fromNumber,
+        kind: result.kind,
+        sourceText: result.sourceText,
+        transcript: result.transcript ?? null,
+        replyText: result.replyText,
+        actions: result.parsed?.actions ?? [],
+      });
 
       await saveTwilioEvent(eventRecord);
       await markTwilioEventProcessed(eventRecord.id, { processed: eventRecord.processed });

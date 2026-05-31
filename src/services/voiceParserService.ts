@@ -6,6 +6,63 @@ const normalizeText = (value: string) =>
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '');
 
+const titleCase = (value: string) =>
+  value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(' ');
+
+const singularizeProductType = (value: string) => {
+  const trimmed = value.trim();
+
+  if (trimmed.length <= 3) {
+    return titleCase(trimmed);
+  }
+
+  if (trimmed.endsWith('es')) {
+    return titleCase(trimmed.slice(0, -2));
+  }
+
+  if (trimmed.endsWith('s')) {
+    return titleCase(trimmed.slice(0, -1));
+  }
+
+  return titleCase(trimmed);
+};
+
+const composeProductName = (parts: { productType?: string; productModel?: string; size?: string; fallback?: string }) => {
+  const values = [parts.productType, parts.productModel, parts.size]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+
+  if (values.length) {
+    return values.join(' ');
+  }
+
+  return parts.fallback?.trim() ?? '';
+};
+
+const parseProductDescriptor = (value: string) => {
+  const normalized = normalizeText(value).replace(/\s+/g, ' ').trim();
+  const sizeMatch = normalized.match(/(?:,\s*|\s+)talle\s+([a-z0-9]+)\b/i);
+  const size = sizeMatch ? sizeMatch[1]!.toUpperCase() : undefined;
+  const withoutSize = normalized.replace(/(?:,\s*|\s+)talle\s+[a-z0-9]+\b/i, '').trim();
+  const descriptorParts = withoutSize.split(/\s+de\s+/i);
+  const rawProductType = descriptorParts[0] ?? withoutSize;
+  const rawProductModel = descriptorParts.slice(1).join(' de ') || undefined;
+
+  const productType = rawProductType ? singularizeProductType(rawProductType) : undefined;
+  const productModel = rawProductModel ? titleCase(rawProductModel) : undefined;
+
+  return {
+    productType,
+    productModel,
+    size,
+    productName: composeProductName({ productType, productModel, size, fallback: value }),
+  };
+};
+
 const extractFirstNumber = (value: string) => {
   const match = value.match(/\b(\d+)\b/);
   return match ? Number(match[1]) : null;
@@ -131,13 +188,16 @@ const extractMultipleActionsFromText = (text: string): ParsedActionUnion[] => {
         continue;
       }
 
-      const productRaw = buyMatch[2].trim();
-      const productName = productRaw
-        .split(/\s+/)
-        .map((s) => s[0]?.toUpperCase() + s.slice(1))
-        .join(' ');
-      actions.push({ type: 'add_stock', productName, qty });
-      lastProductName = productName;
+      const productDescriptor = parseProductDescriptor(buyMatch[2].trim());
+      actions.push({
+        type: 'add_stock',
+        productName: productDescriptor.productName,
+        productType: productDescriptor.productType,
+        productModel: productDescriptor.productModel,
+        size: productDescriptor.size,
+        qty,
+      });
+      lastProductName = productDescriptor.productName;
       continue;
     }
 
@@ -150,10 +210,14 @@ const extractMultipleActionsFromText = (text: string): ParsedActionUnion[] => {
 
       const targetRaw = reserveMatch[2].trim();
       const reservationTarget = splitReservationTarget(targetRaw, lastProductName);
-      const resolvedProductName = reservationTarget.productName === targetRaw.trim() && lastProductName ? lastProductName : reservationTarget.productName;
+      const productDescriptor = parseProductDescriptor(reservationTarget.productName);
+      const resolvedProductName = reservationTarget.productName === targetRaw.trim() && lastProductName ? lastProductName : productDescriptor.productName;
       actions.push({
         type: 'reserve_stock',
         productName: resolvedProductName,
+        productType: productDescriptor.productType,
+        productModel: productDescriptor.productModel,
+        size: productDescriptor.size,
         clientName: reservationTarget.clientName,
         qty,
       });
@@ -167,12 +231,15 @@ const extractMultipleActionsFromText = (text: string): ParsedActionUnion[] => {
         continue;
       }
 
-      const productRaw = sellMatch[2].trim();
-      const productName = productRaw
-        .split(/\s+/)
-        .map((s) => s[0]?.toUpperCase() + s.slice(1))
-        .join(' ');
-      actions.push({ type: 'sell', productName, qty } as ParsedActionUnion);
+      const productDescriptor = parseProductDescriptor(sellMatch[2].trim());
+      actions.push({
+        type: 'sell',
+        productName: productDescriptor.productName,
+        productType: productDescriptor.productType,
+        productModel: productDescriptor.productModel,
+        size: productDescriptor.size,
+        qty,
+      } as ParsedActionUnion);
       continue;
     }
   }
@@ -220,14 +287,23 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
   const amount = typeof value.amount === 'number' ? value.amount : Number(value.amount);
 
   if (value.type === 'add_stock' || value.type === 'reserve_stock' || value.type === 'sell') {
-    if (typeof value.productName !== 'string' || Number.isNaN(qty) || qty <= 0) {
+    const productType = typeof value.productType === 'string' ? value.productType : undefined;
+    const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
+    const size = typeof value.size === 'string' ? value.size : undefined;
+    const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
+
+    if (!productName || Number.isNaN(qty) || qty <= 0) {
       return null;
     }
 
     return {
       type: value.type,
-      productName: value.productName,
+      productName,
+      productType,
+      productModel,
+      size,
       qty,
+      clientName: typeof value.clientName === 'string' ? value.clientName : undefined,
     };
   }
 
@@ -241,6 +317,9 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
       clientName: value.clientName,
       amount,
       productName: typeof value.productName === 'string' ? value.productName : undefined,
+      productType: typeof value.productType === 'string' ? value.productType : undefined,
+      productModel: typeof value.productModel === 'string' ? value.productModel : undefined,
+      size: typeof value.size === 'string' ? value.size : undefined,
       qty: typeof value.qty === 'number' && !Number.isNaN(value.qty) ? value.qty : undefined,
     };
   }

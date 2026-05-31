@@ -1,6 +1,9 @@
 export interface Product {
   id: string;
   name: string;
+  productType?: string | null;
+  productModel?: string | null;
+  size?: string | null;
   stockAvailable: number;
   stockReserved: number;
   price: number;
@@ -18,11 +21,17 @@ export type ParsedAction =
   | {
       type: 'add_stock';
       productName: string;
+      productType?: string;
+      productModel?: string;
+      size?: string;
       qty: number;
     }
   | {
       type: 'reserve_stock';
       productName: string;
+      productType?: string;
+      productModel?: string;
+      size?: string;
       qty: number;
       clientName?: string;
     }
@@ -31,6 +40,9 @@ export type ParsedAction =
       clientName: string;
       amount: number;
       productName?: string;
+      productType?: string;
+      productModel?: string;
+      size?: string;
       qty?: number;
     }
   | {
@@ -43,6 +55,9 @@ export type ParsedAction =
 export type ParsedActionSell = {
   type: 'sell';
   productName: string;
+  productType?: string;
+  productModel?: string;
+  size?: string;
   qty: number;
 };
 

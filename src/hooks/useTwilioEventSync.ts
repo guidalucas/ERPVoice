@@ -10,7 +10,7 @@ type PersistedStateSnapshot = {
 
 const META_API_BASE = import.meta.env.VITE_META_API_BASE ?? import.meta.env.VITE_TWILIO_API_BASE ?? 'http://localhost:3001';
 
-export const useTwilioEventSync = () => {
+export const useMetaEventSync = () => {
   const { hydratePersistedState } = useAppStore();
   const lastSnapshotRef = useRef<string>('');
 
