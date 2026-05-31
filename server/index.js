@@ -17,16 +17,28 @@ dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
 
 const app = express();
-const port = Number(process.env.META_WEBHOOK_PORT || process.env.TWILIO_WEBHOOK_PORT || 3001);
+const port = Number(process.env.PORT || process.env.META_WEBHOOK_PORT || process.env.TWILIO_WEBHOOK_PORT || 8080);
+const allowedOrigins = new Set([
+  'https://erp-voice.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:4173',
+  'http://localhost:3000',
+]);
 const metaVerifyToken = process.env.META_VERIFY_TOKEN || 'erpvoice_token_secreto';
 
 const createEventId = () => `meta-event-${Math.random().toString(36).slice(2, 10)}`;
 
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  const requestOrigin = req.headers.origin;
+
+  if (requestOrigin && allowedOrigins.has(requestOrigin)) {
+    res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Vary', 'Origin');
 
   if (req.method === 'OPTIONS') {
     res.sendStatus(204);
@@ -266,8 +278,8 @@ const handleMetaWebhook = async (req, res) => {
 app.post('/api/meta-webhook', handleMetaWebhook);
 app.post('/api/twilio-webhook', handleMetaWebhook);
 
-app.listen(port, () => {
-  console.log(`[MetaWebhook] listening on http://localhost:${port}`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`[MetaWebhook] listening on port ${port}`);
   console.log('[MetaWebhook] GET /api/meta-webhook for verification');
   console.log('[MetaWebhook] POST /api/meta-webhook for WhatsApp Cloud API messages');
 });

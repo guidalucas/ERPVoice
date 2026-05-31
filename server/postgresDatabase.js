@@ -63,7 +63,21 @@ const getConnectionString = () =>
 
 const shouldUseSsl = () => {
   const connectionString = getConnectionString();
-  return /supabase\.co/i.test(connectionString) || /sslmode=require/i.test(connectionString) || process.env.POSTGRES_SSL === 'true';
+
+  if (!connectionString) {
+    return false;
+  }
+
+  if (/sslmode=require/i.test(connectionString) || process.env.POSTGRES_SSL === 'true') {
+    return true;
+  }
+
+  try {
+    const url = new URL(connectionString);
+    return !['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+  } catch {
+    return /supabase\.co/i.test(connectionString);
+  }
 };
 
 let pool;
@@ -79,7 +93,7 @@ const getPool = () => {
   if (!pool) {
     pool = new Pool({
       connectionString,
-      ssl: shouldUseSsl() ? { rejectUnauthorized: false } : undefined,
+      ssl: shouldUseSsl() ? { rejectUnauthorized: false } : false,
     });
   }
 
