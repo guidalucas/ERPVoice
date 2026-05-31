@@ -95,7 +95,7 @@ const getPool = () => {
   if (!pool) {
     pool = new Pool({
       connectionString,
-      ssl: shouldUseSsl() ? { rejectUnauthorized: false } : undefined,
+      ssl: shouldUseSsl() ? { rejectUnauthorized: false } : false,
     });
   }
 
