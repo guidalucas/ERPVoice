@@ -53,6 +53,10 @@ app.use(express.json());
 
 const recentEvents = [];
 
+app.get('/', (_req, res) => {
+  res.status(200).json({ ok: true, service: 'meta-webhook', port });
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'meta-webhook', port });
 });
