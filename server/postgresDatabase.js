@@ -35,6 +35,25 @@ const DEFAULT_CLIENTS = [
   },
 ];
 
+const DEFAULT_STATE_SNAPSHOT = {
+  products: DEFAULT_PRODUCTS.map((product) => ({
+    id: product.id,
+    name: product.name,
+    productType: product.productType,
+    productModel: product.productModel,
+    size: product.size,
+    stockAvailable: product.stockAvailable,
+    stockReserved: product.stockReserved,
+    price: product.price,
+  })),
+  clients: DEFAULT_CLIENTS.map((client) => ({
+    id: client.id,
+    name: client.name,
+    debt: client.debt,
+  })),
+  transactions: [],
+};
+
 const getConnectionString = () =>
   process.env.SUPABASE_DATABASE_URL ||
   process.env.DATABASE_URL ||
@@ -382,6 +401,12 @@ const queryAllState = async (client = null) => {
   };
 };
 
+const cloneDefaultStateSnapshot = () => ({
+  products: DEFAULT_STATE_SNAPSHOT.products.map((product) => ({ ...product })),
+  clients: DEFAULT_STATE_SNAPSHOT.clients.map((client) => ({ ...client })),
+  transactions: [],
+});
+
 const normalizeTextList = (value) =>
   value
     .toLowerCase()
@@ -629,8 +654,13 @@ export const deleteProductRecord = async (productId) => {
 };
 
 export const getStateSnapshot = async () => {
-  await ensureReady();
-  return queryAllState();
+  try {
+    await ensureReady();
+    return queryAllState();
+  } catch (error) {
+    console.warn('[postgresDatabase] Falling back to default state snapshot:', error instanceof Error ? error.message : error);
+    return cloneDefaultStateSnapshot();
+  }
 };
 
 export const applyActionsToDatabase = async (actions, sourceText) => {
