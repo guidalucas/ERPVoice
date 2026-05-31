@@ -1,4 +1,4 @@
-import { useMetaEventSync } from '../../hooks/useTwilioEventSync';
+import { useMetaEventSync } from '../../hooks/useMetaEventSync';
 
 export function MetaSyncBridge() {
   useMetaEventSync();

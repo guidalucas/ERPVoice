@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { Client, ParsedActionUnion, Product, Transaction } from '../domain/types';
+import type { Client, Product, Transaction } from '../domain/types';
 import { useAppStore } from '../store/AppStore';
 
 type PersistedStateSnapshot = {
@@ -8,7 +8,7 @@ type PersistedStateSnapshot = {
   transactions: Transaction[];
 };
 
-const META_API_BASE = import.meta.env.VITE_META_API_BASE ?? import.meta.env.VITE_TWILIO_API_BASE ?? 'http://localhost:3001';
+const META_API_BASE = import.meta.env.VITE_META_API_BASE ?? '';
 
 export const useMetaEventSync = () => {
   const { hydratePersistedState } = useAppStore();

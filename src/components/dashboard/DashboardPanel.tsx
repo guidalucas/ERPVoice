@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useInventory } from '../../hooks/useInventory';
 import { ProductsAbmPanel } from './ProductsAbmPanel';
 import { RealStockPanel } from './RealStockPanel';
-import { MetaMessagesPanel } from './TwilioMessagesPanel';
+import { MetaMessagesPanel } from './MetaMessagesPanel';
 
 const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
 

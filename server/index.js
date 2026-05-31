@@ -5,11 +5,11 @@ import {
   createProductRecord,
   deleteProductRecord,
   applyActionsToDatabase,
-  findTwilioEventById,
+  findMetaEventById,
   getStateSnapshot,
-  getTwilioEvents,
-  markTwilioEventProcessed,
-  saveTwilioEvent,
+  getMetaEvents,
+  markMetaEventProcessed,
+  saveMetaEvent,
   updateProductRecord,
 } from './postgresDatabase.js';
 
@@ -17,7 +17,7 @@ dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
 
 const app = express();
-const port = Number(process.env.META_WEBHOOK_PORT || process.env.TWILIO_WEBHOOK_PORT || 3001);
+const port = Number(process.env.PORT || process.env.META_WEBHOOK_PORT || 3001);
 const metaVerifyToken = process.env.META_VERIFY_TOKEN || 'erpvoice_token_secreto';
 
 const createEventId = () => `meta-event-${Math.random().toString(36).slice(2, 10)}`;
@@ -113,14 +113,8 @@ app.delete('/api/products/:id', async (req, res) => {
   }
 });
 
-app.get('/api/twilio-events', (_req, res) => {
-  getTwilioEvents()
-    .then((events) => res.json(events))
-    .catch((error) => res.status(500).json({ error: error instanceof Error ? error.message : String(error) }));
-});
-
 app.get('/api/meta-events', (_req, res) => {
-  getTwilioEvents()
+  getMetaEvents()
     .then((events) => res.json(events))
     .catch((error) => res.status(500).json({ error: error instanceof Error ? error.message : String(error) }));
 });
@@ -193,7 +187,7 @@ const handleMetaWebhook = async (req, res) => {
 
     for (const result of results) {
       const incomingId = result.messageId ?? createEventId();
-      const existingEvent = await findTwilioEventById(incomingId);
+      const existingEvent = await findMetaEventById(incomingId);
 
       if (existingEvent?.processed && existingEvent.replyText) {
         continue;
@@ -228,8 +222,8 @@ const handleMetaWebhook = async (req, res) => {
         actions: result.parsed?.actions ?? [],
       });
 
-      await saveTwilioEvent(eventRecord);
-      await markTwilioEventProcessed(eventRecord.id, { processed: eventRecord.processed });
+      await saveMetaEvent(eventRecord);
+      await markMetaEventProcessed(eventRecord.id, { processed: eventRecord.processed });
 
       const alreadyFastReplied = result.kind === 'text' && result.messageId && fastRepliedMessageIds.has(result.messageId);
 
@@ -262,10 +256,9 @@ const handleMetaWebhook = async (req, res) => {
 };
 
 app.post('/api/meta-webhook', handleMetaWebhook);
-app.post('/api/twilio-webhook', handleMetaWebhook);
 
 app.listen(port, () => {
-  console.log(`[MetaWebhook] listening on http://localhost:${port}`);
+  console.log(`[MetaWebhook] listening on port ${port}`);
   console.log('[MetaWebhook] GET /api/meta-webhook for verification');
   console.log('[MetaWebhook] POST /api/meta-webhook for WhatsApp Cloud API messages');
 });

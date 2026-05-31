@@ -65,7 +65,6 @@ El webhook principal es `GET/POST /api/meta-webhook` y el backend también expon
 - `GET /api/state`
 - `POST /api/state/apply`
 - `GET /api/meta-events`
-- `GET /api/twilio-events` por compatibilidad histórica
 
 La URL pública que imprime ngrok es la que debes cargar en Meta.
 
