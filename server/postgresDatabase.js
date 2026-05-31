@@ -44,7 +44,23 @@ const getConnectionString = () =>
 
 const shouldUseSsl = () => {
   const connectionString = getConnectionString();
-  return /supabase\.co/i.test(connectionString) || /sslmode=require/i.test(connectionString) || process.env.POSTGRES_SSL === 'true';
+  if (process.env.POSTGRES_SSL === 'false') {
+    return false;
+  }
+
+  if (/sslmode=require/i.test(connectionString) || /supabase\.co/i.test(connectionString)) {
+    return true;
+  }
+
+  if (process.env.POSTGRES_SSL === 'true') {
+    return true;
+  }
+
+  if (!connectionString) {
+    return false;
+  }
+
+  return !/localhost|127\.0\.0\.1|::1/i.test(connectionString);
 };
 
 let pool;
@@ -217,7 +233,7 @@ const rowToTransaction = (row) => ({
   actions: parseJsonValue(row.actions_json) ?? [],
 });
 
-const rowToTwilioEvent = (row) => ({
+const rowToMetaEvent = (row) => ({
   id: row.id,
   at: row.at,
   from: row.from_number,
@@ -272,7 +288,7 @@ const initializeDatabase = async () => {
       actions_json JSONB NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS twilio_events (
+    CREATE TABLE IF NOT EXISTS meta_events (
       id TEXT PRIMARY KEY,
       at TIMESTAMPTZ NOT NULL,
       from_number TEXT,
@@ -288,7 +304,7 @@ const initializeDatabase = async () => {
     );
 
     CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions (timestamp DESC);
-    CREATE INDEX IF NOT EXISTS idx_twilio_events_at ON twilio_events (at DESC);
+    CREATE INDEX IF NOT EXISTS idx_meta_events_at ON meta_events (at DESC);
   `);
 
   await withClient(async (client) => {
@@ -704,17 +720,17 @@ export const applyActionsToDatabase = async (actions, sourceText) => {
   });
 };
 
-export const saveTwilioEvent = async (event) => {
+export const saveMetaEvent = async (event) => {
   await ensureReady();
 
-  const existing = await findTwilioEventById(event.id);
+  const existing = await findMetaEventById(event.id);
   if (existing) {
     return existing;
   }
 
   const result = await getPool().query(
     `
-      INSERT INTO twilio_events (id, at, from_number, body, num_media, kind, source_text, transcript, reply_text, error, actions_json, processed)
+      INSERT INTO meta_events (id, at, from_number, body, num_media, kind, source_text, transcript, reply_text, error, actions_json, processed)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)
       RETURNING *
     `,
@@ -734,15 +750,15 @@ export const saveTwilioEvent = async (event) => {
     ],
   );
 
-  return rowToTwilioEvent(result.rows[0]);
+  return rowToMetaEvent(result.rows[0]);
 };
 
-export const markTwilioEventProcessed = async (eventId, updates) => {
+export const markMetaEventProcessed = async (eventId, updates) => {
   await ensureReady();
 
   await getPool().query(
     `
-      UPDATE twilio_events
+      UPDATE meta_events
       SET at = COALESCE($1, at),
           from_number = COALESCE($2, from_number),
           body = COALESCE($3, body),
@@ -773,16 +789,16 @@ export const markTwilioEventProcessed = async (eventId, updates) => {
   );
 };
 
-export const getTwilioEvents = async (limit = 50) => {
+export const getMetaEvents = async (limit = 50) => {
   await ensureReady();
   const safeLimit = Math.max(1, Math.min(normalizeInteger(limit, 50), 500));
-  const rows = await queryRows('SELECT * FROM twilio_events ORDER BY at DESC LIMIT $1', [safeLimit]);
+  const rows = await queryRows('SELECT * FROM meta_events ORDER BY at DESC LIMIT $1', [safeLimit]);
 
-  return rows.map(rowToTwilioEvent);
+  return rows.map(rowToMetaEvent);
 };
 
-export const findTwilioEventById = async (eventId) => {
+export const findMetaEventById = async (eventId) => {
   await ensureReady();
-  const row = await queryRow('SELECT * FROM twilio_events WHERE id = $1', [eventId]);
-  return row ? rowToTwilioEvent(row) : null;
+  const row = await queryRow('SELECT * FROM meta_events WHERE id = $1', [eventId]);
+  return row ? rowToMetaEvent(row) : null;
 };

@@ -1,6 +1,6 @@
 import { DashboardPanel } from './components/dashboard/DashboardPanel';
 import { WhatsAppSimulator } from './components/split/WhatsAppSimulator';
-import { MetaSyncBridge } from './components/dashboard/TwilioSyncBridge';
+import { MetaSyncBridge } from './components/dashboard/MetaSyncBridge';
 import { AppStoreProvider } from './store/AppStore';
 
 function Shell() {

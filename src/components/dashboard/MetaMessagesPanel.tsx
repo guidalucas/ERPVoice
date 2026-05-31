@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-type TwilioEvent = {
+type MetaEvent = {
   at: string;
   from: string | null;
   body: string | null;
@@ -12,7 +12,7 @@ type TwilioEvent = {
   error?: string;
 };
 
-const META_API_BASE = import.meta.env.VITE_META_API_BASE ?? import.meta.env.VITE_TWILIO_API_BASE ?? 'http://localhost:3001';
+const META_API_BASE = import.meta.env.VITE_META_API_BASE ?? '';
 
 const formatDateTime = (value: string) => {
   try {
@@ -23,7 +23,7 @@ const formatDateTime = (value: string) => {
 };
 
 export function MetaMessagesPanel() {
-  const [events, setEvents] = useState<TwilioEvent[]>([]);
+  const [events, setEvents] = useState<MetaEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +38,7 @@ export function MetaMessagesPanel() {
           throw new Error(`HTTP ${response.status}`);
         }
 
-        const data = (await response.json()) as TwilioEvent[];
+        const data = (await response.json()) as MetaEvent[];
 
         if (!cancelled) {
           setEvents(Array.isArray(data) ? data : []);
@@ -70,7 +70,7 @@ export function MetaMessagesPanel() {
           <p className="mt-1 text-xs text-slate-400">Últimos mensajes y audios recibidos desde Meta Cloud API</p>
         </div>
         <span className="erp-chip normal-case tracking-normal text-slate-200">
-          {META_API_BASE.replace(/^https?:\/\//, '')}
+          {META_API_BASE ? META_API_BASE.replace(/^https?:\/\//, '') : 'same-origin'}
         </span>
       </div>
 
