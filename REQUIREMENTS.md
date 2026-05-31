@@ -4,7 +4,7 @@ Resumen corto:
 - Node.js (recomendado: >= 18 LTS)
 - npm (v9+) o yarn
 - Backend local con Express
-- SQLite local vía `sql.js`
+- PostgreSQL vía Supabase o una cadena `DATABASE_URL`
 - Opcional: ngrok para exponer el webhook de Meta
 
 Dependencias (extraídas de `package.json`):
@@ -12,9 +12,9 @@ Dependencias (extraídas de `package.json`):
 Dependencias de producción:
 - dotenv: ^17.4.2
 - express: ^5.2.1
+- pg: ^8.13.1
 - react: ^18.3.1
 - react-dom: ^18.3.1
-- sql.js: ^1.14.1
 
 Dependencias de desarrollo:
 - @types/node: ^25.9.1
@@ -69,7 +69,7 @@ Notas útiles:
 - Hay un archivo de ejemplo de variables de entorno: `.env.example`. Duplica y renómbralo a `.env` si necesitas configurar variables privadas antes de ejecutar.
 - El proyecto usa TypeScript y React (`.tsx`) con Vite como bundler y TailwindCSS para estilos.
 - El backend expone `GET /api/state`, `POST /api/state/apply`, `GET /api/meta-events`, `GET /api/health`, `GET /api/meta-webhook` y `POST /api/meta-webhook`.
-- La persistencia vive en `server/data/erpvoice.sqlite`.
+- La persistencia vive en PostgreSQL y se configura con `SUPABASE_DATABASE_URL` o `DATABASE_URL`.
 - Si un producto no matchea con el catálogo, se crea uno nuevo automáticamente con stock `0`.
 
 ¿Quieres que también lo deje en formato más corto tipo checklist o más técnico para onboarding?

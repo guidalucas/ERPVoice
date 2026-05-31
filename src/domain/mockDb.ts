@@ -31,7 +31,7 @@ export const initialAppState: AppState = {
     {
       id: createId('message'),
       role: 'bot',
-      text: 'Listo. Dictame un movimiento o probá con la frase de ejemplo.',
+      text: 'Hola! Soy ERPVoice. Podés escribir o grabar comandos como "vendí 3 remeras a Juan" o "agregá 10 pantalones".',
     },
   ],
   pendingProposal: null,

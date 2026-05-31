@@ -5,14 +5,14 @@ export default {
   theme: {
     extend: {
       boxShadow: {
-        glow: '0 20px 60px rgba(15, 23, 42, 0.14)',
+        glow: '0 24px 80px rgba(2, 6, 23, 0.38)',
       },
       fontFamily: {
         display: ['"Space Grotesk"', 'sans-serif'],
       },
       backgroundImage: {
         'mesh-soft':
-          'radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.16), transparent 28%), radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.16), transparent 24%), linear-gradient(135deg, rgba(248, 250, 252, 1) 0%, rgba(226, 232, 240, 1) 100%)',
+          'radial-gradient(circle at 15% 10%, rgba(25, 195, 125, 0.16), transparent 24%), radial-gradient(circle at 82% 4%, rgba(59, 130, 246, 0.14), transparent 22%), radial-gradient(circle at 50% 100%, rgba(148, 163, 184, 0.08), transparent 28%), linear-gradient(180deg, rgba(5, 11, 22, 1) 0%, rgba(7, 17, 31, 1) 45%, rgba(11, 18, 32, 1) 100%)',
       },
     },
   },
