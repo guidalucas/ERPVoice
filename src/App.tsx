@@ -2,8 +2,12 @@ import { DashboardPanel } from './components/dashboard/DashboardPanel';
 import { WhatsAppSimulator } from './components/split/WhatsAppSimulator';
 import { MetaSyncBridge } from './components/dashboard/MetaSyncBridge';
 import { AppStoreProvider } from './store/AppStore';
+import { AuthProvider, useAuth } from './store/AuthStore';
+import { LoginPanel } from './components/auth/LoginPanel';
 
 function Shell() {
+  const { session } = useAuth();
+
   return (
     <main className="min-h-screen bg-mesh-soft text-slate-100">
       <div className="mx-auto min-h-screen max-w-[1600px] px-4 py-4 lg:px-6 lg:py-6">
@@ -22,7 +26,7 @@ function Shell() {
 
           <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-            <span>MVP Demo</span>
+            <span>{session?.phoneNumber ? `Sesión ${session.phoneNumber}` : 'MVP Demo'}</span>
           </div>
         </header>
 
@@ -42,6 +46,32 @@ function Shell() {
 }
 
 export default function App() {
+  return (
+    <AuthProvider>
+      <AppGate />
+    </AuthProvider>
+  );
+}
+
+function AppGate() {
+  const { session, isBootstrapping } = useAuth();
+
+  if (isBootstrapping) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-mesh-soft px-4 text-slate-100">
+        <div className="erp-card max-w-md text-center">
+          <p className="text-xs uppercase tracking-[0.35em] text-emerald-300">Stocky Access</p>
+          <h1 className="mt-3 font-display text-2xl font-bold text-white">Validando sesión</h1>
+          <p className="mt-2 text-sm text-slate-400">Chequeando tu acceso seguro...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return <LoginPanel />;
+  }
+
   return (
     <AppStoreProvider>
       <MetaSyncBridge />

@@ -2,16 +2,20 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import {
+  createAuthOtpChallenge,
   createProductRecord,
   deleteProductRecord,
   applyActionsToDatabase,
   findMetaEventById,
+  revokeAuthOtpChallenge,
   getStateSnapshot,
   getMetaEvents,
   markMetaEventProcessed,
   saveMetaEvent,
+  verifyAuthOtpChallenge,
   updateProductRecord,
 } from './postgresDatabase.js';
+import { extractBearerToken, issueJwt, normalizeLoginPhone, verifyJwt } from './auth.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -25,8 +29,38 @@ const allowedOrigins = new Set([
   'http://localhost:3000',
 ]);
 const metaVerifyToken = process.env.META_VERIFY_TOKEN || 'erpvoice_token_secreto';
+const authEnabled = true;
 
 const createEventId = () => `meta-event-${Math.random().toString(36).slice(2, 10)}`;
+
+const getRequestIp = (req) => {
+  const forwarded = typeof req.headers['x-forwarded-for'] === 'string' ? req.headers['x-forwarded-for'] : '';
+  return forwarded.split(',')[0]?.trim() || req.ip || null;
+};
+
+const authenticateRequest = (req, res, next) => {
+  if (!authEnabled) {
+    next();
+    return;
+  }
+
+  const token = extractBearerToken(req.headers.authorization);
+
+  if (!token) {
+    res.status(401).json({ error: 'No autenticado' });
+    return;
+  }
+
+  const payload = verifyJwt(token);
+
+  if (!payload?.phoneNumber) {
+    res.status(401).json({ error: 'Token inválido o vencido' });
+    return;
+  }
+
+  req.auth = payload;
+  next();
+};
 
 app.use((req, res, next) => {
   const requestOrigin = req.headers.origin;
@@ -61,17 +95,94 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'meta-webhook', port });
 });
 
-app.get('/api/state', async (_req, res) => {
+app.post('/api/auth/request-code', async (req, res) => {
   try {
-    const snapshot = await getStateSnapshot();
+    const phoneNumber = normalizeLoginPhone(req.body?.phoneNumber);
+
+    if (!phoneNumber) {
+      res.status(400).json({ error: 'Ingresá un número de celular válido' });
+      return;
+    }
+
+    const challenge = await createAuthOtpChallenge(phoneNumber);
+    const replyResult = await sendMetaReply({
+      to: challenge.phoneNumber,
+      text: `Tu código de acceso al panel es: ${challenge.otpCode}. Vence en 10 minutos.`,
+    });
+
+    if (!replyResult?.sent) {
+      await revokeAuthOtpChallenge(challenge.challengeId);
+      res.status(500).json({ error: 'No se pudo enviar el código por WhatsApp' });
+      return;
+    }
+
+    res.json({
+      challengeId: challenge.challengeId,
+      phoneNumber: challenge.phoneNumber,
+      expiresAt: challenge.expiresAt,
+      expiresInSeconds: challenge.expiresInSeconds,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/auth/verify-code', async (req, res) => {
+  try {
+    const phoneNumber = normalizeLoginPhone(req.body?.phoneNumber);
+    const otpCode = String(req.body?.otpCode ?? '').trim();
+    const challengeId = typeof req.body?.challengeId === 'string' ? req.body.challengeId.trim() : null;
+
+    const verification = await verifyAuthOtpChallenge({
+      phoneNumber,
+      otpCode,
+      challengeId,
+    });
+
+    if (!verification.ok) {
+      const statusByReason = {
+        missing_fields: 400,
+        challenge_not_found: 404,
+        challenge_used: 400,
+        challenge_expired: 400,
+        invalid_code: 401,
+        too_many_attempts: 429,
+      };
+
+      res.status(statusByReason[verification.reason] ?? 400).json({ error: 'No pudimos validar el código', reason: verification.reason });
+      return;
+    }
+
+    const token = issueJwt({ phoneNumber: verification.phoneNumber });
+
+    res.json({
+      token,
+      tokenType: 'Bearer',
+      phoneNumber: verification.phoneNumber,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get('/api/auth/me', authenticateRequest, (req, res) => {
+  res.json({ phoneNumber: req.auth.phoneNumber });
+});
+
+app.get('/api/state', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const snapshot = await getStateSnapshot(clientPhone);
     res.json(snapshot);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
 
-app.post('/api/products', async (req, res) => {
+app.post('/api/products', authenticateRequest, async (req, res) => {
   try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+
     const product = await createProductRecord({
       name: req.body?.name,
       productType: req.body?.productType,
@@ -80,7 +191,7 @@ app.post('/api/products', async (req, res) => {
       stockAvailable: req.body?.stockAvailable,
       stockReserved: req.body?.stockReserved,
       price: req.body?.price,
-    });
+    }, clientPhone);
 
     if (!product) {
       res.status(400).json({ error: 'No se pudo crear el producto' });
@@ -93,8 +204,10 @@ app.post('/api/products', async (req, res) => {
   }
 });
 
-app.put('/api/products/:id', async (req, res) => {
+app.put('/api/products/:id', authenticateRequest, async (req, res) => {
   try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+
     const product = await updateProductRecord(req.params.id, {
       name: req.body?.name,
       productType: req.body?.productType,
@@ -103,7 +216,7 @@ app.put('/api/products/:id', async (req, res) => {
       stockAvailable: req.body?.stockAvailable,
       stockReserved: req.body?.stockReserved,
       price: req.body?.price,
-    });
+    }, clientPhone);
 
     if (!product) {
       res.status(404).json({ error: 'Producto no encontrado' });
@@ -116,9 +229,10 @@ app.put('/api/products/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/products/:id', async (req, res) => {
+app.delete('/api/products/:id', authenticateRequest, async (req, res) => {
   try {
-    const deleted = await deleteProductRecord(req.params.id);
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const deleted = await deleteProductRecord(req.params.id, clientPhone);
 
     if (!deleted) {
       res.status(404).json({ error: 'Producto no encontrado' });
@@ -131,8 +245,10 @@ app.delete('/api/products/:id', async (req, res) => {
   }
 });
 
-app.get('/api/meta-events', (_req, res) => {
-  getMetaEvents()
+app.get('/api/meta-events', authenticateRequest, (_req, res) => {
+  const clientPhone = String(_req.auth?.phoneNumber ?? '').trim();
+
+  getMetaEvents(50, clientPhone)
     .then((events) => res.json(events))
     .catch((error) => res.status(500).json({ error: error instanceof Error ? error.message : String(error) }));
 });
@@ -151,11 +267,12 @@ app.get('/api/meta-webhook', (req, res) => {
   res.sendStatus(403);
 });
 
-app.post('/api/state/apply', async (req, res) => {
+app.post('/api/state/apply', authenticateRequest, async (req, res) => {
   try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
     const sourceText = typeof req.body?.sourceText === 'string' ? req.body.sourceText : '';
     const actions = Array.isArray(req.body?.actions) ? req.body.actions : [];
-    const snapshot = await applyActionsToDatabase(actions, sourceText);
+    const snapshot = await applyActionsToDatabase(actions, sourceText, clientPhone);
     res.json(snapshot);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -227,7 +344,7 @@ const handleMetaWebhook = async (req, res) => {
       };
 
       if (result.parsed?.actions?.length) {
-        await applyActionsToDatabase(result.parsed.actions, result.sourceText);
+        await applyActionsToDatabase(result.parsed.actions, result.sourceText, result.fromNumber);
       }
 
       console.log('[MetaWebhook] response debug:', {

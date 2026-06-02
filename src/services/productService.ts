@@ -1,6 +1,5 @@
 import type { Client, Product, Transaction } from '../domain/types';
-
-const API_BASE = '';
+import { requestJson } from './apiClient';
 
 export type ProductInput = {
   name: string;
@@ -10,27 +9,6 @@ export type ProductInput = {
   stockAvailable?: number;
   stockReserved?: number;
   price?: number;
-};
-
-const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `HTTP ${response.status}`);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json() as Promise<T>;
 };
 
 export const fetchPersistedState = async () => requestJson<{ products: Product[]; clients: Client[]; transactions: Transaction[] }>('/api/state');

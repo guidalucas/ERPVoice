@@ -1,8 +1,44 @@
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { Pool } from 'pg';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
+
+const DEFAULT_OWNER_PHONE = '__default__';
+const AUTH_OTP_TTL_MS = Math.max(5, Number(process.env.AUTH_OTP_TTL_MINUTES ?? 10)) * 60 * 1000;
+const AUTH_OTP_MAX_ATTEMPTS = 5;
+
+const normalizeOwnerPhone = (value) => {
+  const normalized = String(value ?? '').trim();
+  return normalized.length ? normalized : DEFAULT_OWNER_PHONE;
+};
+
+const normalizeAuthPhoneNumber = (value) => String(value ?? '').replace(/\D/g, '').trim();
+
+const createOtpCode = () => String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+
+const createChallengeId = () => `otp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+const createChallengeHash = (phoneNumber, otpCode, salt) =>
+  crypto.createHash('sha256').update(`${phoneNumber}:${otpCode}:${salt}`).digest('hex');
+
+const isSameHex = (left, right) => {
+  const leftBuffer = Buffer.from(String(left ?? ''), 'hex');
+  const rightBuffer = Buffer.from(String(right ?? ''), 'hex');
+
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
+
+const tenantSuffix = (ownerPhone) =>
+  normalizeOwnerPhone(ownerPhone)
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || 'default';
 
 const DEFAULT_PRODUCTS = [
   {
@@ -52,6 +88,23 @@ const DEFAULT_STATE_SNAPSHOT = {
     debt: client.debt,
   })),
   transactions: [],
+};
+
+const buildTenantDefaults = (ownerPhone) => {
+  const suffix = tenantSuffix(ownerPhone);
+
+  return {
+    products: DEFAULT_PRODUCTS.map((product, index) => ({
+      ...product,
+      id: `${product.id}-${suffix}-${index + 1}`,
+      ownerPhone: normalizeOwnerPhone(ownerPhone),
+    })),
+    clients: DEFAULT_CLIENTS.map((client, index) => ({
+      ...client,
+      id: `${client.id}-${suffix}-${index + 1}`,
+      ownerPhone: normalizeOwnerPhone(ownerPhone),
+    })),
+  };
 };
 
 const getConnectionString = () =>
@@ -229,6 +282,7 @@ const toJsonbParam = (value) => {
 
 const rowToProduct = (row) => ({
   id: row.id,
+  ownerPhone: row.owner_phone,
   name: row.name,
   productType: row.product_type,
   productModel: row.product_model,
@@ -240,12 +294,14 @@ const rowToProduct = (row) => ({
 
 const rowToClient = (row) => ({
   id: row.id,
+  ownerPhone: row.owner_phone,
   name: row.name,
   debt: Number(row.debt ?? 0),
 });
 
 const rowToTransaction = (row) => ({
   id: row.id,
+  ownerPhone: row.owner_phone,
   timestamp: row.timestamp,
   sourceText: row.source_text,
   summary: row.summary,
@@ -284,6 +340,7 @@ const initializeDatabase = async () => {
   await poolInstance.query(`
     CREATE TABLE IF NOT EXISTS products (
       id TEXT PRIMARY KEY,
+      owner_phone TEXT NOT NULL DEFAULT '__default__',
       name TEXT NOT NULL,
       product_type TEXT,
       product_model TEXT,
@@ -295,12 +352,14 @@ const initializeDatabase = async () => {
 
     CREATE TABLE IF NOT EXISTS clients (
       id TEXT PRIMARY KEY,
+      owner_phone TEXT NOT NULL DEFAULT '__default__',
       name TEXT NOT NULL,
       debt INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
+      owner_phone TEXT NOT NULL DEFAULT '__default__',
       timestamp TIMESTAMPTZ NOT NULL,
       source_text TEXT NOT NULL,
       summary TEXT NOT NULL,
@@ -322,48 +381,39 @@ const initializeDatabase = async () => {
       processed BOOLEAN NOT NULL DEFAULT FALSE
     );
 
+    CREATE TABLE IF NOT EXISTS auth_users (
+      phone_number TEXT PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS auth_otp_challenges (
+      id TEXT PRIMARY KEY,
+      phone_number TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      salt TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      consumed BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions (timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_products_owner_phone ON products (owner_phone);
+    CREATE INDEX IF NOT EXISTS idx_clients_owner_phone ON clients (owner_phone);
+    CREATE INDEX IF NOT EXISTS idx_transactions_owner_phone ON transactions (owner_phone);
     CREATE INDEX IF NOT EXISTS idx_meta_events_at ON meta_events (at DESC);
+    CREATE INDEX IF NOT EXISTS idx_auth_otp_phone_number ON auth_otp_challenges (phone_number);
+    CREATE INDEX IF NOT EXISTS idx_auth_otp_expires_at ON auth_otp_challenges (expires_at);
+
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+    ALTER TABLE clients ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+    ALTER TABLE meta_events ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
   `);
 
   await withClient(async (client) => {
-    const productCount = Number((await client.query('SELECT COUNT(*)::int AS count FROM products')).rows[0]?.count ?? 0);
-    const clientCount = Number((await client.query('SELECT COUNT(*)::int AS count FROM clients')).rows[0]?.count ?? 0);
-
-    if (!productCount) {
-      for (const product of DEFAULT_PRODUCTS) {
-        await client.query(
-          `
-            INSERT INTO products (id, name, product_type, product_model, size, stock_available, stock_reserved, price)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (id) DO NOTHING
-          `,
-          [
-            product.id,
-            product.name,
-            product.productType,
-            product.productModel,
-            product.size,
-            product.stockAvailable,
-            product.stockReserved,
-            product.price,
-          ],
-        );
-      }
-    }
-
-    if (!clientCount) {
-      for (const entry of DEFAULT_CLIENTS) {
-        await client.query(
-          `
-            INSERT INTO clients (id, name, debt)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (id) DO NOTHING
-          `,
-          [entry.id, entry.name, entry.debt],
-        );
-      }
-    }
+    await ensureTenantState(client, DEFAULT_OWNER_PHONE);
   });
 };
 
@@ -383,15 +433,73 @@ const normalizeProductNameFromInput = (productInput) => {
 
 const normalizeTextArray = (values) => values.filter(Boolean);
 
-const queryAllState = async (client = null) => {
+const ensureTenantState = async (client, ownerPhone) => {
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const tenantDefaults = buildTenantDefaults(normalizedOwnerPhone);
+
+  const productCount = Number(
+    (
+      await client.query('SELECT COUNT(*)::int AS count FROM products WHERE owner_phone = $1', [normalizedOwnerPhone])
+    ).rows[0]?.count ?? 0,
+  );
+  const clientCount = Number(
+    (
+      await client.query('SELECT COUNT(*)::int AS count FROM clients WHERE owner_phone = $1', [normalizedOwnerPhone])
+    ).rows[0]?.count ?? 0,
+  );
+
+  if (!productCount) {
+    for (const product of tenantDefaults.products) {
+      await client.query(
+        `
+          INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (id) DO NOTHING
+        `,
+        [
+          product.id,
+          product.ownerPhone,
+          product.name,
+          product.productType,
+          product.productModel,
+          product.size,
+          product.stockAvailable,
+          product.stockReserved,
+          product.price,
+        ],
+      );
+    }
+  }
+
+  if (!clientCount) {
+    for (const entry of tenantDefaults.clients) {
+      await client.query(
+        `
+          INSERT INTO clients (id, owner_phone, name, debt)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (id) DO NOTHING
+        `,
+        [entry.id, entry.ownerPhone, entry.name, entry.debt],
+      );
+    }
+  }
+};
+
+const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null) => {
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+
   const [productsRows, clientsRows, transactionsRows] = await Promise.all([
     queryRows(
-      'SELECT id, name, product_type, product_model, size, stock_available, stock_reserved, price FROM products ORDER BY name ASC',
-      [],
+      'SELECT id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price FROM products WHERE owner_phone = $1 ORDER BY name ASC',
+      [normalizedOwnerPhone],
       client,
     ),
-    queryRows('SELECT id, name, debt FROM clients ORDER BY name ASC', [], client),
-    queryRows('SELECT id, timestamp, source_text, summary, actions_json FROM transactions ORDER BY timestamp DESC', [], client),
+    queryRows('SELECT id, owner_phone, name, debt FROM clients WHERE owner_phone = $1 ORDER BY name ASC', [normalizedOwnerPhone], client),
+    queryRows(
+      'SELECT id, owner_phone, timestamp, source_text, summary, actions_json FROM transactions WHERE owner_phone = $1 ORDER BY timestamp DESC',
+      [normalizedOwnerPhone],
+      client,
+    ),
   ]);
 
   return {
@@ -535,18 +643,21 @@ const withTransaction = async (callback) => {
   });
 };
 
-const replaceStateTables = async (client, products, clients) => {
-  await client.query('DELETE FROM products');
-  await client.query('DELETE FROM clients');
+const replaceStateTables = async (client, ownerPhone, products, clients) => {
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+
+  await client.query('DELETE FROM products WHERE owner_phone = $1', [normalizedOwnerPhone]);
+  await client.query('DELETE FROM clients WHERE owner_phone = $1', [normalizedOwnerPhone]);
 
   for (const product of products) {
     await client.query(
       `
-        INSERT INTO products (id, name, product_type, product_model, size, stock_available, stock_reserved, price)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       `,
       [
         product.id,
+        normalizedOwnerPhone,
         product.name,
         product.productType ?? null,
         product.productModel ?? null,
@@ -561,27 +672,33 @@ const replaceStateTables = async (client, products, clients) => {
   for (const clientEntry of clients) {
     await client.query(
       `
-        INSERT INTO clients (id, name, debt)
-        VALUES ($1, $2, $3)
+        INSERT INTO clients (id, owner_phone, name, debt)
+        VALUES ($1, $2, $3, $4)
       `,
-      [clientEntry.id, clientEntry.name, clientEntry.debt],
+      [clientEntry.id, normalizedOwnerPhone, clientEntry.name, clientEntry.debt],
     );
   }
 };
 
-export const createProductRecord = async (productInput) => {
+export const createProductRecord = async (productInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
   await ensureReady();
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+
+  await withClient(async (client) => {
+    await ensureTenantState(client, normalizedOwnerPhone);
+  });
 
   const id = `product-${slugify(normalizeProductNameFromInput(productInput))}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
   const result = await getPool().query(
     `
-      INSERT INTO products (id, name, product_type, product_model, size, stock_available, stock_reserved, price)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id, name, product_type, product_model, size, stock_available, stock_reserved, price
+      INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price
     `,
     [
       id,
+      normalizedOwnerPhone,
       normalizeProductNameFromInput(productInput),
       normalizeNullableString(productInput.productType),
       normalizeNullableString(productInput.productModel),
@@ -595,12 +712,13 @@ export const createProductRecord = async (productInput) => {
   return rowToProduct(result.rows[0]);
 };
 
-export const updateProductRecord = async (productId, updates) => {
+export const updateProductRecord = async (productId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
   await ensureReady();
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
 
   const existing = await queryRow(
-    'SELECT id, name, product_type, product_model, size, stock_available, stock_reserved, price FROM products WHERE id = $1',
-    [productId],
+    'SELECT id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price FROM products WHERE id = $1 AND owner_phone = $2',
+    [productId, normalizedOwnerPhone],
   );
 
   if (!existing) {
@@ -629,8 +747,8 @@ export const updateProductRecord = async (productId, updates) => {
           stock_available = $5,
           stock_reserved = $6,
           price = $7
-      WHERE id = $8
-      RETURNING id, name, product_type, product_model, size, stock_available, stock_reserved, price
+      WHERE id = $8 AND owner_phone = $9
+      RETURNING id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price
     `,
     [
       nextProduct.name,
@@ -641,33 +759,44 @@ export const updateProductRecord = async (productId, updates) => {
       nextProduct.stockReserved,
       nextProduct.price,
       productId,
+      normalizedOwnerPhone,
     ],
   );
 
   return result.rows[0] ? rowToProduct(result.rows[0]) : null;
 };
 
-export const deleteProductRecord = async (productId) => {
+export const deleteProductRecord = async (productId, ownerPhone = DEFAULT_OWNER_PHONE) => {
   await ensureReady();
-  const result = await getPool().query('DELETE FROM products WHERE id = $1 RETURNING id', [productId]);
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const result = await getPool().query('DELETE FROM products WHERE id = $1 AND owner_phone = $2 RETURNING id', [productId, normalizedOwnerPhone]);
   return result.rowCount > 0;
 };
 
-export const getStateSnapshot = async () => {
+export const getStateSnapshot = async (ownerPhone = DEFAULT_OWNER_PHONE) => {
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+
   try {
     await ensureReady();
-    return queryAllState();
+    await withClient(async (client) => {
+      await ensureTenantState(client, normalizedOwnerPhone);
+    });
+
+    return queryAllState(normalizedOwnerPhone);
   } catch (error) {
     console.warn('[postgresDatabase] Falling back to default state snapshot:', error instanceof Error ? error.message : error);
     return cloneDefaultStateSnapshot();
   }
 };
 
-export const applyActionsToDatabase = async (actions, sourceText) => {
+export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = DEFAULT_OWNER_PHONE) => {
   await ensureReady();
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
 
   return withTransaction(async (client) => {
-    const currentSnapshot = await queryAllState(client);
+    await ensureTenantState(client, normalizedOwnerPhone);
+
+    const currentSnapshot = await queryAllState(normalizedOwnerPhone, client);
     const nextProducts = currentSnapshot.products.map((product) => ({ ...product }));
     const nextClients = currentSnapshot.clients.map((clientEntry) => ({ ...clientEntry }));
     const newTransactions = [];
@@ -728,16 +857,17 @@ export const applyActionsToDatabase = async (actions, sourceText) => {
       });
     });
 
-    await replaceStateTables(client, nextProducts, nextClients);
+    await replaceStateTables(client, normalizedOwnerPhone, nextProducts, nextClients);
 
     for (const transaction of newTransactions) {
       await client.query(
         `
-          INSERT INTO transactions (id, timestamp, source_text, summary, actions_json)
-          VALUES ($1, $2, $3, $4, $5::jsonb)
+          INSERT INTO transactions (id, owner_phone, timestamp, source_text, summary, actions_json)
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb)
         `,
         [
           transaction.id,
+          normalizedOwnerPhone,
           transaction.timestamp,
           transaction.sourceText,
           transaction.summary,
@@ -746,7 +876,7 @@ export const applyActionsToDatabase = async (actions, sourceText) => {
       );
     }
 
-    return queryAllState(client);
+    return queryAllState(normalizedOwnerPhone, client);
   });
 };
 
@@ -819,16 +949,178 @@ export const markMetaEventProcessed = async (eventId, updates) => {
   );
 };
 
-export const getMetaEvents = async (limit = 50) => {
+export const getMetaEvents = async (limit = 50, fromNumber = null) => {
   await ensureReady();
   const safeLimit = Math.max(1, Math.min(normalizeInteger(limit, 50), 500));
-  const rows = await queryRows('SELECT * FROM meta_events ORDER BY at DESC LIMIT $1', [safeLimit]);
+  const normalizedFromNumber = typeof fromNumber === 'string' && fromNumber.trim().length ? fromNumber.trim() : null;
+
+  const rows = normalizedFromNumber
+    ? await queryRows('SELECT * FROM meta_events WHERE from_number = $1 ORDER BY at DESC LIMIT $2', [normalizedFromNumber, safeLimit])
+    : await queryRows('SELECT * FROM meta_events ORDER BY at DESC LIMIT $1', [safeLimit]);
 
   return rows.map(rowToMetaEvent);
+};
+
+export const getClientPhones = async () => {
+  await ensureReady();
+
+  const rows = await queryRows(
+    `
+      SELECT owner_phone AS phone FROM products
+      UNION
+      SELECT owner_phone AS phone FROM clients
+      UNION
+      SELECT owner_phone AS phone FROM transactions
+      UNION
+      SELECT from_number AS phone FROM meta_events WHERE from_number IS NOT NULL
+    `,
+  );
+
+  const phones = rows
+    .map((row) => String(row.phone ?? '').trim())
+    .filter((phone) => phone.length)
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .sort((left, right) => left.localeCompare(right));
+
+  if (!phones.includes(DEFAULT_OWNER_PHONE)) {
+    phones.unshift(DEFAULT_OWNER_PHONE);
+  }
+
+  return phones;
 };
 
 export const findMetaEventById = async (eventId) => {
   await ensureReady();
   const row = await queryRow('SELECT * FROM meta_events WHERE id = $1', [eventId]);
   return row ? rowToMetaEvent(row) : null;
+};
+
+export const createAuthOtpChallenge = async (phoneNumber) => {
+  await ensureReady();
+
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+
+  if (!normalizedPhoneNumber) {
+    throw new Error('Missing phone number');
+  }
+
+  const challengeId = createChallengeId();
+  const otpCode = createOtpCode();
+  const salt = crypto.randomBytes(16).toString('hex');
+  const codeHash = createChallengeHash(normalizedPhoneNumber, otpCode, salt);
+  const expiresAt = new Date(Date.now() + AUTH_OTP_TTL_MS).toISOString();
+
+  await getPool().query(
+    `
+      UPDATE auth_otp_challenges
+      SET consumed = TRUE
+      WHERE phone_number = $1 AND consumed = FALSE
+    `,
+    [normalizedPhoneNumber],
+  );
+
+  await getPool().query(
+    `
+      INSERT INTO auth_otp_challenges (id, phone_number, code_hash, salt, expires_at, attempts, consumed)
+      VALUES ($1, $2, $3, $4, $5, 0, FALSE)
+    `,
+    [challengeId, normalizedPhoneNumber, codeHash, salt, expiresAt],
+  );
+
+  return {
+    challengeId,
+    phoneNumber: normalizedPhoneNumber,
+    otpCode,
+    expiresAt,
+    expiresInSeconds: Math.max(60, Math.round(AUTH_OTP_TTL_MS / 1000)),
+  };
+};
+
+export const revokeAuthOtpChallenge = async (challengeId) => {
+  await ensureReady();
+
+  if (!challengeId) {
+    return;
+  }
+
+  await getPool().query(
+    `
+      UPDATE auth_otp_challenges
+      SET consumed = TRUE
+      WHERE id = $1
+    `,
+    [challengeId],
+  );
+};
+
+export const verifyAuthOtpChallenge = async ({ phoneNumber, otpCode, challengeId = null }) => {
+  await ensureReady();
+
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+  const normalizedOtpCode = String(otpCode ?? '').trim();
+
+  if (!normalizedPhoneNumber || !normalizedOtpCode) {
+    return { ok: false, reason: 'missing_fields' };
+  }
+
+  const challenge = challengeId
+    ? await queryRow(
+        'SELECT * FROM auth_otp_challenges WHERE id = $1 AND phone_number = $2 ORDER BY created_at DESC LIMIT 1',
+        [challengeId, normalizedPhoneNumber],
+      )
+    : await queryRow(
+        'SELECT * FROM auth_otp_challenges WHERE phone_number = $1 ORDER BY created_at DESC LIMIT 1',
+        [normalizedPhoneNumber],
+      );
+
+  if (!challenge) {
+    return { ok: false, reason: 'challenge_not_found' };
+  }
+
+  if (challenge.consumed) {
+    return { ok: false, reason: 'challenge_used' };
+  }
+
+  if (new Date(challenge.expires_at).getTime() < Date.now()) {
+    await getPool().query('UPDATE auth_otp_challenges SET consumed = TRUE WHERE id = $1', [challenge.id]);
+    return { ok: false, reason: 'challenge_expired' };
+  }
+
+  const expectedHash = createChallengeHash(normalizedPhoneNumber, normalizedOtpCode, challenge.salt);
+
+  if (!isSameHex(expectedHash, challenge.code_hash)) {
+    const nextAttempts = Number(challenge.attempts ?? 0) + 1;
+    await getPool().query(
+      `
+        UPDATE auth_otp_challenges
+        SET attempts = $1,
+            consumed = CASE WHEN $1 >= $2 THEN TRUE ELSE consumed END
+        WHERE id = $3
+      `,
+      [nextAttempts, AUTH_OTP_MAX_ATTEMPTS, challenge.id],
+    );
+
+    return { ok: false, reason: nextAttempts >= AUTH_OTP_MAX_ATTEMPTS ? 'too_many_attempts' : 'invalid_code' };
+  }
+
+  await getPool().query(
+    `
+      UPDATE auth_otp_challenges
+      SET consumed = TRUE
+      WHERE id = $1
+    `,
+    [challenge.id],
+  );
+
+  await getPool().query(
+    `
+      INSERT INTO auth_users (phone_number, created_at, last_login_at)
+      VALUES ($1, NOW(), NOW())
+      ON CONFLICT (phone_number) DO UPDATE
+      SET last_login_at = NOW()
+    `,
+    [normalizedPhoneNumber],
+  );
+
+  return { ok: true, phoneNumber: normalizedPhoneNumber, challengeId: challenge.id };
 };
