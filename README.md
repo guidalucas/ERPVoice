@@ -35,6 +35,7 @@ La interfaz queda en `http://localhost:5173` y el backend en `http://localhost:3
 - `npm run dev:frontback` - frontend + backend juntos.
 - `npm run dev:ngrok` - túnel ngrok aparte.
 - `npm run dev:all` - frontend + backend y ngrok si está disponible.
+- `npm run db:migrate` - actualiza la BDD existente con `owner_phone` y tablas de auth.
 - `npm run build` - build de producción.
 
 ## Variables de entorno
@@ -71,6 +72,14 @@ La URL pública que imprime ngrok es la que debes cargar en Meta.
 ## Base de datos
 
 La persistencia vive en PostgreSQL y se configura con `SUPABASE_DATABASE_URL` o `DATABASE_URL`.
+
+Si tu base ya existía antes del tenant por teléfono, corré:
+
+```bash
+npm run db:migrate
+```
+
+Eso crea/actualiza las tablas y agrega `owner_phone` donde falta.
 
 Entidades principales:
 
