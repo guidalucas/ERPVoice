@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { requestJson } from '../../services/apiClient';
 
 type MetaEvent = {
   at: string;
@@ -32,13 +33,7 @@ export function MetaMessagesPanel() {
 
     const loadEvents = async () => {
       try {
-        const response = await fetch(`${META_API_BASE}/api/meta-events`);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const data = (await response.json()) as MetaEvent[];
+        const data = await requestJson<MetaEvent[]>(`${META_API_BASE}/api/meta-events`);
 
         if (!cancelled) {
           setEvents(Array.isArray(data) ? data : []);

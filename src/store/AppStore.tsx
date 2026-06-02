@@ -2,6 +2,7 @@ import { createContext, useContext, useReducer, type ReactNode } from 'react';
 import type { AppState, ChatMessage, ParsedVoicePayload, Product, Client, Transaction } from '../domain/types';
 import { initialAppState } from '../domain/mockDb';
 import { applyConfirmedActions } from '../services/transactionService';
+import { requestJson } from '../services/apiClient';
 
 type AppAction =
   | { type: 'ADD_CHAT_MESSAGE'; message: ChatMessage }
@@ -70,11 +71,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
     dispatch({ type: 'CONFIRM_PENDING_PROPOSAL' });
 
-    void fetch('/api/state/apply', {
+    void requestJson('/api/state/apply', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         sourceText: proposal.sourceText,
         actions: proposal.actions,

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Client, Product, Transaction } from '../domain/types';
 import { useAppStore } from '../store/AppStore';
+import { requestJson } from '../services/apiClient';
 
 type PersistedStateSnapshot = {
   products: Product[];
@@ -16,16 +17,11 @@ export const useMetaEventSync = () => {
 
   useEffect(() => {
     let cancelled = false;
+    lastSnapshotRef.current = '';
 
     const loadSnapshot = async () => {
       try {
-        const response = await fetch(`${META_API_BASE}/api/state`);
-
-        if (!response.ok) {
-          return;
-        }
-
-        const snapshot = (await response.json()) as PersistedStateSnapshot;
+        const snapshot = await requestJson<PersistedStateSnapshot>(`${META_API_BASE}/api/state`);
 
         if (cancelled || !snapshot || !Array.isArray(snapshot.products) || !Array.isArray(snapshot.clients) || !Array.isArray(snapshot.transactions)) {
           return;

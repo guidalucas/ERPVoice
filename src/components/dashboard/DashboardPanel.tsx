@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useInventory } from '../../hooks/useInventory';
+import { useAuth } from '../../store/AuthStore';
 import { ProductsAbmPanel } from './ProductsAbmPanel';
 import { RealStockPanel } from './RealStockPanel';
 import { MetaMessagesPanel } from './MetaMessagesPanel';
@@ -80,6 +81,7 @@ function ClientsIcon() {
 export function DashboardPanel() {
   const { products, clients, transactions } = useInventory();
   const [activeTab, setActiveTab] = useState<'resumen' | 'stock' | 'abm' | 'whatsapp'>('resumen');
+  const { session, logout } = useAuth();
 
   const tabButtonClass = (tab: typeof activeTab) =>
     `rounded-full px-4 py-2 text-sm font-semibold transition ${activeTab === tab ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/25' : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'}`;
@@ -89,6 +91,12 @@ export function DashboardPanel() {
       <header className="rounded-[1.5rem] border border-white/10 bg-slate-900/70 px-6 py-5 text-white shadow-lg shadow-black/20 backdrop-blur-xl">
         <p className="text-xs uppercase tracking-[0.35em] text-cyan-300">Dashboard Web</p>
         <h2 className="font-display text-2xl font-bold">Estado en tiempo real</h2>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="erp-chip text-emerald-300">{session?.phoneNumber ?? 'Sesión desconocida'}</span>
+          <button type="button" className="erp-button-secondary px-3 py-1.5 text-xs" onClick={logout}>
+            Salir
+          </button>
+        </div>
         <div className="mt-4 flex flex-wrap gap-2 rounded-3xl border border-white/10 bg-white/5 p-2">
           <button type="button" className={tabButtonClass('resumen')} onClick={() => setActiveTab('resumen')}>
             Resumen
