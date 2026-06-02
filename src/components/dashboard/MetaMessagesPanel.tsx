@@ -13,8 +13,6 @@ type MetaEvent = {
   error?: string;
 };
 
-const META_API_BASE = import.meta.env.VITE_META_API_BASE ?? '';
-
 const formatDateTime = (value: string) => {
   try {
     return new Date(value).toLocaleString('es-AR');
@@ -33,7 +31,7 @@ export function MetaMessagesPanel() {
 
     const loadEvents = async () => {
       try {
-        const data = await requestJson<MetaEvent[]>(`${META_API_BASE}/api/meta-events`);
+        const data = await requestJson<MetaEvent[]>('/api/meta-events');
 
         if (!cancelled) {
           setEvents(Array.isArray(data) ? data : []);
@@ -65,7 +63,9 @@ export function MetaMessagesPanel() {
           <p className="mt-1 text-xs text-slate-400">Últimos mensajes y audios recibidos desde Meta Cloud API</p>
         </div>
         <span className="erp-chip normal-case tracking-normal text-slate-200">
-          {META_API_BASE ? META_API_BASE.replace(/^https?:\/\//, '') : 'same-origin'}
+          {(import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_META_API_BASE ?? '')
+            ? (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_META_API_BASE ?? '').replace(/^https?:\/\//, '')
+            : 'same-origin'}
         </span>
       </div>
 

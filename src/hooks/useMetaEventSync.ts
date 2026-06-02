@@ -9,8 +9,6 @@ type PersistedStateSnapshot = {
   transactions: Transaction[];
 };
 
-const META_API_BASE = import.meta.env.VITE_META_API_BASE ?? '';
-
 export const useMetaEventSync = () => {
   const { hydratePersistedState } = useAppStore();
   const lastSnapshotRef = useRef<string>('');
@@ -21,7 +19,7 @@ export const useMetaEventSync = () => {
 
     const loadSnapshot = async () => {
       try {
-        const snapshot = await requestJson<PersistedStateSnapshot>(`${META_API_BASE}/api/state`);
+        const snapshot = await requestJson<PersistedStateSnapshot>('/api/state');
 
         if (cancelled || !snapshot || !Array.isArray(snapshot.products) || !Array.isArray(snapshot.clients) || !Array.isArray(snapshot.transactions)) {
           return;
