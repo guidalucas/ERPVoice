@@ -137,6 +137,7 @@ const shouldUseSsl = () => {
 
 let pool;
 let initializePromise;
+let initializeAuthPromise;
 
 const getPool = () => {
   const connectionString = getConnectionString();
@@ -161,6 +162,14 @@ const ensureReady = async () => {
   }
 
   return initializePromise;
+};
+
+const ensureAuthReady = async () => {
+  if (!initializeAuthPromise) {
+    initializeAuthPromise = initializeAuthDatabase();
+  }
+
+  return initializeAuthPromise;
 };
 
 const withClient = async (callback) => {
@@ -415,6 +424,32 @@ const initializeDatabase = async () => {
   await withClient(async (client) => {
     await ensureTenantState(client, DEFAULT_OWNER_PHONE);
   });
+};
+
+const initializeAuthDatabase = async () => {
+  const poolInstance = getPool();
+
+  await poolInstance.query(`
+    CREATE TABLE IF NOT EXISTS auth_users (
+      phone_number TEXT PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS auth_otp_challenges (
+      id TEXT PRIMARY KEY,
+      phone_number TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      salt TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      consumed BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_auth_otp_phone_number ON auth_otp_challenges (phone_number);
+    CREATE INDEX IF NOT EXISTS idx_auth_otp_expires_at ON auth_otp_challenges (expires_at);
+  `);
 };
 
 const normalizeProductNameFromInput = (productInput) => {
@@ -996,7 +1031,7 @@ export const findMetaEventById = async (eventId) => {
 };
 
 export const createAuthOtpChallenge = async (phoneNumber) => {
-  await ensureReady();
+  await ensureAuthReady();
 
   const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
 
@@ -1037,7 +1072,7 @@ export const createAuthOtpChallenge = async (phoneNumber) => {
 };
 
 export const revokeAuthOtpChallenge = async (challengeId) => {
-  await ensureReady();
+  await ensureAuthReady();
 
   if (!challengeId) {
     return;
@@ -1054,7 +1089,7 @@ export const revokeAuthOtpChallenge = async (challengeId) => {
 };
 
 export const verifyAuthOtpChallenge = async ({ phoneNumber, otpCode, challengeId = null }) => {
-  await ensureReady();
+  await ensureAuthReady();
 
   const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
   const normalizedOtpCode = String(otpCode ?? '').trim();
