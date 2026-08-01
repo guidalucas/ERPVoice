@@ -163,18 +163,6 @@ const parseQuantity = (value) => {
   return quantityToken ? quantityMap[quantityToken] : null;
 };
 
-const parsePrice = (value) => {
-  const normalized = String(value ?? '').replace(/[.,]/g, '').trim();
-  const match = normalized.match(/(?:valen?|vale|a|por|precio)\s*\$?\s*([0-9]+)/i);
-
-  if (!match) {
-    return null;
-  }
-
-  const amount = Number(match[1]);
-  return Number.isFinite(amount) && amount > 0 ? amount : null;
-};
-
 const splitReservationTarget = (value, lastProductName) => {
   const paraMatch = value.match(/^(.+?)\s+para\s+(.+)$/i);
 
@@ -260,7 +248,6 @@ const parseAction = (value) => {
     const productType = typeof value.productType === 'string' ? value.productType : undefined;
     const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
     const size = typeof value.size === 'string' ? value.size : undefined;
-    const price = typeof value.price === 'number' ? value.price : Number(value.price);
     const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
 
     if (!productName || !Number.isFinite(qty) || qty <= 0) {
@@ -274,7 +261,6 @@ const parseAction = (value) => {
       productModel,
       size,
       qty,
-      price: Number.isFinite(price) && price > 0 ? price : undefined,
       clientName: typeof value.clientName === 'string' ? value.clientName : undefined,
     };
   }
@@ -342,10 +328,7 @@ const extractMultipleActionsFromText = (text) => {
     if (addStockMatch) {
       const qty = Number(addStockMatch[1]);
       if (qty > 0) {
-        const rawProductText = addStockMatch[2].trim();
-        const price = parsePrice(rawProductText) ?? parsePrice(fragment);
-        const cleanedProductText = rawProductText.replace(/\s*(?:valen?|vale|a|por|precio)\s*\$?\s*[0-9]+(?:[.,][0-9]{3})*\s*$/i, '').trim();
-        const productDescriptor = parseProductDescriptor(cleanedProductText);
+        const productDescriptor = parseProductDescriptor(addStockMatch[2].trim());
         actions.push({
           type: 'add_stock',
           productName: productDescriptor.productName,
@@ -353,7 +336,6 @@ const extractMultipleActionsFromText = (text) => {
           productModel: productDescriptor.productModel,
           size: productDescriptor.size,
           qty,
-          price: price ?? undefined,
         });
         lastProductName = productDescriptor.productName;
       }
