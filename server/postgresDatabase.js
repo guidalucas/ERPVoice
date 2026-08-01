@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { Pool } from 'pg';
+import { normalizePhone, getWhatsAppVariants } from './phone.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -10,11 +11,12 @@ const AUTH_OTP_TTL_MS = Math.max(5, Number(process.env.AUTH_OTP_TTL_MINUTES ?? 1
 const AUTH_OTP_MAX_ATTEMPTS = 5;
 
 const normalizeOwnerPhone = (value) => {
-  const normalized = String(value ?? '').trim();
+  const normalized = normalizePhone(value);
   return normalized.length ? normalized : DEFAULT_OWNER_PHONE;
 };
 
-const normalizeAuthPhoneNumber = (value) => String(value ?? '').replace(/\D/g, '').trim();
+
+const normalizeAuthPhoneNumber = normalizePhone;
 
 const createOtpCode = () => String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 
@@ -40,71 +42,10 @@ const tenantSuffix = (ownerPhone) =>
     .replace(/^-+|-+$/g, '')
     .toLowerCase() || 'default';
 
-const DEFAULT_PRODUCTS = [
-  {
-    id: 'product-boca-titular-2026',
-    name: 'Camiseta Boca Titular 2026',
-    productType: 'Camiseta',
-    productModel: 'Boca Titular 2026',
-    size: null,
-    stockAvailable: 0,
-    stockReserved: 0,
-    price: 50000,
-  },
-  {
-    id: 'product-argentina-suplente',
-    name: 'Camiseta Argentina Suplente',
-    productType: 'Camiseta',
-    productModel: 'Argentina Suplente',
-    size: null,
-    stockAvailable: 0,
-    stockReserved: 0,
-    price: 55000,
-  },
-];
-
-const DEFAULT_CLIENTS = [
-  {
-    id: 'client-gimnasio-el-refugio',
-    name: 'Gimnasio El Refugio',
-    debt: 0,
-  },
-];
-
 const DEFAULT_STATE_SNAPSHOT = {
-  products: DEFAULT_PRODUCTS.map((product) => ({
-    id: product.id,
-    name: product.name,
-    productType: product.productType,
-    productModel: product.productModel,
-    size: product.size,
-    stockAvailable: product.stockAvailable,
-    stockReserved: product.stockReserved,
-    price: product.price,
-  })),
-  clients: DEFAULT_CLIENTS.map((client) => ({
-    id: client.id,
-    name: client.name,
-    debt: client.debt,
-  })),
+  products: [],
+  clients: [],
   transactions: [],
-};
-
-const buildTenantDefaults = (ownerPhone) => {
-  const suffix = tenantSuffix(ownerPhone);
-
-  return {
-    products: DEFAULT_PRODUCTS.map((product, index) => ({
-      ...product,
-      id: `${product.id}-${suffix}-${index + 1}`,
-      ownerPhone: normalizeOwnerPhone(ownerPhone),
-    })),
-    clients: DEFAULT_CLIENTS.map((client, index) => ({
-      ...client,
-      id: `${client.id}-${suffix}-${index + 1}`,
-      ownerPhone: normalizeOwnerPhone(ownerPhone),
-    })),
-  };
 };
 
 const getConnectionString = () =>
@@ -137,7 +78,6 @@ const shouldUseSsl = () => {
 
 let pool;
 let initializePromise;
-let initializeAuthPromise;
 
 const getPool = () => {
   const connectionString = getConnectionString();
@@ -162,14 +102,6 @@ const ensureReady = async () => {
   }
 
   return initializePromise;
-};
-
-const ensureAuthReady = async () => {
-  if (!initializeAuthPromise) {
-    initializeAuthPromise = initializeAuthDatabase();
-  }
-
-  return initializeAuthPromise;
 };
 
 const withClient = async (callback) => {
@@ -319,6 +251,7 @@ const rowToTransaction = (row) => ({
 
 const rowToMetaEvent = (row) => ({
   id: row.id,
+  ownerPhone: row.owner_phone,
   at: row.at,
   from: row.from_number,
   body: row.body,
@@ -331,6 +264,7 @@ const rowToMetaEvent = (row) => ({
   actions: parseJsonValue(row.actions_json),
   processed: Boolean(row.processed),
 });
+
 
 const queryRows = async (text, params = [], client = null) => {
   const executor = client ?? getPool();
@@ -375,8 +309,9 @@ const initializeDatabase = async () => {
       actions_json JSONB NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS meta_events (
+        CREATE TABLE IF NOT EXISTS meta_events (
       id TEXT PRIMARY KEY,
+      owner_phone TEXT NOT NULL DEFAULT '__default__',
       at TIMESTAMPTZ NOT NULL,
       from_number TEXT,
       body TEXT,
@@ -391,6 +326,7 @@ const initializeDatabase = async () => {
     );
 
     CREATE TABLE IF NOT EXISTS auth_users (
+
       phone_number TEXT PRIMARY KEY,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -411,8 +347,10 @@ const initializeDatabase = async () => {
     CREATE INDEX IF NOT EXISTS idx_products_owner_phone ON products (owner_phone);
     CREATE INDEX IF NOT EXISTS idx_clients_owner_phone ON clients (owner_phone);
     CREATE INDEX IF NOT EXISTS idx_transactions_owner_phone ON transactions (owner_phone);
-    CREATE INDEX IF NOT EXISTS idx_meta_events_at ON meta_events (at DESC);
+        CREATE INDEX IF NOT EXISTS idx_meta_events_at ON meta_events (at DESC);
+    CREATE INDEX IF NOT EXISTS idx_meta_events_owner_phone ON meta_events (owner_phone);
     CREATE INDEX IF NOT EXISTS idx_auth_otp_phone_number ON auth_otp_challenges (phone_number);
+
     CREATE INDEX IF NOT EXISTS idx_auth_otp_expires_at ON auth_otp_challenges (expires_at);
 
     ALTER TABLE products ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
@@ -424,32 +362,6 @@ const initializeDatabase = async () => {
   await withClient(async (client) => {
     await ensureTenantState(client, DEFAULT_OWNER_PHONE);
   });
-};
-
-const initializeAuthDatabase = async () => {
-  const poolInstance = getPool();
-
-  await poolInstance.query(`
-    CREATE TABLE IF NOT EXISTS auth_users (
-      phone_number TEXT PRIMARY KEY,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS auth_otp_challenges (
-      id TEXT PRIMARY KEY,
-      phone_number TEXT NOT NULL,
-      code_hash TEXT NOT NULL,
-      salt TEXT NOT NULL,
-      expires_at TIMESTAMPTZ NOT NULL,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      consumed BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_auth_otp_phone_number ON auth_otp_challenges (phone_number);
-    CREATE INDEX IF NOT EXISTS idx_auth_otp_expires_at ON auth_otp_challenges (expires_at);
-  `);
 };
 
 const normalizeProductNameFromInput = (productInput) => {
@@ -468,71 +380,53 @@ const normalizeProductNameFromInput = (productInput) => {
 
 const normalizeTextArray = (values) => values.filter(Boolean);
 
+const getOwnerPhoneVariants = (ownerPhone) => {
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const rawPhone = normalizePhone(ownerPhone);
+  const variants = new Set([normalizedOwnerPhone]);
+
+  if (rawPhone) {
+    for (const variant of getWhatsAppVariants(rawPhone)) {
+      if (variant) {
+        variants.add(variant);
+      }
+    }
+  }
+
+  return [...variants];
+};
+
 const ensureTenantState = async (client, ownerPhone) => {
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-  const tenantDefaults = buildTenantDefaults(normalizedOwnerPhone);
+  const variants = getOwnerPhoneVariants(ownerPhone).filter((value) => value !== normalizedOwnerPhone);
 
-  const productCount = Number(
-    (
-      await client.query('SELECT COUNT(*)::int AS count FROM products WHERE owner_phone = $1', [normalizedOwnerPhone])
-    ).rows[0]?.count ?? 0,
-  );
-  const clientCount = Number(
-    (
-      await client.query('SELECT COUNT(*)::int AS count FROM clients WHERE owner_phone = $1', [normalizedOwnerPhone])
-    ).rows[0]?.count ?? 0,
-  );
-
-  if (!productCount) {
-    for (const product of tenantDefaults.products) {
+  if (variants.length) {
+    const tables = ['products', 'clients', 'transactions', 'meta_events'];
+    for (const table of tables) {
       await client.query(
-        `
-          INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          ON CONFLICT (id) DO NOTHING
-        `,
-        [
-          product.id,
-          product.ownerPhone,
-          product.name,
-          product.productType,
-          product.productModel,
-          product.size,
-          product.stockAvailable,
-          product.stockReserved,
-          product.price,
-        ],
+        `UPDATE ${table} SET owner_phone = $1 WHERE owner_phone = ANY($2)`,
+        [normalizedOwnerPhone, variants],
       );
     }
   }
 
-  if (!clientCount) {
-    for (const entry of tenantDefaults.clients) {
-      await client.query(
-        `
-          INSERT INTO clients (id, owner_phone, name, debt)
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (id) DO NOTHING
-        `,
-        [entry.id, entry.ownerPhone, entry.name, entry.debt],
-      );
-    }
-  }
+  return normalizedOwnerPhone;
 };
 
 const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null) => {
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
 
   const [productsRows, clientsRows, transactionsRows] = await Promise.all([
     queryRows(
-      'SELECT id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price FROM products WHERE owner_phone = $1 ORDER BY name ASC',
-      [normalizedOwnerPhone],
+      'SELECT id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price FROM products WHERE owner_phone = ANY($1) ORDER BY name ASC',
+      [ownerPhoneVariants],
       client,
     ),
-    queryRows('SELECT id, owner_phone, name, debt FROM clients WHERE owner_phone = $1 ORDER BY name ASC', [normalizedOwnerPhone], client),
+    queryRows('SELECT id, owner_phone, name, debt FROM clients WHERE owner_phone = ANY($1) ORDER BY name ASC', [ownerPhoneVariants], client),
     queryRows(
-      'SELECT id, owner_phone, timestamp, source_text, summary, actions_json FROM transactions WHERE owner_phone = $1 ORDER BY timestamp DESC',
-      [normalizedOwnerPhone],
+      'SELECT id, owner_phone, timestamp, source_text, summary, actions_json FROM transactions WHERE owner_phone = ANY($1) ORDER BY timestamp DESC',
+      [ownerPhoneVariants],
       client,
     ),
   ]);
@@ -557,20 +451,44 @@ const normalizeTextList = (value) =>
     .replace(/\p{Diacritic}/gu, '')
     .split(/\s+/)
     .map((token) => token.replace(/[^a-z0-9]/g, ''))
-    .filter((token) => token.length > 2 && !['para', 'con', 'del', 'las', 'los', 'una', 'uno', 'por', 'les'].includes(token));
+    .filter((token) => token.length > 2 && !['para', 'con', 'del', 'las', 'los', 'una', 'uno', 'por', 'les', 'de', 'el', 'la', 'y', 's', 'm', 'l', 'xl', 'xxl', 'titular', 'suplente', 'camiseta', 'talle'].includes(token));
 
 const resolveProduct = (products, actionName) => {
-  const actionTokens = normalizeTextList(actionName);
-  const actionLower = normalizeText(actionName);
+  const actionTokens = normalizeTextList(actionName.productName);
+  const actionLower = normalizeText(actionName.productName);
+  const hasMetadata = Boolean(
+    normalizeNullableString(actionName.productType) ||
+    normalizeNullableString(actionName.productModel) ||
+    normalizeNullableString(actionName.size)
+  );
 
   if (!actionTokens.length) {
     return null;
   }
 
-  let bestProduct;
+  let bestProduct = null;
   let bestScore = 0;
+  let bestSpecificScore = 0;
 
   for (const product of products) {
+    if (hasMetadata) {
+      const productType = normalizeNullableString(product.productType);
+      const productModel = normalizeNullableString(product.productModel);
+      const productSize = normalizeNullableString(product.size);
+
+      if (normalizeNullableString(actionName.productType) && productType !== normalizeNullableString(actionName.productType)) {
+        continue;
+      }
+
+      if (normalizeNullableString(actionName.productModel) && productModel !== normalizeNullableString(actionName.productModel)) {
+        continue;
+      }
+
+      if (normalizeNullableString(actionName.size) && productSize !== normalizeNullableString(actionName.size)) {
+        continue;
+      }
+    }
+
     const productTokens = normalizeTextList(product.name);
     const productLower = normalizeText(product.name);
 
@@ -578,18 +496,26 @@ const resolveProduct = (products, actionName) => {
       return product;
     }
 
-    const score = actionTokens.filter((token) => productTokens.includes(token)).length;
-    if (score > bestScore) {
+    const matchingTokens = actionTokens.filter((token) => productTokens.includes(token));
+    const score = matchingTokens.length;
+    const specificScore = matchingTokens.length;
+
+    if (score > bestScore || (score === bestScore && specificScore > bestSpecificScore)) {
       bestScore = score;
+      bestSpecificScore = specificScore;
       bestProduct = product;
     }
   }
 
-  if (bestScore < 2) {
+  if (hasMetadata) {
+    return bestProduct;
+  }
+
+  if (bestScore < 2 || bestSpecificScore < 1) {
     return null;
   }
 
-  return bestProduct ?? null;
+  return bestProduct;
 };
 
 const createProduct = (name, index, metadata = {}) => ({
@@ -680,9 +606,10 @@ const withTransaction = async (callback) => {
 
 const replaceStateTables = async (client, ownerPhone, products, clients) => {
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
 
-  await client.query('DELETE FROM products WHERE owner_phone = $1', [normalizedOwnerPhone]);
-  await client.query('DELETE FROM clients WHERE owner_phone = $1', [normalizedOwnerPhone]);
+  await client.query('DELETE FROM products WHERE owner_phone = ANY($1)', [ownerPhoneVariants]);
+  await client.query('DELETE FROM clients WHERE owner_phone = ANY($1)', [ownerPhoneVariants]);
 
   for (const product of products) {
     await client.query(
@@ -750,10 +677,11 @@ export const createProductRecord = async (productInput, ownerPhone = DEFAULT_OWN
 export const updateProductRecord = async (productId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
   await ensureReady();
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
 
   const existing = await queryRow(
-    'SELECT id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price FROM products WHERE id = $1 AND owner_phone = $2',
-    [productId, normalizedOwnerPhone],
+    'SELECT id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price FROM products WHERE id = $1 AND owner_phone = ANY($2)',
+    [productId, ownerPhoneVariants],
   );
 
   if (!existing) {
@@ -803,8 +731,8 @@ export const updateProductRecord = async (productId, updates, ownerPhone = DEFAU
 
 export const deleteProductRecord = async (productId, ownerPhone = DEFAULT_OWNER_PHONE) => {
   await ensureReady();
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-  const result = await getPool().query('DELETE FROM products WHERE id = $1 AND owner_phone = $2 RETURNING id', [productId, normalizedOwnerPhone]);
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
+  const result = await getPool().query('DELETE FROM products WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [productId, ownerPhoneVariants]);
   return result.rowCount > 0;
 };
 
@@ -813,6 +741,7 @@ export const getStateSnapshot = async (ownerPhone = DEFAULT_OWNER_PHONE) => {
 
   try {
     await ensureReady();
+
     await withClient(async (client) => {
       await ensureTenantState(client, normalizedOwnerPhone);
     });
@@ -911,7 +840,7 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
       );
     }
 
-    return queryAllState(normalizedOwnerPhone, client);
+    return await queryAllState(normalizedOwnerPhone, client);
   });
 };
 
@@ -923,16 +852,19 @@ export const saveMetaEvent = async (event) => {
     return existing;
   }
 
+  const normalizedFrom = normalizePhone(event.fromNumber);
+
   const result = await getPool().query(
     `
-      INSERT INTO meta_events (id, at, from_number, body, num_media, kind, source_text, transcript, reply_text, error, actions_json, processed)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)
+      INSERT INTO meta_events (id, at, from_number, owner_phone, body, num_media, kind, source_text, transcript, reply_text, error, actions_json, processed)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)
       RETURNING *
     `,
     [
       event.id,
       event.at,
-      event.fromNumber ?? null,
+      normalizedFrom || null,
+      normalizedFrom || DEFAULT_OWNER_PHONE,
       event.body ?? null,
       normalizeInteger(event.numMedia, 0),
       event.kind ?? null,
@@ -947,6 +879,7 @@ export const saveMetaEvent = async (event) => {
 
   return rowToMetaEvent(result.rows[0]);
 };
+
 
 export const markMetaEventProcessed = async (eventId, updates) => {
   await ensureReady();
@@ -987,19 +920,23 @@ export const markMetaEventProcessed = async (eventId, updates) => {
 export const getMetaEvents = async (limit = 50, fromNumber = null) => {
   await ensureReady();
   const safeLimit = Math.max(1, Math.min(normalizeInteger(limit, 50), 500));
-  const normalizedFromNumber = typeof fromNumber === 'string' && fromNumber.trim().length ? fromNumber.trim() : null;
+  const fromPhoneVariants = fromNumber ? getOwnerPhoneVariants(fromNumber) : null;
 
-  const rows = normalizedFromNumber
-    ? await queryRows('SELECT * FROM meta_events WHERE from_number = $1 ORDER BY at DESC LIMIT $2', [normalizedFromNumber, safeLimit])
+  const rows = fromPhoneVariants
+    ? await queryRows(
+        'SELECT * FROM meta_events WHERE from_number = ANY($1) OR owner_phone = ANY($1) ORDER BY at DESC LIMIT $2',
+        [fromPhoneVariants, safeLimit],
+      )
     : await queryRows('SELECT * FROM meta_events ORDER BY at DESC LIMIT $1', [safeLimit]);
 
   return rows.map(rowToMetaEvent);
 };
 
+
 export const getClientPhones = async () => {
   await ensureReady();
 
-  const rows = await queryRows(
+    const rows = await queryRows(
     `
       SELECT owner_phone AS phone FROM products
       UNION
@@ -1007,9 +944,10 @@ export const getClientPhones = async () => {
       UNION
       SELECT owner_phone AS phone FROM transactions
       UNION
-      SELECT from_number AS phone FROM meta_events WHERE from_number IS NOT NULL
+      SELECT owner_phone AS phone FROM meta_events
     `,
   );
+
 
   const phones = rows
     .map((row) => String(row.phone ?? '').trim())
@@ -1031,7 +969,7 @@ export const findMetaEventById = async (eventId) => {
 };
 
 export const createAuthOtpChallenge = async (phoneNumber) => {
-  await ensureAuthReady();
+  await ensureReady();
 
   const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
 
@@ -1072,7 +1010,7 @@ export const createAuthOtpChallenge = async (phoneNumber) => {
 };
 
 export const revokeAuthOtpChallenge = async (challengeId) => {
-  await ensureAuthReady();
+  await ensureReady();
 
   if (!challengeId) {
     return;
@@ -1089,7 +1027,7 @@ export const revokeAuthOtpChallenge = async (challengeId) => {
 };
 
 export const verifyAuthOtpChallenge = async ({ phoneNumber, otpCode, challengeId = null }) => {
-  await ensureAuthReady();
+  await ensureReady();
 
   const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
   const normalizedOtpCode = String(otpCode ?? '').trim();
