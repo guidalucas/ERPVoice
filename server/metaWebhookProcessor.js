@@ -405,10 +405,13 @@ const extractMultipleActionsFromText = (text) => {
       if (qty > 0) {
         const targetRaw = reserveMatch[2].trim();
         const reservationTarget = splitReservationTarget(targetRaw, lastProductName);
-        const productDescriptor = parseProductDescriptor(reservationTarget.productName);
+        const cleanedProductText = reservationTarget.productName.replace(/\s*(?:valen?|vale|a|por|precio)\s*\$?\s*[0-9]+(?:[.,][0-9]{3})*\s*$/i, '').trim();
+        const productDescriptor = parseProductDescriptor(cleanedProductText);
+        const resolvedName = reservationTarget.productName === targetRaw && lastProductName ? lastProductName : productDescriptor.productName;
+
         actions.push({
           type: 'reserve_stock',
-          productName: reservationTarget.productName === targetRaw && lastProductName ? lastProductName : productDescriptor.productName,
+          productName: resolvedName,
           productType: productDescriptor.productType,
           productModel: productDescriptor.productModel,
           size: productDescriptor.size,
@@ -423,7 +426,10 @@ const extractMultipleActionsFromText = (text) => {
     if (sellMatch) {
       const qty = Number(sellMatch[1]);
       if (qty > 0) {
-        const productDescriptor = parseProductDescriptor(sellMatch[2].trim());
+        const rawProductText = sellMatch[2].trim();
+        const price = parsePrice(rawProductText) ?? parsePrice(fragment);
+        const cleanedProductText = rawProductText.replace(/\s*(?:valen?|vale|a|por|precio)\s*\$?\s*[0-9]+(?:[.,][0-9]{3})*\s*$/i, '').trim();
+        const productDescriptor = parseProductDescriptor(cleanedProductText);
         actions.push({
           type: 'sell',
           productName: productDescriptor.productName,
@@ -431,6 +437,7 @@ const extractMultipleActionsFromText = (text) => {
           productModel: productDescriptor.productModel,
           size: productDescriptor.size,
           qty,
+          price: price ?? undefined,
         });
       }
     }
