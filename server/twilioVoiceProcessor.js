@@ -58,6 +58,63 @@ const normalizeText = (value) =>
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '');
 
+const titleCase = (value) =>
+  String(value ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(' ');
+
+const singularizeProductType = (value) => {
+  const trimmed = String(value ?? '').trim();
+
+  if (trimmed.length <= 3) {
+    return titleCase(trimmed);
+  }
+
+  if (trimmed.endsWith('es')) {
+    return titleCase(trimmed.slice(0, -2));
+  }
+
+  if (trimmed.endsWith('s')) {
+    return titleCase(trimmed.slice(0, -1));
+  }
+
+  return titleCase(trimmed);
+};
+
+const composeProductName = ({ productType, productModel, size, fallback }) => {
+  const values = [productType, productModel, size]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean);
+
+  if (values.length) {
+    return values.join(' ');
+  }
+
+  return String(fallback ?? '').trim();
+};
+
+const parseProductDescriptor = (value) => {
+  const normalized = normalizeText(value).replace(/\s+/g, ' ').trim();
+  const sizeMatch = normalized.match(/(?:,\s*|\s+)talle\s+([a-z0-9]+)\b/i);
+  const size = sizeMatch ? sizeMatch[1].toUpperCase() : undefined;
+  const withoutSize = normalized.replace(/(?:,\s*|\s+)talle\s+[a-z0-9]+\b/i, '').trim();
+  const descriptorParts = withoutSize.split(/\s+de\s+/i);
+  const rawProductType = descriptorParts[0] ?? withoutSize;
+  const rawProductModel = descriptorParts.slice(1).join(' de ') || undefined;
+
+  const productType = rawProductType ? singularizeProductType(rawProductType) : undefined;
+  const productModel = rawProductModel ? titleCase(rawProductModel) : undefined;
+
+  return {
+    productType,
+    productModel,
+    size,
+    productName: composeProductName({ productType, productModel, size, fallback: value }),
+  };
+};
+
 const splitCompoundText = (value) =>
   value
     .split(/\s*(?:,|\by\b|\.\s*|;|\n)\s*/i)
@@ -99,6 +156,57 @@ const parseQuantity = (value) => {
 
   const quantityToken = normalized.split(/\s+/).find((token) => quantityMap[token] !== undefined);
   return quantityToken ? quantityMap[quantityToken] : null;
+};
+
+const parseNumericValue = (value) => {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const cleaned = normalized.replace(/[^0-9,\.]/g, '');
+  if (!cleaned) {
+    return null;
+  }
+
+  const commaCount = (cleaned.match(/,/g) || []).length;
+  const dotCount = (cleaned.match(/\./g) || []).length;
+  let normalizedNumber = cleaned;
+
+  if (commaCount > 0 && dotCount > 0) {
+    normalizedNumber = cleaned.replace(/\./g, '').replace(/,/g, '.');
+  } else if (dotCount > 0 && cleaned.split('.').pop()?.length === 3) {
+    normalizedNumber = cleaned.replace(/\./g, '');
+  } else {
+    normalizedNumber = cleaned.replace(/,/g, '.');
+  }
+
+  const amount = Number(normalizedNumber);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+};
+
+const parsePrice = (value) => {
+  const normalized = String(value ?? '').toLowerCase();
+  const match = normalized.match(/(?:valen?|vale|cuestan|precio|a|por)\s*\$?\s*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]+)?)/i);
+
+  if (!match) {
+    return null;
+  }
+
+  return parseNumericValue(match[1]);
+};
+
+const applyPriceFromText = (actions, text) => {
+  const price = parsePrice(text);
+  if (!Number.isFinite(price)) {
+    return;
+  }
+
+  for (const action of actions) {
+    if ((action.type === 'add_stock' || action.type === 'sell') && !Number.isFinite(action.price ?? NaN)) {
+      action.price = price;
+    }
+  }
 };
 
 const splitReservationTarget = (value, lastProductName) => {
@@ -183,10 +291,12 @@ const parseAction = (value) => {
   const amount = typeof value.amount === 'number' ? value.amount : Number(value.amount);
 
   if ((value.type === 'add_stock' || value.type === 'reserve_stock' || value.type === 'sell') && typeof value.productName === 'string' && Number.isFinite(qty) && qty > 0) {
+    const price = typeof value.price === 'number' ? value.price : Number(value.price);
     return {
       type: value.type,
       productName: value.productName,
       qty,
+      price: Number.isFinite(price) && price > 0 ? price : undefined,
       clientName: typeof value.clientName === 'string' ? value.clientName : undefined,
     };
   }
@@ -251,12 +361,19 @@ const extractMultipleActionsFromText = (text) => {
     if (addStockMatch) {
       const qty = Number(addStockMatch[1]);
       if (qty > 0) {
+        const rawProductText = addStockMatch[2].trim();
+        const price = parsePrice(rawProductText) ?? parsePrice(fragment);
+        const productDescriptor = parseProductDescriptor(rawProductText);
         actions.push({
           type: 'add_stock',
-          productName: addStockMatch[2].trim(),
+          productName: productDescriptor.productName,
+          productType: productDescriptor.productType,
+          productModel: productDescriptor.productModel,
+          size: productDescriptor.size,
           qty,
+          price: price ?? undefined,
         });
-        lastProductName = addStockMatch[2].trim();
+        lastProductName = productDescriptor.productName;
       }
       continue;
     }
@@ -267,9 +384,13 @@ const extractMultipleActionsFromText = (text) => {
       if (qty > 0) {
         const targetRaw = reserveMatch[2].trim();
         const reservationTarget = splitReservationTarget(targetRaw, lastProductName);
+        const productDescriptor = parseProductDescriptor(reservationTarget.productName);
         actions.push({
           type: 'reserve_stock',
-          productName: reservationTarget.productName === targetRaw && lastProductName ? lastProductName : reservationTarget.productName,
+          productName: reservationTarget.productName === targetRaw && lastProductName ? lastProductName : productDescriptor.productName,
+          productType: productDescriptor.productType,
+          productModel: productDescriptor.productModel,
+          size: productDescriptor.size,
           clientName: reservationTarget.clientName,
           qty,
         });
@@ -281,10 +402,17 @@ const extractMultipleActionsFromText = (text) => {
     if (sellMatch) {
       const qty = Number(sellMatch[1]);
       if (qty > 0) {
+        const rawProductText = sellMatch[2].trim();
+        const price = parsePrice(rawProductText) ?? parsePrice(fragment);
+        const productDescriptor = parseProductDescriptor(rawProductText);
         actions.push({
           type: 'sell',
-          productName: sellMatch[2].trim(),
+          productName: productDescriptor.productName,
+          productType: productDescriptor.productType,
+          productModel: productDescriptor.productModel,
+          size: productDescriptor.size,
           qty,
+          price: price ?? undefined,
         });
       }
     }
@@ -299,6 +427,7 @@ const parseLocalText = (text) => {
     return null;
   }
 
+  applyPriceFromText(actions, text);
   return buildPayload(text, actions);
 };
 
@@ -399,6 +528,7 @@ const parseVoiceTextWithModel = async (text) => {
     const sourceText = typeof parsed.sourceText === 'string' ? parsed.sourceText : text;
     const actions = Array.isArray(parsed.actions) ? parsed.actions.map(parseAction).filter(Boolean) : [];
     const normalizedActions = actions.length ? actions : extractMultipleActionsFromText(sourceText);
+    applyPriceFromText(normalizedActions, sourceText);
 
     if (!normalizedActions.length) {
       return parseLocalText(text);

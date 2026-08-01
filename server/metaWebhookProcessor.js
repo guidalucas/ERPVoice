@@ -164,16 +164,55 @@ const parseQuantity = (value) => {
   return quantityToken ? quantityMap[quantityToken] : null;
 };
 
+const parseNumericValue = (value) => {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const cleaned = normalized.replace(/[^0-9,\.]/g, '');
+  if (!cleaned) {
+    return null;
+  }
+
+  const commaCount = (cleaned.match(/,/g) || []).length;
+  const dotCount = (cleaned.match(/\./g) || []).length;
+  let normalizedNumber = cleaned;
+
+  if (commaCount > 0 && dotCount > 0) {
+    normalizedNumber = cleaned.replace(/\./g, '').replace(/,/g, '.');
+  } else if (dotCount > 0 && cleaned.split('.').pop()?.length === 3) {
+    normalizedNumber = cleaned.replace(/\./g, '');
+  } else {
+    normalizedNumber = cleaned.replace(/,/g, '.');
+  }
+
+  const amount = Number(normalizedNumber);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+};
+
 const parsePrice = (value) => {
-  const normalized = String(value ?? '').replace(/[.,]/g, '').trim();
-  const match = normalized.match(/(?:valen?|vale|a|por|precio)\s*\$?\s*([0-9]+)/i);
+  const normalized = String(value ?? '').toLowerCase();
+  const match = normalized.match(/(?:valen?|vale|cuestan|precio|a|por)\s*\$?\s*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]+)?)/i);
 
   if (!match) {
     return null;
   }
 
-  const amount = Number(match[1]);
-  return Number.isFinite(amount) && amount > 0 ? amount : null;
+  return parseNumericValue(match[1]);
+};
+
+const applyPriceFromText = (actions, text) => {
+  const price = parsePrice(text);
+  if (!Number.isFinite(price)) {
+    return;
+  }
+
+  for (const action of actions) {
+    if ((action.type === 'add_stock' || action.type === 'sell') && !Number.isFinite(action.price ?? NaN)) {
+      action.price = price;
+    }
+  }
 };
 
 const splitReservationTarget = (value, lastProductName) => {
@@ -367,10 +406,13 @@ const extractMultipleActionsFromText = (text) => {
       if (qty > 0) {
         const targetRaw = reserveMatch[2].trim();
         const reservationTarget = splitReservationTarget(targetRaw, lastProductName);
-        const productDescriptor = parseProductDescriptor(reservationTarget.productName);
+        const cleanedProductText = reservationTarget.productName.replace(/\s*(?:valen?|vale|a|por|precio)\s*\$?\s*[0-9]+(?:[.,][0-9]{3})*\s*$/i, '').trim();
+        const productDescriptor = parseProductDescriptor(cleanedProductText);
+        const resolvedName = reservationTarget.productName === targetRaw && lastProductName ? lastProductName : productDescriptor.productName;
+
         actions.push({
           type: 'reserve_stock',
-          productName: reservationTarget.productName === targetRaw && lastProductName ? lastProductName : productDescriptor.productName,
+          productName: resolvedName,
           productType: productDescriptor.productType,
           productModel: productDescriptor.productModel,
           size: productDescriptor.size,
@@ -385,7 +427,10 @@ const extractMultipleActionsFromText = (text) => {
     if (sellMatch) {
       const qty = Number(sellMatch[1]);
       if (qty > 0) {
-        const productDescriptor = parseProductDescriptor(sellMatch[2].trim());
+        const rawProductText = sellMatch[2].trim();
+        const price = parsePrice(rawProductText) ?? parsePrice(fragment);
+        const cleanedProductText = rawProductText.replace(/\s*(?:valen?|vale|a|por|precio)\s*\$?\s*[0-9]+(?:[.,][0-9]{3})*\s*$/i, '').trim();
+        const productDescriptor = parseProductDescriptor(cleanedProductText);
         actions.push({
           type: 'sell',
           productName: productDescriptor.productName,
@@ -393,11 +438,13 @@ const extractMultipleActionsFromText = (text) => {
           productModel: productDescriptor.productModel,
           size: productDescriptor.size,
           qty,
+          price: price ?? undefined,
         });
       }
     }
   }
 
+  applyPriceFromText(actions, normalized);
   return actions;
 };
 
@@ -529,18 +576,13 @@ const parseVoiceTextWithModel = async (text) => {
     const actions = Array.isArray(parsed.actions) ? parsed.actions.map(parseAction).filter(Boolean) : [];
     const inferredPrice = parsePrice(sourceText);
     const normalizedActions = actions.length ? actions : extractMultipleActionsFromText(sourceText);
-    const normalizedActionsWithFallbackPrice = normalizedActions.map((action) => {
-      if ((action.type === 'add_stock' || action.type === 'sell') && action.price === undefined && Number.isFinite(inferredPrice) && inferredPrice > 0) {
-        return { ...action, price: inferredPrice };
-      }
-      return action;
-    });
+    applyPriceFromText(normalizedActions, sourceText);
 
-    if (!normalizedActionsWithFallbackPrice.length) {
+    if (!normalizedActions.length) {
       return parseLocalText(text);
     }
 
-    return buildPayload(sourceText, normalizedActionsWithFallbackPrice, {
+    return buildPayload(sourceText, normalizedActions, {
       intent: typeof parsed.intent === 'string' ? parsed.intent : undefined,
       confidence: typeof parsed.confidence === 'number' ? parsed.confidence : undefined,
       requiresConfirmation: typeof parsed.requiresConfirmation === 'boolean' ? parsed.requiresConfirmation : undefined,

@@ -105,6 +105,57 @@ const parseQuantity = (value: string) => {
   return quantityToken ? quantityMap[quantityToken] : null;
 };
 
+const parseNumericValue = (value: string) => {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const cleaned = normalized.replace(/[^0-9,\.]/g, '');
+  if (!cleaned) {
+    return null;
+  }
+
+  const commaCount = (cleaned.match(/,/g) || []).length;
+  const dotCount = (cleaned.match(/\./g) || []).length;
+  let normalizedNumber = cleaned;
+
+  if (commaCount > 0 && dotCount > 0) {
+    normalizedNumber = cleaned.replace(/\./g, '').replace(/,/g, '.');
+  } else if (dotCount > 0 && cleaned.split('.').pop()?.length === 3) {
+    normalizedNumber = cleaned.replace(/\./g, '');
+  } else {
+    normalizedNumber = cleaned.replace(/,/g, '.');
+  }
+
+  const valueNumber = Number(normalizedNumber);
+  return Number.isFinite(valueNumber) && valueNumber > 0 ? valueNumber : null;
+};
+
+const parsePrice = (value: string) => {
+  const normalized = String(value ?? '').toLowerCase();
+  const match = normalized.match(/(?:valen?|vale|cuestan|precio|a|por)\s*\$?\s*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]+)?)/i);
+
+  if (!match) {
+    return null;
+  }
+
+  return parseNumericValue(match[1]);
+};
+
+const applyPriceFromText = (actions: ParsedActionUnion[], text: string) => {
+  const price = parsePrice(text);
+  if (price === null || !Number.isFinite(price)) {
+    return;
+  }
+
+  for (const action of actions) {
+    if ((action.type === 'add_stock' || action.type === 'sell') && !Number.isFinite(action.price ?? NaN)) {
+      action.price = price;
+    }
+  }
+};
+
 const splitReservationTarget = (value: string, lastProductName?: string) => {
   const paraMatch = value.match(/^(.+?)\s+para\s+(.+)$/i);
 
@@ -291,6 +342,7 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
     const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
     const size = typeof value.size === 'string' ? value.size : undefined;
     const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
+    const price = typeof value.price === 'number' ? value.price : Number(value.price);
 
     if (!productName || Number.isNaN(qty) || qty <= 0) {
       return null;
@@ -303,6 +355,7 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
       productModel,
       size,
       qty,
+      price: Number.isFinite(price) && price > 0 ? price : undefined,
       clientName: typeof value.clientName === 'string' ? value.clientName : undefined,
     };
   }
@@ -370,7 +423,8 @@ export class VoiceParserService {
           .join(' ');
 
         if (p.type === 'add_stock') {
-          actions.push({ type: 'add_stock', productName, qty });
+          const price = parsePrice(productRaw) ?? parsePrice(fragment);
+          actions.push({ type: 'add_stock', productName, qty, price: price ?? undefined });
           lastProductName = productName;
           suggested.push(`compré ${qty} ${productRaw}`);
         } else if (p.type === 'reserve_stock') {
@@ -388,8 +442,9 @@ export class VoiceParserService {
               : `reservé ${qty} ${resolvedProductName}`,
           );
         } else if (p.type === 'sell') {
+          const price = parsePrice(productRaw) ?? parsePrice(fragment);
           // @ts-ignore - cast to any to satisfy return type
-          actions.push({ type: 'sell', productName, qty } as any);
+          actions.push({ type: 'sell', productName, qty, price: price ?? undefined } as any);
           suggested.push(`vendí ${qty} ${productRaw}`);
         }
 
@@ -418,6 +473,7 @@ export class VoiceParserService {
     const sourceText = typeof parsed.sourceText === 'string' ? parsed.sourceText : rawResponse;
     const actions = Array.isArray(parsed.actions) ? parsed.actions.map(parseAction).filter((action): action is ParsedActionUnion => action !== null) : [];
     const normalizedActions = actions.length ? actions : extractMultipleActionsFromText(sourceText);
+    applyPriceFromText(normalizedActions, sourceText);
 
     if (!normalizedActions.length) {
       return null;

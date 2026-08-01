@@ -25,6 +25,7 @@ export type ParsedAction =
       productModel?: string;
       size?: string;
       qty: number;
+      price?: number;
     }
   | {
       type: 'reserve_stock';
@@ -34,6 +35,7 @@ export type ParsedAction =
       size?: string;
       qty: number;
       clientName?: string;
+      price?: number;
     }
   | {
       type: 'add_debt';
@@ -59,6 +61,7 @@ export type ParsedActionSell = {
   productModel?: string;
   size?: string;
   qty: number;
+  price?: number;
 };
 
 // Extend the union to include sell
