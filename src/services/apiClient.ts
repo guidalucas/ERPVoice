@@ -1,6 +1,8 @@
 import { clearAuthSession, getAuthToken } from './authTokenStore';
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_META_API_BASE ?? '';
+const API_BASE = import.meta.env.DEV
+  ? ''
+  : String(import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_META_API_BASE ?? '').trim();
 
 export const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const token = getAuthToken();

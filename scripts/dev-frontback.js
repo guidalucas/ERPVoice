@@ -56,4 +56,4 @@ process.on('SIGTERM', () => shutdown(0));
 
 console.log('[dev:frontback] Arrancando frontend y backend...');
 startProcess('frontend', isWindows ? 'npm.cmd' : 'npm', ['run', 'dev']);
-startProcess('backend', isWindows ? 'npm.cmd' : 'npm', ['run', 'dev:api']);
+startProcess('backend', isWindows ? 'node.exe' : 'node', ['server/index.js']);

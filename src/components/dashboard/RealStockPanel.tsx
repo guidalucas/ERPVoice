@@ -94,6 +94,11 @@ export function RealStockPanel() {
         <h4 className="text-[1.05rem] font-bold text-slate-100">Inventario Completo</h4>
 
         <div className="mt-5 overflow-x-auto">
+          {products.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-6 text-sm text-slate-400">
+              No hay inventario cargado.
+            </div>
+          ) : (
           <table className="min-w-full border-separate border-spacing-0">
             <thead>
               <tr className="text-left text-sm font-semibold text-slate-300">
@@ -128,6 +133,7 @@ export function RealStockPanel() {
               })}
             </tbody>
           </table>
+          )}
         </div>
       </article>
     </article>
