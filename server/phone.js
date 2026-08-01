@@ -8,11 +8,23 @@ export const getWhatsAppVariants = (canonicalPhone) => {
   }
 
   const variants = [raw];
+  let localNumber = null;
 
   if (raw.startsWith('549')) {
-    variants.push(`54${raw.slice(3)}`);
+    localNumber = raw.slice(3);
+    variants.push(`54${localNumber}`);
   } else if (raw.startsWith('54') && raw.length > 2 && raw[2] !== '9') {
-    variants.push(`549${raw.slice(2)}`);
+    localNumber = raw.slice(2);
+    variants.push(`549${localNumber}`);
+  }
+
+  if (!localNumber && raw.length >= 10) {
+    localNumber = raw;
+  }
+
+  if (localNumber) {
+    variants.push(`54${localNumber}`);
+    variants.push(`549${localNumber}`);
   }
 
   return [...new Set(variants)];
