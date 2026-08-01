@@ -163,16 +163,55 @@ const parseQuantity = (value) => {
   return quantityToken ? quantityMap[quantityToken] : null;
 };
 
+const parseNumericValue = (value) => {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const cleaned = normalized.replace(/[^0-9,\.]/g, '');
+  if (!cleaned) {
+    return null;
+  }
+
+  const commaCount = (cleaned.match(/,/g) || []).length;
+  const dotCount = (cleaned.match(/\./g) || []).length;
+  let normalizedNumber = cleaned;
+
+  if (commaCount > 0 && dotCount > 0) {
+    normalizedNumber = cleaned.replace(/\./g, '').replace(/,/g, '.');
+  } else if (dotCount > 0 && cleaned.split('.').pop()?.length === 3) {
+    normalizedNumber = cleaned.replace(/\./g, '');
+  } else {
+    normalizedNumber = cleaned.replace(/,/g, '.');
+  }
+
+  const amount = Number(normalizedNumber);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+};
+
 const parsePrice = (value) => {
-  const normalized = String(value ?? '').replace(/[.,]/g, '').trim();
-  const match = normalized.match(/(?:valen?|vale|a|por|precio)\s*\$?\s*([0-9]+)/i);
+  const normalized = String(value ?? '').toLowerCase();
+  const match = normalized.match(/(?:valen?|vale|cuestan|precio|a|por)\s*\$?\s*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]+)?)/i);
 
   if (!match) {
     return null;
   }
 
-  const amount = Number(match[1]);
-  return Number.isFinite(amount) && amount > 0 ? amount : null;
+  return parseNumericValue(match[1]);
+};
+
+const applyPriceFromText = (actions, text) => {
+  const price = parsePrice(text);
+  if (!Number.isFinite(price)) {
+    return;
+  }
+
+  for (const action of actions) {
+    if ((action.type === 'add_stock' || action.type === 'sell') && !Number.isFinite(action.price ?? NaN)) {
+      action.price = price;
+    }
+  }
 };
 
 const splitReservationTarget = (value, lastProductName) => {
@@ -397,6 +436,7 @@ const extractMultipleActionsFromText = (text) => {
     }
   }
 
+  applyPriceFromText(actions, normalized);
   return actions;
 };
 
@@ -527,6 +567,7 @@ const parseVoiceTextWithModel = async (text) => {
     const sourceText = typeof parsed.sourceText === 'string' ? parsed.sourceText : text;
     const actions = Array.isArray(parsed.actions) ? parsed.actions.map(parseAction).filter(Boolean) : [];
     const normalizedActions = actions.length ? actions : extractMultipleActionsFromText(sourceText);
+    applyPriceFromText(normalizedActions, sourceText);
 
     if (!normalizedActions.length) {
       return parseLocalText(text);
