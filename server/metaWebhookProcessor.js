@@ -1,3 +1,5 @@
+import { getWhatsAppVariants } from './phone.js';
+
 const DEFAULT_MODEL_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 const DEFAULT_TRANSCRIPTION_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
@@ -640,25 +642,6 @@ export const processMetaWebhook = async (body) => {
   return results;
 };
 
-const buildRecipientCandidates = (value) => {
-  const raw = String(value ?? '').trim();
-  if (!raw) {
-    return [];
-  }
-
-  const variants = [raw];
-
-  // Argentina mobile variants:
-  // 549... (with mobile 9) <-> 54... (without 9)
-  if (raw.startsWith('549')) {
-    variants.push(`54${raw.slice(3)}`);
-  } else if (raw.startsWith('54') && raw.length > 2 && raw[2] !== '9') {
-    variants.push(`549${raw.slice(2)}`);
-  }
-
-  return [...new Set(variants)];
-};
-
 export const sendMetaReply = async ({ to, text }) => {
   const { metaAccessToken, metaPhoneNumberId, metaGraphApiVersion } = readEnv();
 
@@ -666,7 +649,7 @@ export const sendMetaReply = async ({ to, text }) => {
     return { sent: false, reason: 'missing_credentials_or_recipient' };
   }
 
-  const recipients = buildRecipientCandidates(to);
+  const recipients = getWhatsAppVariants(to);
   let lastRecipientError = null;
 
   for (const recipient of recipients) {

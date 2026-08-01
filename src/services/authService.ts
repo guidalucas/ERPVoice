@@ -1,4 +1,5 @@
 import { requestJson } from './apiClient';
+import { normalizePhone } from './phone';
 
 export type RequestLoginCodeResponse = {
   challengeId: string;
@@ -13,12 +14,10 @@ export type VerifyLoginCodeResponse = {
   phoneNumber: string;
 };
 
-const normalizePhoneNumber = (value: string) => value.replace(/\D/g, '').trim();
-
 export const requestLoginCode = async (phoneNumber: string) =>
   requestJson<RequestLoginCodeResponse>('/api/auth/request-code', {
     method: 'POST',
-    body: JSON.stringify({ phoneNumber: normalizePhoneNumber(phoneNumber) }),
+    body: JSON.stringify({ phoneNumber: normalizePhone(phoneNumber) }),
   });
 
 export const verifyLoginCode = async (payload: {
@@ -29,7 +28,7 @@ export const verifyLoginCode = async (payload: {
   requestJson<VerifyLoginCodeResponse>('/api/auth/verify-code', {
     method: 'POST',
     body: JSON.stringify({
-      phoneNumber: normalizePhoneNumber(payload.phoneNumber),
+      phoneNumber: normalizePhone(payload.phoneNumber),
       otpCode: payload.otpCode.trim(),
       challengeId: payload.challengeId,
     }),
