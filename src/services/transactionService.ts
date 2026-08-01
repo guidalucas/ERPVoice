@@ -33,7 +33,7 @@ type ProductMatchInput = {
   price?: number | null;
 };
 
-const createProduct = (name: string, index: number, metadata: Pick<Product, 'productType' | 'productModel' | 'size' | 'price'> = {}): Product => ({
+const createProduct = (name: string, index: number, metadata: Partial<Pick<Product, 'productType' | 'productModel' | 'size' | 'price'>> = {}): Product => ({
   id: `product-${slugify(name)}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,
   name: name.trim(),
   productType: metadata.productType ?? null,
@@ -119,7 +119,7 @@ const ensureProduct = (products: Product[], action: ProductMatchInput) => {
   const resolvedProduct = resolveProduct(products, action);
 
   if (resolvedProduct) {
-    if (Number.isFinite(action.price ?? 0) && action.price && action.price > 0 && (!resolvedProduct.price || resolvedProduct.price === 0)) {
+    if (typeof action.price === 'number' && action.price > 0 && (!resolvedProduct.price || resolvedProduct.price === 0)) {
       resolvedProduct.price = action.price;
     }
     return { product: resolvedProduct, created: false };
@@ -129,7 +129,7 @@ const ensureProduct = (products: Product[], action: ProductMatchInput) => {
     productType: action.productType ?? null,
     productModel: action.productModel ?? null,
     size: action.size ?? null,
-    price: action.price ?? null,
+    price: typeof action.price === 'number' ? action.price : undefined,
   });
   products.push(product);
   return { product, created: true };
