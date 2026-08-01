@@ -545,6 +545,7 @@ const ensureProduct = (products, action) => {
     productType: action.productType,
     productModel: action.productModel,
     size: action.size,
+    price: Number.isFinite(action.price) && action.price > 0 ? action.price : undefined,
   });
   products.push(product);
   return product;
