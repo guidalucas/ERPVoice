@@ -1,10 +1,13 @@
 import crypto from 'crypto';
+import { normalizePhone as normalizeCanonicalPhone } from './phone.js';
 
 const base64UrlEncode = (value) => Buffer.from(value).toString('base64url');
 
 const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf8');
 
-export const normalizeLoginPhone = (value) => String(value ?? '').replace(/\D/g, '').trim();
+export const normalizePhone = normalizeCanonicalPhone;
+
+export const normalizeLoginPhone = normalizeCanonicalPhone;
 
 export const getJwtSecret = () => process.env.AUTH_JWT_SECRET || process.env.META_VERIFY_TOKEN || 'erpvoice_dev_auth_secret';
 

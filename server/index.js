@@ -15,7 +15,7 @@ import {
   verifyAuthOtpChallenge,
   updateProductRecord,
 } from './postgresDatabase.js';
-import { extractBearerToken, issueJwt, normalizeLoginPhone, verifyJwt } from './auth.js';
+import { extractBearerToken, issueJwt, normalizePhone, verifyJwt } from './auth.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -32,6 +32,28 @@ const metaVerifyToken = process.env.META_VERIFY_TOKEN || 'erpvoice_token_secreto
 const authEnabled = true;
 
 const createEventId = () => `meta-event-${Math.random().toString(36).slice(2, 10)}`;
+
+const describeOtpSendFailure = (replyResult) => {
+  const reason = replyResult?.reason;
+
+  if (reason === 'missing_credentials_or_recipient') {
+    return 'Faltan credenciales de Meta o el destinatario no es válido.';
+  }
+
+  if (reason === 'auth_error') {
+    return 'Meta rechazó el token de acceso. Revisá META_ACCESS_TOKEN.';
+  }
+
+  if (reason === 'recipient_not_allowed') {
+    return 'Meta no permite enviarle el mensaje a ese número. Agregalo como tester o usá un número habilitado.';
+  }
+
+  if (reason === 'recipient_unreachable') {
+    return 'No se pudo resolver un formato válido del número de destino.';
+  }
+
+  return 'No se pudo enviar el código por WhatsApp.';
+};
 
 const getRequestIp = (req) => {
   const forwarded = typeof req.headers['x-forwarded-for'] === 'string' ? req.headers['x-forwarded-for'] : '';
@@ -97,7 +119,7 @@ app.get('/api/health', (_req, res) => {
 
 app.post('/api/auth/request-code', async (req, res) => {
   try {
-    const phoneNumber = normalizeLoginPhone(req.body?.phoneNumber);
+    const phoneNumber = normalizePhone(req.body?.phoneNumber);
 
     if (!phoneNumber) {
       res.status(400).json({ error: 'Ingresá un número de celular válido' });
@@ -112,7 +134,19 @@ app.post('/api/auth/request-code', async (req, res) => {
 
     if (!replyResult?.sent) {
       await revokeAuthOtpChallenge(challenge.challengeId);
-      res.status(500).json({ error: 'No se pudo enviar el código por WhatsApp' });
+      const statusByReason = {
+        missing_credentials_or_recipient: 400,
+        auth_error: 502,
+        recipient_not_allowed: 403,
+        recipient_unreachable: 502,
+      };
+
+      res.status(statusByReason[replyResult?.reason] ?? 500).json({
+        error: describeOtpSendFailure(replyResult),
+        reason: replyResult?.reason ?? 'unknown',
+        metaError: replyResult?.metaError ?? null,
+        recipientsTried: replyResult?.recipientsTried ?? [],
+      });
       return;
     }
 
@@ -129,7 +163,7 @@ app.post('/api/auth/request-code', async (req, res) => {
 
 app.post('/api/auth/verify-code', async (req, res) => {
   try {
-    const phoneNumber = normalizeLoginPhone(req.body?.phoneNumber);
+    const phoneNumber = normalizePhone(req.body?.phoneNumber);
     const otpCode = String(req.body?.otpCode ?? '').trim();
     const challengeId = typeof req.body?.challengeId === 'string' ? req.body.challengeId.trim() : null;
 
