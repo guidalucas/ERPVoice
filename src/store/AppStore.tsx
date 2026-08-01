@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useReducer, type ReactNode } from 'react';
 import type { AppState, ChatMessage, ParsedVoicePayload, Product, Client, Transaction } from '../domain/types';
 import { initialAppState } from '../domain/mockDb';
 import { applyConfirmedActions } from '../services/transactionService';
@@ -62,7 +62,7 @@ const createId = (prefix: string) => `${prefix}-${Math.random().toString(36).sli
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
 
-  const confirmPendingProposal = () => {
+  const confirmPendingProposal = useCallback(() => {
     const proposal = state.pendingProposal;
 
     if (!proposal) {
@@ -80,17 +80,45 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     }).catch(() => {
       // best-effort persistence
     });
-  };
+  }, [state.pendingProposal]);
 
-  const value: AppStoreValue = {
+  const addChatMessage = useCallback((message: ChatMessage) => {
+    dispatch({ type: 'ADD_CHAT_MESSAGE', message });
+  }, []);
+
+  const setPendingProposal = useCallback((payload: ParsedVoicePayload | null) => {
+    dispatch({ type: 'SET_PENDING_PROPOSAL', payload });
+  }, []);
+
+  const clearPendingProposal = useCallback(() => {
+    dispatch({ type: 'CLEAR_PENDING_PROPOSAL' });
+  }, []);
+
+  const applyExternalProposal = useCallback((payload: ParsedVoicePayload) => {
+    dispatch({ type: 'APPLY_EXTERNAL_PROPOSAL', payload });
+  }, []);
+
+  const hydratePersistedState = useCallback((snapshot: { products: Product[]; clients: Client[]; transactions: Transaction[] }) => {
+    dispatch({ type: 'HYDRATE_PERSISTED_STATE', snapshot });
+  }, []);
+
+  const value: AppStoreValue = useMemo(() => ({
     state,
-    addChatMessage: (message) => dispatch({ type: 'ADD_CHAT_MESSAGE', message }),
-    setPendingProposal: (payload) => dispatch({ type: 'SET_PENDING_PROPOSAL', payload }),
+    addChatMessage,
+    setPendingProposal,
     confirmPendingProposal,
-    clearPendingProposal: () => dispatch({ type: 'CLEAR_PENDING_PROPOSAL' }),
-    applyExternalProposal: (payload) => dispatch({ type: 'APPLY_EXTERNAL_PROPOSAL', payload }),
-    hydratePersistedState: (snapshot) => dispatch({ type: 'HYDRATE_PERSISTED_STATE', snapshot }),
-  };
+    clearPendingProposal,
+    applyExternalProposal,
+    hydratePersistedState,
+  }), [
+    state,
+    addChatMessage,
+    setPendingProposal,
+    confirmPendingProposal,
+    clearPendingProposal,
+    applyExternalProposal,
+    hydratePersistedState,
+  ]);
 
   return <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>;
 }

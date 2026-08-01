@@ -83,8 +83,49 @@ function IconButton({
           : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 hover:text-white'
       }`}
     >
-      {children}
+      <span className="pointer-events-none">{children}</span>
     </button>
+  );
+}
+
+function ConfirmDeleteModal({
+  productName,
+  onCancel,
+  onConfirm,
+  confirming,
+}: {
+  productName: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  confirming: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#070707] p-6 text-slate-100 shadow-2xl shadow-black/70">
+        <h4 className="text-xl font-bold text-slate-100">Eliminar producto</h4>
+        <p className="mt-3 text-sm leading-6 text-slate-300">
+          Vas a eliminar <span className="font-semibold text-white">{productName}</span>. Esta acción no se puede deshacer.
+        </p>
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 font-semibold text-slate-200 transition hover:bg-white/10"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={confirming}
+            className="inline-flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {confirming ? 'Eliminando...' : 'Eliminar'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -237,7 +278,9 @@ export function ProductsAbmPanel() {
   const [draft, setDraft] = useState<ProductDraft>(() => emptyDraft());
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [pendingDeleteProduct, setPendingDeleteProduct] = useState<ProductRow | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const editingProduct = useMemo(() => products.find((product) => product.id === editingProductId) ?? null, [products, editingProductId]);
   const isEditing = Boolean(editingProductId);
@@ -307,11 +350,25 @@ export function ProductsAbmPanel() {
 
   const handleDelete = async (productId: string) => {
     const product = products.find((item) => item.id === productId);
-    if (!product || !window.confirm(`Eliminar ${product.name}?`)) {
+    if (!product) {
       return;
     }
 
-    await deleteProductRecord(productId);
+    setPendingDeleteProduct(product);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteProduct) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await deleteProductRecord(pendingDeleteProduct.id);
+      setPendingDeleteProduct(null);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -394,6 +451,15 @@ export function ProductsAbmPanel() {
           onSubmit={handleSubmit}
           submitLabel={isEditing ? 'Guardar' : 'Crear'}
           submitting={saving}
+        />
+      )}
+
+      {pendingDeleteProduct && (
+        <ConfirmDeleteModal
+          productName={pendingDeleteProduct.name}
+          onCancel={() => setPendingDeleteProduct(null)}
+          onConfirm={() => void confirmDelete()}
+          confirming={deleting}
         />
       )}
     </article>
