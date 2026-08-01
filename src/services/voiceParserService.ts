@@ -342,47 +342,6 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
 export class VoiceParserService {
   parse(text: string): ParsedVoicePayload {
     const normalized = normalizeText(text);
-    // Try to match the example complex sentence first (backwards compatible)
-    if (
-      normalized.includes('me llegaron') &&
-      normalized.includes('camisetas de boca') &&
-      normalized.includes('le deje') &&
-      normalized.includes('gimnasio el refugio')
-    ) {
-      const quantities = normalized.match(/\b\d+\b/g)?.map(Number) ?? [];
-      const stockQty = quantities[0] ?? 10;
-      const reserveQty = quantities[1] ?? 5;
-      const basePrice = 50000;
-
-      const actions: ParsedAction[] = [
-        {
-          type: 'add_stock',
-          productName: 'Camiseta Boca',
-          qty: stockQty,
-        },
-        {
-          type: 'reserve_stock',
-          productName: 'Camiseta Boca',
-          qty: reserveQty,
-        },
-        {
-          type: 'add_debt',
-          clientName: 'Gimnasio El Refugio',
-          amount: reserveQty * basePrice,
-        },
-      ];
-
-      return buildPayload(text, actions, {
-        intent: 'mixed',
-        confidence: 0.96,
-        requiresConfirmation: true,
-        suggestedPhrases: [
-          `entraron ${stockQty} camisetas de Boca`,
-          `reservé ${reserveQty} camisetas para Gimnasio El Refugio`,
-        ],
-      });
-    }
-
     // Generic patterns: operation + cantidad + producto
     const patterns: { regex: RegExp; type: ParsedAction['type'] | 'sell' | 'payment_received' }[] = [
       { regex: /\b(?:compre|compré|compra(?:r|ste|ron)?|adquiri|adquiri)\s+(\d+)\s+(.+)$/u, type: 'add_stock' },
@@ -435,15 +394,6 @@ export class VoiceParserService {
         }
 
         break;
-      }
-    }
-
-    // Fallback: try to extract any number and mark as add_stock
-    if (!actions.length) {
-      const stockQty = extractFirstNumber(normalized);
-      if (stockQty) {
-        actions.push({ type: 'add_stock', productName: 'Camiseta Boca', qty: stockQty });
-        suggested.push(`entraron ${stockQty} camisetas`);
       }
     }
 
