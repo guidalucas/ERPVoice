@@ -417,19 +417,17 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null) =>
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
   const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
 
-  const [productsRows, clientsRows, transactionsRows] = await Promise.all([
-    queryRows(
-      'SELECT id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price FROM products WHERE owner_phone = ANY($1) ORDER BY name ASC',
-      [ownerPhoneVariants],
-      client,
-    ),
-    queryRows('SELECT id, owner_phone, name, debt FROM clients WHERE owner_phone = ANY($1) ORDER BY name ASC', [ownerPhoneVariants], client),
-    queryRows(
+  const productsRows = await queryRows(
+    'SELECT id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price FROM products WHERE owner_phone = ANY($1) ORDER BY name ASC',
+    [ownerPhoneVariants],
+    client,
+  );
+  const clientsRows = await queryRows('SELECT id, owner_phone, name, debt FROM clients WHERE owner_phone = ANY($1) ORDER BY name ASC', [ownerPhoneVariants], client);
+  const transactionsRows = await queryRows(
       'SELECT id, owner_phone, timestamp, source_text, summary, actions_json FROM transactions WHERE owner_phone = ANY($1) ORDER BY timestamp DESC',
       [ownerPhoneVariants],
       client,
-    ),
-  ]);
+    );
 
   return {
     products: productsRows.map(rowToProduct),
@@ -530,7 +528,7 @@ const createProduct = (name, index, metadata = {}) => ({
 });
 
 const ensureProduct = (products, action) => {
-  const resolvedProduct = resolveProduct(products, action.productName);
+  const resolvedProduct = resolveProduct(products, action);
 
   if (resolvedProduct) {
     return resolvedProduct;
