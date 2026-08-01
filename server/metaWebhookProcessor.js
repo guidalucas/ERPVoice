@@ -454,6 +454,7 @@ const parseLocalText = (text) => {
     return null;
   }
 
+  applyPriceFromText(actions, text);
   return buildPayload(text, actions);
 };
 
@@ -577,6 +578,9 @@ const parseVoiceTextWithModel = async (text) => {
     const inferredPrice = parsePrice(sourceText);
     const normalizedActions = actions.length ? actions : extractMultipleActionsFromText(sourceText);
     applyPriceFromText(normalizedActions, sourceText);
+    if (sourceText !== text) {
+      applyPriceFromText(normalizedActions, text);
+    }
 
     if (!normalizedActions.length) {
       return parseLocalText(text);

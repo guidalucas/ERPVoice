@@ -529,6 +529,9 @@ const parseVoiceTextWithModel = async (text) => {
     const actions = Array.isArray(parsed.actions) ? parsed.actions.map(parseAction).filter(Boolean) : [];
     const normalizedActions = actions.length ? actions : extractMultipleActionsFromText(sourceText);
     applyPriceFromText(normalizedActions, sourceText);
+    if (sourceText !== text) {
+      applyPriceFromText(normalizedActions, text);
+    }
 
     if (!normalizedActions.length) {
       return parseLocalText(text);
