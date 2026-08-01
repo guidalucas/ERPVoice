@@ -443,7 +443,7 @@ const cloneDefaultStateSnapshot = () => ({
 });
 
 const normalizeTextList = (value) =>
-  value
+  String(value ?? '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
@@ -473,6 +473,7 @@ const resolveProduct = (products, actionName) => {
       const productType = normalizeNullableString(product.productType);
       const productModel = normalizeNullableString(product.productModel);
       const productSize = normalizeNullableString(product.size);
+      const actionSize = normalizeNullableString(actionName.size);
 
       if (normalizeNullableString(actionName.productType) && productType !== normalizeNullableString(actionName.productType)) {
         continue;
@@ -482,7 +483,7 @@ const resolveProduct = (products, actionName) => {
         continue;
       }
 
-      if (normalizeNullableString(actionName.size) && productSize !== normalizeNullableString(actionName.size)) {
+      if (actionSize && productSize && productSize !== actionSize) {
         continue;
       }
     }
@@ -496,7 +497,10 @@ const resolveProduct = (products, actionName) => {
 
     const matchingTokens = actionTokens.filter((token) => productTokens.includes(token));
     const score = matchingTokens.length;
-    const specificScore = matchingTokens.length;
+    const exactSizeMatch = normalizeNullableString(actionName.size) && normalizeNullableString(product.size)
+      ? normalizeNullableString(actionName.size) === normalizeNullableString(product.size)
+      : false;
+    const specificScore = matchingTokens.length + (exactSizeMatch ? 1 : 0);
 
     if (score > bestScore || (score === bestScore && specificScore > bestSpecificScore)) {
       bestScore = score;
@@ -524,13 +528,16 @@ const createProduct = (name, index, metadata = {}) => ({
   size: metadata.size ?? null,
   stockAvailable: 0,
   stockReserved: 0,
-  price: 0,
+  price: Number.isFinite(metadata.price) && metadata.price > 0 ? metadata.price : 0,
 });
 
 const ensureProduct = (products, action) => {
   const resolvedProduct = resolveProduct(products, action);
 
   if (resolvedProduct) {
+    if (Number.isFinite(action.price) && action.price > 0 && (!resolvedProduct.price || resolvedProduct.price === 0)) {
+      resolvedProduct.price = action.price;
+    }
     return resolvedProduct;
   }
 
