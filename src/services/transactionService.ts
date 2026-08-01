@@ -20,16 +20,51 @@ const slugify = (value: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 40) || 'nuevo-producto';
 
-const createProduct = (name: string, index: number): Product => ({
+const normalizeOptionalText = (value: string | null | undefined) => {
+  const trimmed = String(value ?? '').trim();
+  return trimmed.length ? normalizeText(trimmed) : '';
+};
+
+type ProductMatchInput = {
+  productName: string;
+  productType?: string | null;
+  productModel?: string | null;
+  size?: string | null;
+};
+
+const createProduct = (name: string, index: number, metadata: Pick<Product, 'productType' | 'productModel' | 'size'> = {}): Product => ({
   id: `product-${slugify(name)}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,
   name: name.trim(),
+  productType: metadata.productType ?? null,
+  productModel: metadata.productModel ?? null,
+  size: metadata.size ?? null,
   stockAvailable: 0,
   stockReserved: 0,
   price: 0,
 });
 
-const resolveProduct = (products: Product[], actionName: string) => {
-  const actionTokens = tokenize(actionName);
+const matchesMetadata = (product: Product, action: ProductMatchInput) => {
+  const comparisons: Array<[keyof Pick<Product, 'productType' | 'productModel' | 'size'>, string | null | undefined]> = [
+    ['productType', action.productType],
+    ['productModel', action.productModel],
+    ['size', action.size],
+  ];
+
+  return comparisons.every(([key, value]) => {
+    const normalizedValue = normalizeOptionalText(value);
+
+    if (!normalizedValue) {
+      return true;
+    }
+
+    return normalizeOptionalText(product[key]) === normalizedValue;
+  });
+};
+
+const resolveProduct = (products: Product[], action: ProductMatchInput) => {
+  const actionTokens = tokenize(action.productName);
+  const normalizedActionName = normalizeOptionalText(action.productName);
+  const hasMetadata = Boolean(normalizeOptionalText(action.productType) || normalizeOptionalText(action.productModel) || normalizeOptionalText(action.size));
 
   if (!actionTokens.length) {
     return null;
@@ -39,7 +74,17 @@ const resolveProduct = (products: Product[], actionName: string) => {
   let bestScore = 0;
 
   for (const product of products) {
+    if (hasMetadata && !matchesMetadata(product, action)) {
+      continue;
+    }
+
     const productTokens = tokenize(product.name);
+    const normalizedProductName = normalizeOptionalText(product.name);
+
+    if (normalizedActionName && normalizedProductName && (normalizedProductName.includes(normalizedActionName) || normalizedActionName.includes(normalizedProductName))) {
+      return product;
+    }
+
     const score = actionTokens.filter((token) => productTokens.includes(token)).length;
 
     if (score > bestScore) {
@@ -48,23 +93,31 @@ const resolveProduct = (products: Product[], actionName: string) => {
     }
   }
 
-  return bestProduct ?? null;
+  if (hasMetadata) {
+    return bestProduct ?? null;
+  }
+
+  return bestScore >= 2 ? (bestProduct ?? null) : null;
 };
 
-const ensureProduct = (products: Product[], productName: string) => {
-  const resolvedProduct = resolveProduct(products, productName);
+const ensureProduct = (products: Product[], action: ProductMatchInput) => {
+  const resolvedProduct = resolveProduct(products, action);
 
   if (resolvedProduct) {
     return { product: resolvedProduct, created: false };
   }
 
-  const product = createProduct(productName, products.length);
+  const product = createProduct(action.productName, products.length, {
+    productType: action.productType ?? null,
+    productModel: action.productModel ?? null,
+    size: action.size ?? null,
+  });
   products.push(product);
   return { product, created: true };
 };
 
-const calculateSaleDebt = (products: Product[], sellAction: { productName: string; qty: number }) => {
-  const product = resolveProduct(products, sellAction.productName);
+const calculateSaleDebt = (products: Product[], sellAction: ProductMatchInput & { qty: number }) => {
+  const product = resolveProduct(products, sellAction);
 
   if (!product) {
     return 0;
@@ -73,12 +126,17 @@ const calculateSaleDebt = (products: Product[], sellAction: { productName: strin
   return product.price * sellAction.qty;
 };
 
-const calculateProductDebt = (products: Product[], debtAction: { productName?: string; qty?: number }) => {
+const calculateProductDebt = (products: Product[], debtAction: Partial<ProductMatchInput> & { qty?: number }) => {
   if (!debtAction.productName || typeof debtAction.qty !== 'number' || debtAction.qty <= 0) {
     return null;
   }
 
-  const product = resolveProduct(products, debtAction.productName);
+  const product = resolveProduct(products, {
+    productName: debtAction.productName,
+    productType: debtAction.productType,
+    productModel: debtAction.productModel,
+    size: debtAction.size,
+  });
 
   if (!product) {
     return null;
@@ -117,12 +175,12 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
 
   actions.forEach((action, index) => {
     if (action.type === 'add_stock') {
-      const { product } = ensureProduct(nextProducts, action.productName);
+      const { product } = ensureProduct(nextProducts, action);
       product.stockAvailable += action.qty;
     }
 
     if (action.type === 'reserve_stock') {
-      const { product } = ensureProduct(nextProducts, action.productName);
+      const { product } = ensureProduct(nextProducts, action);
       const reservationQty = Math.min(product.stockAvailable, action.qty);
       product.stockAvailable -= reservationQty;
       product.stockReserved += reservationQty;
@@ -130,7 +188,7 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
 
     if ((action as any).type === 'sell' || (action as any).type === 'venta') {
       const sellAction = action as { type: string; productName: string; qty: number };
-      const { product } = ensureProduct(nextProducts, sellAction.productName);
+      const { product } = ensureProduct(nextProducts, sellAction);
       const sellQty = Math.min(product.stockAvailable, sellAction.qty);
       product.stockAvailable -= sellQty;
     }

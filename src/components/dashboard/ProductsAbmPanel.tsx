@@ -378,6 +378,11 @@ export function ProductsAbmPanel() {
             ))}
           </tbody>
         </table>
+        {products.length === 0 && (
+          <div className="px-3 py-6 text-sm text-slate-400">
+            No hay productos cargados todavía.
+          </div>
+        )}
       </div>
 
       {isFormOpen && (
