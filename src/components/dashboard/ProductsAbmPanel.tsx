@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useInventory } from '../../hooks/useInventory';
 
 type ProductDraft = {
@@ -21,6 +21,14 @@ type ProductRow = {
   stockAvailable: number;
   stockReserved: number;
   price: number;
+};
+
+type ProductGroup = {
+  key: string;
+  displayName: string;
+  productType?: string | null;
+  productModel?: string | null;
+  products: ProductRow[];
 };
 
 const emptyDraft = (): ProductDraft => ({
@@ -281,8 +289,41 @@ export function ProductsAbmPanel() {
   const [pendingDeleteProduct, setPendingDeleteProduct] = useState<ProductRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   const editingProduct = useMemo(() => products.find((product) => product.id === editingProductId) ?? null, [products, editingProductId]);
+
+  const groupedProducts = useMemo(() => {
+    const groups: Record<string, ProductGroup> = {};
+
+    for (const product of products) {
+      const key = `${product.productType ?? ''}||${product.productModel ?? ''}`.trim() || product.name;
+      const displayName = product.productType || product.productModel ? [product.productType, product.productModel].filter(Boolean).join(' ') : product.name;
+
+      groups[key] = groups[key] ?? {
+        key,
+        displayName,
+        productType: product.productType,
+        productModel: product.productModel,
+        products: [],
+      };
+
+      groups[key].products.push(product);
+    }
+
+    return Object.values(groups).map((group) => ({
+      ...group,
+      products: group.products.sort((a, b) => String(a.size ?? '').localeCompare(String(b.size ?? ''), undefined, { numeric: true, sensitivity: 'base' })),
+    }));
+  }, [products]);
+
+  const toggleGroupExpanded = (groupKey: string) => {
+    setExpandedGroups((current) => ({
+      ...current,
+      [groupKey]: !current[groupKey],
+    }));
+  };
+
   const isEditing = Boolean(editingProductId);
 
   useEffect(() => {
@@ -395,7 +436,7 @@ export function ProductsAbmPanel() {
               <th className="border-b border-white/10 px-3 py-4">Nombre</th>
               <th className="border-b border-white/10 px-3 py-4">Tipo</th>
               <th className="border-b border-white/10 px-3 py-4">Modelo</th>
-              <th className="border-b border-white/10 px-3 py-4">Talle</th>
+              <th className="border-b border-white/10 px-3 py-4">Talles</th>
               <th className="border-b border-white/10 px-3 py-4 text-center">Disponible</th>
               <th className="border-b border-white/10 px-3 py-4 text-center">Reservado</th>
               <th className="border-b border-white/10 px-3 py-4 text-center">Precio</th>
@@ -403,36 +444,81 @@ export function ProductsAbmPanel() {
             </tr>
           </thead>
           <tbody>
-            {products.map((product) => (
-              <tr key={product.id} className="text-[15px] text-slate-100">
-                <td className="border-b border-white/10 px-3 py-4 font-semibold">{product.name}</td>
-                <td className="border-b border-white/10 px-3 py-4 text-slate-200">{product.productType ?? '-'}</td>
-                <td className="border-b border-white/10 px-3 py-4 text-slate-200">{product.productModel ?? '-'}</td>
-                <td className="border-b border-white/10 px-3 py-4 text-slate-200">{product.size ?? '-'}</td>
-                <td className="border-b border-white/10 px-3 py-4 text-center font-semibold">{product.stockAvailable}</td>
-                <td className="border-b border-white/10 px-3 py-4 text-center font-semibold">{product.stockReserved}</td>
-                <td className="border-b border-white/10 px-3 py-4 text-center font-mono font-semibold">{formatCurrency(product.price)}</td>
-                <td className="border-b border-white/10 px-3 py-4">
-                  <div className="flex justify-end gap-3">
-                    <IconButton label={`Editar ${product.name}`} onClick={() => openEditForm(product.id)}>
-                      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.9]">
-                        <path d="M4 20h4l10.5-10.5a1.7 1.7 0 0 0 0-2.4l-1.6-1.6a1.7 1.7 0 0 0-2.4 0L4 16v4Z" />
-                        <path d="m13.5 6.5 4 4" />
-                      </svg>
-                    </IconButton>
-                    <IconButton label={`Eliminar ${product.name}`} danger onClick={() => void handleDelete(product.id)}>
-                      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.9]">
-                        <path d="M4 7h16" />
-                        <path d="M9 7V5h6v2" />
-                        <path d="M6 7l1 13h10l1-13" />
-                        <path d="M10 11v5" />
-                        <path d="M14 11v5" />
-                      </svg>
-                    </IconButton>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {groupedProducts.map((group) => {
+              const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
+              const totalReserved = group.products.reduce((sum, product) => sum + product.stockReserved, 0);
+              const samePrice = group.products.every((product) => product.price === group.products[0].price);
+              const pricesLabel = samePrice ? formatCurrency(group.products[0].price) : 'Varía';
+              const sizesLabel = group.products.map((product) => product.size ?? '-').join(', ');
+              const isExpanded = Boolean(expandedGroups[group.key]);
+
+              return (
+                <Fragment key={group.key}>
+                  <tr className="text-[15px] text-slate-100">
+                    <td className="border-b border-white/10 px-3 py-4 font-semibold">{group.displayName}</td>
+                    <td className="border-b border-white/10 px-3 py-4 text-slate-200">{group.productType ?? '-'}</td>
+                    <td className="border-b border-white/10 px-3 py-4 text-slate-200">{group.productModel ?? '-'}</td>
+                    <td className="border-b border-white/10 px-3 py-4 text-slate-200">{sizesLabel}</td>
+                    <td className="border-b border-white/10 px-3 py-4 text-center font-semibold">{totalAvailable}</td>
+                    <td className="border-b border-white/10 px-3 py-4 text-center font-semibold">{totalReserved}</td>
+                    <td className="border-b border-white/10 px-3 py-4 text-center font-mono font-semibold">{pricesLabel}</td>
+                    <td className="border-b border-white/10 px-3 py-4">
+                      <div className="flex justify-end gap-3">
+                        {group.products.length > 1 ? (
+                          <IconButton
+                            label={`${isExpanded ? 'Ocultar' : 'Mostrar'} talles de ${group.displayName}`}
+                            onClick={() => toggleGroupExpanded(group.key)}
+                          >
+                            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.9]">
+                              {isExpanded ? <path d="M6 15h12" /> : <path d="M6 9h12" />}
+                              <path d="M12 8l4 4-4 4" />
+                            </svg>
+                          </IconButton>
+                        ) : (
+                          <IconButton label={`Editar ${group.displayName}`} onClick={() => openEditForm(group.products[0].id)}>
+                            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.9]">
+                              <path d="M4 20h4l10.5-10.5a1.7 1.7 0 0 0 0-2.4l-1.6-1.6a1.7 1.7 0 0 0-2.4 0L4 16v4Z" />
+                              <path d="m13.5 6.5 4 4" />
+                            </svg>
+                          </IconButton>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  {isExpanded &&
+                    group.products.map((product) => (
+                      <tr key={product.id} className="bg-slate-950/30 text-[14px] text-slate-200">
+                        <td className="border-b border-white/10 px-3 py-3 pl-10 font-medium">{product.name}</td>
+                        <td className="border-b border-white/10 px-3 py-3 text-slate-300">{product.productType ?? '-'}</td>
+                        <td className="border-b border-white/10 px-3 py-3 text-slate-300">{product.productModel ?? '-'}</td>
+                        <td className="border-b border-white/10 px-3 py-3 text-slate-300">{product.size ?? '-'}</td>
+                        <td className="border-b border-white/10 px-3 py-3 text-center font-semibold">{product.stockAvailable}</td>
+                        <td className="border-b border-white/10 px-3 py-3 text-center font-semibold">{product.stockReserved}</td>
+                        <td className="border-b border-white/10 px-3 py-3 text-center font-mono font-semibold">{formatCurrency(product.price)}</td>
+                        <td className="border-b border-white/10 px-3 py-3">
+                          <div className="flex justify-end gap-3">
+                            <IconButton label={`Editar ${product.name}`} onClick={() => openEditForm(product.id)}>
+                              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.9]">
+                                <path d="M4 20h4l10.5-10.5a1.7 1.7 0 0 0 0-2.4l-1.6-1.6a1.7 1.7 0 0 0-2.4 0L4 16v4Z" />
+                                <path d="m13.5 6.5 4 4" />
+                              </svg>
+                            </IconButton>
+                            <IconButton label={`Eliminar ${product.name}`} danger onClick={() => void handleDelete(product.id)}>
+                              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.9]">
+                                <path d="M4 7h16" />
+                                <path d="M9 7V5h6v2" />
+                                <path d="M6 7l1 13h10l1-13" />
+                                <path d="M10 11v5" />
+                                <path d="M14 11v5" />
+                              </svg>
+                            </IconButton>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
         {products.length === 0 && (
