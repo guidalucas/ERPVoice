@@ -3,7 +3,7 @@ import type { AppState, ParsedActionUnion as ParsedAction, Product, Transaction 
 const createId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 
 const normalizeText = (value: string) =>
-  String(value ?? '')
+  value
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '');
@@ -30,10 +30,9 @@ type ProductMatchInput = {
   productType?: string | null;
   productModel?: string | null;
   size?: string | null;
-  price?: number | null;
 };
 
-const createProduct = (name: string, index: number, metadata: Pick<Product, 'productType' | 'productModel' | 'size' | 'price'> = {}): Product => ({
+const createProduct = (name: string, index: number, metadata: Pick<Product, 'productType' | 'productModel' | 'size'> = {}): Product => ({
   id: `product-${slugify(name)}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,
   name: name.trim(),
   productType: metadata.productType ?? null,
@@ -41,28 +40,25 @@ const createProduct = (name: string, index: number, metadata: Pick<Product, 'pro
   size: metadata.size ?? null,
   stockAvailable: 0,
   stockReserved: 0,
-  price: Number.isFinite(metadata.price ?? 0) ? metadata.price ?? 0 : 0,
+  price: 0,
 });
 
 const matchesMetadata = (product: Product, action: ProductMatchInput) => {
-  const normalizedActionType = normalizeOptionalText(action.productType);
-  const normalizedActionModel = normalizeOptionalText(action.productModel);
-  const normalizedActionSize = normalizeOptionalText(action.size);
-  const normalizedProductSize = normalizeOptionalText(product.size);
+  const comparisons: Array<[keyof Pick<Product, 'productType' | 'productModel' | 'size'>, string | null | undefined]> = [
+    ['productType', action.productType],
+    ['productModel', action.productModel],
+    ['size', action.size],
+  ];
 
-  if (normalizedActionType && normalizeOptionalText(product.productType) !== normalizedActionType) {
-    return false;
-  }
+  return comparisons.every(([key, value]) => {
+    const normalizedValue = normalizeOptionalText(value);
 
-  if (normalizedActionModel && normalizeOptionalText(product.productModel) !== normalizedActionModel) {
-    return false;
-  }
+    if (!normalizedValue) {
+      return true;
+    }
 
-  if (normalizedActionSize && normalizedProductSize && normalizedProductSize !== normalizedActionSize) {
-    return false;
-  }
-
-  return true;
+    return normalizeOptionalText(product[key]) === normalizedValue;
+  });
 };
 
 const resolveProduct = (products: Product[], action: ProductMatchInput) => {
@@ -92,10 +88,7 @@ const resolveProduct = (products: Product[], action: ProductMatchInput) => {
 
     const matchingTokens = actionTokens.filter((token) => productTokens.includes(token));
     const score = matchingTokens.length;
-    const sizesMatch = normalizeOptionalText(action.size) && normalizeOptionalText(product.size)
-      ? normalizeOptionalText(action.size) === normalizeOptionalText(product.size)
-      : false;
-    const specificScore = matchingTokens.filter((token) => !['camiseta', 'titular', 'suplente', 'talle', 'con', 'de', 'del', 'los', 'las', 'por', 'para', 's', 'm', 'l', 'xl', 'xxl'].includes(token)).length + (sizesMatch ? 1 : 0);
+    const specificScore = matchingTokens.filter((token) => !['camiseta', 'titular', 'suplente', 'talle', 'con', 'de', 'del', 'los', 'las', 'por', 'para', 's', 'm', 'l', 'xl', 'xxl'].includes(token)).length;
 
     if (score > bestScore || (score === bestScore && specificScore > bestSpecificScore)) {
       bestScore = score;
@@ -119,9 +112,6 @@ const ensureProduct = (products: Product[], action: ProductMatchInput) => {
   const resolvedProduct = resolveProduct(products, action);
 
   if (resolvedProduct) {
-    if (Number.isFinite(action.price ?? 0) && action.price && action.price > 0 && (!resolvedProduct.price || resolvedProduct.price === 0)) {
-      resolvedProduct.price = action.price;
-    }
     return { product: resolvedProduct, created: false };
   }
 
@@ -129,7 +119,6 @@ const ensureProduct = (products: Product[], action: ProductMatchInput) => {
     productType: action.productType ?? null,
     productModel: action.productModel ?? null,
     size: action.size ?? null,
-    price: action.price ?? null,
   });
   products.push(product);
   return { product, created: true };
