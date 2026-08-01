@@ -72,6 +72,7 @@ const resolveProduct = (products: Product[], action: ProductMatchInput) => {
 
   let bestProduct: Product | undefined;
   let bestScore = 0;
+  let bestSpecificScore = 0;
 
   for (const product of products) {
     if (hasMetadata && !matchesMetadata(product, action)) {
@@ -85,10 +86,13 @@ const resolveProduct = (products: Product[], action: ProductMatchInput) => {
       return product;
     }
 
-    const score = actionTokens.filter((token) => productTokens.includes(token)).length;
+    const matchingTokens = actionTokens.filter((token) => productTokens.includes(token));
+    const score = matchingTokens.length;
+    const specificScore = matchingTokens.filter((token) => !['camiseta', 'titular', 'suplente', 'talle', 'con', 'de', 'del', 'los', 'las', 'por', 'para', 's', 'm', 'l', 'xl', 'xxl'].includes(token)).length;
 
-    if (score > bestScore) {
+    if (score > bestScore || (score === bestScore && specificScore > bestSpecificScore)) {
       bestScore = score;
+      bestSpecificScore = specificScore;
       bestProduct = product;
     }
   }
@@ -97,7 +101,11 @@ const resolveProduct = (products: Product[], action: ProductMatchInput) => {
     return bestProduct ?? null;
   }
 
-  return bestScore >= 2 ? (bestProduct ?? null) : null;
+  if (bestScore < 2 || bestSpecificScore < 1) {
+    return null;
+  }
+
+  return bestProduct ?? null;
 };
 
 const ensureProduct = (products: Product[], action: ProductMatchInput) => {
