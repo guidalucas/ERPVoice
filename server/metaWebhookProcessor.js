@@ -16,9 +16,9 @@ Convertí la frase del usuario en un JSON válido con esta estructura exacta:
   "confidence": number,
   "requiresConfirmation": boolean,
   "actions": [
-    { "type": "add_stock", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number },
+    { "type": "add_stock", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number, "price"?: number },
     { "type": "reserve_stock", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number, "clientName"?: string },
-    { "type": "sell", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number },
+    { "type": "sell", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number, "price"?: number },
     { "type": "add_debt", "clientName": string, "amount": number, "productType"?: string, "productModel"?: string, "size"?: string, "productName"?: string, "qty"?: number }
     { "type": "payment_received", "clientName": string, "amount": number }
   ],
@@ -36,6 +36,7 @@ Reglas:
 - Si el texto indica que un cliente te pagó dinero, usá payment_received y no add_debt.
 - Si el texto dice que un cliente te tiene que pagar por productos o que todavía no te los pagó, usá sell y también add_debt con clientName, productName, qty y amount 0 si todavía no podés calcularlo.
 - Si ya tenés productName y qty, no pidas precio unitario: devolvé la venta y dejá amount en 0 para que el ERP lo calcule.
+- Si la frase menciona precio unitario, completá price en add_stock o sell con ese valor numérico.
 - Si la frase dice "para X" en una reserva, separá X como clientName y dejá solo el producto en productName.
 - Si la frase incluye prenda, modelo y talle, separá productType, productModel y size. Ejemplo: "3 camisetas de boca titular, talle M" -> productType: "Camiseta", productModel: "Boca Titular", size: "M", productName: "Camiseta Boca Titular M".
 - Si una frase tiene dos movimientos, devolvé dos objetos en actions.
@@ -526,13 +527,20 @@ const parseVoiceTextWithModel = async (text) => {
     const parsed = JSON.parse(stripCodeFences(content));
     const sourceText = typeof parsed.sourceText === 'string' ? parsed.sourceText : text;
     const actions = Array.isArray(parsed.actions) ? parsed.actions.map(parseAction).filter(Boolean) : [];
+    const inferredPrice = parsePrice(sourceText);
     const normalizedActions = actions.length ? actions : extractMultipleActionsFromText(sourceText);
+    const normalizedActionsWithFallbackPrice = normalizedActions.map((action) => {
+      if ((action.type === 'add_stock' || action.type === 'sell') && action.price === undefined && Number.isFinite(inferredPrice) && inferredPrice > 0) {
+        return { ...action, price: inferredPrice };
+      }
+      return action;
+    });
 
-    if (!normalizedActions.length) {
+    if (!normalizedActionsWithFallbackPrice.length) {
       return parseLocalText(text);
     }
 
-    return buildPayload(sourceText, normalizedActions, {
+    return buildPayload(sourceText, normalizedActionsWithFallbackPrice, {
       intent: typeof parsed.intent === 'string' ? parsed.intent : undefined,
       confidence: typeof parsed.confidence === 'number' ? parsed.confidence : undefined,
       requiresConfirmation: typeof parsed.requiresConfirmation === 'boolean' ? parsed.requiresConfirmation : undefined,
