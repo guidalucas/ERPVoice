@@ -91,8 +91,8 @@ function IconButton({
       onClick={onClick}
       className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition ${
         danger
-          ? 'border-rose-500/20 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 hover:text-rose-200'
-          : 'border-white/10 bg-white/5 text-slate-200 hover:bg-white/10 hover:text-white'
+          ? 'border-rose-500/20 bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 hover:text-rose-700 dark:text-rose-300 dark:hover:text-rose-200'
+          : 'border-[color:var(--border)] bg-[color:var(--overlay-soft)] text-slate-800 hover:bg-slate-900/5 hover:text-slate-900 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white'
       }`}
     >
       <span className="pointer-events-none">{children}</span>
@@ -113,10 +113,10 @@ function ConfirmDeleteModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#070707] p-6 text-slate-100 shadow-2xl shadow-black/70">
-        <h4 className="text-xl font-bold text-slate-100">Eliminar producto</h4>
-        <p className="mt-3 text-sm leading-6 text-slate-300">
-          Vas a eliminar <span className="font-semibold text-white">{productName}</span>. Esta acción no se puede deshacer.
+      <div className="w-full max-w-md rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-slate-900 dark:text-slate-100 shadow-2xl shadow-black/70">
+        <h4 className="text-xl font-bold text-slate-900 dark:text-slate-100">Eliminar producto</h4>
+        <p className="mt-3 text-sm leading-6 text-slate-700 dark:text-slate-300">
+          Vas a eliminar <span className="font-semibold text-slate-900 dark:text-white">{productName}</span>. Esta acción no se puede deshacer.
         </p>
         <div className="mt-6 flex items-center justify-end gap-3">
           <button type="button" onClick={onCancel} className="erp-button-secondary">
@@ -150,40 +150,40 @@ function ProductFormModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-3xl rounded-2xl border border-white/10 bg-[#070707] p-6 text-slate-100 shadow-2xl shadow-black/70">
+      <div className="w-full max-w-3xl rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-slate-900 dark:text-slate-100 shadow-2xl shadow-black/70">
         <div className="flex items-start justify-between gap-3">
-          <h4 className="text-[1.55rem] font-bold leading-none text-slate-100">{title}</h4>
+          <h4 className="text-[1.55rem] font-bold leading-none text-slate-900 dark:text-slate-100">{title}</h4>
           <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" onClick={onClose}>
             ×
           </button>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
             Tipo de Prenda
             <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.productType} onChange={(event) => onDraftChange({ ...draft, productType: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
             Modelo
             <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.productModel} onChange={(event) => onDraftChange({ ...draft, productModel: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
             Talle
             <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.size} onChange={(event) => onDraftChange({ ...draft, size: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
             Precio
             <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.price} onChange={(event) => onDraftChange({ ...draft, price: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
             Stock Disponible
             <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.stockAvailable} onChange={(event) => onDraftChange({ ...draft, stockAvailable: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
             Stock Reservado
             <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.stockReserved} onChange={(event) => onDraftChange({ ...draft, stockReserved: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-200 sm:col-span-2 lg:col-span-3">
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200 sm:col-span-2 lg:col-span-3">
             Nombre (opcional)
             <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} />
           </label>
@@ -244,7 +244,7 @@ function InlineNumber({
   }
 
   return (
-    <button type="button" className="font-semibold text-emerald-300 underline-offset-2 hover:underline" onClick={onStart}>
+    <button type="button" className="font-semibold text-emerald-700 dark:text-emerald-300 underline-offset-2 hover:underline" onClick={onStart}>
       {formatDisplay ? formatDisplay(value) : value}
     </button>
   );
@@ -411,36 +411,36 @@ export function ProductsAbmPanel() {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-3">
-        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[#0c1426] p-5 shadow-lg shadow-sky-950/20">
-          <p className="text-[15px] font-medium text-slate-400">Stock Disponible</p>
+        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[color:var(--overlay-soft)] p-5 shadow-lg shadow-sky-950/20">
+          <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">Stock Disponible</p>
           <div className="mt-10">
-            <p className="font-display text-[2rem] font-bold tracking-tight text-sky-400">{stockSummary.totalAvailable}</p>
-            <p className="text-sm text-slate-400">unidades listas para venta</p>
+            <p className="font-display text-[2rem] font-bold tracking-tight text-sky-600 dark:text-sky-400">{stockSummary.totalAvailable}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">unidades listas para venta</p>
           </div>
         </article>
 
-        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[#0c1426] p-5 shadow-lg shadow-sky-950/20">
-          <p className="text-[15px] font-medium text-slate-400">Stock Reservado</p>
+        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[color:var(--overlay-soft)] p-5 shadow-lg shadow-sky-950/20">
+          <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">Stock Reservado</p>
           <div className="mt-10">
-            <p className="font-display text-[2rem] font-bold tracking-tight text-cyan-400">{stockSummary.totalReserved}</p>
-            <p className="text-sm text-slate-400">unidades apartadas</p>
+            <p className="font-display text-[2rem] font-bold tracking-tight text-cyan-600 dark:text-cyan-400">{stockSummary.totalReserved}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">unidades apartadas</p>
           </div>
         </article>
 
-        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[#0c1426] p-5 shadow-lg shadow-sky-950/20">
-          <p className="text-[15px] font-medium text-slate-400">Valor Total</p>
+        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[color:var(--overlay-soft)] p-5 shadow-lg shadow-sky-950/20">
+          <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">Valor Total</p>
           <div className="mt-10">
-            <p className="font-display text-[2rem] font-bold tracking-tight text-slate-100">{formatCurrency(stockSummary.totalValue)}</p>
-            <p className="text-sm text-slate-400">inventario valorizado</p>
+            <p className="font-display text-[2rem] font-bold tracking-tight text-slate-900 dark:text-slate-100">{formatCurrency(stockSummary.totalValue)}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">inventario valorizado</p>
           </div>
         </article>
       </div>
 
       <article className="erp-panel">
-        <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
+        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] pb-4">
           <div>
-            <h3 className="font-display text-xl font-bold text-slate-100">Productos</h3>
-            <p className="mt-1 text-sm text-slate-400">Agrupados por modelo. Click en stock o precio para editar inline.</p>
+            <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Productos</h3>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Agrupados por modelo. Click en stock o precio para editar inline.</p>
           </div>
           <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2">
             <span aria-hidden>+</span>
@@ -449,7 +449,7 @@ export function ProductsAbmPanel() {
         </div>
 
         <div className="mt-4">
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-300">
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300">
             Buscar modelo
             <input
               className="erp-input"
@@ -470,24 +470,24 @@ export function ProductsAbmPanel() {
             const sizeCount = group.products.length;
 
             return (
-              <div key={group.key} className="rounded-2xl border border-white/10 bg-white/[0.03]">
+              <div key={group.key} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)]">
                 <button
                   type="button"
                   className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left"
                   onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !current[group.key] }))}
                 >
                   <div>
-                    <p className="font-display text-lg font-bold text-white">{group.displayName}</p>
-                    <p className="mt-1 text-sm text-slate-400">
+                    <p className="font-display text-lg font-bold text-slate-900 dark:text-white">{group.displayName}</p>
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                       {sizeCount} talle{sizeCount === 1 ? '' : 's'} — {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
                       {samePrice && group.products[0] ? ` · ${formatCurrency(group.products[0].price)}` : ''}
                     </p>
                   </div>
-                  <span className="text-xs font-semibold text-emerald-300">{isExpanded ? 'Ocultar talles' : 'Ver talles'}</span>
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{isExpanded ? 'Ocultar talles' : 'Ver talles'}</span>
                 </button>
 
                 {isExpanded && (
-                  <div className="space-y-3 border-t border-white/10 px-4 py-3">
+                  <div className="space-y-3 border-t border-[color:var(--border)] px-4 py-3">
                     <div className="flex flex-wrap gap-2">
                       {group.products.map((product) => {
                         const isEditingStock = inlineEdit?.productId === product.id && inlineEdit.field === 'stockAvailable';
@@ -499,7 +499,7 @@ export function ProductsAbmPanel() {
                             key={product.id}
                             className={`stock-chip ${low ? 'border-amber-400/30 bg-amber-400/10' : ''}`}
                           >
-                            <span className="font-semibold text-slate-200">{product.size ?? '-'}:</span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">{product.size ?? '-'}:</span>
                             <InlineNumber
                               value={product.stockAvailable}
                               editing={Boolean(isEditingStock)}
@@ -537,9 +537,9 @@ export function ProductsAbmPanel() {
             );
           })}
 
-          {products.length === 0 && <div className="px-1 py-6 text-sm text-slate-400">No hay productos cargados todavía.</div>}
+          {products.length === 0 && <div className="px-1 py-6 text-sm text-slate-600 dark:text-slate-400">No hay productos cargados todavía.</div>}
           {products.length > 0 && filteredGroups.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-8 text-center text-sm text-slate-400">
+            <div className="rounded-2xl border border-dashed border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-8 text-center text-sm text-slate-600 dark:text-slate-400">
               No se encontraron productos para &apos;{searchQuery.trim()}&apos;
             </div>
           )}

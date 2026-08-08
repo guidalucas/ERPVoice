@@ -29,31 +29,30 @@ function SummaryCard({ title, value, subtitle, icon, accentClassName, onClick }:
   const content = (
     <div className="flex h-full flex-col justify-between gap-4">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[15px] font-medium text-slate-400">{title}</p>
-        <div className={`flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 ${accentClassName ?? ''}`}>
+        <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">{title}</p>
+        <div
+          className={`flex h-9 w-9 items-center justify-center rounded-xl border text-slate-600 dark:text-slate-300 ${accentClassName ?? ''}`}
+          style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
+        >
           {icon}
         </div>
       </div>
       <div className="space-y-1">
-        <p className={`font-display text-[2rem] font-bold tracking-tight ${accentClassName ?? 'text-white'}`}>{value}</p>
-        <p className="text-sm text-slate-400">{subtitle}</p>
+        <p className={`font-display text-[2rem] font-bold tracking-tight ${accentClassName ?? 'text-slate-900 dark:text-white'}`}>{value}</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">{subtitle}</p>
       </div>
     </div>
   );
 
   if (onClick) {
     return (
-      <button
-        type="button"
-        onClick={onClick}
-        className="erp-card min-h-[158px] w-full p-5 text-left transition hover:border-white/20 hover:bg-white/[0.065]"
-      >
+      <button type="button" onClick={onClick} className="erp-card min-h-[158px] w-full p-5 text-left transition hover:border-emerald-500/30">
         {content}
       </button>
     );
   }
 
-  return <article className="erp-card min-h-[158px] p-5 transition hover:border-white/20 hover:bg-white/[0.065]">{content}</article>;
+  return <article className="erp-card min-h-[158px] p-5 transition hover:border-emerald-500/30">{content}</article>;
 }
 
 function InventoryIcon() {
@@ -138,11 +137,23 @@ const resolveGroupKind = (items: Transaction[]): ActivityKind => {
 };
 
 const kindMeta: Record<ActivityKind, { tag: string; label: string; className: string }> = {
-  ingreso: { tag: '➕', label: 'Ingreso', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' },
-  venta: { tag: '➖', label: 'Venta', className: 'border-rose-500/30 bg-rose-500/10 text-rose-200' },
-  pedido: { tag: '📋', label: 'Pedido', className: 'border-sky-500/30 bg-sky-500/10 text-sky-200' },
-  mixto: { tag: '•', label: 'Movimiento', className: 'border-white/15 bg-white/5 text-slate-300' },
+  ingreso: { tag: '+', label: 'Ingreso', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' },
+  venta: { tag: '−', label: 'Venta', className: 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-200' },
+  pedido: { tag: 'P', label: 'Pedido', className: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-200' },
+  mixto: { tag: '•', label: 'Movimiento', className: 'border-[color:var(--border)] bg-[color:var(--overlay-soft)] text-slate-700 dark:text-slate-300' },
 };
+
+type ActivityFilter = 'all' | 'ingresos' | 'ventas' | 'pedidos' | 'voz';
+
+const ACTIVITY_FILTERS: { id: ActivityFilter; label: string }[] = [
+  { id: 'all', label: 'Todos' },
+  { id: 'ingresos', label: 'Ingresos' },
+  { id: 'ventas', label: 'Ventas' },
+  { id: 'pedidos', label: 'Pedidos' },
+  { id: 'voz', label: 'Voz' },
+];
+
+const PAGE_SIZE = 8;
 
 const groupTransactions = (transactions: Transaction[]): ActivityGroup[] => {
   const groups: ActivityGroup[] = [];
@@ -155,7 +166,6 @@ const groupTransactions = (transactions: Transaction[]): ActivityGroup[] => {
       last &&
       last.sourceText === transaction.sourceText &&
       Math.abs(new Date(last.timestamp).getTime() - ts) <= 5000 &&
-      // Agrupar por sesión solo cargas de ingreso (mismo criterio que ya existía).
       last.kind === 'ingreso' &&
       kind === 'ingreso';
 
@@ -176,60 +186,131 @@ const groupTransactions = (transactions: Transaction[]): ActivityGroup[] => {
   return groups;
 };
 
-function ActivityFeed({ transactions }: { transactions: Transaction[] }) {
-  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
-  const groups = useMemo(() => groupTransactions(transactions), [transactions]);
+const matchesActivityFilter = (transaction: Transaction, filter: ActivityFilter): boolean => {
+  if (filter === 'all') {
+    return true;
+  }
 
-  if (groups.length === 0) {
+  const actionTypes = transaction.actions.map((action) => action.type);
+
+  if (filter === 'ingresos') {
+    return actionTypes.includes('add_stock');
+  }
+
+  if (filter === 'ventas') {
+    return actionTypes.includes('sell');
+  }
+
+  if (filter === 'pedidos') {
+    return actionTypes.includes('client_order') || actionTypes.includes('reserve_stock');
+  }
+
+  if (filter === 'voz') {
+    return Boolean(transaction.sourceText?.trim());
+  }
+
+  return true;
+};
+
+function ActivityFeed({ transactions, showFilters = true }: { transactions: Transaction[]; showFilters?: boolean }) {
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [filter, setFilter] = useState<ActivityFilter>('all');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const filteredTransactions = useMemo(
+    () => transactions.filter((transaction) => matchesActivityFilter(transaction, filter)),
+    [transactions, filter],
+  );
+
+  const groups = useMemo(() => groupTransactions(filteredTransactions), [filteredTransactions]);
+  const visibleGroups = groups.slice(0, visibleCount);
+  const hasMore = groups.length > visibleCount;
+
+  if (transactions.length === 0) {
     return <EmptyState title="Sin actividad" description="Las cargas por voz, ventas y pedidos aparecen acá." />;
   }
 
   return (
     <div className="space-y-3">
-      {groups.map((group) => {
-        const isExpanded = Boolean(expandedIds[group.id]);
-        const meta = kindMeta[group.kind];
-        const title =
-          group.items.length > 1 && group.kind === 'ingreso'
-            ? `Carga por voz — ${group.items.length} items`
-            : group.items[0]?.summary ?? group.sourceText;
-
-        return (
-          <div key={group.id} className="rounded-2xl border border-white/10 bg-white/[0.03]">
+      {showFilters && (
+        <div className="flex flex-wrap gap-2">
+          {ACTIVITY_FILTERS.map((item) => (
             <button
+              key={item.id}
               type="button"
-              className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
-              onClick={() => setExpandedIds((current) => ({ ...current, [group.id]: !current[group.id] }))}
+              className="activity-filter-chip"
+              aria-pressed={filter === item.id}
+              onClick={() => {
+                setFilter(item.id);
+                setVisibleCount(PAGE_SIZE);
+              }}
             >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.className}`}>
-                    <span aria-hidden="true">{meta.tag}</span>
-                    {meta.label}
-                  </span>
-                  <p className="text-sm font-semibold text-slate-100">{title}</p>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">{new Date(group.timestamp).toLocaleString('es-AR')}</p>
-                {group.sourceText && (
-                  <p className="mt-1 line-clamp-1 text-xs text-slate-400">“{group.sourceText}”</p>
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {groups.length === 0 ? (
+        <EmptyState title="Sin resultados" description="No hay actividad para este filtro." />
+      ) : (
+        <>
+          {visibleGroups.map((group) => {
+            const isExpanded = Boolean(expandedIds[group.id]);
+            const meta = kindMeta[group.kind];
+            const title =
+              group.items.length > 1 && group.kind === 'ingreso'
+                ? `Carga por voz — ${group.items.length} items`
+                : group.items[0]?.summary ?? group.sourceText;
+
+            return (
+              <div key={group.id} className="rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
+                <button
+                  type="button"
+                  className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
+                  onClick={() => setExpandedIds((current) => ({ ...current, [group.id]: !current[group.id] }))}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.className}`}>
+                        <span aria-hidden="true">{meta.tag}</span>
+                        {meta.label}
+                      </span>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</p>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{new Date(group.timestamp).toLocaleString('es-AR')}</p>
+                    {group.sourceText && (
+                      <p className="mt-1.5 line-clamp-2 text-sm text-slate-600 dark:text-slate-300">“{group.sourceText}”</p>
+                    )}
+                  </div>
+                  {group.items.length > 1 && (
+                    <span className="shrink-0 text-xs font-semibold text-emerald-700 dark:text-emerald-300">{isExpanded ? 'Ocultar' : 'Ver'}</span>
+                  )}
+                </button>
+                {(isExpanded || group.items.length === 1) && group.items.length > 1 && (
+                  <div className="space-y-2 border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+                    {group.items.map((item) => (
+                      <p key={item.id} className="text-sm text-slate-700 dark:text-slate-300">
+                        {item.summary}
+                      </p>
+                    ))}
+                  </div>
                 )}
               </div>
-              {group.items.length > 1 && (
-                <span className="shrink-0 text-xs font-semibold text-emerald-300">{isExpanded ? 'Ocultar' : 'Ver'}</span>
-              )}
+            );
+          })}
+
+          {hasMore && (
+            <button
+              type="button"
+              className="erp-button-secondary w-full text-sm"
+              onClick={() => setVisibleCount((current) => current + PAGE_SIZE)}
+            >
+              Cargar más ({groups.length - visibleCount} restantes)
             </button>
-            {(isExpanded || group.items.length === 1) && group.items.length > 1 && (
-              <div className="space-y-2 border-t border-white/10 px-4 py-3">
-                {group.items.map((item) => (
-                  <p key={item.id} className="text-sm text-slate-300">
-                    {item.summary}
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -293,13 +374,9 @@ export function DashboardPanel() {
             <SummaryCard
               title="Stock bajo / agotado"
               value={String(lowStockProducts.length)}
-              subtitle={
-                lowStockProducts.length
-                  ? `≤ ${LOW_STOCK_THRESHOLD} u. disponibles`
-                  : 'Todo en orden'
-              }
+              subtitle={lowStockProducts.length ? `≤ ${LOW_STOCK_THRESHOLD} u. disponibles` : 'Todo en orden'}
               icon={<AlertIcon />}
-              accentClassName={lowStockProducts.length ? 'text-amber-300' : undefined}
+              accentClassName={lowStockProducts.length ? 'text-amber-600 dark:text-amber-300' : undefined}
               onClick={() => setActiveSection('productos')}
             />
             <SummaryCard
@@ -317,7 +394,7 @@ export function DashboardPanel() {
               value={String(pendingPedidos)}
               subtitle={pendingPedidos ? 'Abrir módulo de pedidos' : 'Sin pedidos en cola'}
               icon={<OrdersIcon />}
-              accentClassName={pendingPedidos ? 'text-emerald-300' : undefined}
+              accentClassName={pendingPedidos ? 'text-emerald-700 dark:text-emerald-300' : undefined}
               onClick={() => setActiveSection('pedidos')}
             />
           </div>
@@ -333,12 +410,12 @@ export function DashboardPanel() {
 
           <article className="erp-panel">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h3 className="font-display text-lg font-bold text-slate-100">Actividad reciente</h3>
-              <button type="button" className="text-xs font-semibold text-emerald-300" onClick={() => setActiveSection('actividad')}>
+              <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Actividad reciente</h3>
+              <button type="button" className="text-xs font-semibold text-emerald-700 dark:text-emerald-300" onClick={() => setActiveSection('actividad')}>
                 Ver todo
               </button>
             </div>
-            <ActivityFeed transactions={transactions.slice(0, 12)} />
+            <ActivityFeed transactions={transactions} />
           </article>
         </div>
       )}
@@ -350,7 +427,7 @@ export function DashboardPanel() {
       {activeSection === 'actividad' && (
         <div className="space-y-4">
           <article className="erp-panel">
-            <h3 className="mb-4 font-display text-lg font-bold text-slate-100">Movimientos</h3>
+            <h3 className="mb-4 font-display text-lg font-bold text-slate-900 dark:text-slate-100">Movimientos</h3>
             <ActivityFeed transactions={transactions} />
           </article>
           <MetaMessagesPanel />
@@ -358,12 +435,7 @@ export function DashboardPanel() {
       )}
 
       {movementMode && (
-        <StockMovementModal
-          mode={movementMode}
-          products={products}
-          onClose={() => setMovementMode(null)}
-          onSubmit={applyActions}
-        />
+        <StockMovementModal mode={movementMode} products={products} onClose={() => setMovementMode(null)} onSubmit={applyActions} />
       )}
     </DashboardShell>
   );
