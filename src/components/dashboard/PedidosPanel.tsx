@@ -10,9 +10,9 @@ const estadoLabel: Record<PedidoEstado, string> = {
 };
 
 const estadoClass: Record<PedidoEstado, string> = {
-  pendiente: 'border-amber-400/30 bg-amber-400/10 text-amber-200',
-  conseguido: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200',
-  descartado: 'border-slate-400/30 bg-slate-400/10 text-slate-300',
+  pendiente: 'border-amber-400/30 bg-amber-400/10 text-amber-800 dark:text-amber-200',
+  conseguido: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-800 dark:text-emerald-200',
+  descartado: 'border-slate-400/30 bg-slate-400/10 text-slate-700 dark:text-slate-300',
 };
 
 export function PedidosPanel() {
@@ -65,8 +65,8 @@ export function PedidosPanel() {
     <article className="erp-panel space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-display text-xl font-bold text-slate-100">Pedidos para proveedor</h3>
-          <p className="mt-1 text-sm text-slate-400">Agrupados por producto y talle. Cambiar estado no mueve stock.</p>
+          <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Pedidos para proveedor</h3>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Agrupados por producto y talle. Cambiar estado no mueve stock.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {(['pendiente', 'conseguido', 'descartado', 'todos'] as const).map((value) => (
@@ -75,8 +75,11 @@ export function PedidosPanel() {
               type="button"
               onClick={() => setEstadoFilter(value)}
               className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                estadoFilter === value ? 'bg-emerald-500 text-slate-950' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                estadoFilter === value
+                  ? 'bg-emerald-500 text-slate-950'
+                  : 'text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/10'
               }`}
+              style={estadoFilter === value ? undefined : { background: 'var(--overlay-soft)' }}
             >
               {value === 'todos' ? 'Todos' : estadoLabel[value]}
             </button>
@@ -97,14 +100,14 @@ export function PedidosPanel() {
               .filter((name, index, arr) => arr.indexOf(name) === index);
 
             return (
-              <div key={group.key} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div key={group.key} className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="font-display text-lg font-bold text-white">
+                    <p className="font-display text-lg font-bold text-slate-900 dark:text-white">
                       {group.producto}
-                      <span className="ml-2 text-base font-semibold text-emerald-300">— {group.talle}</span>
+                      <span className="ml-2 text-base font-semibold text-emerald-700 dark:text-emerald-300">— {group.talle}</span>
                     </p>
-                    <p className="mt-1 text-sm text-slate-400">
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                       {group.totalQty} pedido{group.totalQty === 1 ? '' : 's'} ({names.join(', ')})
                     </p>
                   </div>
@@ -112,10 +115,14 @@ export function PedidosPanel() {
 
                 <div className="mt-4 space-y-2">
                   {group.pedidos.map((pedido) => (
-                    <div key={pedido.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/5 bg-slate-950/40 px-3 py-2.5">
+                    <div
+                      key={pedido.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2.5"
+                      style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}
+                    >
                       <div>
-                        <p className="text-sm font-semibold text-slate-100">{clientsById[pedido.clienteId]?.name ?? 'Cliente'}</p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{clientsById[pedido.clienteId]?.name ?? 'Cliente'}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
                           x{pedido.qty} · {new Date(pedido.fechaPedido).toLocaleString('es-AR')}
                           {pedido.notas ? ` · ${pedido.notas}` : ''}
                         </p>
@@ -132,7 +139,8 @@ export function PedidosPanel() {
                               type="button"
                               disabled={updatingId === pedido.id}
                               onClick={() => void changeEstado(pedido.id, estado)}
-                              className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
+                              className="rounded-full border px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-900/5 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-white/10"
+                              style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
                             >
                               {estadoLabel[estado]}
                             </button>
