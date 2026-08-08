@@ -83,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleRequestLoginCode = async (phoneNumber: string) => requestLoginCode(phoneNumber);
 
-  const applySession = (result: { token: string; phoneNumber: string }) => {
+  const applySession = <T extends { token: string; phoneNumber: string }>(result: T): T => {
     const nextSession = {
       token: result.token,
       phoneNumber: result.phoneNumber,
