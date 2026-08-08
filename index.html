@@ -1,10 +1,24 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0f172a" />
     <title>Stocky</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('stocky-theme');
+          var theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
+          var root = document.documentElement;
+          root.classList.toggle('dark', theme === 'dark');
+          root.classList.toggle('light', theme === 'light');
+          root.style.colorScheme = theme;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', theme === 'dark' ? '#0f172a' : '#f8fafc');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

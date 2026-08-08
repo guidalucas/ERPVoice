@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../../store/AuthStore';
+import { ThemeToggle } from '../dashboard/ThemeToggle';
 
 type Step = 'phone' | 'code';
 
@@ -54,45 +55,48 @@ export function LoginPanel() {
   };
 
   return (
-    <main className="min-h-screen bg-mesh-soft px-4 py-8 text-slate-100">
+    <main className="min-h-screen bg-mesh-soft-light px-4 py-8 text-slate-900 dark:bg-mesh-soft dark:text-slate-100">
       <section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-5xl items-center justify-center">
-        <div className="grid w-full gap-6 rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-glow backdrop-blur-xl lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="flex flex-col justify-between rounded-[1.5rem] border border-white/10 bg-[linear-gradient(180deg,rgba(8,15,27,0.95),rgba(8,15,27,0.72))] p-6">
+        <div className="erp-shell grid w-full gap-6 p-6 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="flex flex-col justify-between rounded-[1.5rem] border p-6" style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}>
             <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-emerald-300">Stocky Access</p>
-              <h1 className="mt-3 font-display text-4xl font-bold tracking-tight text-white">Ingreso sin contraseña por WhatsApp</h1>
-              <p className="mt-4 max-w-xl text-sm leading-6 text-slate-300">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-xs uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300">Stocky Access</p>
+                <ThemeToggle />
+              </div>
+              <h1 className="mt-3 font-display text-4xl font-bold tracking-tight text-slate-900 dark:text-white">Ingreso sin contraseña por WhatsApp</h1>
+              <p className="mt-4 max-w-xl text-sm leading-6 text-slate-600 dark:text-slate-300">
                 Ingresá tu número, recibí un código temporal por WhatsApp y accedé al panel con una sesión JWT propia de tu negocio.
               </p>
             </div>
 
             <div className="mt-10 grid gap-3 sm:grid-cols-3">
-              <div className="erp-card-soft bg-white/[0.04]">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Paso 1</p>
-                <p className="mt-2 text-sm font-semibold text-slate-100">Número</p>
+              <div className="erp-card-soft">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Paso 1</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">Número</p>
               </div>
-              <div className="erp-card-soft bg-white/[0.04]">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Paso 2</p>
-                <p className="mt-2 text-sm font-semibold text-slate-100">OTP por WhatsApp</p>
+              <div className="erp-card-soft">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Paso 2</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">OTP por WhatsApp</p>
               </div>
-              <div className="erp-card-soft bg-white/[0.04]">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Paso 3</p>
-                <p className="mt-2 text-sm font-semibold text-slate-100">Token JWT</p>
+              <div className="erp-card-soft">
+                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">Paso 3</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">Token JWT</p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/70 p-6">
+          <div className="rounded-[1.5rem] border p-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-cyan-300">Acceso privado</p>
-                <h2 className="mt-2 font-display text-2xl font-bold text-white">Entrar al dashboard</h2>
+                <p className="text-xs uppercase tracking-[0.28em] text-cyan-700 dark:text-cyan-300">Acceso privado</p>
+                <h2 className="mt-2 font-display text-2xl font-bold text-slate-900 dark:text-white">Entrar al dashboard</h2>
               </div>
-              <span className="erp-chip text-emerald-300">WhatsApp OTP</span>
+              <span className="erp-chip text-emerald-700 dark:text-emerald-300">WhatsApp OTP</span>
             </div>
 
             <div className="mt-6 space-y-4">
-              <label className="block space-y-2 text-sm font-semibold text-slate-200">
+              <label className="block space-y-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
                 Número de celular
                 <input
                   value={phoneNumber}
@@ -105,7 +109,7 @@ export function LoginPanel() {
               </label>
 
               {step === 'code' && (
-                <label className="block space-y-2 text-sm font-semibold text-slate-200">
+                <label className="block space-y-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
                   Código de 6 dígitos
                   <input
                     value={otpCode}
@@ -118,7 +122,11 @@ export function LoginPanel() {
                 </label>
               )}
 
-              {statusText && <p className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">{statusText}</p>}
+              {statusText && (
+                <p className="rounded-2xl border px-4 py-3 text-sm text-slate-800 dark:text-slate-200" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
+                  {statusText}
+                </p>
+              )}
 
               <div className="flex flex-wrap gap-3">
                 {step === 'phone' ? (
@@ -146,7 +154,7 @@ export function LoginPanel() {
                 )}
               </div>
 
-              <p className="text-xs leading-5 text-slate-400">
+              <p className="text-xs leading-5 text-slate-600 dark:text-slate-400">
                 El código llega al mismo número que usás en WhatsApp. No hace falta contraseña ni email.
               </p>
             </div>

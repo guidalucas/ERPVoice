@@ -92,8 +92,8 @@ function NavButton({
 }) {
   const baseClass = variant === 'sidebar' ? 'dashboard-nav-item w-full' : 'dashboard-bottom-nav-item flex-1 min-w-0';
   const activeClass = isActive
-    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-    : 'text-slate-400 border-transparent hover:bg-white/5 hover:text-slate-200';
+    ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+    : 'border-transparent text-slate-500 hover:bg-slate-900/5 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200';
 
   return (
     <button

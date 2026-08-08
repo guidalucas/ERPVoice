@@ -49,97 +49,123 @@ export function RealStockPanel({ filterProductIds }: { filterProductIds?: string
     };
   }, [products]);
 
-  const totalUnits = summary.totalAvailable + summary.totalReserved;
-
   return (
     <article className="erp-panel">
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
-        <h3 className="font-display text-xl font-bold text-slate-100">Stock</h3>
+      <div className="flex items-center justify-between gap-3 border-b pb-4" style={{ borderColor: 'var(--border)' }}>
+        <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Stock</h3>
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-3">
-        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[#0c1426] p-5 shadow-lg shadow-sky-950/20">
-          <p className="text-[15px] font-medium text-slate-400">Stock Disponible</p>
+        <article className="erp-card min-h-[144px] border-sky-500/10 p-5">
+          <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">Stock Disponible</p>
           <div className="mt-10">
-            <p className="font-display text-[2rem] font-bold tracking-tight text-sky-400">{summary.totalAvailable}</p>
-            <p className="text-sm text-slate-400">unidades listas para venta</p>
+            <p className="font-display text-[2rem] font-bold tracking-tight text-sky-600 dark:text-sky-400">{summary.totalAvailable}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">unidades listas para venta</p>
           </div>
         </article>
 
-        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[#0c1426] p-5 shadow-lg shadow-sky-950/20">
-          <p className="text-[15px] font-medium text-slate-400">Stock Reservado</p>
+        <article className="erp-card min-h-[144px] border-sky-500/10 p-5">
+          <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">Stock Reservado</p>
           <div className="mt-10">
-            <p className="font-display text-[2rem] font-bold tracking-tight text-cyan-400">{summary.totalReserved}</p>
-            <p className="text-sm text-slate-400">unidades apartadas</p>
+            <p className="font-display text-[2rem] font-bold tracking-tight text-cyan-600 dark:text-cyan-400">{summary.totalReserved}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">unidades apartadas</p>
           </div>
         </article>
 
-        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[#0c1426] p-5 shadow-lg shadow-sky-950/20">
-          <p className="text-[15px] font-medium text-slate-400">Valor Total</p>
+        <article className="erp-card min-h-[144px] border-sky-500/10 p-5">
+          <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">Valor Total</p>
           <div className="mt-10">
-            <p className="font-display text-[2rem] font-bold tracking-tight text-slate-100">{formatCurrency(summary.totalValue)}</p>
-            <p className="text-sm text-slate-400">inventario valorizado</p>
+            <p className="font-display text-[2rem] font-bold tracking-tight text-slate-900 dark:text-slate-100">{formatCurrency(summary.totalValue)}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">inventario valorizado</p>
           </div>
         </article>
       </div>
 
-      <article className="mt-4 rounded-[1.5rem] border border-sky-500/10 bg-[#0c1426] p-5 shadow-lg shadow-sky-950/20">
-        <h4 className="text-[1.05rem] font-bold text-slate-100">Stock por Categoria</h4>
+      <article className="erp-card mt-4 border-sky-500/10 p-5">
+        <h4 className="text-[1.05rem] font-bold text-slate-900 dark:text-slate-100">Stock por Categoria</h4>
 
         <div className="mt-5 flex flex-wrap gap-3">
           {summary.categories.map((category) => (
-            <div key={category.name} className="min-w-[140px] rounded-xl border border-sky-500/10 bg-[#0a1222] px-4 py-3 shadow-sm shadow-sky-950/20">
-              <p className="text-sm font-semibold text-slate-100">{category.name}</p>
-              <p className="mt-1 text-xs text-slate-400">{category.count} SKUs / {category.units} unidades</p>
-              <p className="mt-1 text-sm font-semibold text-sky-300">{formatCurrency(category.value)}</p>
+            <div key={category.name} className="min-w-[140px] rounded-xl border px-4 py-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}>
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{category.name}</p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                {category.count} SKUs / {category.units} unidades
+              </p>
+              <p className="mt-1 text-sm font-semibold text-sky-700 dark:text-sky-300">{formatCurrency(category.value)}</p>
             </div>
           ))}
         </div>
       </article>
 
-      <article className="mt-4 rounded-[1.5rem] border border-sky-500/10 bg-[#0c1426] p-5 shadow-lg shadow-sky-950/20">
-        <h4 className="text-[1.05rem] font-bold text-slate-100">Inventario Completo</h4>
+      <article className="erp-card mt-4 border-sky-500/10 p-5">
+        <h4 className="text-[1.05rem] font-bold text-slate-900 dark:text-slate-100">Inventario Completo</h4>
 
         <div className="mt-5 overflow-x-auto">
           {products.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-6 text-sm text-slate-400">
+            <div className="rounded-2xl border px-4 py-6 text-sm text-slate-600 dark:text-slate-400" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
               No hay inventario cargado.
             </div>
           ) : (
-          <table className="min-w-full border-separate border-spacing-0">
-            <thead>
-              <tr className="text-left text-sm font-semibold text-slate-300">
-                <th className="border-b border-white/10 px-3 py-3">Producto</th>
-                <th className="border-b border-white/10 px-3 py-3">Tipo</th>
-                <th className="border-b border-white/10 px-3 py-3 text-center">Talle</th>
-                <th className="border-b border-white/10 px-3 py-3 text-center">Disponible</th>
-                <th className="border-b border-white/10 px-3 py-3 text-center">Reservado</th>
-                <th className="border-b border-white/10 px-3 py-3 text-center">Precio</th>
-                <th className="border-b border-white/10 px-3 py-3 text-center">Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((product) => {
-                const realStock = product.stockAvailable + product.stockReserved;
+            <table className="min-w-full border-separate border-spacing-0">
+              <thead>
+                <tr className="text-left text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  <th className="border-b px-3 py-3" style={{ borderColor: 'var(--border)' }}>
+                    Producto
+                  </th>
+                  <th className="border-b px-3 py-3" style={{ borderColor: 'var(--border)' }}>
+                    Tipo
+                  </th>
+                  <th className="border-b px-3 py-3 text-center" style={{ borderColor: 'var(--border)' }}>
+                    Talle
+                  </th>
+                  <th className="border-b px-3 py-3 text-center" style={{ borderColor: 'var(--border)' }}>
+                    Disponible
+                  </th>
+                  <th className="border-b px-3 py-3 text-center" style={{ borderColor: 'var(--border)' }}>
+                    Reservado
+                  </th>
+                  <th className="border-b px-3 py-3 text-center" style={{ borderColor: 'var(--border)' }}>
+                    Precio
+                  </th>
+                  <th className="border-b px-3 py-3 text-center" style={{ borderColor: 'var(--border)' }}>
+                    Valor
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((product) => {
+                  const realStock = product.stockAvailable + product.stockReserved;
 
-                return (
-                  <tr key={product.id} className="text-[15px] text-slate-100">
-                    <td className="border-b border-white/10 px-3 py-4 font-semibold">{product.name}</td>
-                    <td className="border-b border-white/10 px-3 py-4">
-                      <span className="inline-flex rounded-full border border-sky-500/10 bg-[#0a1222] px-2.5 py-1 text-xs font-medium text-slate-300">
-                        {formatCategoryLabel(product.productType)}
-                      </span>
-                    </td>
-                    <td className="border-b border-white/10 px-3 py-4 text-center font-semibold">{product.size ?? '-'}</td>
-                    <td className="border-b border-white/10 px-3 py-4 text-center font-semibold text-sky-300">{product.stockAvailable}</td>
-                    <td className="border-b border-white/10 px-3 py-4 text-center font-semibold text-cyan-300">{product.stockReserved}</td>
-                    <td className="border-b border-white/10 px-3 py-4 text-center font-mono font-semibold">{formatCurrency(product.price)}</td>
-                    <td className="border-b border-white/10 px-3 py-4 text-center font-mono font-semibold text-slate-100">{formatCurrency(realStock * product.price)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                  return (
+                    <tr key={product.id} className="text-[15px] text-slate-800 dark:text-slate-100">
+                      <td className="border-b px-3 py-4 font-semibold" style={{ borderColor: 'var(--border)' }}>
+                        {product.name}
+                      </td>
+                      <td className="border-b px-3 py-4" style={{ borderColor: 'var(--border)' }}>
+                        <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
+                          {formatCategoryLabel(product.productType)}
+                        </span>
+                      </td>
+                      <td className="border-b px-3 py-4 text-center font-semibold" style={{ borderColor: 'var(--border)' }}>
+                        {product.size ?? '-'}
+                      </td>
+                      <td className="border-b px-3 py-4 text-center font-semibold text-sky-700 dark:text-sky-300" style={{ borderColor: 'var(--border)' }}>
+                        {product.stockAvailable}
+                      </td>
+                      <td className="border-b px-3 py-4 text-center font-semibold text-cyan-700 dark:text-cyan-300" style={{ borderColor: 'var(--border)' }}>
+                        {product.stockReserved}
+                      </td>
+                      <td className="border-b px-3 py-4 text-center font-mono font-semibold" style={{ borderColor: 'var(--border)' }}>
+                        {formatCurrency(product.price)}
+                      </td>
+                      <td className="border-b px-3 py-4 text-center font-mono font-semibold text-slate-800 dark:text-slate-100" style={{ borderColor: 'var(--border)' }}>
+                        {formatCurrency(realStock * product.price)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
       </article>

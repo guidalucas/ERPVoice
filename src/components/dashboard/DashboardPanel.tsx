@@ -27,31 +27,30 @@ function SummaryCard({ title, value, subtitle, icon, accentClassName, onClick }:
   const content = (
     <div className="flex h-full flex-col justify-between gap-4">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[15px] font-medium text-slate-400">{title}</p>
-        <div className={`flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 ${accentClassName ?? ''}`}>
+        <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">{title}</p>
+        <div
+          className={`flex h-9 w-9 items-center justify-center rounded-xl border text-slate-600 dark:text-slate-300 ${accentClassName ?? ''}`}
+          style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
+        >
           {icon}
         </div>
       </div>
       <div className="space-y-1">
-        <p className={`font-display text-[2rem] font-bold tracking-tight ${accentClassName ?? 'text-white'}`}>{value}</p>
-        <p className="text-sm text-slate-400">{subtitle}</p>
+        <p className={`font-display text-[2rem] font-bold tracking-tight ${accentClassName ?? 'text-slate-900 dark:text-white'}`}>{value}</p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">{subtitle}</p>
       </div>
     </div>
   );
 
   if (onClick) {
     return (
-      <button
-        type="button"
-        onClick={onClick}
-        className="erp-card min-h-[158px] w-full p-5 text-left transition hover:border-white/20 hover:bg-white/[0.065]"
-      >
+      <button type="button" onClick={onClick} className="erp-card min-h-[158px] w-full p-5 text-left transition hover:border-emerald-500/30">
         {content}
       </button>
     );
   }
 
-  return <article className="erp-card min-h-[158px] p-5 transition hover:border-white/20 hover:bg-white/[0.065]">{content}</article>;
+  return <article className="erp-card min-h-[158px] p-5 transition hover:border-emerald-500/30">{content}</article>;
 }
 
 function InventoryIcon() {
@@ -91,6 +90,17 @@ type ActivityGroup = {
   items: Transaction[];
 };
 
+type ActivityFilter = 'all' | 'ingresos' | 'pedidos' | 'voz';
+
+const ACTIVITY_FILTERS: { id: ActivityFilter; label: string }[] = [
+  { id: 'all', label: 'Todos' },
+  { id: 'ingresos', label: 'Ingresos' },
+  { id: 'pedidos', label: 'Pedidos' },
+  { id: 'voz', label: 'Voz' },
+];
+
+const PAGE_SIZE = 8;
+
 const groupTransactions = (transactions: Transaction[]): ActivityGroup[] => {
   const groups: ActivityGroup[] = [];
 
@@ -98,11 +108,7 @@ const groupTransactions = (transactions: Transaction[]): ActivityGroup[] => {
     const ts = new Date(transaction.timestamp).getTime();
     const last = groups[groups.length - 1];
 
-    if (
-      last &&
-      last.sourceText === transaction.sourceText &&
-      Math.abs(new Date(last.timestamp).getTime() - ts) <= 5000
-    ) {
+    if (last && last.sourceText === transaction.sourceText && Math.abs(new Date(last.timestamp).getTime() - ts) <= 5000) {
       last.items.push(transaction);
       continue;
     }
@@ -118,54 +124,121 @@ const groupTransactions = (transactions: Transaction[]): ActivityGroup[] => {
   return groups;
 };
 
-function ActivityFeed({ transactions }: { transactions: Transaction[] }) {
-  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
-  const groups = useMemo(() => groupTransactions(transactions), [transactions]);
+const matchesActivityFilter = (transaction: Transaction, filter: ActivityFilter): boolean => {
+  if (filter === 'all') {
+    return true;
+  }
 
-  if (groups.length === 0) {
+  const actionTypes = transaction.actions.map((action) => action.type);
+
+  if (filter === 'ingresos') {
+    return actionTypes.includes('add_stock');
+  }
+
+  if (filter === 'pedidos') {
+    return actionTypes.includes('client_order') || actionTypes.includes('reserve_stock');
+  }
+
+  if (filter === 'voz') {
+    return Boolean(transaction.sourceText?.trim());
+  }
+
+  return true;
+};
+
+function ActivityFeed({ transactions, showFilters = true }: { transactions: Transaction[]; showFilters?: boolean }) {
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [filter, setFilter] = useState<ActivityFilter>('all');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const filteredTransactions = useMemo(
+    () => transactions.filter((transaction) => matchesActivityFilter(transaction, filter)),
+    [transactions, filter],
+  );
+
+  const groups = useMemo(() => groupTransactions(filteredTransactions), [filteredTransactions]);
+  const visibleGroups = groups.slice(0, visibleCount);
+  const hasMore = groups.length > visibleCount;
+
+  if (transactions.length === 0) {
     return <EmptyState title="Sin actividad" description="Las cargas por voz y WhatsApp aparecen acá agrupadas por sesión." />;
   }
 
   return (
     <div className="space-y-3">
-      {groups.map((group) => {
-        const isExpanded = Boolean(expandedIds[group.id]);
-        const isVoiceLoad = group.items.every((item) => item.actions.some((action) => action.type === 'add_stock'));
-        const title =
-          group.items.length > 1
-            ? `${isVoiceLoad ? 'Carga por voz' : 'Sesión'} — ${group.items.length} items`
-            : group.items[0]?.summary ?? group.sourceText;
-
-        return (
-          <div key={group.id} className="rounded-2xl border border-white/10 bg-white/[0.03]">
+      {showFilters && (
+        <div className="flex flex-wrap gap-2">
+          {ACTIVITY_FILTERS.map((item) => (
             <button
+              key={item.id}
               type="button"
-              className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
-              onClick={() => setExpandedIds((current) => ({ ...current, [group.id]: !current[group.id] }))}
+              className="activity-filter-chip"
+              aria-pressed={filter === item.id}
+              onClick={() => {
+                setFilter(item.id);
+                setVisibleCount(PAGE_SIZE);
+              }}
             >
-              <div>
-                <p className="text-sm font-semibold text-slate-100">{title}</p>
-                <p className="mt-1 text-xs text-slate-500">{new Date(group.timestamp).toLocaleString('es-AR')}</p>
-                {group.sourceText && (
-                  <p className="mt-1 line-clamp-1 text-xs text-slate-400">“{group.sourceText}”</p>
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {groups.length === 0 ? (
+        <EmptyState title="Sin resultados" description="No hay actividad para este filtro." />
+      ) : (
+        <>
+          {visibleGroups.map((group) => {
+            const isExpanded = Boolean(expandedIds[group.id]);
+            const isVoiceLoad = group.items.every((item) => item.actions.some((action) => action.type === 'add_stock'));
+            const title =
+              group.items.length > 1
+                ? `${isVoiceLoad ? 'Carga por voz' : 'Sesión'} — ${group.items.length} items`
+                : group.items[0]?.summary ?? group.sourceText;
+
+            return (
+              <div key={group.id} className="rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
+                <button
+                  type="button"
+                  className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
+                  onClick={() => setExpandedIds((current) => ({ ...current, [group.id]: !current[group.id] }))}
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{new Date(group.timestamp).toLocaleString('es-AR')}</p>
+                    {group.sourceText && (
+                      <p className="mt-1.5 line-clamp-2 text-sm text-slate-600 dark:text-slate-300">“{group.sourceText}”</p>
+                    )}
+                  </div>
+                  {group.items.length > 1 && (
+                    <span className="shrink-0 text-xs font-semibold text-emerald-700 dark:text-emerald-300">{isExpanded ? 'Ocultar' : 'Ver'}</span>
+                  )}
+                </button>
+                {(isExpanded || group.items.length === 1) && group.items.length > 1 && (
+                  <div className="space-y-2 border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+                    {group.items.map((item) => (
+                      <p key={item.id} className="text-sm text-slate-700 dark:text-slate-300">
+                        {item.summary}
+                      </p>
+                    ))}
+                  </div>
                 )}
               </div>
-              {group.items.length > 1 && (
-                <span className="shrink-0 text-xs font-semibold text-emerald-300">{isExpanded ? 'Ocultar' : 'Ver'}</span>
-              )}
+            );
+          })}
+
+          {hasMore && (
+            <button
+              type="button"
+              className="erp-button-secondary w-full text-sm"
+              onClick={() => setVisibleCount((current) => current + PAGE_SIZE)}
+            >
+              Cargar más ({groups.length - visibleCount} restantes)
             </button>
-            {(isExpanded || group.items.length === 1) && group.items.length > 1 && (
-              <div className="space-y-2 border-t border-white/10 px-4 py-3">
-                {group.items.map((item) => (
-                  <p key={item.id} className="text-sm text-slate-300">
-                    {item.summary}
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -219,7 +292,7 @@ export function DashboardPanel() {
               value={String(lowStockProducts.length)}
               subtitle={lowStockProducts.length ? 'Ver productos con poco stock' : 'Todo en orden'}
               icon={<AlertIcon />}
-              accentClassName={lowStockProducts.length ? 'text-amber-300' : undefined}
+              accentClassName={lowStockProducts.length ? 'text-amber-600 dark:text-amber-300' : undefined}
               onClick={goToLowStock}
             />
           </div>
@@ -230,21 +303,21 @@ export function DashboardPanel() {
               onClick={() => setActiveSection('pedidos')}
               className="w-full rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-left transition hover:bg-emerald-500/15"
             >
-              <p className="text-sm font-semibold text-emerald-200">
+              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
                 {pendingPedidos} pedido{pendingPedidos === 1 ? '' : 's'} pendiente{pendingPedidos === 1 ? '' : 's'}
               </p>
-              <p className="mt-1 text-xs text-emerald-200/70">Abrir vista agrupada para armar el pedido al proveedor</p>
+              <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-200/70">Abrir vista agrupada para armar el pedido al proveedor</p>
             </button>
           )}
 
           <article className="erp-panel">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h3 className="font-display text-lg font-bold text-slate-100">Actividad reciente</h3>
-              <button type="button" className="text-xs font-semibold text-emerald-300" onClick={() => setActiveSection('actividad')}>
+              <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Actividad reciente</h3>
+              <button type="button" className="text-xs font-semibold text-emerald-700 dark:text-emerald-300" onClick={() => setActiveSection('actividad')}>
                 Ver todo
               </button>
             </div>
-            <ActivityFeed transactions={transactions.slice(0, 12)} />
+            <ActivityFeed transactions={transactions} />
           </article>
         </div>
       )}
@@ -253,10 +326,10 @@ export function DashboardPanel() {
         <div className="space-y-3">
           {filterLowStock && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3">
-              <p className="text-sm text-amber-100">
+              <p className="text-sm text-amber-900 dark:text-amber-100">
                 Mostrando {lowStockProducts.length} producto{lowStockProducts.length === 1 ? '' : 's'} con stock ≤ {LOW_STOCK_THRESHOLD}
               </p>
-              <button type="button" className="text-xs font-semibold text-amber-100" onClick={() => setFilterLowStock(false)}>
+              <button type="button" className="text-xs font-semibold text-amber-900 dark:text-amber-100" onClick={() => setFilterLowStock(false)}>
                 Quitar filtro
               </button>
             </div>
@@ -272,7 +345,7 @@ export function DashboardPanel() {
       {activeSection === 'actividad' && (
         <div className="space-y-4">
           <article className="erp-panel">
-            <h3 className="mb-4 font-display text-lg font-bold text-slate-100">Movimientos</h3>
+            <h3 className="mb-4 font-display text-lg font-bold text-slate-900 dark:text-slate-100">Movimientos</h3>
             <ActivityFeed transactions={transactions} />
           </article>
           <MetaMessagesPanel />
