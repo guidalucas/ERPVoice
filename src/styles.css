@@ -158,19 +158,23 @@ html.dark body {
     @apply pb-24 lg:pb-0;
   }
 
+  .dashboard-nav {
+    @apply flex flex-col gap-1;
+  }
+
   .dashboard-nav-item {
-    @apply flex items-center gap-3 rounded-2xl border px-3 py-2.5 text-sm transition;
+    @apply flex min-h-11 items-center gap-3 rounded-2xl border px-3 py-2.5 text-sm transition;
   }
 
   .dashboard-bottom-nav {
-    @apply fixed inset-x-3 bottom-3 z-40 rounded-3xl border p-2 shadow-2xl backdrop-blur-xl lg:hidden;
+    @apply fixed inset-x-3 bottom-3 z-40 flex items-stretch gap-1 rounded-3xl border p-2 shadow-2xl backdrop-blur-xl lg:hidden;
     border-color: var(--border);
     background: var(--surface-elevated);
     box-shadow: 0 20px 50px var(--shadow-color);
   }
 
   .dashboard-bottom-nav-item {
-    @apply flex flex-col items-center justify-center gap-1 rounded-2xl border px-1 py-2 transition;
+    @apply flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-2xl border px-1 py-2 transition;
   }
 
   .stock-chip {
@@ -186,7 +190,7 @@ html.dark body {
   }
 
   .theme-toggle {
-    @apply inline-flex h-9 w-9 items-center justify-center rounded-xl border transition;
+    @apply inline-flex h-11 w-11 items-center justify-center rounded-xl border transition;
     border-color: var(--border);
     background: var(--overlay-soft);
     color: var(--muted);

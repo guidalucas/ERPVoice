@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ParsedActionUnion, Product } from '../../domain/types';
+import { toUserFacingError } from '../../services/apiClient';
 
 export type StockMovementMode = 'ingreso' | 'venta';
 
@@ -98,7 +99,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
       await onSubmit(sourceText, [action]);
       onClose();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'No se pudo registrar el movimiento.');
+      setError(toUserFacingError(submitError, 'No se pudo registrar el movimiento. Reintentá.'));
     } finally {
       setSubmitting(false);
     }
@@ -188,19 +189,24 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
           </p>
         )}
 
-        {error && <p className="mt-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
+        {error && (
+          <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2.5">
+            <p className="text-sm text-rose-700 dark:text-rose-200">{error}</p>
+            <p className="mt-1 text-xs text-rose-700/80 dark:text-rose-200/80">Podés corregir y volver a confirmar.</p>
+          </div>
+        )}
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button type="button" onClick={onClose} className="erp-button-secondary" disabled={submitting}>
+          <button type="button" onClick={onClose} className="erp-button-secondary min-h-11" disabled={submitting}>
             Cancelar
           </button>
           <button
             type="button"
             onClick={() => void handleSubmit()}
             disabled={!canSubmit}
-            className={isIngreso ? 'erp-button-primary' : 'erp-button-danger'}
+            className={`${isIngreso ? 'erp-button-primary' : 'erp-button-danger'} min-h-11`}
           >
-            {submitting ? 'Guardando...' : isIngreso ? '+ Confirmar ingreso' : '− Confirmar venta'}
+            {submitting ? 'Guardando...' : error ? (isIngreso ? 'Reintentar ingreso' : 'Reintentar venta') : isIngreso ? '+ Confirmar ingreso' : '− Confirmar venta'}
           </button>
         </div>
       </div>

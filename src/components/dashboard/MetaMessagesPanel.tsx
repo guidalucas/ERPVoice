@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { requestJson } from '../../services/apiClient';
+import { requestJson, toUserFacingError } from '../../services/apiClient';
 
 type MetaEvent = {
   at: string;
@@ -21,6 +21,13 @@ const formatDateTime = (value: string) => {
   }
 };
 
+const kindLabel = (kind?: MetaEvent['kind']) => {
+  if (kind === 'audio') return 'Audio';
+  if (kind === 'text') return 'Texto';
+  if (kind === 'empty') return 'Vacío';
+  return 'Mensaje';
+};
+
 export function MetaMessagesPanel() {
   const [events, setEvents] = useState<MetaEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -40,7 +47,7 @@ export function MetaMessagesPanel() {
         }
       } catch (fetchError) {
         if (!cancelled) {
-          setError(fetchError instanceof Error ? fetchError.message : 'No se pudieron leer los eventos de Meta.');
+          setError(toUserFacingError(fetchError, 'No se pudieron leer los mensajes de WhatsApp.'));
           setIsLoading(false);
         }
       }
@@ -57,49 +64,47 @@ export function MetaMessagesPanel() {
 
   return (
     <article className="erp-panel">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Mensajes WhatsApp</h3>
-          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Últimos mensajes y audios recibidos desde Meta Cloud API</p>
-        </div>
-        <span className="erp-chip normal-case tracking-normal text-slate-800 dark:text-slate-200">
-          {(import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_META_API_BASE ?? '')
-            ? (import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_META_API_BASE ?? '').replace(/^https?:\/\//, '')
-            : 'same-origin'}
-        </span>
+      <div>
+        <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Mensajes WhatsApp</h3>
+        <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Últimos mensajes y audios que llegaron al negocio</p>
       </div>
 
       <div className="mt-4 space-y-3">
-        {isLoading && <div className="erp-card-soft text-sm text-slate-600 dark:text-slate-400">Cargando eventos de Meta...</div>}
+        {isLoading && <div className="erp-card-soft text-sm text-slate-600 dark:text-slate-400">Cargando mensajes…</div>}
 
         {!isLoading && error && <div className="erp-card-soft text-sm text-rose-700 dark:text-rose-200">{error}</div>}
 
         {!isLoading && !error && events.length === 0 && (
-          <div className="erp-card-soft text-sm text-slate-600 dark:text-slate-400">Todavía no llegaron mensajes desde Meta.</div>
+          <div className="erp-card-soft text-sm text-slate-600 dark:text-slate-400">
+            Todavía no llegaron mensajes por WhatsApp. Cuando un cliente escriba o mande audio, aparecen acá.
+          </div>
         )}
 
         {events.map((event, index) => (
           <div key={`${event.at}-${index}`} className="erp-card-soft">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-semibold text-slate-900 dark:text-slate-100">{event.from ?? 'Origen desconocido'}</p>
+                <p className="font-semibold text-slate-900 dark:text-slate-100">{event.from ?? 'Número desconocido'}</p>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{formatDateTime(event.at)}</p>
               </div>
-              <span className="erp-chip text-emerald-700 dark:text-emerald-300">
-                {event.kind ?? 'event'}
-              </span>
+              <span className="erp-chip text-emerald-700 dark:text-emerald-300">{kindLabel(event.kind)}</span>
             </div>
 
             <div className="mt-3 space-y-2 text-sm text-slate-700 dark:text-slate-300">
               {event.body && (
                 <p>
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">Body:</span> {event.body}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">Mensaje:</span> {event.body}
                 </p>
               )}
-              {typeof event.numMedia === 'number' && <p>Medios: {event.numMedia}</p>}
+              {typeof event.numMedia === 'number' && event.numMedia > 0 && <p>Archivos: {event.numMedia}</p>}
               {event.sourceText && (
                 <p>
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">Procesado:</span> {event.sourceText}
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">Texto usado:</span> {event.sourceText}
+                </p>
+              )}
+              {event.transcript && (
+                <p>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">Transcripción:</span> {event.transcript}
                 </p>
               )}
               {event.replyText && (

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useInventory } from '../../hooks/useInventory';
 import type { PedidoEstado } from '../../domain/types';
+import { toUserFacingError } from '../../services/apiClient';
 import { EmptyState } from './EmptyState';
 
 const estadoLabel: Record<PedidoEstado, string> = {
@@ -15,12 +16,30 @@ const estadoClass: Record<PedidoEstado, string> = {
   descartado: 'border-slate-400/30 bg-slate-400/10 text-slate-700 dark:text-slate-300',
 };
 
+const productOptionLabel = (product: { name: string; productType?: string | null; productModel?: string | null; size?: string | null }) => {
+  const meta = [product.productType, product.productModel, product.size].filter(Boolean).join(' ');
+  return meta || product.name;
+};
+
 export function PedidosPanel() {
-  const { pedidos, clients, updatePedidoRecord } = useInventory();
+  const { pedidos, clients, products, createPedidoRecord, createClientRecord, updatePedidoRecord } = useInventory();
   const [estadoFilter, setEstadoFilter] = useState<PedidoEstado | 'todos'>('pendiente');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [clienteId, setClienteId] = useState('');
+  const [newClientName, setNewClientName] = useState('');
+  const [productId, setProductId] = useState('');
+  const [qtyText, setQtyText] = useState('1');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const clientsById = useMemo(() => Object.fromEntries(clients.map((client) => [client.id, client])), [clients]);
+
+  const sortedProducts = useMemo(
+    () =>
+      [...products].sort((a, b) => productOptionLabel(a).localeCompare(productOptionLabel(b), 'es', { sensitivity: 'base' })),
+    [products],
+  );
 
   const filtered = useMemo(
     () => (estadoFilter === 'todos' ? pedidos : pedidos.filter((pedido) => pedido.estado === estadoFilter)),
@@ -61,6 +80,75 @@ export function PedidosPanel() {
     }
   };
 
+  const resetForm = () => {
+    setClienteId('');
+    setNewClientName('');
+    setProductId('');
+    setQtyText('1');
+    setFormError(null);
+  };
+
+  const handleCreatePedido = async () => {
+    setFormError(null);
+    const qty = Number(qtyText);
+    if (!Number.isFinite(qty) || qty < 1 || !Number.isInteger(qty)) {
+      setFormError('Ingresá una cantidad entera mayor a 0.');
+      return;
+    }
+
+    const selectedProduct = products.find((product) => product.id === productId);
+    if (!selectedProduct) {
+      setFormError('Elegí un producto.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      let resolvedClientId = clienteId;
+      if (!resolvedClientId) {
+        const name = newClientName.trim();
+        if (!name) {
+          setFormError('Elegí un cliente o escribí un nombre nuevo.');
+          return;
+        }
+        const created = await createClientRecord({ name });
+        resolvedClientId = created.id;
+      }
+
+      await createPedidoRecord({
+        clienteId: resolvedClientId,
+        producto: selectedProduct.name,
+        productType: selectedProduct.productType,
+        productModel: selectedProduct.productModel,
+        talle: selectedProduct.size,
+        qty,
+        estado: 'pendiente',
+        notas: 'Pedido manual',
+      });
+
+      resetForm();
+      setFormOpen(false);
+      setEstadoFilter('pendiente');
+    } catch (error) {
+      setFormError(toUserFacingError(error, 'No se pudo crear el pedido.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filterActiveClass = (value: PedidoEstado | 'todos') => {
+    if (estadoFilter !== value) {
+      return 'text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/10';
+    }
+    if (value === 'pendiente') {
+      return 'bg-amber-400 text-slate-950';
+    }
+    if (value === 'conseguido') {
+      return 'bg-emerald-500 text-slate-950';
+    }
+    return 'bg-slate-500 text-white';
+  };
+
   return (
     <article className="erp-panel space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -68,29 +156,108 @@ export function PedidosPanel() {
           <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Pedidos para proveedor</h3>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Agrupados por producto y talle. Cambiar estado no mueve stock.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {(['pendiente', 'conseguido', 'descartado', 'todos'] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setEstadoFilter(value)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                estadoFilter === value
-                  ? 'bg-emerald-500 text-slate-950'
-                  : 'text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/10'
-              }`}
-              style={estadoFilter === value ? undefined : { background: 'var(--overlay-soft)' }}
-            >
-              {value === 'todos' ? 'Todos' : estadoLabel[value]}
+        <button type="button" className="erp-button-primary min-h-11" onClick={() => setFormOpen((open) => !open)}>
+          {formOpen ? 'Cerrar formulario' : '+ Nuevo pedido'}
+        </button>
+      </div>
+
+      {formOpen && (
+        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Cargar pedido manual</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+              Cliente existente
+              <select
+                className="erp-input min-h-11"
+                value={clienteId}
+                onChange={(event) => {
+                  setClienteId(event.target.value);
+                  if (event.target.value) {
+                    setNewClientName('');
+                  }
+                }}
+              >
+                <option value="">Elegir…</option>
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+              O nuevo cliente
+              <input
+                className="erp-input min-h-11"
+                value={newClientName}
+                disabled={Boolean(clienteId)}
+                onChange={(event) => setNewClientName(event.target.value)}
+                placeholder="Nombre"
+              />
+            </label>
+            <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200 sm:col-span-2">
+              Producto + talle
+              <select className="erp-input min-h-11" value={productId} onChange={(event) => setProductId(event.target.value)}>
+                <option value="">Elegir…</option>
+                {sortedProducts.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {productOptionLabel(product)} · {product.stockAvailable} disp.
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+              Cantidad
+              <input
+                className="erp-input min-h-11"
+                type="number"
+                min={1}
+                step={1}
+                value={qtyText}
+                onChange={(event) => setQtyText(event.target.value)}
+              />
+            </label>
+          </div>
+          {formError && <p className="mt-3 text-sm text-rose-700 dark:text-rose-200">{formError}</p>}
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button type="button" className="erp-button-primary min-h-11" disabled={saving} onClick={() => void handleCreatePedido()}>
+              {saving ? 'Guardando…' : 'Crear pedido'}
             </button>
-          ))}
+            <button
+              type="button"
+              className="erp-button-secondary min-h-11"
+              disabled={saving}
+              onClick={() => {
+                resetForm();
+                setFormOpen(false);
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
         </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {(['pendiente', 'conseguido', 'descartado', 'todos'] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setEstadoFilter(value)}
+            className={`min-h-10 rounded-full px-3 py-1.5 text-xs font-semibold transition ${filterActiveClass(value)}`}
+            style={estadoFilter === value ? undefined : { background: 'var(--overlay-soft)' }}
+          >
+            {value === 'todos' ? 'Todos' : estadoLabel[value]}
+          </button>
+        ))}
       </div>
 
       {groups.length === 0 ? (
         <EmptyState
           title="Sin pedidos"
-          description="Cuando anotes por voz algo como “Juan me pidió una camiseta de Boca talle M”, aparece acá agrupado para armar el pedido al proveedor."
+          description="Cargá un pedido manual o anotá por voz algo como “Juan me pidió una camiseta de Boca talle M”."
+          actionLabel="+ Nuevo pedido"
+          onAction={() => setFormOpen(true)}
         />
       ) : (
         <div className="space-y-3">
@@ -128,7 +295,7 @@ export function PedidosPanel() {
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${estadoClass[pedido.estado]}`}>
+                        <span className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold ${estadoClass[pedido.estado]}`}>
                           {estadoLabel[pedido.estado]}
                         </span>
                         {(['pendiente', 'conseguido', 'descartado'] as PedidoEstado[])
@@ -139,7 +306,7 @@ export function PedidosPanel() {
                               type="button"
                               disabled={updatingId === pedido.id}
                               onClick={() => void changeEstado(pedido.id, estado)}
-                              className="rounded-full border px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-900/5 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-white/10"
+                              className="min-h-10 rounded-full border px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-900/5 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-white/10"
                               style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
                             >
                               {estadoLabel[estado]}

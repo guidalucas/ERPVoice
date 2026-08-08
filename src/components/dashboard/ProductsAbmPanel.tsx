@@ -250,7 +250,13 @@ function InlineNumber({
   );
 }
 
-export function ProductsAbmPanel() {
+export function ProductsAbmPanel({
+  stockFilter = 'all',
+  onStockFilterChange,
+}: {
+  stockFilter?: 'all' | 'low-stock';
+  onStockFilterChange?: (filter: 'all' | 'low-stock') => void;
+}) {
   const { products, createProductRecord, updateProductRecord, deleteProductRecord } = useInventory();
   const [draft, setDraft] = useState<ProductDraft>(() => emptyDraft());
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -261,6 +267,7 @@ export function ProductsAbmPanel() {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [inlineEdit, setInlineEdit] = useState<{ productId: string; field: InlineField; value: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const onlyLowStock = stockFilter === 'low-stock';
 
   const editingProduct = useMemo(() => products.find((product) => product.id === editingProductId) ?? null, [products, editingProductId]);
 
@@ -303,15 +310,52 @@ export function ProductsAbmPanel() {
 
   const filteredGroups = useMemo(() => {
     const normalizedQuery = normalizeSearch(searchQuery);
-    if (!normalizedQuery) {
-      return groupedProducts;
+    const bySearch = !normalizedQuery
+      ? groupedProducts
+      : groupedProducts.filter((group) => {
+          const haystack = normalizeSearch(
+            [group.displayName, group.productType, group.productModel, ...group.products.map((product) => product.name)]
+              .filter(Boolean)
+              .join(' '),
+          );
+          return haystack.includes(normalizedQuery);
+        });
+
+    if (!onlyLowStock) {
+      return bySearch;
     }
 
-    return groupedProducts.filter((group) => {
-      const haystack = normalizeSearch([group.displayName, group.productType, group.productModel, ...group.products.map((product) => product.name)].filter(Boolean).join(' '));
-      return haystack.includes(normalizedQuery);
+    return bySearch
+      .map((group) => ({
+        ...group,
+        products: group.products.filter((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD),
+      }))
+      .filter((group) => group.products.length > 0);
+  }, [groupedProducts, searchQuery, onlyLowStock]);
+
+  const lowStockGroupKeys = useMemo(
+    () => (onlyLowStock ? filteredGroups.map((group) => group.key).join('\0') : ''),
+    [onlyLowStock, filteredGroups],
+  );
+
+  useEffect(() => {
+    if (!onlyLowStock || !lowStockGroupKeys) {
+      return;
+    }
+
+    const keys = lowStockGroupKeys.split('\0').filter(Boolean);
+    setExpandedGroups((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const key of keys) {
+        if (!next[key]) {
+          next[key] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
     });
-  }, [groupedProducts, searchQuery]);
+  }, [onlyLowStock, lowStockGroupKeys]);
 
   const isEditing = Boolean(editingProductId);
 
@@ -442,17 +486,17 @@ export function ProductsAbmPanel() {
             <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Productos</h3>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Agrupados por modelo. Click en stock o precio para editar inline.</p>
           </div>
-          <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2">
+          <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex min-h-11 items-center gap-2">
             <span aria-hidden>+</span>
             Nuevo Producto
           </button>
         </div>
 
-        <div className="mt-4">
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300">
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <label className="min-w-[12rem] flex-1 space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300">
             Buscar modelo
             <input
-              className="erp-input"
+              className="erp-input min-h-11"
               type="search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
@@ -460,6 +504,28 @@ export function ProductsAbmPanel() {
               autoComplete="off"
             />
           </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
+                !onlyLowStock ? 'bg-emerald-500 text-slate-950' : 'text-slate-600 dark:text-slate-300'
+              }`}
+              style={onlyLowStock ? { background: 'var(--overlay-soft)' } : undefined}
+              onClick={() => onStockFilterChange?.('all')}
+            >
+              Todos
+            </button>
+            <button
+              type="button"
+              className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
+                onlyLowStock ? 'bg-amber-400 text-slate-950' : 'text-slate-600 dark:text-slate-300'
+              }`}
+              style={!onlyLowStock ? { background: 'var(--overlay-soft)' } : undefined}
+              onClick={() => onStockFilterChange?.('low-stock')}
+            >
+              Stock bajo
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 space-y-3">
@@ -481,6 +547,7 @@ export function ProductsAbmPanel() {
                     <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                       {sizeCount} talle{sizeCount === 1 ? '' : 's'} — {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
                       {samePrice && group.products[0] ? ` · ${formatCurrency(group.products[0].price)}` : ''}
+                      {group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? ' · stock bajo' : ''}
                     </p>
                   </div>
                   <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{isExpanded ? 'Ocultar talles' : 'Ver talles'}</span>
@@ -540,7 +607,9 @@ export function ProductsAbmPanel() {
           {products.length === 0 && <div className="px-1 py-6 text-sm text-slate-600 dark:text-slate-400">No hay productos cargados todavía.</div>}
           {products.length > 0 && filteredGroups.length === 0 && (
             <div className="rounded-2xl border border-dashed border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-8 text-center text-sm text-slate-600 dark:text-slate-400">
-              No se encontraron productos para &apos;{searchQuery.trim()}&apos;
+              {onlyLowStock
+                ? 'No hay productos con stock bajo o agotado.'
+                : `No se encontraron productos para '${searchQuery.trim()}'`}
             </div>
           )}
         </div>

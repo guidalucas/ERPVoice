@@ -64,8 +64,9 @@ export const useInventory = () => {
   };
 
   const createClientRecord = async (input: { name: string; notas?: string | null }) => {
-    await createClient(input);
+    const client = await createClient(input);
     await refreshState();
+    return client;
   };
 
   const updateClientRecord = async (clientId: string, input: Partial<Pick<Client, 'name' | 'notas' | 'debt'>>) => {
