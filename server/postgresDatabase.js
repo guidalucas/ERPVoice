@@ -51,6 +51,8 @@ const DEFAULT_STATE_SNAPSHOT = {
 
 const PEDIDO_ESTADOS = new Set(['pendiente', 'conseguido', 'descartado']);
 
+export const hasDatabaseConfig = () => Boolean(getConnectionString());
+
 const getConnectionString = () =>
   process.env.SUPABASE_DATABASE_URL ||
   process.env.DATABASE_URL ||
@@ -1370,6 +1372,27 @@ export const revokeAuthOtpChallenge = async (challengeId) => {
   );
 };
 
+export const upsertAuthUser = async (phoneNumber) => {
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+
+  if (!normalizedPhoneNumber) {
+    throw new Error('Número de teléfono inválido');
+  }
+
+  await ensureReady();
+  await getPool().query(
+    `
+      INSERT INTO auth_users (phone_number, created_at, last_login_at)
+      VALUES ($1, NOW(), NOW())
+      ON CONFLICT (phone_number) DO UPDATE
+      SET last_login_at = NOW()
+    `,
+    [normalizedPhoneNumber],
+  );
+
+  return { phoneNumber: normalizedPhoneNumber };
+};
+
 export const verifyAuthOtpChallenge = async ({ phoneNumber, otpCode, challengeId = null }) => {
   await ensureReady();
 
@@ -1429,15 +1452,7 @@ export const verifyAuthOtpChallenge = async ({ phoneNumber, otpCode, challengeId
     [challenge.id],
   );
 
-  await getPool().query(
-    `
-      INSERT INTO auth_users (phone_number, created_at, last_login_at)
-      VALUES ($1, NOW(), NOW())
-      ON CONFLICT (phone_number) DO UPDATE
-      SET last_login_at = NOW()
-    `,
-    [normalizedPhoneNumber],
-  );
+  await upsertAuthUser(normalizedPhoneNumber);
 
   return { ok: true, phoneNumber: normalizedPhoneNumber, challengeId: challenge.id };
 };

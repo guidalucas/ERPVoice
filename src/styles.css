@@ -4,7 +4,24 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+html.light {
+  color-scheme: light;
+  --background: #f8fafc;
+  --surface: rgba(255, 255, 255, 0.92);
+  --surface-elevated: rgba(255, 255, 255, 0.98);
+  --border: rgba(15, 23, 42, 0.1);
+  --text: #0f172a;
+  --muted: #52606d;
+  --accent: #19c37d;
+  --warning: #d97706;
+  --destructive: #e11d48;
+  --whatsapp: #25d366;
+  --card-hover: rgba(15, 23, 42, 0.04);
+  --overlay-soft: rgba(15, 23, 42, 0.04);
+  --shadow-color: rgba(15, 23, 42, 0.08);
+}
+
+html.dark {
   color-scheme: dark;
   --background: #07111f;
   --surface: rgba(10, 15, 26, 0.82);
@@ -16,6 +33,9 @@
   --warning: #f5b94f;
   --destructive: #fb7185;
   --whatsapp: #25d366;
+  --card-hover: rgba(255, 255, 255, 0.065);
+  --overlay-soft: rgba(255, 255, 255, 0.05);
+  --shadow-color: rgba(0, 0, 0, 0.2);
 }
 
 html,
@@ -28,12 +48,23 @@ body {
   margin: 0;
   font-family: 'Space Grotesk', sans-serif;
   color: var(--text);
+  background-attachment: fixed;
+}
+
+html.light body {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(25, 195, 125, 0.1), transparent 24%),
+    radial-gradient(circle at 88% 0%, rgba(59, 130, 246, 0.08), transparent 22%),
+    radial-gradient(circle at 50% 100%, rgba(148, 163, 184, 0.1), transparent 28%),
+    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 40%, #e2e8f0 100%);
+}
+
+html.dark body {
   background:
     radial-gradient(circle at 12% 8%, rgba(25, 195, 125, 0.16), transparent 24%),
     radial-gradient(circle at 88% 0%, rgba(59, 130, 246, 0.14), transparent 22%),
     radial-gradient(circle at 50% 100%, rgba(148, 163, 184, 0.08), transparent 28%),
     linear-gradient(180deg, #050b16 0%, #07111f 40%, #0b1220 100%);
-  background-attachment: fixed;
 }
 
 * {
@@ -47,23 +78,43 @@ body {
 
 @layer components {
   .erp-shell {
-    @apply rounded-[2rem] border border-white/10 bg-slate-950/70 shadow-glow backdrop-blur-xl;
+    @apply rounded-[2rem] border backdrop-blur-xl;
+    border-color: var(--border);
+    background: var(--surface);
+    box-shadow: 0 24px 80px var(--shadow-color);
   }
 
   .erp-panel {
-    @apply rounded-[1.5rem] border border-white/10 bg-slate-950/60 p-4 shadow-lg shadow-black/20 backdrop-blur-xl;
+    @apply rounded-[1.5rem] border p-4 backdrop-blur-xl;
+    border-color: var(--border);
+    background: var(--surface);
+    box-shadow: 0 10px 30px var(--shadow-color);
   }
 
   .erp-card {
-    @apply rounded-3xl border border-white/10 bg-white/5 p-4 shadow-lg shadow-black/20;
+    @apply rounded-3xl border p-4;
+    border-color: var(--border);
+    background: var(--overlay-soft);
+    box-shadow: 0 10px 30px var(--shadow-color);
   }
 
   .erp-card-soft {
-    @apply rounded-2xl border border-white/10 bg-white/5 p-3 shadow-sm shadow-black/20;
+    @apply rounded-2xl border p-3;
+    border-color: var(--border);
+    background: var(--overlay-soft);
+    box-shadow: 0 4px 12px var(--shadow-color);
   }
 
   .erp-input {
-    @apply w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-emerald-400;
+    @apply w-full rounded-2xl border px-3 py-2 text-sm outline-none transition focus:border-emerald-400;
+    border-color: var(--border);
+    background: var(--surface-elevated);
+    color: var(--text);
+  }
+
+  .erp-input::placeholder {
+    color: var(--muted);
+    opacity: 0.8;
   }
 
   .erp-button-primary {
@@ -71,15 +122,25 @@ body {
   }
 
   .erp-button-secondary {
-    @apply rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply rounded-full border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60;
+    border-color: var(--border);
+    background: var(--overlay-soft);
+    color: var(--text);
+  }
+
+  .erp-button-secondary:hover {
+    background: var(--card-hover);
   }
 
   .erp-button-danger {
-    @apply rounded-full border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply rounded-full border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:text-rose-200;
   }
 
   .erp-chip {
-    @apply inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300;
+    @apply inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em];
+    border-color: var(--border);
+    background: var(--overlay-soft);
+    color: var(--muted);
   }
 
   .dashboard-layout {
@@ -87,7 +148,10 @@ body {
   }
 
   .dashboard-sidebar {
-    @apply w-56 shrink-0 flex-col rounded-[1.5rem] border border-white/10 bg-slate-950/70 p-4 shadow-lg shadow-black/20 backdrop-blur-xl;
+    @apply sticky top-4 flex h-[calc(100vh-2rem)] w-56 shrink-0 flex-col self-start overflow-y-auto rounded-[1.5rem] border p-4 backdrop-blur-xl;
+    border-color: var(--border);
+    background: var(--surface);
+    box-shadow: 0 10px 30px var(--shadow-color);
   }
 
   .dashboard-main {
@@ -99,7 +163,10 @@ body {
   }
 
   .dashboard-bottom-nav {
-    @apply fixed inset-x-3 bottom-3 z-40 rounded-3xl border border-white/10 bg-slate-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-xl lg:hidden;
+    @apply fixed inset-x-3 bottom-3 z-40 rounded-3xl border p-2 shadow-2xl backdrop-blur-xl lg:hidden;
+    border-color: var(--border);
+    background: var(--surface-elevated);
+    box-shadow: 0 20px 50px var(--shadow-color);
   }
 
   .dashboard-bottom-nav-item {
@@ -107,11 +174,38 @@ body {
   }
 
   .stock-chip {
-    @apply inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm;
+    @apply inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-sm;
+    border-color: var(--border);
+    background: var(--overlay-soft);
   }
 
   .stock-chip-input {
-    @apply w-14 rounded-lg border border-emerald-400/40 bg-slate-950 px-1.5 py-0.5 text-center text-sm font-semibold text-white outline-none;
+    @apply w-14 rounded-lg border border-emerald-400/40 px-1.5 py-0.5 text-center text-sm font-semibold outline-none;
+    background: var(--surface-elevated);
+    color: var(--text);
+  }
+
+  .theme-toggle {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-xl border transition;
+    border-color: var(--border);
+    background: var(--overlay-soft);
+    color: var(--muted);
+  }
+
+  .theme-toggle:hover {
+    background: var(--card-hover);
+    color: var(--text);
+  }
+
+  .activity-filter-chip {
+    @apply rounded-full border px-3 py-1.5 text-xs font-semibold transition;
+    border-color: var(--border);
+    background: var(--overlay-soft);
+    color: var(--muted);
+  }
+
+  .activity-filter-chip[aria-pressed='true'] {
+    @apply border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300;
   }
 }
 
@@ -124,10 +218,14 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.24);
+  background: rgba(148, 163, 184, 0.35);
   border-radius: 999px;
 }
 
+html.dark ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.24);
+}
+
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.36);
+  background: rgba(148, 163, 184, 0.5);
 }

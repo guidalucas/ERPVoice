@@ -7,7 +7,7 @@ export default defineConfig({
     allowedHosts: ['bc8b-186-124-193-161.ngrok-free.app'],
     proxy: {
       '/api': {
-        target: process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8080',
+        target: process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:3001',
         changeOrigin: true,
       },
     },
