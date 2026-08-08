@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ParsedVoicePayload, ParsedActionUnion } from '../domain/types';
+import { useBusinessCategoryPreset } from './useBusinessCategoryPreset';
 import { voiceModelService } from '../services/voiceModelService';
 import { createChatMessage, useAppStore } from '../store/AppStore';
 
@@ -52,8 +53,13 @@ const tokenize = (value: string) =>
     .map((token) => token.replace(/[^a-z0-9]/g, ''))
     .filter((token) => token.length > 2 && !['para', 'con', 'del', 'las', 'los', 'una', 'uno', 'por', 'les'].includes(token));
 
-const formatProductMeta = (action: { productType?: string; productModel?: string; size?: string; productName: string }) => {
-  const parts = [action.productType, action.productModel, action.size].filter((value): value is string => Boolean(value));
+const formatProductMeta = (
+  action: { productType?: string; productModel?: string; size?: string; productName: string },
+  includeSize: boolean,
+) => {
+  const parts = [action.productType, action.productModel, includeSize ? action.size : undefined].filter(
+    (value): value is string => Boolean(value),
+  );
 
   return parts.length ? `${parts.join(' / ')} -> ${action.productName}` : action.productName;
 };
@@ -137,6 +143,7 @@ const enrichProposal = (payload: ParsedVoicePayload, products: { name: string; p
 
 export const useChatBot = () => {
   const { state, addChatMessage, setPendingProposal, confirmPendingProposal, clearPendingProposal } = useAppStore();
+  const preset = useBusinessCategoryPreset();
   const [draftText, setDraftText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -151,15 +158,15 @@ export const useChatBot = () => {
 
     return state.pendingProposal.actions.map((action, index) => {
       if (action.type === 'add_stock') {
-        return `${index + 1}. add_stock -> ${formatProductMeta(action)} (+${action.qty})`;
+        return `${index + 1}. add_stock -> ${formatProductMeta(action, preset.useVariants)} (+${action.qty})`;
       }
 
       if (action.type === 'reserve_stock') {
-        return `${index + 1}. reserve_stock -> ${formatProductMeta(action)} (-${action.qty})`;
+        return `${index + 1}. reserve_stock -> ${formatProductMeta(action, preset.useVariants)} (-${action.qty})`;
       }
 
       if (action.type === 'sell') {
-        return `${index + 1}. sell -> ${formatProductMeta(action)} (-${action.qty})`;
+        return `${index + 1}. sell -> ${formatProductMeta(action, preset.useVariants)} (-${action.qty})`;
       }
 
       if (action.type === 'payment_received') {
@@ -168,14 +175,17 @@ export const useChatBot = () => {
 
       if (action.type === 'client_order') {
         const qty = action.qty && action.qty > 0 ? action.qty : 1;
-        const sizeLabel = action.size ? ` talle ${action.size}` : '';
+        const sizeLabel =
+          preset.useVariants && action.size && preset.variantLabel
+            ? ` ${preset.variantLabel.toLowerCase()} ${action.size}`
+            : '';
         return `${index + 1}. client_order -> ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
       }
 
       // add_debt
       return `${index + 1}. add_debt -> ${action.clientName} (+$${action.amount.toLocaleString('es-AR')})`;
     });
-  }, [state.pendingProposal]);
+  }, [state.pendingProposal, preset.useVariants, preset.variantLabel]);
 
   const processText = async (inputText: string) => {
     const trimmed = inputText.trim();

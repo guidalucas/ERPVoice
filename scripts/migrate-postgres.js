@@ -89,8 +89,13 @@ const main = async () => {
       CREATE TABLE IF NOT EXISTS auth_users (
         phone_number TEXT PRIMARY KEY,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        business_name TEXT,
+        business_category TEXT
       );
+
+      ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_name TEXT;
+      ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_category TEXT;
 
       CREATE TABLE IF NOT EXISTS auth_otp_challenges (
         id TEXT PRIMARY KEY,

@@ -373,6 +373,7 @@ export function DashboardPanel() {
       activeSection={activeSection}
       onSectionChange={handleSectionChange}
       phoneNumber={session?.phoneNumber}
+      businessName={session?.businessName}
       onLogout={logout}
     >
       {activeSection === 'inicio' && (

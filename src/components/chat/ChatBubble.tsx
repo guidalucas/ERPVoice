@@ -1,13 +1,19 @@
 import type { ChatMessage } from '../../domain/types';
+import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 
 interface ChatBubbleProps {
   message: ChatMessage;
 }
 
 export function ChatBubble({ message }: ChatBubbleProps) {
+  const preset = useBusinessCategoryPreset();
   const isUser = message.role === 'user';
   const describeProduct = (action: { productName: string; productType?: string; productModel?: string; size?: string }) => {
-    const parts = [action.productType, action.productModel, action.size].filter((value): value is string => Boolean(value));
+    const parts = [
+      action.productType,
+      action.productModel,
+      preset.useVariants ? action.size : undefined,
+    ].filter((value): value is string => Boolean(value));
     return parts.length ? `${parts.join(' / ')} -> ${action.productName}` : action.productName;
   };
 
