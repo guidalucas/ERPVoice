@@ -56,8 +56,7 @@ export function DashboardShell({ activeSection, onSectionChange, phoneNumber, on
           <h2 className="font-display text-2xl font-bold text-white">{sectionTitles[activeSection]}</h2>
           <p className="mt-1 text-sm text-slate-400">
             {activeSection === 'inicio' && 'Resumen de stock y actividad reciente'}
-            {activeSection === 'stock' && 'Inventario disponible y reservado'}
-            {activeSection === 'productos' && 'Catálogo agrupado por modelo'}
+            {activeSection === 'productos' && 'Catálogo, stock y precios por modelo'}
             {activeSection === 'pedidos' && 'Qué te pidieron, agrupado para armar el pedido al proveedor'}
             {activeSection === 'clientes' && 'Clientes y sus pedidos'}
             {activeSection === 'actividad' && 'Cargas por voz y mensajes recientes'}

@@ -1,8 +1,4 @@
-export type DashboardSection = 'inicio' | 'stock' | 'productos' | 'pedidos' | 'clientes' | 'actividad';
+export type DashboardSection = 'inicio' | 'productos' | 'pedidos' | 'clientes' | 'actividad';
 
-export type NavigateOptions = {
-  openProductCreate?: boolean;
-  filterLowStock?: boolean;
-};
-
-export const LOW_STOCK_THRESHOLD = 2;
+/** Variantes con stockAvailable por debajo o igual a este umbral cuentan como stock bajo / agotado. */
+export const LOW_STOCK_THRESHOLD = 1;

@@ -56,6 +56,13 @@ const toDraft = (product: ProductRow): ProductDraft => ({
 
 const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
 
+const normalizeSearch = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim();
+
 const buildProductName = (draft: ProductDraft) => {
   const explicitName = draft.name.trim();
   if (explicitName) {
@@ -253,8 +260,17 @@ export function ProductsAbmPanel() {
   const [deleting, setDeleting] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [inlineEdit, setInlineEdit] = useState<{ productId: string; field: InlineField; value: string } | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const editingProduct = useMemo(() => products.find((product) => product.id === editingProductId) ?? null, [products, editingProductId]);
+
+  const stockSummary = useMemo(() => {
+    const totalAvailable = products.reduce((total, product) => total + product.stockAvailable, 0);
+    const totalReserved = products.reduce((total, product) => total + product.stockReserved, 0);
+    const totalValue = products.reduce((total, product) => total + (product.stockAvailable + product.stockReserved) * product.price, 0);
+
+    return { totalAvailable, totalReserved, totalValue };
+  }, [products]);
 
   const groupedProducts = useMemo(() => {
     const groups: Record<string, ProductGroup> = {};
@@ -284,6 +300,18 @@ export function ProductsAbmPanel() {
       ),
     }));
   }, [products]);
+
+  const filteredGroups = useMemo(() => {
+    const normalizedQuery = normalizeSearch(searchQuery);
+    if (!normalizedQuery) {
+      return groupedProducts;
+    }
+
+    return groupedProducts.filter((group) => {
+      const haystack = normalizeSearch([group.displayName, group.productType, group.productModel, ...group.products.map((product) => product.name)].filter(Boolean).join(' '));
+      return haystack.includes(normalizedQuery);
+    });
+  }, [groupedProducts, searchQuery]);
 
   const isEditing = Boolean(editingProductId);
 
@@ -381,116 +409,163 @@ export function ProductsAbmPanel() {
   };
 
   return (
-    <article className="erp-panel">
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
-        <div>
-          <h3 className="font-display text-xl font-bold text-slate-100">Productos</h3>
-          <p className="mt-1 text-sm text-slate-400">Agrupados por modelo. Click en stock o precio para editar inline.</p>
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[#0c1426] p-5 shadow-lg shadow-sky-950/20">
+          <p className="text-[15px] font-medium text-slate-400">Stock Disponible</p>
+          <div className="mt-10">
+            <p className="font-display text-[2rem] font-bold tracking-tight text-sky-400">{stockSummary.totalAvailable}</p>
+            <p className="text-sm text-slate-400">unidades listas para venta</p>
+          </div>
+        </article>
+
+        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[#0c1426] p-5 shadow-lg shadow-sky-950/20">
+          <p className="text-[15px] font-medium text-slate-400">Stock Reservado</p>
+          <div className="mt-10">
+            <p className="font-display text-[2rem] font-bold tracking-tight text-cyan-400">{stockSummary.totalReserved}</p>
+            <p className="text-sm text-slate-400">unidades apartadas</p>
+          </div>
+        </article>
+
+        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[#0c1426] p-5 shadow-lg shadow-sky-950/20">
+          <p className="text-[15px] font-medium text-slate-400">Valor Total</p>
+          <div className="mt-10">
+            <p className="font-display text-[2rem] font-bold tracking-tight text-slate-100">{formatCurrency(stockSummary.totalValue)}</p>
+            <p className="text-sm text-slate-400">inventario valorizado</p>
+          </div>
+        </article>
+      </div>
+
+      <article className="erp-panel">
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
+          <div>
+            <h3 className="font-display text-xl font-bold text-slate-100">Productos</h3>
+            <p className="mt-1 text-sm text-slate-400">Agrupados por modelo. Click en stock o precio para editar inline.</p>
+          </div>
+          <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2">
+            <span aria-hidden>+</span>
+            Nuevo Producto
+          </button>
         </div>
-        <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2">
-          <span aria-hidden>+</span>
-          Nuevo Producto
-        </button>
-      </div>
 
-      <div className="mt-4 space-y-3">
-        {groupedProducts.map((group) => {
-          const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
-          const samePrice = group.products.every((product) => product.price === group.products[0]?.price);
-          const isExpanded = Boolean(expandedGroups[group.key]);
-          const sizeCount = group.products.length;
+        <div className="mt-4">
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-300">
+            Buscar modelo
+            <input
+              className="erp-input"
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Ej: river, argentina, boca…"
+              autoComplete="off"
+            />
+          </label>
+        </div>
 
-          return (
-            <div key={group.key} className="rounded-2xl border border-white/10 bg-white/[0.03]">
-              <button
-                type="button"
-                className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left"
-                onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !current[group.key] }))}
-              >
-                <div>
-                  <p className="font-display text-lg font-bold text-white">{group.displayName}</p>
-                  <p className="mt-1 text-sm text-slate-400">
-                    {sizeCount} talle{sizeCount === 1 ? '' : 's'} — {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
-                    {samePrice && group.products[0] ? ` · ${formatCurrency(group.products[0].price)}` : ''}
-                  </p>
-                </div>
-                <span className="text-xs font-semibold text-emerald-300">{isExpanded ? 'Ocultar talles' : 'Ver talles'}</span>
-              </button>
+        <div className="mt-4 space-y-3">
+          {filteredGroups.map((group) => {
+            const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
+            const samePrice = group.products.every((product) => product.price === group.products[0]?.price);
+            const isExpanded = Boolean(expandedGroups[group.key]);
+            const sizeCount = group.products.length;
 
-              {isExpanded && (
-                <div className="space-y-3 border-t border-white/10 px-4 py-3">
-                  <div className="flex flex-wrap gap-2">
-                    {group.products.map((product) => {
-                      const isEditingStock = inlineEdit?.productId === product.id && inlineEdit.field === 'stockAvailable';
-                      const isEditingPrice = inlineEdit?.productId === product.id && inlineEdit.field === 'price';
-                      const low = product.stockAvailable <= LOW_STOCK_THRESHOLD;
-
-                      return (
-                        <div
-                          key={product.id}
-                          className={`stock-chip ${low ? 'border-amber-400/30 bg-amber-400/10' : ''}`}
-                        >
-                          <span className="font-semibold text-slate-200">{product.size ?? '-'}:</span>
-                          <InlineNumber
-                            value={product.stockAvailable}
-                            editing={Boolean(isEditingStock)}
-                            draftValue={inlineEdit?.value ?? ''}
-                            onStart={() => setInlineEdit({ productId: product.id, field: 'stockAvailable', value: String(product.stockAvailable) })}
-                            onChange={(value) => setInlineEdit({ productId: product.id, field: 'stockAvailable', value })}
-                            onCommit={() => void commitInlineEdit()}
-                            onCancel={() => setInlineEdit(null)}
-                          />
-                          <span className="text-slate-600">·</span>
-                          <InlineNumber
-                            value={product.price}
-                            editing={Boolean(isEditingPrice)}
-                            draftValue={inlineEdit?.value ?? ''}
-                            onStart={() => setInlineEdit({ productId: product.id, field: 'price', value: String(product.price) })}
-                            onChange={(value) => setInlineEdit({ productId: product.id, field: 'price', value })}
-                            onCommit={() => void commitInlineEdit()}
-                            onCancel={() => setInlineEdit(null)}
-                            formatDisplay={formatCurrency}
-                          />
-                          <IconButton label={`Eliminar ${product.name}`} danger onClick={() => setPendingDeleteProduct(product)}>
-                            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
-                              <path d="M4 7h16" />
-                              <path d="M9 7V5h6v2" />
-                              <path d="M6 7l1 13h10l1-13" />
-                            </svg>
-                          </IconButton>
-                        </div>
-                      );
-                    })}
+            return (
+              <div key={group.key} className="rounded-2xl border border-white/10 bg-white/[0.03]">
+                <button
+                  type="button"
+                  className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left"
+                  onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !current[group.key] }))}
+                >
+                  <div>
+                    <p className="font-display text-lg font-bold text-white">{group.displayName}</p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      {sizeCount} talle{sizeCount === 1 ? '' : 's'} — {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
+                      {samePrice && group.products[0] ? ` · ${formatCurrency(group.products[0].price)}` : ''}
+                    </p>
                   </div>
-                </div>
-              )}
+                  <span className="text-xs font-semibold text-emerald-300">{isExpanded ? 'Ocultar talles' : 'Ver talles'}</span>
+                </button>
+
+                {isExpanded && (
+                  <div className="space-y-3 border-t border-white/10 px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      {group.products.map((product) => {
+                        const isEditingStock = inlineEdit?.productId === product.id && inlineEdit.field === 'stockAvailable';
+                        const isEditingPrice = inlineEdit?.productId === product.id && inlineEdit.field === 'price';
+                        const low = product.stockAvailable <= LOW_STOCK_THRESHOLD;
+
+                        return (
+                          <div
+                            key={product.id}
+                            className={`stock-chip ${low ? 'border-amber-400/30 bg-amber-400/10' : ''}`}
+                          >
+                            <span className="font-semibold text-slate-200">{product.size ?? '-'}:</span>
+                            <InlineNumber
+                              value={product.stockAvailable}
+                              editing={Boolean(isEditingStock)}
+                              draftValue={inlineEdit?.value ?? ''}
+                              onStart={() => setInlineEdit({ productId: product.id, field: 'stockAvailable', value: String(product.stockAvailable) })}
+                              onChange={(value) => setInlineEdit({ productId: product.id, field: 'stockAvailable', value })}
+                              onCommit={() => void commitInlineEdit()}
+                              onCancel={() => setInlineEdit(null)}
+                            />
+                            <span className="text-slate-600">·</span>
+                            <InlineNumber
+                              value={product.price}
+                              editing={Boolean(isEditingPrice)}
+                              draftValue={inlineEdit?.value ?? ''}
+                              onStart={() => setInlineEdit({ productId: product.id, field: 'price', value: String(product.price) })}
+                              onChange={(value) => setInlineEdit({ productId: product.id, field: 'price', value })}
+                              onCommit={() => void commitInlineEdit()}
+                              onCancel={() => setInlineEdit(null)}
+                              formatDisplay={formatCurrency}
+                            />
+                            <IconButton label={`Eliminar ${product.name}`} danger onClick={() => setPendingDeleteProduct(product)}>
+                              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
+                                <path d="M4 7h16" />
+                                <path d="M9 7V5h6v2" />
+                                <path d="M6 7l1 13h10l1-13" />
+                              </svg>
+                            </IconButton>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {products.length === 0 && <div className="px-1 py-6 text-sm text-slate-400">No hay productos cargados todavía.</div>}
+          {products.length > 0 && filteredGroups.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-8 text-center text-sm text-slate-400">
+              No se encontraron productos para &apos;{searchQuery.trim()}&apos;
             </div>
-          );
-        })}
+          )}
+        </div>
 
-        {products.length === 0 && <div className="px-1 py-6 text-sm text-slate-400">No hay productos cargados todavía.</div>}
-      </div>
+        {isFormOpen && (
+          <ProductFormModal
+            title={isEditing ? 'Editar Producto' : 'Nuevo Producto'}
+            draft={draft}
+            onDraftChange={setDraft}
+            onClose={() => setIsFormOpen(false)}
+            onSubmit={handleSubmit}
+            submitLabel={isEditing ? 'Guardar' : 'Crear'}
+            submitting={saving}
+          />
+        )}
 
-      {isFormOpen && (
-        <ProductFormModal
-          title={isEditing ? 'Editar Producto' : 'Nuevo Producto'}
-          draft={draft}
-          onDraftChange={setDraft}
-          onClose={() => setIsFormOpen(false)}
-          onSubmit={handleSubmit}
-          submitLabel={isEditing ? 'Guardar' : 'Crear'}
-          submitting={saving}
-        />
-      )}
-
-      {pendingDeleteProduct && (
-        <ConfirmDeleteModal
-          productName={pendingDeleteProduct.name}
-          onCancel={() => setPendingDeleteProduct(null)}
-          onConfirm={() => void confirmDelete()}
-          confirming={deleting}
-        />
-      )}
-    </article>
+        {pendingDeleteProduct && (
+          <ConfirmDeleteModal
+            productName={pendingDeleteProduct.name}
+            onCancel={() => setPendingDeleteProduct(null)}
+            onConfirm={() => void confirmDelete()}
+            confirming={deleting}
+          />
+        )}
+      </article>
+    </div>
   );
 }
