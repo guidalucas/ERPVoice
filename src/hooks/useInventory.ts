@@ -1,13 +1,30 @@
 import { useAppStore } from '../store/AppStore';
-import { createProduct, deleteProduct, fetchPersistedState, updateProduct } from '../services/productService';
-import type { Product } from '../domain/types';
+import {
+  createClient,
+  createPedido,
+  createProduct,
+  deleteClient,
+  deletePedido,
+  deleteProduct,
+  fetchPersistedState,
+  mergeClients,
+  updateClient,
+  updatePedido,
+  updateProduct,
+} from '../services/productService';
+import type { Client, Pedido, PedidoEstado, Product } from '../domain/types';
 
 export const useInventory = () => {
   const { state, confirmPendingProposal, clearPendingProposal, hydratePersistedState } = useAppStore();
 
   const refreshState = async () => {
     const snapshot = await fetchPersistedState();
-    hydratePersistedState(snapshot);
+    hydratePersistedState({
+      products: snapshot.products,
+      clients: snapshot.clients,
+      pedidos: snapshot.pedidos ?? [],
+      transactions: snapshot.transactions,
+    });
   };
 
   const createProductRecord = async (input: Omit<Product, 'id'> & { name: string }) => {
@@ -35,9 +52,68 @@ export const useInventory = () => {
     await refreshState();
   };
 
+  const createClientRecord = async (input: { name: string; notas?: string | null }) => {
+    await createClient(input);
+    await refreshState();
+  };
+
+  const updateClientRecord = async (clientId: string, input: Partial<Pick<Client, 'name' | 'notas' | 'debt'>>) => {
+    await updateClient(clientId, input);
+    await refreshState();
+  };
+
+  const deleteClientRecord = async (clientId: string) => {
+    await deleteClient(clientId);
+    await refreshState();
+  };
+
+  const mergeClientRecords = async (keepId: string, mergeId: string) => {
+    const snapshot = await mergeClients(keepId, mergeId);
+    hydratePersistedState({
+      products: snapshot.products,
+      clients: snapshot.clients,
+      pedidos: snapshot.pedidos ?? [],
+      transactions: snapshot.transactions,
+    });
+  };
+
+  const createPedidoRecord = async (input: {
+    clienteId: string;
+    producto: string;
+    productType?: string | null;
+    productModel?: string | null;
+    talle?: string | null;
+    qty?: number;
+    estado?: PedidoEstado;
+    notas?: string | null;
+  }) => {
+    await createPedido(input);
+    await refreshState();
+  };
+
+  const updatePedidoRecord = async (pedidoId: string, input: Partial<Omit<Pedido, 'id' | 'fechaPedido'>>) => {
+    await updatePedido(pedidoId, {
+      clienteId: input.clienteId,
+      producto: input.producto,
+      productType: input.productType,
+      productModel: input.productModel,
+      talle: input.talle,
+      qty: input.qty,
+      estado: input.estado,
+      notas: input.notas,
+    });
+    await refreshState();
+  };
+
+  const deletePedidoRecord = async (pedidoId: string) => {
+    await deletePedido(pedidoId);
+    await refreshState();
+  };
+
   return {
     products: state.products,
     clients: state.clients,
+    pedidos: state.pedidos,
     transactions: state.transactions,
     pendingProposal: state.pendingProposal,
     confirmPendingProposal,
@@ -46,5 +122,12 @@ export const useInventory = () => {
     createProductRecord,
     updateProductRecord,
     deleteProductRecord,
+    createClientRecord,
+    updateClientRecord,
+    deleteClientRecord,
+    mergeClientRecords,
+    createPedidoRecord,
+    updatePedidoRecord,
+    deletePedidoRecord,
   };
 };

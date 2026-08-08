@@ -1,5 +1,12 @@
-import type { Client, Product, Transaction } from '../domain/types';
+import type { Client, Pedido, PedidoEstado, Product, Transaction } from '../domain/types';
 import { requestJson } from './apiClient';
+
+export type PersistedState = {
+  products: Product[];
+  clients: Client[];
+  pedidos: Pedido[];
+  transactions: Transaction[];
+};
 
 export type ProductInput = {
   name: string;
@@ -11,18 +18,78 @@ export type ProductInput = {
   price?: number;
 };
 
-export const fetchPersistedState = async () => requestJson<{ products: Product[]; clients: Client[]; transactions: Transaction[] }>('/api/state');
+export type ClientInput = {
+  name: string;
+  notas?: string | null;
+  debt?: number;
+};
 
-export const createProduct = async (product: ProductInput) => requestJson<Product>('/api/products', {
-  method: 'POST',
-  body: JSON.stringify(product),
-});
+export type PedidoInput = {
+  clienteId: string;
+  producto: string;
+  productType?: string | null;
+  productModel?: string | null;
+  talle?: string | null;
+  qty?: number;
+  estado?: PedidoEstado;
+  notas?: string | null;
+};
 
-export const updateProduct = async (productId: string, product: Partial<ProductInput>) => requestJson<Product>(`/api/products/${productId}`, {
-  method: 'PUT',
-  body: JSON.stringify(product),
-});
+export const fetchPersistedState = async () => requestJson<PersistedState>('/api/state');
 
-export const deleteProduct = async (productId: string) => requestJson<void>(`/api/products/${productId}`, {
-  method: 'DELETE',
-});
+export const createProduct = async (product: ProductInput) =>
+  requestJson<Product>('/api/products', {
+    method: 'POST',
+    body: JSON.stringify(product),
+  });
+
+export const updateProduct = async (productId: string, product: Partial<ProductInput>) =>
+  requestJson<Product>(`/api/products/${productId}`, {
+    method: 'PUT',
+    body: JSON.stringify(product),
+  });
+
+export const deleteProduct = async (productId: string) =>
+  requestJson<void>(`/api/products/${productId}`, {
+    method: 'DELETE',
+  });
+
+export const createClient = async (client: ClientInput) =>
+  requestJson<Client>('/api/clients', {
+    method: 'POST',
+    body: JSON.stringify(client),
+  });
+
+export const updateClient = async (clientId: string, client: Partial<ClientInput>) =>
+  requestJson<Client>(`/api/clients/${clientId}`, {
+    method: 'PUT',
+    body: JSON.stringify(client),
+  });
+
+export const deleteClient = async (clientId: string) =>
+  requestJson<void>(`/api/clients/${clientId}`, {
+    method: 'DELETE',
+  });
+
+export const mergeClients = async (keepId: string, mergeId: string) =>
+  requestJson<PersistedState>('/api/clients/merge', {
+    method: 'POST',
+    body: JSON.stringify({ keepId, mergeId }),
+  });
+
+export const createPedido = async (pedido: PedidoInput) =>
+  requestJson<Pedido>('/api/pedidos', {
+    method: 'POST',
+    body: JSON.stringify(pedido),
+  });
+
+export const updatePedido = async (pedidoId: string, pedido: Partial<PedidoInput>) =>
+  requestJson<Pedido>(`/api/pedidos/${pedidoId}`, {
+    method: 'PUT',
+    body: JSON.stringify(pedido),
+  });
+
+export const deletePedido = async (pedidoId: string) =>
+  requestJson<void>(`/api/pedidos/${pedidoId}`, {
+    method: 'DELETE',
+  });

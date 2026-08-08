@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useInventory } from '../../hooks/useInventory';
+import { LOW_STOCK_THRESHOLD } from './dashboardTypes';
 
 type ProductDraft = {
   name: string;
@@ -31,6 +32,8 @@ type ProductGroup = {
   products: ProductRow[];
 };
 
+type InlineField = 'stockAvailable' | 'price';
+
 const emptyDraft = (): ProductDraft => ({
   name: '',
   productType: '',
@@ -55,18 +58,12 @@ const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
 
 const buildProductName = (draft: ProductDraft) => {
   const explicitName = draft.name.trim();
-
   if (explicitName) {
     return explicitName;
   }
 
   const parts = [draft.productType.trim(), draft.productModel.trim(), draft.size.trim()].filter(Boolean);
-
-  if (parts.length) {
-    return parts.join(' ');
-  }
-
-  return 'Nuevo Producto';
+  return parts.length ? parts.join(' ') : 'Nuevo Producto';
 };
 
 function IconButton({
@@ -114,21 +111,11 @@ function ConfirmDeleteModal({
         <p className="mt-3 text-sm leading-6 text-slate-300">
           Vas a eliminar <span className="font-semibold text-white">{productName}</span>. Esta acción no se puede deshacer.
         </p>
-
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 font-semibold text-slate-200 transition hover:bg-white/10"
-          >
+          <button type="button" onClick={onCancel} className="erp-button-secondary">
             Cancelar
           </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={confirming}
-            className="inline-flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-2.5 font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-          >
+          <button type="button" onClick={onConfirm} disabled={confirming} className="erp-button-danger">
             {confirming ? 'Eliminando...' : 'Eliminar'}
           </button>
         </div>
@@ -159,125 +146,100 @@ function ProductFormModal({
       <div className="w-full max-w-3xl rounded-2xl border border-white/10 bg-[#070707] p-6 text-slate-100 shadow-2xl shadow-black/70">
         <div className="flex items-start justify-between gap-3">
           <h4 className="text-[1.55rem] font-bold leading-none text-slate-100">{title}</h4>
-          <button
-            type="button"
-            aria-label="Cerrar modal"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-slate-400 transition hover:bg-white/5 hover:text-white"
-            onClick={onClose}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[2.1]">
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
+          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" onClick={onClose}>
+            ×
           </button>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
             Tipo de Prenda
-            <input
-              className="erp-input h-11 rounded-xl text-[15px] placeholder:text-slate-500"
-              value={draft.productType}
-              onChange={(event) => onDraftChange({ ...draft, productType: event.target.value })}
-              placeholder="Ej: Remera, Pantalón, Campera"
-            />
+            <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.productType} onChange={(event) => onDraftChange({ ...draft, productType: event.target.value })} />
           </label>
-
           <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
             Modelo
-            <input
-              className="erp-input h-11 rounded-xl text-[15px] placeholder:text-slate-500"
-              value={draft.productModel}
-              onChange={(event) => onDraftChange({ ...draft, productModel: event.target.value })}
-              placeholder="Ej: Básica, Cargo, Oversize"
-            />
+            <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.productModel} onChange={(event) => onDraftChange({ ...draft, productModel: event.target.value })} />
           </label>
-
-          <div className="grid grid-cols-2 gap-3 sm:col-span-2 lg:col-span-2">
-            <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
-              Talle
-              <input
-                className="erp-input h-11 rounded-xl text-[15px] placeholder:text-slate-500"
-                value={draft.size}
-                onChange={(event) => onDraftChange({ ...draft, size: event.target.value })}
-                placeholder="S, M, L, XL..."
-              />
-            </label>
-
-            <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
-              Precio
-              <input
-                className="erp-input h-11 rounded-xl text-[15px] placeholder:text-slate-500"
-                type="number"
-                min="0"
-                value={draft.price}
-                onChange={(event) => onDraftChange({ ...draft, price: event.target.value })}
-              />
-            </label>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 sm:col-span-2 lg:col-span-2">
-            <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
-              Stock Disponible
-              <input
-                className="erp-input h-11 rounded-xl text-[15px] placeholder:text-slate-500"
-                type="number"
-                min="0"
-                value={draft.stockAvailable}
-                onChange={(event) => onDraftChange({ ...draft, stockAvailable: event.target.value })}
-              />
-            </label>
-
-            <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
-              Stock Reservado
-              <input
-                className="erp-input h-11 rounded-xl text-[15px] placeholder:text-slate-500"
-                type="number"
-                min="0"
-                value={draft.stockReserved}
-                onChange={(event) => onDraftChange({ ...draft, stockReserved: event.target.value })}
-              />
-            </label>
-          </div>
-
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
+            Talle
+            <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.size} onChange={(event) => onDraftChange({ ...draft, size: event.target.value })} />
+          </label>
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
+            Precio
+            <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.price} onChange={(event) => onDraftChange({ ...draft, price: event.target.value })} />
+          </label>
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
+            Stock Disponible
+            <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.stockAvailable} onChange={(event) => onDraftChange({ ...draft, stockAvailable: event.target.value })} />
+          </label>
+          <label className="block space-y-1.5 text-sm font-semibold text-slate-200">
+            Stock Reservado
+            <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.stockReserved} onChange={(event) => onDraftChange({ ...draft, stockReserved: event.target.value })} />
+          </label>
           <label className="block space-y-1.5 text-sm font-semibold text-slate-200 sm:col-span-2 lg:col-span-3">
             Nombre (opcional)
-            <input
-              className="erp-input h-11 rounded-xl text-[15px] placeholder:text-slate-500"
-              value={draft.name}
-              onChange={(event) => onDraftChange({ ...draft, name: event.target.value })}
-              placeholder="Se genera automáticamente si está vacío"
-            />
+            <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} />
           </label>
         </div>
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 font-semibold text-slate-200 transition hover:bg-white/10"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[2]">
-              <path d="M19 12H5" />
-              <path d="m11 18-6-6 6-6" />
-            </svg>
+          <button type="button" onClick={onClose} className="erp-button-secondary">
             Cancelar
           </button>
-
-          <button
-            type="button"
-            onClick={() => void onSubmit()}
-            disabled={submitting}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[2.2]">
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
+          <button type="button" onClick={() => void onSubmit()} disabled={submitting} className="erp-button-primary">
             {submitting ? 'Guardando...' : submitLabel}
           </button>
         </div>
       </div>
     </div>
+  );
+}
+
+function InlineNumber({
+  value,
+  editing,
+  draftValue,
+  onStart,
+  onChange,
+  onCommit,
+  onCancel,
+  formatDisplay,
+}: {
+  value: number;
+  editing: boolean;
+  draftValue: string;
+  onStart: () => void;
+  onChange: (value: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+  formatDisplay?: (value: number) => string;
+}) {
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        className="stock-chip-input"
+        value={draftValue}
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={() => void onCommit()}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            void onCommit();
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            onCancel();
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <button type="button" className="font-semibold text-emerald-300 underline-offset-2 hover:underline" onClick={onStart}>
+      {formatDisplay ? formatDisplay(value) : value}
+    </button>
   );
 }
 
@@ -290,6 +252,7 @@ export function ProductsAbmPanel() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [inlineEdit, setInlineEdit] = useState<{ productId: string; field: InlineField; value: string } | null>(null);
 
   const editingProduct = useMemo(() => products.find((product) => product.id === editingProductId) ?? null, [products, editingProductId]);
 
@@ -298,7 +261,10 @@ export function ProductsAbmPanel() {
 
     for (const product of products) {
       const key = `${product.productType ?? ''}||${product.productModel ?? ''}`.trim() || product.name;
-      const displayName = product.productType || product.productModel ? [product.productType, product.productModel].filter(Boolean).join(' ') : product.name;
+      const displayName =
+        product.productType || product.productModel
+          ? [product.productType, product.productModel].filter(Boolean).join(' ')
+          : product.name;
 
       groups[key] = groups[key] ?? {
         key,
@@ -308,21 +274,16 @@ export function ProductsAbmPanel() {
         products: [],
       };
 
-      groups[key].products.push(product);
+      groups[key]!.products.push(product);
     }
 
     return Object.values(groups).map((group) => ({
       ...group,
-      products: group.products.sort((a, b) => String(a.size ?? '').localeCompare(String(b.size ?? ''), undefined, { numeric: true, sensitivity: 'base' })),
+      products: group.products.sort((a, b) =>
+        String(a.size ?? '').localeCompare(String(b.size ?? ''), undefined, { numeric: true, sensitivity: 'base' }),
+      ),
     }));
   }, [products]);
-
-  const toggleGroupExpanded = (groupKey: string) => {
-    setExpandedGroups((current) => ({
-      ...current,
-      [groupKey]: !current[groupKey],
-    }));
-  };
 
   const isEditing = Boolean(editingProductId);
 
@@ -351,17 +312,6 @@ export function ProductsAbmPanel() {
     setIsFormOpen(true);
   };
 
-  const openEditForm = (productId: string) => {
-    const product = products.find((item) => item.id === productId);
-    if (!product) {
-      return;
-    }
-
-    setEditingProductId(productId);
-    setDraft(toDraft(product));
-    setIsFormOpen(true);
-  };
-
   const handleSubmit = async () => {
     setSaving(true);
     try {
@@ -378,7 +328,7 @@ export function ProductsAbmPanel() {
       if (editingProductId) {
         await updateProductRecord(editingProductId, payload);
       } else {
-        await createProductRecord(payload as any);
+        await createProductRecord(payload as ProductRow & { name: string });
       }
 
       setIsFormOpen(false);
@@ -387,15 +337,6 @@ export function ProductsAbmPanel() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleDelete = async (productId: string) => {
-    const product = products.find((item) => item.id === productId);
-    if (!product) {
-      return;
-    }
-
-    setPendingDeleteProduct(product);
   };
 
   const confirmDelete = async () => {
@@ -412,120 +353,122 @@ export function ProductsAbmPanel() {
     }
   };
 
+  const commitInlineEdit = async () => {
+    if (!inlineEdit) {
+      return;
+    }
+
+    const product = products.find((entry) => entry.id === inlineEdit.productId);
+    if (!product) {
+      setInlineEdit(null);
+      return;
+    }
+
+    const nextValue = Number(inlineEdit.value);
+    if (!Number.isFinite(nextValue) || nextValue < 0) {
+      setInlineEdit(null);
+      return;
+    }
+
+    const currentValue = inlineEdit.field === 'price' ? product.price : product.stockAvailable;
+    if (currentValue === nextValue) {
+      setInlineEdit(null);
+      return;
+    }
+
+    await updateProductRecord(product.id, { [inlineEdit.field]: nextValue });
+    setInlineEdit(null);
+  };
+
   return (
     <article className="erp-panel">
       <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
-        <h3 className="font-display text-xl font-bold text-slate-100">ABM Productos</h3>
-        <button
-          type="button"
-          onClick={openCreateForm}
-          className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-400"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[2]">
-            <path d="M12 5v14" />
-            <path d="M5 12h14" />
-          </svg>
+        <div>
+          <h3 className="font-display text-xl font-bold text-slate-100">Productos</h3>
+          <p className="mt-1 text-sm text-slate-400">Agrupados por modelo. Click en stock o precio para editar inline.</p>
+        </div>
+        <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2">
+          <span aria-hidden>+</span>
           Nuevo Producto
         </button>
       </div>
 
-      <div className="overflow-x-auto pt-4">
-        <table className="min-w-full border-separate border-spacing-0">
-          <thead>
-            <tr className="text-left text-sm font-semibold text-slate-300">
-              <th className="border-b border-white/10 px-3 py-4">Nombre</th>
-              <th className="border-b border-white/10 px-3 py-4">Tipo</th>
-              <th className="border-b border-white/10 px-3 py-4">Modelo</th>
-              <th className="border-b border-white/10 px-3 py-4">Talles</th>
-              <th className="border-b border-white/10 px-3 py-4 text-center">Disponible</th>
-              <th className="border-b border-white/10 px-3 py-4 text-center">Reservado</th>
-              <th className="border-b border-white/10 px-3 py-4 text-center">Precio</th>
-              <th className="border-b border-white/10 px-3 py-4 text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {groupedProducts.map((group) => {
-              const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
-              const totalReserved = group.products.reduce((sum, product) => sum + product.stockReserved, 0);
-              const samePrice = group.products.every((product) => product.price === group.products[0].price);
-              const pricesLabel = samePrice ? formatCurrency(group.products[0].price) : 'Varía';
-              const sizesLabel = group.products.map((product) => product.size ?? '-').join(', ');
-              const isExpanded = Boolean(expandedGroups[group.key]);
+      <div className="mt-4 space-y-3">
+        {groupedProducts.map((group) => {
+          const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
+          const samePrice = group.products.every((product) => product.price === group.products[0]?.price);
+          const isExpanded = Boolean(expandedGroups[group.key]);
+          const sizeCount = group.products.length;
 
-              return (
-                <Fragment key={group.key}>
-                  <tr className="text-[15px] text-slate-100">
-                    <td className="border-b border-white/10 px-3 py-4 font-semibold">{group.displayName}</td>
-                    <td className="border-b border-white/10 px-3 py-4 text-slate-200">{group.productType ?? '-'}</td>
-                    <td className="border-b border-white/10 px-3 py-4 text-slate-200">{group.productModel ?? '-'}</td>
-                    <td className="border-b border-white/10 px-3 py-4 text-slate-200">{sizesLabel}</td>
-                    <td className="border-b border-white/10 px-3 py-4 text-center font-semibold">{totalAvailable}</td>
-                    <td className="border-b border-white/10 px-3 py-4 text-center font-semibold">{totalReserved}</td>
-                    <td className="border-b border-white/10 px-3 py-4 text-center font-mono font-semibold">{pricesLabel}</td>
-                    <td className="border-b border-white/10 px-3 py-4">
-                      <div className="flex justify-end gap-3">
-                        {group.products.length > 1 ? (
-                          <IconButton
-                            label={`${isExpanded ? 'Ocultar' : 'Mostrar'} talles de ${group.displayName}`}
-                            onClick={() => toggleGroupExpanded(group.key)}
-                          >
-                            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.9]">
-                              {isExpanded ? <path d="M6 15h12" /> : <path d="M6 9h12" />}
-                              <path d="M12 8l4 4-4 4" />
+          return (
+            <div key={group.key} className="rounded-2xl border border-white/10 bg-white/[0.03]">
+              <button
+                type="button"
+                className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left"
+                onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !current[group.key] }))}
+              >
+                <div>
+                  <p className="font-display text-lg font-bold text-white">{group.displayName}</p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {sizeCount} talle{sizeCount === 1 ? '' : 's'} — {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
+                    {samePrice && group.products[0] ? ` · ${formatCurrency(group.products[0].price)}` : ''}
+                  </p>
+                </div>
+                <span className="text-xs font-semibold text-emerald-300">{isExpanded ? 'Ocultar talles' : 'Ver talles'}</span>
+              </button>
+
+              {isExpanded && (
+                <div className="space-y-3 border-t border-white/10 px-4 py-3">
+                  <div className="flex flex-wrap gap-2">
+                    {group.products.map((product) => {
+                      const isEditingStock = inlineEdit?.productId === product.id && inlineEdit.field === 'stockAvailable';
+                      const isEditingPrice = inlineEdit?.productId === product.id && inlineEdit.field === 'price';
+                      const low = product.stockAvailable <= LOW_STOCK_THRESHOLD;
+
+                      return (
+                        <div
+                          key={product.id}
+                          className={`stock-chip ${low ? 'border-amber-400/30 bg-amber-400/10' : ''}`}
+                        >
+                          <span className="font-semibold text-slate-200">{product.size ?? '-'}:</span>
+                          <InlineNumber
+                            value={product.stockAvailable}
+                            editing={Boolean(isEditingStock)}
+                            draftValue={inlineEdit?.value ?? ''}
+                            onStart={() => setInlineEdit({ productId: product.id, field: 'stockAvailable', value: String(product.stockAvailable) })}
+                            onChange={(value) => setInlineEdit({ productId: product.id, field: 'stockAvailable', value })}
+                            onCommit={() => void commitInlineEdit()}
+                            onCancel={() => setInlineEdit(null)}
+                          />
+                          <span className="text-slate-600">·</span>
+                          <InlineNumber
+                            value={product.price}
+                            editing={Boolean(isEditingPrice)}
+                            draftValue={inlineEdit?.value ?? ''}
+                            onStart={() => setInlineEdit({ productId: product.id, field: 'price', value: String(product.price) })}
+                            onChange={(value) => setInlineEdit({ productId: product.id, field: 'price', value })}
+                            onCommit={() => void commitInlineEdit()}
+                            onCancel={() => setInlineEdit(null)}
+                            formatDisplay={formatCurrency}
+                          />
+                          <IconButton label={`Eliminar ${product.name}`} danger onClick={() => setPendingDeleteProduct(product)}>
+                            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
+                              <path d="M4 7h16" />
+                              <path d="M9 7V5h6v2" />
+                              <path d="M6 7l1 13h10l1-13" />
                             </svg>
                           </IconButton>
-                        ) : (
-                          <IconButton label={`Editar ${group.displayName}`} onClick={() => openEditForm(group.products[0].id)}>
-                            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.9]">
-                              <path d="M4 20h4l10.5-10.5a1.7 1.7 0 0 0 0-2.4l-1.6-1.6a1.7 1.7 0 0 0-2.4 0L4 16v4Z" />
-                              <path d="m13.5 6.5 4 4" />
-                            </svg>
-                          </IconButton>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  {isExpanded &&
-                    group.products.map((product) => (
-                      <tr key={product.id} className="bg-slate-950/30 text-[14px] text-slate-200">
-                        <td className="border-b border-white/10 px-3 py-3 pl-10 font-medium">{product.name}</td>
-                        <td className="border-b border-white/10 px-3 py-3 text-slate-300">{product.productType ?? '-'}</td>
-                        <td className="border-b border-white/10 px-3 py-3 text-slate-300">{product.productModel ?? '-'}</td>
-                        <td className="border-b border-white/10 px-3 py-3 text-slate-300">{product.size ?? '-'}</td>
-                        <td className="border-b border-white/10 px-3 py-3 text-center font-semibold">{product.stockAvailable}</td>
-                        <td className="border-b border-white/10 px-3 py-3 text-center font-semibold">{product.stockReserved}</td>
-                        <td className="border-b border-white/10 px-3 py-3 text-center font-mono font-semibold">{formatCurrency(product.price)}</td>
-                        <td className="border-b border-white/10 px-3 py-3">
-                          <div className="flex justify-end gap-3">
-                            <IconButton label={`Editar ${product.name}`} onClick={() => openEditForm(product.id)}>
-                              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.9]">
-                                <path d="M4 20h4l10.5-10.5a1.7 1.7 0 0 0 0-2.4l-1.6-1.6a1.7 1.7 0 0 0-2.4 0L4 16v4Z" />
-                                <path d="m13.5 6.5 4 4" />
-                              </svg>
-                            </IconButton>
-                            <IconButton label={`Eliminar ${product.name}`} danger onClick={() => void handleDelete(product.id)}>
-                              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.9]">
-                                <path d="M4 7h16" />
-                                <path d="M9 7V5h6v2" />
-                                <path d="M6 7l1 13h10l1-13" />
-                                <path d="M10 11v5" />
-                                <path d="M14 11v5" />
-                              </svg>
-                            </IconButton>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-        {products.length === 0 && (
-          <div className="px-3 py-6 text-sm text-slate-400">
-            No hay productos cargados todavía.
-          </div>
-        )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {products.length === 0 && <div className="px-1 py-6 text-sm text-slate-400">No hay productos cargados todavía.</div>}
       </div>
 
       {isFormOpen && (

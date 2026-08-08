@@ -232,6 +232,28 @@ const extractMultipleActionsFromText = (text: string): ParsedActionUnion[] => {
       continue;
     }
 
+    const orderMatch = fragment.match(/^(.+?)\s+(?:me\s+)?(?:pidio|pidió|pide|quiere|encargo|encargó|encargaron)\s+(.+)$/u);
+    if (orderMatch) {
+      const clientName = orderMatch[1]!.trim();
+      const rest = orderMatch[2]!.trim();
+      const qty = parseQuantity(rest) ?? 1;
+      const productText = rest.replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '').trim();
+      const productDescriptor = parseProductDescriptor(productText);
+
+      if (clientName && productDescriptor.productName) {
+        actions.push({
+          type: 'client_order',
+          clientName,
+          productName: productDescriptor.productName,
+          productType: productDescriptor.productType,
+          productModel: productDescriptor.productModel,
+          size: productDescriptor.size,
+          qty,
+        });
+      }
+      continue;
+    }
+
     const buyMatch = fragment.match(/\b(?:compre|compré|compra(?:r|ste|ron)?|adquiri|adquirí)\s+(\d+)\s+(.+)$/u);
     if (buyMatch) {
       const qty = Number(buyMatch[1]);
@@ -389,6 +411,33 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
     };
   }
 
+  if (value.type === 'client_order') {
+    if (typeof value.clientName !== 'string') {
+      return null;
+    }
+
+    const productType = typeof value.productType === 'string' ? value.productType : undefined;
+    const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
+    const size = typeof value.size === 'string' ? value.size : undefined;
+    const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
+    const orderQty = Number.isNaN(qty) || qty <= 0 ? 1 : qty;
+
+    if (!productName) {
+      return null;
+    }
+
+    return {
+      type: 'client_order',
+      clientName: value.clientName,
+      productName,
+      productType,
+      productModel,
+      size,
+      qty: orderQty,
+      notas: typeof value.notas === 'string' ? value.notas : undefined,
+    };
+  }
+
   return null;
 };
 
@@ -409,6 +458,28 @@ export class VoiceParserService {
     let lastProductName: string | undefined;
 
     for (const fragment of splitCompoundText(normalized)) {
+      const orderMatch = fragment.match(/^(.+?)\s+(?:me\s+)?(?:pidio|pidió|pide|quiere|encargo|encargó|encargaron)\s+(.+)$/u);
+      if (orderMatch) {
+        const clientName = orderMatch[1]!.trim();
+        const rest = orderMatch[2]!.trim();
+        const qty = parseQuantity(rest) ?? 1;
+        const productText = rest.replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '').trim();
+        const productDescriptor = parseProductDescriptor(productText);
+        if (clientName && productDescriptor.productName) {
+          actions.push({
+            type: 'client_order',
+            clientName,
+            productName: productDescriptor.productName,
+            productType: productDescriptor.productType,
+            productModel: productDescriptor.productModel,
+            size: productDescriptor.size,
+            qty,
+          });
+          suggested.push(`${clientName} pidió ${qty} ${productDescriptor.productName}`);
+        }
+        continue;
+      }
+
       for (const p of patterns) {
         const m = fragment.match(p.regex);
         if (!m) {

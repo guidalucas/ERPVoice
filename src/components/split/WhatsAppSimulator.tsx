@@ -34,7 +34,7 @@ export function WhatsAppSimulator() {
                 </svg>
               </div>
               <div>
-                <h2 className="text-[1.05rem] font-bold leading-tight">ERPVoice</h2>
+                <h2 className="text-[1.05rem] font-bold leading-tight">Stocky</h2>
                 <p className="text-xs font-medium text-white/85">Modo offline</p>
               </div>
             </div>

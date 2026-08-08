@@ -13,8 +13,15 @@ function formatCategoryLabel(value: string | null | undefined) {
   return label;
 }
 
-export function RealStockPanel() {
-  const { products } = useInventory();
+export function RealStockPanel({ filterProductIds }: { filterProductIds?: string[] } = {}) {
+  const { products: allProducts } = useInventory();
+  const products = useMemo(() => {
+    if (!filterProductIds) {
+      return allProducts;
+    }
+    const allowed = new Set(filterProductIds);
+    return allProducts.filter((product) => allowed.has(product.id));
+  }, [allProducts, filterProductIds]);
 
   const summary = useMemo(() => {
     const totalAvailable = products.reduce((total, product) => total + product.stockAvailable, 0);
