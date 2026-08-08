@@ -79,15 +79,29 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
 
     dispatch({ type: 'CONFIRM_PENDING_PROPOSAL' });
 
-    void requestJson('/api/state/apply', {
+    void requestJson<PersistedSnapshot>('/api/state/apply', {
       method: 'POST',
       body: JSON.stringify({
         sourceText: proposal.sourceText,
         actions: proposal.actions,
       }),
-    }).catch(() => {
-      // best-effort persistence
-    });
+    })
+      .then((snapshot) => {
+        if (snapshot?.products && snapshot?.clients && snapshot?.transactions) {
+          dispatch({
+            type: 'HYDRATE_PERSISTED_STATE',
+            snapshot: {
+              products: snapshot.products,
+              clients: snapshot.clients,
+              pedidos: snapshot.pedidos ?? [],
+              transactions: snapshot.transactions,
+            },
+          });
+        }
+      })
+      .catch(() => {
+        // best-effort persistence
+      });
   }, [state.pendingProposal]);
 
   const addChatMessage = useCallback((message: ChatMessage) => {

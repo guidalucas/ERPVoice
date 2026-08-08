@@ -254,14 +254,24 @@ const extractMultipleActionsFromText = (text: string): ParsedActionUnion[] => {
       continue;
     }
 
-    const buyMatch = fragment.match(/\b(?:compre|compré|compra(?:r|ste|ron)?|adquiri|adquirí)\s+(\d+)\s+(.+)$/u);
+    const buyMatch = fragment.match(
+      /\b(?:compre|compré|compra(?:r|ste|ron)?|adquiri|adquirí|entraron|entran|llegaron|recibi|recibieron|recibí|ingreso|ingrese|ingresaron)\s+(?:(\d+)\s+)?(.+)$/u,
+    );
     if (buyMatch) {
-      const qty = Number(buyMatch[1]);
+      const qty = buyMatch[1] ? Number(buyMatch[1]) : parseQuantity(buyMatch[2]!) ?? 1;
       if (qty <= 0) {
         continue;
       }
 
-      const productDescriptor = parseProductDescriptor(buyMatch[2].trim());
+      const productText = buyMatch[2]!
+        .replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '')
+        .replace(/\ben\s+talle\b/gi, 'talle')
+        .trim();
+      const productDescriptor = parseProductDescriptor(productText);
+      if (!productDescriptor.productName) {
+        continue;
+      }
+
       actions.push({
         type: 'add_stock',
         productName: productDescriptor.productName,
@@ -446,8 +456,11 @@ export class VoiceParserService {
     const normalized = normalizeText(text);
     // Generic patterns: operation + cantidad + producto
     const patterns: { regex: RegExp; type: ParsedAction['type'] | 'sell' | 'payment_received' }[] = [
-      { regex: /\b(?:compre|compré|compra(?:r|ste|ron)?|adquiri|adquiri)\s+(\d+)\s+(.+)$/u, type: 'add_stock' },
-      { regex: /\b(?:entraron|entran|llegaron|recibi|recibieron|recibí)\s+(\d+)\s+(.+)$/u, type: 'add_stock' },
+      {
+        regex:
+          /\b(?:compre|compré|compra(?:r|ste|ron)?|adquiri|adquiri|entraron|entran|llegaron|recibi|recibieron|recibí|ingreso|ingrese|ingresaron)\s+(?:(\d+)\s+)?(.+)$/u,
+        type: 'add_stock',
+      },
       { regex: /\b(?:vend(?:i|í)o|vendiste|vendieron|vendi)\s+(\d+)\s+(.+)$/u, type: 'sell' },
       { regex: /\b(?:reserve|reservé|reservaron|le deje|deje|dejó)\s+(\d+)\s+(.+)$/u, type: 'reserve_stock' },
     ];
@@ -486,12 +499,19 @@ export class VoiceParserService {
           continue;
         }
 
-        const qty = Number(m[1]);
-        const productRaw = m[2].trim();
+        const qty = m[1] ? Number(m[1]) : parseQuantity(m[2]!.trim()) ?? 1;
+        const productRaw = m[2]!
+          .replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '')
+          .replace(/\ben\s+talle\b/gi, 'talle')
+          .trim();
         const productName = productRaw
           .split(/\s+/)
           .map((s) => s[0]?.toUpperCase() + s.slice(1))
           .join(' ');
+
+        if (qty <= 0 || !productName) {
+          continue;
+        }
 
         if (p.type === 'add_stock') {
           const price = parsePrice(productRaw) ?? parsePrice(fragment);
