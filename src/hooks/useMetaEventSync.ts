@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
-import type { Client, Product, Transaction } from '../domain/types';
+import type { Client, Pedido, Product, Transaction } from '../domain/types';
 import { useAppStore } from '../store/AppStore';
 import { requestJson } from '../services/apiClient';
 
 type PersistedStateSnapshot = {
   products: Product[];
   clients: Client[];
+  pedidos?: Pedido[];
   transactions: Transaction[];
 };
 
@@ -25,11 +26,18 @@ export const useMetaEventSync = () => {
           return;
         }
 
-        const serialized = JSON.stringify(snapshot);
+        const normalized = {
+          products: snapshot.products,
+          clients: snapshot.clients,
+          pedidos: snapshot.pedidos ?? [],
+          transactions: snapshot.transactions,
+        };
+
+        const serialized = JSON.stringify(normalized);
 
         if (serialized !== lastSnapshotRef.current) {
           lastSnapshotRef.current = serialized;
-          hydratePersistedState(snapshot);
+          hydratePersistedState(normalized);
         }
       } catch {
         // Intentionally silent: dashboard sync is best-effort.

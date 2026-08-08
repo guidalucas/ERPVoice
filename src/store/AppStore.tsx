@@ -1,8 +1,15 @@
 import { createContext, useCallback, useContext, useMemo, useReducer, type ReactNode } from 'react';
-import type { AppState, ChatMessage, ParsedVoicePayload, Product, Client, Transaction } from '../domain/types';
+import type { AppState, ChatMessage, ParsedVoicePayload, Product, Client, Pedido, Transaction } from '../domain/types';
 import { initialAppState } from '../domain/mockDb';
 import { applyConfirmedActions } from '../services/transactionService';
 import { requestJson } from '../services/apiClient';
+
+type PersistedSnapshot = {
+  products: Product[];
+  clients: Client[];
+  pedidos: Pedido[];
+  transactions: Transaction[];
+};
 
 type AppAction =
   | { type: 'ADD_CHAT_MESSAGE'; message: ChatMessage }
@@ -10,7 +17,7 @@ type AppAction =
   | { type: 'CONFIRM_PENDING_PROPOSAL' }
   | { type: 'CLEAR_PENDING_PROPOSAL' }
   | { type: 'APPLY_EXTERNAL_PROPOSAL'; payload: ParsedVoicePayload }
-  | { type: 'HYDRATE_PERSISTED_STATE'; snapshot: { products: Product[]; clients: Client[]; transactions: Transaction[] } };
+  | { type: 'HYDRATE_PERSISTED_STATE'; snapshot: PersistedSnapshot };
 
 interface AppStoreValue {
   state: AppState;
@@ -19,7 +26,7 @@ interface AppStoreValue {
   confirmPendingProposal: () => void;
   clearPendingProposal: () => void;
   applyExternalProposal: (payload: ParsedVoicePayload) => void;
-  hydratePersistedState: (snapshot: { products: Product[]; clients: Client[]; transactions: Transaction[] }) => void;
+  hydratePersistedState: (snapshot: PersistedSnapshot) => void;
 }
 
 const AppStoreContext = createContext<AppStoreValue | null>(null);
@@ -50,6 +57,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         ...state,
         products: action.snapshot.products,
         clients: action.snapshot.clients,
+        pedidos: action.snapshot.pedidos ?? [],
         transactions: action.snapshot.transactions,
       };
     default:
@@ -98,27 +106,22 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'APPLY_EXTERNAL_PROPOSAL', payload });
   }, []);
 
-  const hydratePersistedState = useCallback((snapshot: { products: Product[]; clients: Client[]; transactions: Transaction[] }) => {
+  const hydratePersistedState = useCallback((snapshot: PersistedSnapshot) => {
     dispatch({ type: 'HYDRATE_PERSISTED_STATE', snapshot });
   }, []);
 
-  const value: AppStoreValue = useMemo(() => ({
-    state,
-    addChatMessage,
-    setPendingProposal,
-    confirmPendingProposal,
-    clearPendingProposal,
-    applyExternalProposal,
-    hydratePersistedState,
-  }), [
-    state,
-    addChatMessage,
-    setPendingProposal,
-    confirmPendingProposal,
-    clearPendingProposal,
-    applyExternalProposal,
-    hydratePersistedState,
-  ]);
+  const value: AppStoreValue = useMemo(
+    () => ({
+      state,
+      addChatMessage,
+      setPendingProposal,
+      confirmPendingProposal,
+      clearPendingProposal,
+      applyExternalProposal,
+      hydratePersistedState,
+    }),
+    [state, addChatMessage, setPendingProposal, confirmPendingProposal, clearPendingProposal, applyExternalProposal, hydratePersistedState],
+  );
 
   return <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>;
 }

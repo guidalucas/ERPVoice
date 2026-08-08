@@ -1,10 +1,16 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useInventory } from '../../hooks/useInventory';
 import { useAuth } from '../../store/AuthStore';
+import type { Transaction } from '../../domain/types';
+import { ClientesPanel } from './ClientesPanel';
+import { DashboardShell } from './DashboardShell';
+import { LOW_STOCK_THRESHOLD, type DashboardSection } from './dashboardTypes';
+import { MetaMessagesPanel } from './MetaMessagesPanel';
+import { PedidosPanel } from './PedidosPanel';
 import { ProductsAbmPanel } from './ProductsAbmPanel';
 import { RealStockPanel } from './RealStockPanel';
-import { MetaMessagesPanel } from './MetaMessagesPanel';
+import { EmptyState } from './EmptyState';
 
 const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
 
@@ -14,26 +20,38 @@ type SummaryCardProps = {
   subtitle: string;
   icon: ReactNode;
   accentClassName?: string;
+  onClick?: () => void;
 };
 
-function SummaryCard({ title, value, subtitle, icon, accentClassName }: SummaryCardProps) {
-  return (
-    <article className="erp-card min-h-[178px] p-5 transition hover:border-white/20 hover:bg-white/[0.065]">
-      <div className="flex h-full flex-col justify-between gap-4">
-        <div className="flex items-start justify-between gap-3">
-          <p className="text-[15px] font-medium text-slate-400">{title}</p>
-          <div className={`flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 ${accentClassName ?? ''}`}>
-            {icon}
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <p className={`font-display text-[2rem] font-bold tracking-tight ${accentClassName ?? 'text-white'}`}>{value}</p>
-          <p className="text-sm text-slate-400">{subtitle}</p>
+function SummaryCard({ title, value, subtitle, icon, accentClassName, onClick }: SummaryCardProps) {
+  const content = (
+    <div className="flex h-full flex-col justify-between gap-4">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[15px] font-medium text-slate-400">{title}</p>
+        <div className={`flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 ${accentClassName ?? ''}`}>
+          {icon}
         </div>
       </div>
-    </article>
+      <div className="space-y-1">
+        <p className={`font-display text-[2rem] font-bold tracking-tight ${accentClassName ?? 'text-white'}`}>{value}</p>
+        <p className="text-sm text-slate-400">{subtitle}</p>
+      </div>
+    </div>
   );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="erp-card min-h-[158px] w-full p-5 text-left transition hover:border-white/20 hover:bg-white/[0.065]"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <article className="erp-card min-h-[158px] p-5 transition hover:border-white/20 hover:bg-white/[0.065]">{content}</article>;
 }
 
 function InventoryIcon() {
@@ -47,158 +65,219 @@ function InventoryIcon() {
   );
 }
 
-function ProductsIcon() {
+function StockIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4.5 w-4.5 fill-none stroke-current stroke-[1.8]">
       <path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z" />
-      <path d="m12 3 8 4.5" />
       <path d="M12 21v-8" />
-      <path d="M4 7.5 12 12l8-4.5" />
     </svg>
   );
 }
 
-function DebtIcon() {
+function AlertIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4.5 w-4.5 fill-none stroke-current stroke-[1.8]">
-      <path d="M4 16 9 11l4 4 7-7" />
-      <path d="m15 8 5 0v5" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+      <path d="M10.3 4.3 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z" />
     </svg>
   );
 }
 
-function ClientsIcon() {
+type ActivityGroup = {
+  id: string;
+  sourceText: string;
+  timestamp: string;
+  items: Transaction[];
+};
+
+const groupTransactions = (transactions: Transaction[]): ActivityGroup[] => {
+  const groups: ActivityGroup[] = [];
+
+  for (const transaction of transactions) {
+    const ts = new Date(transaction.timestamp).getTime();
+    const last = groups[groups.length - 1];
+
+    if (
+      last &&
+      last.sourceText === transaction.sourceText &&
+      Math.abs(new Date(last.timestamp).getTime() - ts) <= 5000
+    ) {
+      last.items.push(transaction);
+      continue;
+    }
+
+    groups.push({
+      id: transaction.id,
+      sourceText: transaction.sourceText,
+      timestamp: transaction.timestamp,
+      items: [transaction],
+    });
+  }
+
+  return groups;
+};
+
+function ActivityFeed({ transactions }: { transactions: Transaction[] }) {
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const groups = useMemo(() => groupTransactions(transactions), [transactions]);
+
+  if (groups.length === 0) {
+    return <EmptyState title="Sin actividad" description="Las cargas por voz y WhatsApp aparecen acá agrupadas por sesión." />;
+  }
+
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4.5 w-4.5 fill-none stroke-current stroke-[1.8]">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M20 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
+    <div className="space-y-3">
+      {groups.map((group) => {
+        const isExpanded = Boolean(expandedIds[group.id]);
+        const isVoiceLoad = group.items.every((item) => item.actions.some((action) => action.type === 'add_stock'));
+        const title =
+          group.items.length > 1
+            ? `${isVoiceLoad ? 'Carga por voz' : 'Sesión'} — ${group.items.length} items`
+            : group.items[0]?.summary ?? group.sourceText;
+
+        return (
+          <div key={group.id} className="rounded-2xl border border-white/10 bg-white/[0.03]">
+            <button
+              type="button"
+              className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
+              onClick={() => setExpandedIds((current) => ({ ...current, [group.id]: !current[group.id] }))}
+            >
+              <div>
+                <p className="text-sm font-semibold text-slate-100">{title}</p>
+                <p className="mt-1 text-xs text-slate-500">{new Date(group.timestamp).toLocaleString('es-AR')}</p>
+                {group.sourceText && (
+                  <p className="mt-1 line-clamp-1 text-xs text-slate-400">“{group.sourceText}”</p>
+                )}
+              </div>
+              {group.items.length > 1 && (
+                <span className="shrink-0 text-xs font-semibold text-emerald-300">{isExpanded ? 'Ocultar' : 'Ver'}</span>
+              )}
+            </button>
+            {(isExpanded || group.items.length === 1) && group.items.length > 1 && (
+              <div className="space-y-2 border-t border-white/10 px-4 py-3">
+                {group.items.map((item) => (
+                  <p key={item.id} className="text-sm text-slate-300">
+                    {item.summary}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
 export function DashboardPanel() {
-  const { products, clients, transactions } = useInventory();
-  const [activeTab, setActiveTab] = useState<'resumen' | 'stock' | 'abm' | 'whatsapp'>('resumen');
+  const { products, transactions, pedidos } = useInventory();
+  const [activeSection, setActiveSection] = useState<DashboardSection>('inicio');
+  const [filterLowStock, setFilterLowStock] = useState(false);
   const { session, logout } = useAuth();
 
-  const tabButtonClass = (tab: typeof activeTab) =>
-    `rounded-full px-4 py-2 text-sm font-semibold transition ${activeTab === tab ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/25' : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'}`;
+  const totalUnits = products.reduce((total, product) => total + product.stockAvailable + product.stockReserved, 0);
+  const inventoryValue = products.reduce((total, product) => total + (product.stockAvailable + product.stockReserved) * product.price, 0);
+  const lowStockProducts = products.filter((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD);
+  const pendingPedidos = pedidos.filter((pedido) => pedido.estado === 'pendiente').length;
+
+  const goToLowStock = () => {
+    setFilterLowStock(true);
+    setActiveSection('stock');
+  };
 
   return (
-    <section className="erp-shell flex h-full flex-col gap-4 p-5">
-      <header className="rounded-[1.5rem] border border-white/10 bg-slate-900/70 px-6 py-5 text-white shadow-lg shadow-black/20 backdrop-blur-xl">
-        <p className="text-xs uppercase tracking-[0.35em] text-cyan-300">Dashboard Web</p>
-        <h2 className="font-display text-2xl font-bold">Estado en tiempo real</h2>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="erp-chip text-emerald-300">{session?.phoneNumber ?? 'Sesión desconocida'}</span>
-          <button type="button" className="erp-button-secondary px-3 py-1.5 text-xs" onClick={logout}>
-            Salir
-          </button>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2 rounded-3xl border border-white/10 bg-white/5 p-2">
-          <button type="button" className={tabButtonClass('resumen')} onClick={() => setActiveTab('resumen')}>
-            Resumen
-          </button>
-          <button type="button" className={tabButtonClass('stock')} onClick={() => setActiveTab('stock')}>
-            Stock real
-          </button>
-          <button type="button" className={tabButtonClass('abm')} onClick={() => setActiveTab('abm')}>
-            ABM productos
-          </button>
-          <button type="button" className={tabButtonClass('whatsapp')} onClick={() => setActiveTab('whatsapp')}>
-            WhatsApp / Meta
-          </button>
-        </div>
-      </header>
+    <DashboardShell
+      activeSection={activeSection}
+      onSectionChange={(section) => {
+        if (section !== 'stock') {
+          setFilterLowStock(false);
+        }
+        setActiveSection(section);
+      }}
+      phoneNumber={session?.phoneNumber}
+      onLogout={logout}
+    >
+      {activeSection === 'inicio' && (
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            <SummaryCard
+              title="Valor inventario"
+              value={formatCurrency(inventoryValue)}
+              subtitle={`${totalUnits} unidades totales`}
+              icon={<InventoryIcon />}
+            />
+            <SummaryCard
+              title="Stock disponible"
+              value={String(products.reduce((total, product) => total + product.stockAvailable, 0))}
+              subtitle={`${products.length} variantes en catálogo`}
+              icon={<StockIcon />}
+              onClick={() => setActiveSection('stock')}
+            />
+            <SummaryCard
+              title="Stock bajo / agotado"
+              value={String(lowStockProducts.length)}
+              subtitle={lowStockProducts.length ? 'Ver productos con poco stock' : 'Todo en orden'}
+              icon={<AlertIcon />}
+              accentClassName={lowStockProducts.length ? 'text-amber-300' : undefined}
+              onClick={goToLowStock}
+            />
+          </div>
 
-      <div className="grid gap-4 xl:grid-cols-4">
-        {activeTab === 'resumen' && (
-          <>
-            <div className="grid gap-4 md:grid-cols-2 xl:col-span-4 xl:grid-cols-4">
-              <SummaryCard
-                title="Valor Inventario"
-                value={formatCurrency(products.reduce((total, product) => total + (product.stockAvailable + product.stockReserved) * product.price, 0))}
-                subtitle={`${products.reduce((total, product) => total + product.stockAvailable + product.stockReserved, 0)} unidades totales`}
-                icon={<InventoryIcon />}
-              />
-              <SummaryCard
-                title="Productos"
-                value={String(products.length)}
-                subtitle="SKUs en catálogo"
-                icon={<ProductsIcon />}
-              />
-              <SummaryCard
-                title="Deuda Total"
-                value={formatCurrency(clients.reduce((total, client) => total + Math.max(0, -client.debt), 0))}
-                subtitle={`${clients.filter((client) => client.debt < 0).length} clientes con deuda`}
-                icon={<DebtIcon />}
-                accentClassName="text-rose-400"
-              />
-              <SummaryCard
-                title="Clientes"
-                value={String(clients.length)}
-                subtitle="Cuentas corrientes"
-                icon={<ClientsIcon />}
-              />
+          {pendingPedidos > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveSection('pedidos')}
+              className="w-full rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-left transition hover:bg-emerald-500/15"
+            >
+              <p className="text-sm font-semibold text-emerald-200">
+                {pendingPedidos} pedido{pendingPedidos === 1 ? '' : 's'} pendiente{pendingPedidos === 1 ? '' : 's'}
+              </p>
+              <p className="mt-1 text-xs text-emerald-200/70">Abrir vista agrupada para armar el pedido al proveedor</p>
+            </button>
+          )}
+
+          <article className="erp-panel">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="font-display text-lg font-bold text-slate-100">Actividad reciente</h3>
+              <button type="button" className="text-xs font-semibold text-emerald-300" onClick={() => setActiveSection('actividad')}>
+                Ver todo
+              </button>
             </div>
+            <ActivityFeed transactions={transactions.slice(0, 12)} />
+          </article>
+        </div>
+      )}
 
-            <article className="erp-panel xl:col-span-2">
-              <h3 className="font-display text-lg font-bold text-slate-100">Últimas Transacciones</h3>
-              <div className="mt-4 space-y-3">
-                {transactions.length === 0 ? (
-                  <div className="erp-card-soft text-sm text-slate-400">Todavía no hay transacciones confirmadas.</div>
-                ) : (
-                  transactions.map((transaction) => (
-                    <div key={transaction.id} className="flex items-center justify-between border-b border-white/10 pb-3 last:border-0 last:pb-0">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-100">{transaction.summary}</p>
-                        <p className="mt-1 text-xs text-slate-400">{new Date(transaction.timestamp).toLocaleString('es-AR')}</p>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </article>
+      {activeSection === 'stock' && (
+        <div className="space-y-3">
+          {filterLowStock && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3">
+              <p className="text-sm text-amber-100">
+                Mostrando {lowStockProducts.length} producto{lowStockProducts.length === 1 ? '' : 's'} con stock ≤ {LOW_STOCK_THRESHOLD}
+              </p>
+              <button type="button" className="text-xs font-semibold text-amber-100" onClick={() => setFilterLowStock(false)}>
+                Quitar filtro
+              </button>
+            </div>
+          )}
+          <RealStockPanel filterProductIds={filterLowStock ? lowStockProducts.map((product) => product.id) : undefined} />
+        </div>
+      )}
 
-            <article className="erp-panel xl:col-span-2">
-              <h3 className="font-display text-lg font-bold text-slate-100">Cuentas Corrientes</h3>
-              <div className="mt-4 space-y-3">
-                {clients.map((client) => (
-                  <div key={client.id} className="flex items-center justify-between border-b border-white/10 pb-3 last:border-0 last:pb-0">
-                    <div>
-                      <p className="font-semibold text-slate-100">{client.name}</p>
-                      <p className="mt-1 text-xs text-slate-400">Actualizado: {new Date().toLocaleString('es-AR')}</p>
-                    </div>
-                    <p className={`text-sm font-mono font-semibold ${client.debt < 0 ? 'text-rose-500' : 'text-emerald-400'}`}>
-                      {client.debt < 0 ? `-$ ${Math.abs(client.debt).toLocaleString('es-AR')}` : `$ ${client.debt.toLocaleString('es-AR')}`}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </article>
-          </>
-        )}
+      {activeSection === 'productos' && <ProductsAbmPanel />}
+      {activeSection === 'pedidos' && <PedidosPanel />}
+      {activeSection === 'clientes' && <ClientesPanel />}
 
-        {activeTab === 'stock' && (
-          <div className="xl:col-span-4">
-            <RealStockPanel />
-          </div>
-        )}
-
-        {activeTab === 'abm' && (
-          <div className="xl:col-span-4">
-            <ProductsAbmPanel />
-          </div>
-        )}
-
-        {activeTab === 'whatsapp' && (
-          <div className="xl:col-span-4">
-            <MetaMessagesPanel />
-          </div>
-        )}
-      </div>
-    </section>
+      {activeSection === 'actividad' && (
+        <div className="space-y-4">
+          <article className="erp-panel">
+            <h3 className="mb-4 font-display text-lg font-bold text-slate-100">Movimientos</h3>
+            <ActivityFeed transactions={transactions} />
+          </article>
+          <MetaMessagesPanel />
+        </div>
+      )}
+    </DashboardShell>
   );
 }

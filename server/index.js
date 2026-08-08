@@ -4,16 +4,23 @@ import { buildMetaVerificationResponse, processMetaWebhook, sendMetaReply } from
 import {
   createAuthOtpChallenge,
   createProductRecord,
+  createClientRecord,
+  createPedidoRecord,
   deleteProductRecord,
+  deleteClientRecord,
+  deletePedidoRecord,
   applyActionsToDatabase,
   findMetaEventById,
   revokeAuthOtpChallenge,
   getStateSnapshot,
   getMetaEvents,
   markMetaEventProcessed,
+  mergeClientRecords,
   saveMetaEvent,
   verifyAuthOtpChallenge,
   updateProductRecord,
+  updateClientRecord,
+  updatePedidoRecord,
 } from './postgresDatabase.js';
 import { extractBearerToken, issueJwt, normalizePhone, verifyJwt } from './auth.js';
 
@@ -270,6 +277,144 @@ app.delete('/api/products/:id', authenticateRequest, async (req, res) => {
 
     if (!deleted) {
       res.status(404).json({ error: 'Producto no encontrado' });
+      return;
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/clients', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const client = await createClientRecord({
+      name: req.body?.name,
+      notas: req.body?.notas,
+      debt: req.body?.debt,
+    }, clientPhone);
+
+    if (!client) {
+      res.status(400).json({ error: 'Nombre de cliente requerido' });
+      return;
+    }
+
+    res.status(201).json(client);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.put('/api/clients/:id', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const client = await updateClientRecord(req.params.id, {
+      name: req.body?.name,
+      notas: req.body?.notas,
+      debt: req.body?.debt,
+    }, clientPhone);
+
+    if (!client) {
+      res.status(404).json({ error: 'Cliente no encontrado' });
+      return;
+    }
+
+    res.json(client);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.delete('/api/clients/:id', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const deleted = await deleteClientRecord(req.params.id, clientPhone);
+
+    if (!deleted) {
+      res.status(404).json({ error: 'Cliente no encontrado' });
+      return;
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/clients/merge', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const snapshot = await mergeClientRecords(req.body?.keepId, req.body?.mergeId, clientPhone);
+
+    if (!snapshot) {
+      res.status(400).json({ error: 'No se pudieron fusionar los clientes' });
+      return;
+    }
+
+    res.json(snapshot);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/pedidos', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const pedido = await createPedidoRecord({
+      clienteId: req.body?.clienteId,
+      producto: req.body?.producto,
+      productType: req.body?.productType,
+      productModel: req.body?.productModel,
+      talle: req.body?.talle,
+      qty: req.body?.qty,
+      estado: req.body?.estado,
+      notas: req.body?.notas,
+    }, clientPhone);
+
+    if (!pedido) {
+      res.status(400).json({ error: 'Cliente y producto son requeridos' });
+      return;
+    }
+
+    res.status(201).json(pedido);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.put('/api/pedidos/:id', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const pedido = await updatePedidoRecord(req.params.id, {
+      clienteId: req.body?.clienteId,
+      producto: req.body?.producto,
+      productType: req.body?.productType,
+      productModel: req.body?.productModel,
+      talle: req.body?.talle,
+      qty: req.body?.qty,
+      estado: req.body?.estado,
+      notas: req.body?.notas,
+    }, clientPhone);
+
+    if (!pedido) {
+      res.status(404).json({ error: 'Pedido no encontrado' });
+      return;
+    }
+
+    res.json(pedido);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.delete('/api/pedidos/:id', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const deleted = await deletePedidoRecord(req.params.id, clientPhone);
+
+    if (!deleted) {
+      res.status(404).json({ error: 'Pedido no encontrado' });
       return;
     }
 

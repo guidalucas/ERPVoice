@@ -45,8 +45,11 @@ const tenantSuffix = (ownerPhone) =>
 const DEFAULT_STATE_SNAPSHOT = {
   products: [],
   clients: [],
+  pedidos: [],
   transactions: [],
 };
+
+const PEDIDO_ESTADOS = new Set(['pendiente', 'conseguido', 'descartado']);
 
 const getConnectionString = () =>
   process.env.SUPABASE_DATABASE_URL ||
@@ -238,6 +241,21 @@ const rowToClient = (row) => ({
   ownerPhone: row.owner_phone,
   name: row.name,
   debt: Number(row.debt ?? 0),
+  notas: row.notas ?? null,
+});
+
+const rowToPedido = (row) => ({
+  id: row.id,
+  ownerPhone: row.owner_phone,
+  clienteId: row.cliente_id,
+  producto: row.producto,
+  productType: row.product_type,
+  productModel: row.product_model,
+  talle: row.talle,
+  qty: Number(row.qty ?? 1),
+  estado: PEDIDO_ESTADOS.has(row.estado) ? row.estado : 'pendiente',
+  fechaPedido: row.fecha_pedido,
+  notas: row.notas ?? null,
 });
 
 const rowToTransaction = (row) => ({
@@ -297,7 +315,22 @@ const initializeDatabase = async () => {
       id TEXT PRIMARY KEY,
       owner_phone TEXT NOT NULL DEFAULT '__default__',
       name TEXT NOT NULL,
-      debt INTEGER NOT NULL DEFAULT 0
+      debt INTEGER NOT NULL DEFAULT 0,
+      notas TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS pedidos (
+      id TEXT PRIMARY KEY,
+      owner_phone TEXT NOT NULL DEFAULT '__default__',
+      cliente_id TEXT NOT NULL,
+      producto TEXT NOT NULL,
+      product_type TEXT,
+      product_model TEXT,
+      talle TEXT,
+      qty INTEGER NOT NULL DEFAULT 1,
+      estado TEXT NOT NULL DEFAULT 'pendiente',
+      fecha_pedido TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      notas TEXT
     );
 
     CREATE TABLE IF NOT EXISTS transactions (
@@ -346,6 +379,9 @@ const initializeDatabase = async () => {
     CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions (timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_products_owner_phone ON products (owner_phone);
     CREATE INDEX IF NOT EXISTS idx_clients_owner_phone ON clients (owner_phone);
+    CREATE INDEX IF NOT EXISTS idx_pedidos_owner_phone ON pedidos (owner_phone);
+    CREATE INDEX IF NOT EXISTS idx_pedidos_cliente_id ON pedidos (cliente_id);
+    CREATE INDEX IF NOT EXISTS idx_pedidos_estado ON pedidos (estado);
     CREATE INDEX IF NOT EXISTS idx_transactions_owner_phone ON transactions (owner_phone);
         CREATE INDEX IF NOT EXISTS idx_meta_events_at ON meta_events (at DESC);
     CREATE INDEX IF NOT EXISTS idx_meta_events_owner_phone ON meta_events (owner_phone);
@@ -355,8 +391,10 @@ const initializeDatabase = async () => {
 
     ALTER TABLE products ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+    ALTER TABLE clients ADD COLUMN IF NOT EXISTS notas TEXT;
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE meta_events ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+    ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
   `);
 
   await withClient(async (client) => {
@@ -401,7 +439,7 @@ const ensureTenantState = async (client, ownerPhone) => {
   const variants = getOwnerPhoneVariants(ownerPhone).filter((value) => value !== normalizedOwnerPhone);
 
   if (variants.length) {
-    const tables = ['products', 'clients', 'transactions', 'meta_events'];
+    const tables = ['products', 'clients', 'pedidos', 'transactions', 'meta_events'];
     for (const table of tables) {
       await client.query(
         `UPDATE ${table} SET owner_phone = $1 WHERE owner_phone = ANY($2)`,
@@ -422,7 +460,18 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null) =>
     [ownerPhoneVariants],
     client,
   );
-  const clientsRows = await queryRows('SELECT id, owner_phone, name, debt FROM clients WHERE owner_phone = ANY($1) ORDER BY name ASC', [ownerPhoneVariants], client);
+  const clientsRows = await queryRows(
+    'SELECT id, owner_phone, name, debt, notas FROM clients WHERE owner_phone = ANY($1) ORDER BY name ASC',
+    [ownerPhoneVariants],
+    client,
+  );
+  const pedidosRows = await queryRows(
+    `SELECT id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
+     FROM pedidos WHERE owner_phone = ANY($1)
+     ORDER BY fecha_pedido DESC`,
+    [ownerPhoneVariants],
+    client,
+  );
   const transactionsRows = await queryRows(
       'SELECT id, owner_phone, timestamp, source_text, summary, actions_json FROM transactions WHERE owner_phone = ANY($1) ORDER BY timestamp DESC',
       [ownerPhoneVariants],
@@ -432,6 +481,7 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null) =>
   return {
     products: productsRows.map(rowToProduct),
     clients: clientsRows.map(rowToClient),
+    pedidos: pedidosRows.map(rowToPedido),
     transactions: transactionsRows.map(rowToTransaction),
   };
 };
@@ -439,6 +489,7 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null) =>
 const cloneDefaultStateSnapshot = () => ({
   products: DEFAULT_STATE_SNAPSHOT.products.map((product) => ({ ...product })),
   clients: DEFAULT_STATE_SNAPSHOT.clients.map((client) => ({ ...client })),
+  pedidos: [],
   transactions: [],
 });
 
@@ -592,7 +643,51 @@ const summarizeAction = (action) => {
     return `-$${action.amount.toLocaleString('es-AR')} cobrado a ${action.clientName}`;
   }
 
+  if (action.type === 'client_order') {
+    const qty = action.qty && action.qty > 0 ? action.qty : 1;
+    const sizeLabel = action.size ? ` talle ${action.size}` : '';
+    return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+  }
+
   return `+$${action.amount.toLocaleString('es-AR')} en cuenta de ${action.clientName}`;
+};
+
+const resolveOrCreateClientByName = (clients, clientName) => {
+  const target = normalizeText(clientName).trim();
+  const exactMatches = clients.filter((entry) => normalizeText(entry.name).trim() === target);
+
+  if (exactMatches.length === 1) {
+    return exactMatches[0];
+  }
+
+  const created = {
+    id: `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    name: titleCase(clientName),
+    debt: 0,
+    notas: null,
+  };
+  clients.push(created);
+  return created;
+};
+
+const buildPedidoProductoLabel = (action) => {
+  const fromParts = composeProductName({
+    productType: action.productType,
+    productModel: action.productModel,
+    size: undefined,
+    fallback: '',
+  }).trim();
+
+  if (fromParts) {
+    return fromParts;
+  }
+
+  const rawName = String(action.productName ?? '').trim();
+  if (!rawName) {
+    return 'Producto';
+  }
+
+  return rawName.replace(/(?:,\s*|\s+)talle\s+[a-z0-9]+\b/i, '').trim() || rawName;
 };
 
 const withTransaction = async (callback) => {
@@ -640,10 +735,10 @@ const replaceStateTables = async (client, ownerPhone, products, clients) => {
   for (const clientEntry of clients) {
     await client.query(
       `
-        INSERT INTO clients (id, owner_phone, name, debt)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO clients (id, owner_phone, name, debt, notas)
+        VALUES ($1, $2, $3, $4, $5)
       `,
-      [clientEntry.id, normalizedOwnerPhone, clientEntry.name, clientEntry.debt],
+      [clientEntry.id, normalizedOwnerPhone, clientEntry.name, clientEntry.debt, clientEntry.notas ?? null],
     );
   }
 };
@@ -742,6 +837,203 @@ export const deleteProductRecord = async (productId, ownerPhone = DEFAULT_OWNER_
   return result.rowCount > 0;
 };
 
+export const createClientRecord = async (clientInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const name = String(clientInput?.name ?? '').trim();
+
+  if (!name) {
+    return null;
+  }
+
+  const id = `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const result = await getPool().query(
+    `
+      INSERT INTO clients (id, owner_phone, name, debt, notas)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, owner_phone, name, debt, notas
+    `,
+    [id, normalizedOwnerPhone, titleCase(name), normalizeInteger(clientInput?.debt, 0), normalizeNullableString(clientInput?.notas)],
+  );
+
+  return rowToClient(result.rows[0]);
+};
+
+export const updateClientRecord = async (clientId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
+  const existing = await queryRow(
+    'SELECT id, owner_phone, name, debt, notas FROM clients WHERE id = $1 AND owner_phone = ANY($2)',
+    [clientId, ownerPhoneVariants],
+  );
+
+  if (!existing) {
+    return null;
+  }
+
+  const current = rowToClient(existing);
+  const nextName = typeof updates.name === 'string' && updates.name.trim() ? titleCase(updates.name.trim()) : current.name;
+  const nextNotas = updates.notas === undefined ? current.notas : normalizeNullableString(updates.notas);
+  const nextDebt = updates.debt === undefined ? current.debt : normalizeInteger(updates.debt, current.debt);
+
+  const result = await getPool().query(
+    `
+      UPDATE clients
+      SET name = $1, notas = $2, debt = $3
+      WHERE id = $4 AND owner_phone = $5
+      RETURNING id, owner_phone, name, debt, notas
+    `,
+    [nextName, nextNotas, nextDebt, clientId, normalizedOwnerPhone],
+  );
+
+  return result.rows[0] ? rowToClient(result.rows[0]) : null;
+};
+
+export const deleteClientRecord = async (clientId, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
+
+  return withTransaction(async (client) => {
+    await client.query('DELETE FROM pedidos WHERE cliente_id = $1 AND owner_phone = ANY($2)', [clientId, ownerPhoneVariants]);
+    const result = await client.query('DELETE FROM clients WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [clientId, ownerPhoneVariants]);
+    return result.rowCount > 0;
+  });
+};
+
+export const mergeClientRecords = async (keepId, mergeId, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
+
+  if (!keepId || !mergeId || keepId === mergeId) {
+    return null;
+  }
+
+  return withTransaction(async (client) => {
+    const keep = await queryRow(
+      'SELECT id, owner_phone, name, debt, notas FROM clients WHERE id = $1 AND owner_phone = ANY($2)',
+      [keepId, ownerPhoneVariants],
+      client,
+    );
+    const merge = await queryRow(
+      'SELECT id, owner_phone, name, debt, notas FROM clients WHERE id = $1 AND owner_phone = ANY($2)',
+      [mergeId, ownerPhoneVariants],
+      client,
+    );
+
+    if (!keep || !merge) {
+      return null;
+    }
+
+    await client.query(
+      'UPDATE pedidos SET cliente_id = $1 WHERE cliente_id = $2 AND owner_phone = ANY($3)',
+      [keepId, mergeId, ownerPhoneVariants],
+    );
+
+    const keepClient = rowToClient(keep);
+    const mergeClient = rowToClient(merge);
+    const mergedNotas = [keepClient.notas, mergeClient.notas].filter(Boolean).join('\n').trim() || null;
+
+    await client.query(
+      'UPDATE clients SET debt = $1, notas = $2 WHERE id = $3',
+      [keepClient.debt + mergeClient.debt, mergedNotas, keepId],
+    );
+    await client.query('DELETE FROM clients WHERE id = $1 AND owner_phone = ANY($2)', [mergeId, ownerPhoneVariants]);
+
+    return queryAllState(normalizeOwnerPhone(ownerPhone), client);
+  });
+};
+
+export const createPedidoRecord = async (pedidoInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const clienteId = String(pedidoInput?.clienteId ?? '').trim();
+  const producto = String(pedidoInput?.producto ?? '').trim();
+
+  if (!clienteId || !producto) {
+    return null;
+  }
+
+  const estado = PEDIDO_ESTADOS.has(pedidoInput?.estado) ? pedidoInput.estado : 'pendiente';
+  const id = `pedido-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const result = await getPool().query(
+    `
+      INSERT INTO pedidos (id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)
+      RETURNING id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
+    `,
+    [
+      id,
+      normalizedOwnerPhone,
+      clienteId,
+      producto,
+      normalizeNullableString(pedidoInput?.productType),
+      normalizeNullableString(pedidoInput?.productModel),
+      normalizeNullableString(pedidoInput?.talle),
+      Math.max(1, normalizeInteger(pedidoInput?.qty, 1)),
+      estado,
+      normalizeNullableString(pedidoInput?.notas),
+    ],
+  );
+
+  return rowToPedido(result.rows[0]);
+};
+
+export const updatePedidoRecord = async (pedidoId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
+  const existing = await queryRow(
+    `SELECT id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
+     FROM pedidos WHERE id = $1 AND owner_phone = ANY($2)`,
+    [pedidoId, ownerPhoneVariants],
+  );
+
+  if (!existing) {
+    return null;
+  }
+
+  const current = rowToPedido(existing);
+  const nextEstado = updates.estado && PEDIDO_ESTADOS.has(updates.estado) ? updates.estado : current.estado;
+  // Cambiar estado NUNCA descuenta stock — solo actualiza el anotador.
+  const result = await getPool().query(
+    `
+      UPDATE pedidos
+      SET cliente_id = $1,
+          producto = $2,
+          product_type = $3,
+          product_model = $4,
+          talle = $5,
+          qty = $6,
+          estado = $7,
+          notas = $8
+      WHERE id = $9 AND owner_phone = $10
+      RETURNING id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
+    `,
+    [
+      typeof updates.clienteId === 'string' && updates.clienteId.trim() ? updates.clienteId.trim() : current.clienteId,
+      typeof updates.producto === 'string' && updates.producto.trim() ? updates.producto.trim() : current.producto,
+      updates.productType === undefined ? current.productType : normalizeNullableString(updates.productType),
+      updates.productModel === undefined ? current.productModel : normalizeNullableString(updates.productModel),
+      updates.talle === undefined ? current.talle : normalizeNullableString(updates.talle),
+      updates.qty === undefined ? current.qty : Math.max(1, normalizeInteger(updates.qty, current.qty)),
+      nextEstado,
+      updates.notas === undefined ? current.notas : normalizeNullableString(updates.notas),
+      pedidoId,
+      normalizedOwnerPhone,
+    ],
+  );
+
+  return result.rows[0] ? rowToPedido(result.rows[0]) : null;
+};
+
+export const deletePedidoRecord = async (pedidoId, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
+  const result = await getPool().query('DELETE FROM pedidos WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [pedidoId, ownerPhoneVariants]);
+  return result.rowCount > 0;
+};
+
 export const getStateSnapshot = async (ownerPhone = DEFAULT_OWNER_PHONE) => {
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
 
@@ -770,6 +1062,7 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     const nextProducts = currentSnapshot.products.map((product) => ({ ...product }));
     const nextClients = currentSnapshot.clients.map((clientEntry) => ({ ...clientEntry }));
     const newTransactions = [];
+    const newPedidos = [];
 
     const lastSellAction = [...actions].reverse().find((action) => action.type === 'sell');
     const computedDebtAmount = lastSellAction ? calculateSaleDebt(nextProducts, lastSellAction) : null;
@@ -818,6 +1111,29 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
         }
       }
 
+      if (action.type === 'client_order' && typeof action.clientName === 'string' && typeof action.productName === 'string') {
+        const clientEntry = resolveOrCreateClientByName(nextClients, action.clientName);
+        const qty = Number.isFinite(Number(action.qty)) && Number(action.qty) > 0 ? Math.trunc(Number(action.qty)) : 1;
+        const productDescriptor = parseProductDescriptor(action.productName);
+        newPedidos.push({
+          id: `pedido-${Date.now().toString(36)}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,
+          clienteId: clientEntry.id,
+          producto: buildPedidoProductoLabel({
+            ...action,
+            productType: action.productType || productDescriptor.productType,
+            productModel: action.productModel || productDescriptor.productModel,
+            productName: action.productName,
+          }),
+          productType: normalizeNullableString(action.productType || productDescriptor.productType),
+          productModel: normalizeNullableString(action.productModel || productDescriptor.productModel),
+          talle: normalizeNullableString(action.size || productDescriptor.size),
+          qty,
+          estado: 'pendiente',
+          fechaPedido: new Date().toISOString(),
+          notas: normalizeNullableString(action.notas),
+        });
+      }
+
       newTransactions.push({
         id: `transaction-${Date.now()}-${index + 1}`,
         timestamp: new Date().toISOString(),
@@ -828,6 +1144,28 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     });
 
     await replaceStateTables(client, normalizedOwnerPhone, nextProducts, nextClients);
+
+    for (const pedido of newPedidos) {
+      await client.query(
+        `
+          INSERT INTO pedidos (id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `,
+        [
+          pedido.id,
+          normalizedOwnerPhone,
+          pedido.clienteId,
+          pedido.producto,
+          pedido.productType,
+          pedido.productModel,
+          pedido.talle,
+          pedido.qty,
+          pedido.estado,
+          pedido.fechaPedido,
+          pedido.notas,
+        ],
+      );
+    }
 
     for (const transaction of newTransactions) {
       await client.query(

@@ -9,15 +9,16 @@ Convertí la frase del usuario en un JSON válido con esta estructura exacta:
 {
   "schemaVersion": 1,
   "sourceText": string,
-  "intent": "add_stock" | "reserve_stock" | "sell" | "add_debt" | "payment_received" | "mixed" | "unknown",
+  "intent": "add_stock" | "reserve_stock" | "sell" | "add_debt" | "payment_received" | "client_order" | "mixed" | "unknown",
   "confidence": number,
   "requiresConfirmation": boolean,
   "actions": [
-    { "type": "add_stock", "productName": string, "qty": number },
-    { "type": "reserve_stock", "productName": string, "qty": number, "clientName"?: string },
-    { "type": "sell", "productName": string, "qty": number },
-    { "type": "add_debt", "clientName": string, "amount": number, "productName"?: string, "qty"?: number }
-    { "type": "payment_received", "clientName": string, "amount": number }
+    { "type": "add_stock", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number, "price"?: number },
+    { "type": "reserve_stock", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number, "clientName"?: string },
+    { "type": "sell", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number, "price"?: number },
+    { "type": "add_debt", "clientName": string, "amount": number, "productType"?: string, "productModel"?: string, "size"?: string, "productName"?: string, "qty"?: number },
+    { "type": "payment_received", "clientName": string, "amount": number },
+    { "type": "client_order", "clientName": string, "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty"?: number }
   ],
   "missingFields"?: string[],
   "suggestedPhrases"?: string[]
@@ -34,8 +35,12 @@ Reglas:
 - Si el texto dice que un cliente te tiene que pagar por productos o que todavía no te los pagó, usá sell y también add_debt con clientName, productName, qty y amount 0 si todavía no podés calcularlo.
 - Si ya tenés productName y qty, no pidas precio unitario: devolvé la venta y dejá amount en 0 para que el ERP lo calcule.
 - Si la frase dice "para X" en una reserva, separá X como clientName y dejá solo el producto en productName.
+- Si alguien te pide / pidió / quiere / encargó un producto (ej: "Juan me pidió una camiseta de Boca titular talle M"), usá client_order. NO uses reserve_stock ni sell. Un pedido de cliente NO mueve stock.
+- client_order requiere clientName y productName. qty default 1 si dice "una/un".
+- Diferenciá claramente: "compré / entraron / llegaron" = add_stock; "me pidió / pidió / quiere / encargó" = client_order.
 - Si una frase tiene dos movimientos, devolvé dos objetos en actions.
 - Ejemplo: "compre 20 camisetas de argentina, les deje 3 al gimnasio" -> [{"type":"add_stock","productName":"camisetas de argentina","qty":20},{"type":"reserve_stock","productName":"camisetas de argentina","qty":3,"clientName":"gimnasio"}].
+- Ejemplo: "Juan me pidió una camiseta de Boca titular talle M" -> [{"type":"client_order","clientName":"Juan","productType":"Camiseta","productModel":"Boca Titular","size":"M","productName":"Camiseta Boca Titular M","qty":1}].
 
 Texto del usuario:
 ${text}
@@ -319,6 +324,29 @@ const parseAction = (value) => {
     };
   }
 
+  if (value.type === 'client_order' && typeof value.clientName === 'string') {
+    const productType = typeof value.productType === 'string' ? value.productType : undefined;
+    const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
+    const size = typeof value.size === 'string' ? value.size : undefined;
+    const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
+    const orderQty = Number.isFinite(qty) && qty > 0 ? qty : 1;
+
+    if (!productName) {
+      return null;
+    }
+
+    return {
+      type: 'client_order',
+      clientName: value.clientName,
+      productName,
+      productType,
+      productModel,
+      size,
+      qty: orderQty,
+      notas: typeof value.notas === 'string' ? value.notas : undefined,
+    };
+  }
+
   return null;
 };
 
@@ -352,6 +380,27 @@ const extractMultipleActionsFromText = (text) => {
           productName: duePaymentMatch[3].trim(),
           qty,
           amount: 0,
+        });
+      }
+      continue;
+    }
+
+    const orderMatch = fragment.match(/^(.+?)\s+(?:me\s+)?(?:pidio|pidió|pide|quiere|encargo|encargó|encargaron)\s+(.+)$/u);
+    if (orderMatch) {
+      const clientName = orderMatch[1].trim();
+      const rest = orderMatch[2].trim();
+      const qty = parseQuantity(rest) ?? 1;
+      const productText = rest.replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '').trim();
+      const productDescriptor = parseProductDescriptor(productText);
+      if (clientName && productDescriptor.productName) {
+        actions.push({
+          type: 'client_order',
+          clientName,
+          productName: productDescriptor.productName,
+          productType: productDescriptor.productType,
+          productModel: productDescriptor.productModel,
+          size: productDescriptor.size,
+          qty,
         });
       }
       continue;
@@ -564,6 +613,12 @@ const formatAction = (action) => {
 
   if (action.type === 'payment_received') {
     return `-$${action.amount.toLocaleString('es-AR')} cobrado a ${action.clientName}`;
+  }
+
+  if (action.type === 'client_order') {
+    const qty = action.qty && action.qty > 0 ? action.qty : 1;
+    const sizeLabel = action.size ? ` talle ${action.size}` : '';
+    return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
   }
 
   return `+$${action.amount.toLocaleString('es-AR')} en cuenta de ${action.clientName}`;

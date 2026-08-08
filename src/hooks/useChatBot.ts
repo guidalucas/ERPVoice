@@ -166,6 +166,12 @@ export const useChatBot = () => {
         return `${index + 1}. payment_received -> ${action.clientName} (-$${action.amount.toLocaleString('es-AR')})`;
       }
 
+      if (action.type === 'client_order') {
+        const qty = action.qty && action.qty > 0 ? action.qty : 1;
+        const sizeLabel = action.size ? ` talle ${action.size}` : '';
+        return `${index + 1}. client_order -> ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+      }
+
       // add_debt
       return `${index + 1}. add_debt -> ${action.clientName} (+$${action.amount.toLocaleString('es-AR')})`;
     });

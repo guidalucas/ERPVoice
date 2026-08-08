@@ -81,6 +81,38 @@ body {
   .erp-chip {
     @apply inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300;
   }
+
+  .dashboard-layout {
+    @apply relative flex min-h-[70vh] gap-0 lg:gap-6;
+  }
+
+  .dashboard-sidebar {
+    @apply w-56 shrink-0 flex-col rounded-[1.5rem] border border-white/10 bg-slate-950/70 p-4 shadow-lg shadow-black/20 backdrop-blur-xl;
+  }
+
+  .dashboard-main {
+    @apply pb-24 lg:pb-0;
+  }
+
+  .dashboard-nav-item {
+    @apply flex items-center gap-3 rounded-2xl border px-3 py-2.5 text-sm transition;
+  }
+
+  .dashboard-bottom-nav {
+    @apply fixed inset-x-3 bottom-3 z-40 rounded-3xl border border-white/10 bg-slate-950/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-xl lg:hidden;
+  }
+
+  .dashboard-bottom-nav-item {
+    @apply flex flex-col items-center justify-center gap-1 rounded-2xl border px-1 py-2 transition;
+  }
+
+  .stock-chip {
+    @apply inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm;
+  }
+
+  .stock-chip-input {
+    @apply w-14 rounded-lg border border-emerald-400/40 bg-slate-950 px-1.5 py-0.5 text-center text-sm font-semibold text-white outline-none;
+  }
 }
 
 ::-webkit-scrollbar {

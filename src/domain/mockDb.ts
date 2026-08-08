@@ -5,12 +5,13 @@ const createId = (prefix: string) => `${prefix}-${Math.random().toString(36).sli
 export const initialAppState: AppState = {
   products: [],
   clients: [],
+  pedidos: [],
   transactions: [],
   chatMessages: [
     {
       id: createId('message'),
       role: 'bot',
-      text: 'Hola! Soy ERPVoice. Podés escribir o grabar comandos como "vendí 3 remeras a Juan" o "agregá 10 pantalones".',
+      text: 'Hola! Soy Stocky. Podés escribir o grabar comandos como "Juan me pidió una camiseta de Boca talle M" o "compré 10 camisetas de Argentina".',
     },
   ],
   pendingProposal: null,

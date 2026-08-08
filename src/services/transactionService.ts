@@ -1,4 +1,4 @@
-import type { AppState, ParsedActionUnion as ParsedAction, Product, Transaction } from '../domain/types';
+import type { AppState, Client, ParsedActionUnion as ParsedAction, Pedido, Product, Transaction } from '../domain/types';
 
 const createId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -7,6 +7,13 @@ const normalizeText = (value: string) =>
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '');
+
+const titleCase = (value: string) =>
+  String(value ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(' ');
 
 const tokenize = (value: string) =>
   normalizeText(value)
@@ -92,10 +99,13 @@ const resolveProduct = (products: Product[], action: ProductMatchInput) => {
 
     const matchingTokens = actionTokens.filter((token) => productTokens.includes(token));
     const score = matchingTokens.length;
-    const sizesMatch = normalizeOptionalText(action.size) && normalizeOptionalText(product.size)
-      ? normalizeOptionalText(action.size) === normalizeOptionalText(product.size)
-      : false;
-    const specificScore = matchingTokens.filter((token) => !['camiseta', 'titular', 'suplente', 'talle', 'con', 'de', 'del', 'los', 'las', 'por', 'para', 's', 'm', 'l', 'xl', 'xxl'].includes(token)).length + (sizesMatch ? 1 : 0);
+    const sizesMatch =
+      normalizeOptionalText(action.size) && normalizeOptionalText(product.size)
+        ? normalizeOptionalText(action.size) === normalizeOptionalText(product.size)
+        : false;
+    const specificScore =
+      matchingTokens.filter((token) => !['camiseta', 'titular', 'suplente', 'talle', 'con', 'de', 'del', 'los', 'las', 'por', 'para', 's', 'm', 'l', 'xl', 'xxl'].includes(token)).length +
+      (sizesMatch ? 1 : 0);
 
     if (score > bestScore || (score === bestScore && specificScore > bestSpecificScore)) {
       bestScore = score;
@@ -137,11 +147,9 @@ const ensureProduct = (products: Product[], action: ProductMatchInput) => {
 
 const calculateSaleDebt = (products: Product[], sellAction: ProductMatchInput & { qty: number }) => {
   const product = resolveProduct(products, sellAction);
-
   if (!product) {
     return 0;
   }
-
   return product.price * sellAction.qty;
 };
 
@@ -164,6 +172,33 @@ const calculateProductDebt = (products: Product[], debtAction: Partial<ProductMa
   return product.price * debtAction.qty;
 };
 
+const resolveOrCreateClient = (clients: Client[], clientName: string) => {
+  const target = normalizeText(clientName).trim();
+  const exactMatches = clients.filter((entry) => normalizeText(entry.name).trim() === target);
+
+  if (exactMatches.length === 1) {
+    return exactMatches[0]!;
+  }
+
+  const created: Client = {
+    id: createId('client'),
+    name: titleCase(clientName),
+    debt: 0,
+    notas: null,
+  };
+  clients.push(created);
+  return created;
+};
+
+const buildPedidoProducto = (action: Extract<ParsedAction, { type: 'client_order' }>) => {
+  const parts = [action.productType, action.productModel].map((value) => String(value ?? '').trim()).filter(Boolean);
+  if (parts.length) {
+    return parts.join(' ');
+  }
+
+  return action.productName.replace(/(?:,\s*|\s+)talle\s+[a-z0-9]+\b/i, '').trim() || action.productName;
+};
+
 const summarizeAction = (action: ParsedAction) => {
   if (action.type === 'add_stock') {
     return `+${action.qty} stock para ${action.productName}`;
@@ -181,6 +216,12 @@ const summarizeAction = (action: ParsedAction) => {
     return `-$${action.amount.toLocaleString('es-AR')} cobrado a ${action.clientName}`;
   }
 
+  if (action.type === 'client_order') {
+    const qty = action.qty && action.qty > 0 ? action.qty : 1;
+    const sizeLabel = action.size ? ` talle ${action.size}` : '';
+    return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+  }
+
   const debt = action as { type: 'add_debt'; clientName: string; amount: number };
   return `+$${debt.amount.toLocaleString('es-AR')} en cuenta de ${debt.clientName}`;
 };
@@ -188,6 +229,7 @@ const summarizeAction = (action: ParsedAction) => {
 export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], sourceText: string): AppState => {
   const nextProducts = state.products.map((product) => ({ ...product }));
   const nextClients = state.clients.map((client) => ({ ...client }));
+  const nextPedidos = [...state.pedidos];
   const newTransactions: Transaction[] = [];
   const lastSellAction = [...actions].reverse().find((action) => action.type === 'sell') as { type: 'sell'; productName: string; qty: number } | undefined;
   const computedDebtAmount = lastSellAction ? calculateSaleDebt(nextProducts, lastSellAction) : null;
@@ -205,7 +247,7 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
       product.stockReserved += reservationQty;
     }
 
-    if ((action as any).type === 'sell' || (action as any).type === 'venta') {
+    if ((action as { type: string }).type === 'sell' || (action as { type: string }).type === 'venta') {
       const sellAction = action as { type: string; productName: string; qty: number };
       const { product } = ensureProduct(nextProducts, sellAction);
       const sellQty = Math.min(product.stockAvailable, sellAction.qty);
@@ -217,11 +259,12 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
       const client = nextClients.find((entry) => entry.name.toLowerCase() === debtAction.clientName.toLowerCase()) ?? nextClients[0]!;
 
       const productDebtAmount = calculateProductDebt(nextProducts, debtAction as { productName?: string; qty?: number });
-      const amountToApply = productDebtAmount && productDebtAmount > 0
-        ? productDebtAmount
-        : computedDebtAmount && computedDebtAmount > 0
-          ? computedDebtAmount
-          : debtAction.amount;
+      const amountToApply =
+        productDebtAmount && productDebtAmount > 0
+          ? productDebtAmount
+          : computedDebtAmount && computedDebtAmount > 0
+            ? computedDebtAmount
+            : debtAction.amount;
       client.debt += amountToApply;
 
       action = {
@@ -235,6 +278,25 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
       const client = nextClients.find((entry) => entry.name.toLowerCase() === paymentAction.clientName.toLowerCase()) ?? nextClients[0]!;
       client.debt = Math.max(0, client.debt - paymentAction.amount);
     }
+
+    if (action.type === 'client_order') {
+      const client = resolveOrCreateClient(nextClients, action.clientName);
+      const qty = action.qty && action.qty > 0 ? action.qty : 1;
+      const pedido: Pedido = {
+        id: createId('pedido'),
+        clienteId: client.id,
+        producto: buildPedidoProducto(action),
+        productType: action.productType ?? null,
+        productModel: action.productModel ?? null,
+        talle: action.size ?? null,
+        qty,
+        estado: 'pendiente',
+        fechaPedido: new Date().toISOString(),
+        notas: action.notas ?? null,
+      };
+      nextPedidos.unshift(pedido);
+    }
+
     newTransactions.push({
       id: createId(`transaction-${index + 1}`),
       timestamp: new Date().toISOString(),
@@ -248,6 +310,7 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
     ...state,
     products: nextProducts,
     clients: nextClients,
+    pedidos: nextPedidos,
     transactions: [...newTransactions.reverse(), ...state.transactions],
     pendingProposal: null,
   };

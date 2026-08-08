@@ -7,20 +7,21 @@ const DEFAULT_TRANSCRIPTION_ENDPOINT = 'https://api.groq.com/openai/v1/audio/tra
 const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-large-v3-turbo';
 
 const buildPrompt = (text: string) => `
-Sos un analista de operaciones para un ERP de stock y cuentas corrientes.
+Sos un analista de operaciones para Stocky, un sistema de stock y pedidos de clientes.
 Convertí la frase del usuario en un JSON válido con esta estructura exacta:
 {
   "schemaVersion": 1,
   "sourceText": string,
-  "intent": "add_stock" | "reserve_stock" | "sell" | "add_debt" | "payment_received" | "mixed" | "unknown",
+  "intent": "add_stock" | "reserve_stock" | "sell" | "add_debt" | "payment_received" | "client_order" | "mixed" | "unknown",
   "confidence": number,
   "requiresConfirmation": boolean,
   "actions": [
-    { "type": "add_stock", "productName": string, "qty": number },
-    { "type": "reserve_stock", "productName": string, "qty": number, "clientName"?: string },
-    { "type": "sell", "productName": string, "qty": number },
-    { "type": "add_debt", "clientName": string, "amount": number, "productName"?: string, "qty"?: number }
-    { "type": "payment_received", "clientName": string, "amount": number }
+    { "type": "add_stock", "productName": string, "qty": number, "productType"?: string, "productModel"?: string, "size"?: string, "price"?: number },
+    { "type": "reserve_stock", "productName": string, "qty": number, "clientName"?: string, "productType"?: string, "productModel"?: string, "size"?: string },
+    { "type": "sell", "productName": string, "qty": number, "productType"?: string, "productModel"?: string, "size"?: string, "price"?: number },
+    { "type": "add_debt", "clientName": string, "amount": number, "productName"?: string, "qty"?: number },
+    { "type": "payment_received", "clientName": string, "amount": number },
+    { "type": "client_order", "clientName": string, "productName": string, "qty"?: number, "productType"?: string, "productModel"?: string, "size"?: string }
   ],
   "missingFields"?: string[],
   "suggestedPhrases"?: string[]
@@ -37,8 +38,11 @@ Reglas:
 - Si el texto dice que un cliente te tiene que pagar por productos o que todavía no te los pagó, usá sell y también add_debt con clientName, productName, qty y amount 0 si todavía no podés calcularlo.
 - Si ya tenés productName y qty, no pidas precio unitario: devolvé la venta y dejá amount en 0 para que el ERP lo calcule.
 - Si la frase dice "para X" en una reserva, separá X como clientName y dejá solo el producto en productName.
+- Si alguien te pide / pidió / quiere / encargó un producto, usá client_order. NO uses reserve_stock ni sell. Un pedido de cliente NO mueve stock.
+- Diferenciá: "compré / entraron / llegaron" = add_stock; "me pidió / pidió / quiere / encargó" = client_order.
 - Si una frase tiene dos movimientos, devolvé dos objetos en actions.
 - Ejemplo: "compre 20 camisetas de argentina, les deje 3 al gimnasio" -> [{"type":"add_stock","productName":"camisetas de argentina","qty":20},{"type":"reserve_stock","productName":"camisetas de argentina","qty":3,"clientName":"gimnasio"}].
+- Ejemplo: "Juan me pidió una camiseta de Boca titular talle M" -> [{"type":"client_order","clientName":"Juan","productName":"Camiseta Boca Titular M","productType":"Camiseta","productModel":"Boca Titular","size":"M","qty":1}].
 
 Texto del usuario:
 ${text}
