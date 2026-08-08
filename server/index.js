@@ -17,7 +17,9 @@ import {
   markMetaEventProcessed,
   mergeClientRecords,
   saveMetaEvent,
+  upsertAuthUser,
   verifyAuthOtpChallenge,
+  hasDatabaseConfig,
   updateProductRecord,
   updateClientRecord,
   updatePedidoRecord,
@@ -28,7 +30,7 @@ dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
 
 const app = express();
-const port = Number(process.env.PORT || 8080);
+const port = Number(process.env.PORT || process.env.META_WEBHOOK_PORT || 8080);
 const allowedOrigins = new Set([
   'https://erp-voice.vercel.app',
   'http://localhost:5173',
@@ -37,6 +39,65 @@ const allowedOrigins = new Set([
 ]);
 const metaVerifyToken = process.env.META_VERIFY_TOKEN || 'erpvoice_token_secreto';
 const authEnabled = true;
+const DEV_LOGIN_PHONE = normalizePhone(process.env.AUTH_DEV_PHONE || '5491100000000') || '5491100000000';
+const memoryOtpChallenges = new Map();
+
+const isAuthDevBypassEnabled = () => {
+  const flag = String(process.env.AUTH_DEV_BYPASS ?? '').trim().toLowerCase();
+
+  if (['1', 'true', 'yes', 'on'].includes(flag)) {
+    return true;
+  }
+
+  if (['0', 'false', 'no', 'off'].includes(flag)) {
+    return false;
+  }
+
+  // Local por defecto (Node/Vercel producción lo desactivan).
+  return process.env.NODE_ENV !== 'production' && process.env.VERCEL !== '1';
+};
+
+const createMemoryOtpCode = () => String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
+
+const createMemoryChallenge = (phoneNumber) => {
+  const challengeId = `dev-otp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const otpCode = createMemoryOtpCode();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+  memoryOtpChallenges.set(challengeId, {
+    phoneNumber,
+    otpCode,
+    expiresAt,
+  });
+
+  return {
+    challengeId,
+    phoneNumber,
+    otpCode,
+    expiresAt,
+    expiresInSeconds: 600,
+  };
+};
+
+const verifyMemoryChallenge = ({ phoneNumber, otpCode, challengeId }) => {
+  const challenge = memoryOtpChallenges.get(challengeId);
+
+  if (!challenge || challenge.phoneNumber !== phoneNumber) {
+    return { ok: false, reason: 'challenge_not_found' };
+  }
+
+  if (new Date(challenge.expiresAt).getTime() < Date.now()) {
+    memoryOtpChallenges.delete(challengeId);
+    return { ok: false, reason: 'challenge_expired' };
+  }
+
+  if (challenge.otpCode !== String(otpCode ?? '').trim()) {
+    return { ok: false, reason: 'invalid_code' };
+  }
+
+  memoryOtpChallenges.delete(challengeId);
+  return { ok: true, phoneNumber };
+};
 
 const createEventId = () => `meta-event-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -133,7 +194,26 @@ app.post('/api/auth/request-code', async (req, res) => {
       return;
     }
 
-    const challenge = await createAuthOtpChallenge(phoneNumber);
+    const devBypass = isAuthDevBypassEnabled();
+    const useMemoryAuth = devBypass && !hasDatabaseConfig();
+
+    const challenge = useMemoryAuth
+      ? createMemoryChallenge(phoneNumber)
+      : await createAuthOtpChallenge(phoneNumber);
+
+    if (devBypass) {
+      console.log(`[auth:dev] OTP para ${challenge.phoneNumber}: ${challenge.otpCode}`);
+      res.json({
+        challengeId: challenge.challengeId,
+        phoneNumber: challenge.phoneNumber,
+        expiresAt: challenge.expiresAt,
+        expiresInSeconds: challenge.expiresInSeconds,
+        devOtpCode: challenge.otpCode,
+        devMode: true,
+      });
+      return;
+    }
+
     const replyResult = await sendMetaReply({
       to: challenge.phoneNumber,
       text: `Tu código de acceso al panel es: ${challenge.otpCode}. Vence en 10 minutos.`,
@@ -168,17 +248,59 @@ app.post('/api/auth/request-code', async (req, res) => {
   }
 });
 
+app.post('/api/auth/dev-login', async (req, res) => {
+  try {
+    if (!isAuthDevBypassEnabled()) {
+      res.status(404).json({ error: 'Dev login deshabilitado' });
+      return;
+    }
+
+    const requestedPhone = normalizePhone(req.body?.phoneNumber);
+    const phoneNumber = requestedPhone || DEV_LOGIN_PHONE;
+
+    if (hasDatabaseConfig()) {
+      await upsertAuthUser(phoneNumber);
+    }
+
+    const token = issueJwt({ phoneNumber });
+    console.log(`[auth:dev] Login local para ${phoneNumber}${hasDatabaseConfig() ? '' : ' (sin base de datos)'}`);
+
+    res.json({
+      token,
+      tokenType: 'Bearer',
+      phoneNumber,
+      devMode: true,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.get('/api/auth/dev-status', (_req, res) => {
+  res.json({
+    enabled: isAuthDevBypassEnabled(),
+    defaultPhone: DEV_LOGIN_PHONE,
+    databaseConfigured: hasDatabaseConfig(),
+  });
+});
+
 app.post('/api/auth/verify-code', async (req, res) => {
   try {
     const phoneNumber = normalizePhone(req.body?.phoneNumber);
     const otpCode = String(req.body?.otpCode ?? '').trim();
     const challengeId = typeof req.body?.challengeId === 'string' ? req.body.challengeId.trim() : null;
 
-    const verification = await verifyAuthOtpChallenge({
-      phoneNumber,
-      otpCode,
-      challengeId,
-    });
+    let verification;
+
+    if (challengeId && memoryOtpChallenges.has(challengeId)) {
+      verification = verifyMemoryChallenge({ phoneNumber, otpCode, challengeId });
+    } else {
+      verification = await verifyAuthOtpChallenge({
+        phoneNumber,
+        otpCode,
+        challengeId,
+      });
+    }
 
     if (!verification.ok) {
       const statusByReason = {
@@ -192,6 +314,11 @@ app.post('/api/auth/verify-code', async (req, res) => {
 
       res.status(statusByReason[verification.reason] ?? 400).json({ error: 'No pudimos validar el código', reason: verification.reason });
       return;
+    }
+
+    // El verify de Postgres ya hace upsert; el challenge en memoria no.
+    if (challengeId?.startsWith('dev-otp-') && hasDatabaseConfig()) {
+      await upsertAuthUser(verification.phoneNumber);
     }
 
     const token = issueJwt({ phoneNumber: verification.phoneNumber });
@@ -575,4 +702,7 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`[MetaWebhook] listening on port ${port}`);
   console.log('[MetaWebhook] GET /api/meta-webhook for verification');
   console.log('[MetaWebhook] POST /api/meta-webhook for WhatsApp Cloud API messages');
+  if (isAuthDevBypassEnabled()) {
+    console.log(`[auth:dev] Bypass local activo. Teléfono demo: ${DEV_LOGIN_PHONE}`);
+  }
 });

@@ -1,17 +1,46 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { fetchDevAuthStatus } from '../../services/authService';
 import { useAuth } from '../../store/AuthStore';
 import { ThemeToggle } from '../dashboard/ThemeToggle';
 
 type Step = 'phone' | 'code';
 
 export function LoginPanel() {
-  const { requestLoginCode, verifyLoginCode } = useAuth();
+  const { requestLoginCode, verifyLoginCode, loginWithDevBypass } = useAuth();
   const [step, setStep] = useState<Step>('phone');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [challengeId, setChallengeId] = useState('');
   const [statusText, setStatusText] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [devLoginEnabled, setDevLoginEnabled] = useState(false);
+  const [devDefaultPhone, setDevDefaultPhone] = useState('5491100000000');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDevStatus = async () => {
+      try {
+        const status = await fetchDevAuthStatus();
+        if (!cancelled) {
+          setDevLoginEnabled(Boolean(status.enabled));
+          if (status.defaultPhone) {
+            setDevDefaultPhone(status.defaultPhone);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setDevLoginEnabled(false);
+        }
+      }
+    };
+
+    void loadDevStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleRequestCode = async () => {
     setIsSubmitting(true);
@@ -29,7 +58,13 @@ export function LoginPanel() {
       setChallengeId(response.challengeId);
       setPhoneNumber(response.phoneNumber);
       setStep('code');
-      setStatusText('Te enviamos un código por WhatsApp.');
+
+      if (response.devOtpCode) {
+        setOtpCode(response.devOtpCode);
+        setStatusText(`Modo local: usá el código ${response.devOtpCode} (también está en la consola del backend).`);
+      } else {
+        setStatusText('Te enviamos un código por WhatsApp.');
+      }
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : 'No pudimos enviar el código.');
     } finally {
@@ -49,6 +84,19 @@ export function LoginPanel() {
       });
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : 'No pudimos validar el código.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDevLogin = async () => {
+    setIsSubmitting(true);
+    setStatusText(null);
+
+    try {
+      await loginWithDevBypass(phoneNumber.trim() || undefined);
+    } catch (error) {
+      setStatusText(error instanceof Error ? error.message : 'No pudimos entrar en modo local.');
     } finally {
       setIsSubmitting(false);
     }
@@ -153,6 +201,18 @@ export function LoginPanel() {
                   </>
                 )}
               </div>
+
+              {devLoginEnabled && (
+                <div className="rounded-2xl border border-dashed border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+                  <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">Modo local</p>
+                  <p className="mt-1 text-xs leading-5 text-emerald-800/80 dark:text-emerald-100/80">
+                    Sin WhatsApp. Entrá directo con el teléfono demo {devDefaultPhone}, o el que escribiste arriba.
+                  </p>
+                  <button type="button" className="erp-button-secondary mt-3 text-sm" onClick={() => void handleDevLogin()} disabled={isSubmitting}>
+                    {isSubmitting ? 'Entrando...' : 'Entrar en modo local'}
+                  </button>
+                </div>
+              )}
 
               <p className="text-xs leading-5 text-slate-600 dark:text-slate-400">
                 El código llega al mismo número que usás en WhatsApp. No hace falta contraseña ni email.

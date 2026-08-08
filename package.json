@@ -11,6 +11,7 @@
     "dev:all": "npm run dev:frontback",
     "start": "node server/index.js",
     "db:migrate": "node scripts/migrate-postgres.js",
+    "db:seed-dev": "node scripts/seed-dev-tenant.js",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

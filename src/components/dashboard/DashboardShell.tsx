@@ -96,15 +96,23 @@ export function DashboardShell({ activeSection, onSectionChange, phoneNumber, on
           </div>
         </header>
 
-        <header className="mb-5 hidden lg:block">
-          <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-white">{sectionTitles[activeSection]}</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            {activeSection === 'inicio' && 'Resumen de stock y actividad reciente'}
-            {activeSection === 'productos' && 'Catálogo, stock y precios por modelo'}
-            {activeSection === 'pedidos' && 'Qué te pidieron, agrupado para armar el pedido al proveedor'}
-            {activeSection === 'clientes' && 'Clientes y sus pedidos'}
-            {activeSection === 'actividad' && 'Cargas por voz y mensajes recientes'}
-          </p>
+        <header className="mb-5 hidden items-start justify-between gap-3 lg:flex">
+          <div>
+            <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-white">{sectionTitles[activeSection]}</h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              {activeSection === 'inicio' && 'Resumen de stock y actividad reciente'}
+              {activeSection === 'productos' && 'Catálogo, stock y precios por modelo'}
+              {activeSection === 'pedidos' && 'Qué te pidieron, agrupado para armar el pedido al proveedor'}
+              {activeSection === 'clientes' && 'Clientes y sus pedidos'}
+              {activeSection === 'actividad' && 'Cargas por voz y mensajes recientes'}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeToggle />
+            <button type="button" className="erp-button-secondary px-3 py-1.5 text-sm" onClick={onLogout}>
+              Salir
+            </button>
+          </div>
         </header>
 
         {children}

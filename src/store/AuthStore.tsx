@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { fetchCurrentSession, requestLoginCode, verifyLoginCode } from '../services/authService';
+import { fetchCurrentSession, requestDevLogin, requestLoginCode, verifyLoginCode } from '../services/authService';
 import { clearAuthSession, getAuthSession, setAuthSession, subscribeAuthSession } from '../services/authTokenStore';
 
 type AuthSession = {
@@ -10,8 +10,16 @@ type AuthSession = {
 type AuthContextValue = {
   session: AuthSession | null;
   isBootstrapping: boolean;
-  requestLoginCode: (phoneNumber: string) => Promise<{ challengeId: string; phoneNumber: string; expiresAt: string; expiresInSeconds: number }>;
+  requestLoginCode: (phoneNumber: string) => Promise<{
+    challengeId: string;
+    phoneNumber: string;
+    expiresAt: string;
+    expiresInSeconds: number;
+    devOtpCode?: string;
+    devMode?: boolean;
+  }>;
   verifyLoginCode: (payload: { phoneNumber: string; otpCode: string; challengeId: string }) => Promise<{ token: string; tokenType: 'Bearer'; phoneNumber: string }>;
+  loginWithDevBypass: (phoneNumber?: string) => Promise<{ token: string; tokenType: 'Bearer'; phoneNumber: string }>;
   logout: () => void;
 };
 
@@ -75,8 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleRequestLoginCode = async (phoneNumber: string) => requestLoginCode(phoneNumber);
 
-  const handleVerifyLoginCode = async (payload: { phoneNumber: string; otpCode: string; challengeId: string }) => {
-    const result = await verifyLoginCode(payload);
+  const applySession = (result: { token: string; phoneNumber: string }) => {
     const nextSession = {
       token: result.token,
       phoneNumber: result.phoneNumber,
@@ -84,8 +91,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setAuthSession(nextSession);
     setSession(nextSession);
-
     return result;
+  };
+
+  const handleVerifyLoginCode = async (payload: { phoneNumber: string; otpCode: string; challengeId: string }) => {
+    const result = await verifyLoginCode(payload);
+    return applySession(result);
+  };
+
+  const handleDevLogin = async (phoneNumber?: string) => {
+    const result = await requestDevLogin(phoneNumber);
+    return applySession(result);
   };
 
   const value: AuthContextValue = {
@@ -93,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isBootstrapping,
     requestLoginCode: handleRequestLoginCode,
     verifyLoginCode: handleVerifyLoginCode,
+    loginWithDevBypass: handleDevLogin,
     logout: () => {
       clearAuthSession();
       setSession(null);

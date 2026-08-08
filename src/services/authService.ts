@@ -6,12 +6,18 @@ export type RequestLoginCodeResponse = {
   phoneNumber: string;
   expiresAt: string;
   expiresInSeconds: number;
+  devOtpCode?: string;
+  devMode?: boolean;
 };
 
 export type VerifyLoginCodeResponse = {
   token: string;
   tokenType: 'Bearer';
   phoneNumber: string;
+};
+
+export type DevLoginResponse = VerifyLoginCodeResponse & {
+  devMode?: boolean;
 };
 
 export const requestLoginCode = async (phoneNumber: string) =>
@@ -33,5 +39,14 @@ export const verifyLoginCode = async (payload: {
       challengeId: payload.challengeId,
     }),
   });
+
+export const requestDevLogin = async (phoneNumber?: string) =>
+  requestJson<DevLoginResponse>('/api/auth/dev-login', {
+    method: 'POST',
+    body: JSON.stringify(phoneNumber ? { phoneNumber: normalizePhone(phoneNumber) } : {}),
+  });
+
+export const fetchDevAuthStatus = async () =>
+  requestJson<{ enabled: boolean; defaultPhone: string }>('/api/auth/dev-status');
 
 export const fetchCurrentSession = async () => requestJson<{ phoneNumber: string }>('/api/auth/me');
