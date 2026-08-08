@@ -361,10 +361,11 @@ const initializeDatabase = async () => {
     );
 
     CREATE TABLE IF NOT EXISTS auth_users (
-
       phone_number TEXT PRIMARY KEY,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      last_login_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      business_name TEXT,
+      business_category TEXT
     );
 
     CREATE TABLE IF NOT EXISTS auth_otp_challenges (
@@ -397,6 +398,8 @@ const initializeDatabase = async () => {
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE meta_events ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+    ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_name TEXT;
+    ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_category TEXT;
   `);
 
   await withClient(async (client) => {
@@ -1372,11 +1375,43 @@ export const revokeAuthOtpChallenge = async (challengeId) => {
   );
 };
 
+const VALID_BUSINESS_CATEGORIES = new Set([
+  'indumentaria',
+  'calzado',
+  'ferreteria',
+  'electronica',
+  'kiosco',
+  'general',
+]);
+
+const memoryBusinessProfiles = new Map();
+
+const toAuthUserProfile = (phoneNumber, businessName = null, businessCategory = null) => ({
+  phoneNumber,
+  businessName: typeof businessName === 'string' && businessName.trim() ? businessName.trim() : null,
+  businessCategory:
+    typeof businessCategory === 'string' && VALID_BUSINESS_CATEGORIES.has(businessCategory)
+      ? businessCategory
+      : null,
+  needsOnboarding:
+    !(typeof businessCategory === 'string' && VALID_BUSINESS_CATEGORIES.has(businessCategory)),
+});
+
 export const upsertAuthUser = async (phoneNumber) => {
   const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
 
   if (!normalizedPhoneNumber) {
     throw new Error('Número de teléfono inválido');
+  }
+
+  if (!hasDatabaseConfig()) {
+    if (!memoryBusinessProfiles.has(normalizedPhoneNumber)) {
+      memoryBusinessProfiles.set(normalizedPhoneNumber, {
+        businessName: null,
+        businessCategory: null,
+      });
+    }
+    return { phoneNumber: normalizedPhoneNumber };
   }
 
   await ensureReady();
@@ -1391,6 +1426,73 @@ export const upsertAuthUser = async (phoneNumber) => {
   );
 
   return { phoneNumber: normalizedPhoneNumber };
+};
+
+export const getAuthUserProfile = async (phoneNumber) => {
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+
+  if (!normalizedPhoneNumber) {
+    throw new Error('Número de teléfono inválido');
+  }
+
+  if (!hasDatabaseConfig()) {
+    const memoryProfile = memoryBusinessProfiles.get(normalizedPhoneNumber) ?? {
+      businessName: null,
+      businessCategory: null,
+    };
+    return toAuthUserProfile(normalizedPhoneNumber, memoryProfile.businessName, memoryProfile.businessCategory);
+  }
+
+  await ensureReady();
+  await upsertAuthUser(normalizedPhoneNumber);
+
+  const row = await queryRow(
+    'SELECT phone_number, business_name, business_category FROM auth_users WHERE phone_number = $1',
+    [normalizedPhoneNumber],
+  );
+
+  return toAuthUserProfile(normalizedPhoneNumber, row?.business_name ?? null, row?.business_category ?? null);
+};
+
+export const saveBusinessProfile = async (phoneNumber, { businessName, businessCategory }) => {
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+  const normalizedBusinessName = String(businessName ?? '').trim();
+  const normalizedBusinessCategory = String(businessCategory ?? '').trim();
+
+  if (!normalizedPhoneNumber) {
+    throw new Error('Número de teléfono inválido');
+  }
+
+  if (!normalizedBusinessName) {
+    throw new Error('El nombre del emprendimiento es obligatorio');
+  }
+
+  if (!VALID_BUSINESS_CATEGORIES.has(normalizedBusinessCategory)) {
+    throw new Error('Categoría de negocio inválida');
+  }
+
+  if (!hasDatabaseConfig()) {
+    memoryBusinessProfiles.set(normalizedPhoneNumber, {
+      businessName: normalizedBusinessName,
+      businessCategory: normalizedBusinessCategory,
+    });
+    return toAuthUserProfile(normalizedPhoneNumber, normalizedBusinessName, normalizedBusinessCategory);
+  }
+
+  await ensureReady();
+  await upsertAuthUser(normalizedPhoneNumber);
+
+  await getPool().query(
+    `
+      UPDATE auth_users
+      SET business_name = $1,
+          business_category = $2
+      WHERE phone_number = $3
+    `,
+    [normalizedBusinessName, normalizedBusinessCategory, normalizedPhoneNumber],
+  );
+
+  return toAuthUserProfile(normalizedPhoneNumber, normalizedBusinessName, normalizedBusinessCategory);
 };
 
 export const verifyAuthOtpChallenge = async ({ phoneNumber, otpCode, challengeId = null }) => {

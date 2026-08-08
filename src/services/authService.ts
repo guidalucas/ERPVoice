@@ -1,3 +1,4 @@
+import type { BusinessCategoryId } from '../domain/businessCategories';
 import { requestJson } from './apiClient';
 import { normalizePhone } from './phone';
 
@@ -18,6 +19,18 @@ export type VerifyLoginCodeResponse = {
 
 export type DevLoginResponse = VerifyLoginCodeResponse & {
   devMode?: boolean;
+};
+
+export type AuthUserProfile = {
+  phoneNumber: string;
+  businessName: string | null;
+  businessCategory: BusinessCategoryId | null;
+  needsOnboarding: boolean;
+};
+
+export type SaveBusinessProfilePayload = {
+  businessName: string;
+  businessCategory: BusinessCategoryId;
 };
 
 export const requestLoginCode = async (phoneNumber: string) =>
@@ -49,4 +62,10 @@ export const requestDevLogin = async (phoneNumber?: string) =>
 export const fetchDevAuthStatus = async () =>
   requestJson<{ enabled: boolean; defaultPhone: string }>('/api/auth/dev-status');
 
-export const fetchCurrentSession = async () => requestJson<{ phoneNumber: string }>('/api/auth/me');
+export const fetchCurrentSession = async () => requestJson<AuthUserProfile>('/api/auth/me');
+
+export const saveBusinessProfile = async (payload: SaveBusinessProfilePayload) =>
+  requestJson<AuthUserProfile>('/api/business-profile', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });

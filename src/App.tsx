@@ -4,6 +4,7 @@ import { MetaSyncBridge } from './components/dashboard/MetaSyncBridge';
 import { AppStoreProvider } from './store/AppStore';
 import { AuthProvider, useAuth } from './store/AuthStore';
 import { LoginPanel } from './components/auth/LoginPanel';
+import { BusinessSetupPanel } from './components/onboarding/BusinessSetupPanel';
 import { ThemeProvider } from './hooks/useTheme';
 import { StockyLogo } from './components/brand/StockyLogo';
 
@@ -54,6 +55,10 @@ function AppGate() {
 
   if (!session) {
     return <LoginPanel />;
+  }
+
+  if (session.needsOnboarding) {
+    return <BusinessSetupPanel />;
   }
 
   return (

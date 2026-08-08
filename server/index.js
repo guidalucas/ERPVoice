@@ -12,10 +12,12 @@ import {
   applyActionsToDatabase,
   findMetaEventById,
   revokeAuthOtpChallenge,
+  getAuthUserProfile,
   getStateSnapshot,
   getMetaEvents,
   markMetaEventProcessed,
   mergeClientRecords,
+  saveBusinessProfile,
   saveMetaEvent,
   upsertAuthUser,
   verifyAuthOtpChallenge,
@@ -333,8 +335,34 @@ app.post('/api/auth/verify-code', async (req, res) => {
   }
 });
 
-app.get('/api/auth/me', authenticateRequest, (req, res) => {
-  res.json({ phoneNumber: req.auth.phoneNumber });
+app.get('/api/auth/me', authenticateRequest, async (req, res) => {
+  try {
+    const phoneNumber = String(req.auth?.phoneNumber ?? '').trim();
+    const profile = await getAuthUserProfile(phoneNumber);
+    res.json(profile);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/business-profile', authenticateRequest, async (req, res) => {
+  try {
+    const phoneNumber = String(req.auth?.phoneNumber ?? '').trim();
+    const businessName = String(req.body?.businessName ?? '').trim();
+    const businessCategory = String(req.body?.businessCategory ?? '').trim();
+
+    if (!businessName) {
+      res.status(400).json({ error: 'El nombre del emprendimiento es obligatorio' });
+      return;
+    }
+
+    const profile = await saveBusinessProfile(phoneNumber, { businessName, businessCategory });
+    res.json(profile);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const status = message.includes('inválida') || message.includes('obligatorio') ? 400 : 500;
+    res.status(status).json({ error: message });
+  }
 });
 
 app.get('/api/state', authenticateRequest, async (req, res) => {

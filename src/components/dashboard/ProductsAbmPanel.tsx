@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import type { BusinessCategoryPreset } from '../../domain/businessCategories';
+import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
 import { LOW_STOCK_THRESHOLD } from './dashboardTypes';
 
@@ -139,6 +141,7 @@ function ProductFormModal({
   onSubmit,
   submitLabel,
   submitting,
+  preset,
 }: {
   title: string;
   draft: ProductDraft;
@@ -147,6 +150,7 @@ function ProductFormModal({
   onSubmit: () => Promise<void>;
   submitLabel: string;
   submitting: boolean;
+  preset: BusinessCategoryPreset;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
@@ -160,17 +164,19 @@ function ProductFormModal({
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
-            Tipo de Prenda
+            {preset.productTypeLabel}
             <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.productType} onChange={(event) => onDraftChange({ ...draft, productType: event.target.value })} />
           </label>
           <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
-            Modelo
+            {preset.productModelLabel}
             <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.productModel} onChange={(event) => onDraftChange({ ...draft, productModel: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
-            Talle
-            <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.size} onChange={(event) => onDraftChange({ ...draft, size: event.target.value })} />
-          </label>
+          {preset.useVariants && preset.variantLabel && (
+            <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+              {preset.variantLabel}
+              <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.size} onChange={(event) => onDraftChange({ ...draft, size: event.target.value })} />
+            </label>
+          )}
           <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
             Precio
             <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.price} onChange={(event) => onDraftChange({ ...draft, price: event.target.value })} />
@@ -258,6 +264,12 @@ export function ProductsAbmPanel({
   onStockFilterChange?: (filter: 'all' | 'low-stock') => void;
 }) {
   const { products, createProductRecord, updateProductRecord, deleteProductRecord } = useInventory();
+  const preset = useBusinessCategoryPreset();
+  const variantLabelPlural = preset.variantLabel
+    ? preset.variantLabel.toLowerCase() === 'número'
+      ? 'números'
+      : `${preset.variantLabel.toLowerCase()}s`
+    : 'variantes';
   const [draft, setDraft] = useState<ProductDraft>(() => emptyDraft());
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -283,10 +295,12 @@ export function ProductsAbmPanel({
     const groups: Record<string, ProductGroup> = {};
 
     for (const product of products) {
-      const key = `${product.productType ?? ''}||${product.productModel ?? ''}`.trim() || product.name;
+      const typePart = product.productType?.trim() ?? '';
+      const modelPart = product.productModel?.trim() ?? '';
+      const key = typePart || modelPart ? `${typePart}||${modelPart}` : product.name;
       const displayName =
-        product.productType || product.productModel
-          ? [product.productType, product.productModel].filter(Boolean).join(' ')
+        typePart || modelPart
+          ? [typePart, modelPart].filter(Boolean).join(' ')
           : product.name;
 
       groups[key] = groups[key] ?? {
@@ -307,6 +321,24 @@ export function ProductsAbmPanel({
       ),
     }));
   }, [products]);
+
+  const flatProducts = useMemo(() => {
+    const normalizedQuery = normalizeSearch(searchQuery);
+    const bySearch = !normalizedQuery
+      ? products
+      : products.filter((product) => {
+          const haystack = normalizeSearch(
+            [product.name, product.productType, product.productModel, product.size].filter(Boolean).join(' '),
+          );
+          return haystack.includes(normalizedQuery);
+        });
+
+    if (!onlyLowStock) {
+      return bySearch;
+    }
+
+    return bySearch.filter((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD);
+  }, [products, searchQuery, onlyLowStock]);
 
   const filteredGroups = useMemo(() => {
     const normalizedQuery = normalizeSearch(searchQuery);
@@ -391,7 +423,7 @@ export function ProductsAbmPanel({
         name: editingProductId && !draft.name.trim() ? editingProduct?.name ?? buildProductName(draft) : buildProductName(draft),
         productType: draft.productType.trim() || undefined,
         productModel: draft.productModel.trim() || undefined,
-        size: draft.size.trim() || undefined,
+        size: preset.useVariants ? draft.size.trim() || undefined : undefined,
         stockAvailable: Number(draft.stockAvailable || 0),
         stockReserved: Number(draft.stockReserved || 0),
         price: Number(draft.price || 0),
@@ -483,8 +515,12 @@ export function ProductsAbmPanel({
       <article className="erp-panel">
         <div className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] pb-4">
           <div>
-            <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Productos</h3>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Agrupados por modelo. Click en stock o precio para editar inline.</p>
+            <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Inventario</h3>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              {preset.useVariants
+                ? `Agrupados por modelo. Click en stock o precio para editar inline.`
+                : 'Lista plana por producto. Click en stock o precio para editar inline.'}
+            </p>
           </div>
           <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex min-h-11 items-center gap-2">
             <span aria-hidden>+</span>
@@ -529,83 +565,144 @@ export function ProductsAbmPanel({
         </div>
 
         <div className="mt-4 space-y-3">
-          {filteredGroups.map((group) => {
-            const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
-            const samePrice = group.products.every((product) => product.price === group.products[0]?.price);
-            const isExpanded = Boolean(expandedGroups[group.key]);
-            const sizeCount = group.products.length;
+          {preset.useVariants
+            ? filteredGroups.map((group) => {
+                const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
+                const samePrice = group.products.every((product) => product.price === group.products[0]?.price);
+                const isExpanded = Boolean(expandedGroups[group.key]);
+                const sizeCount = group.products.length;
 
-            return (
-              <div key={group.key} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)]">
-                <button
-                  type="button"
-                  className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left"
-                  onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !current[group.key] }))}
-                >
-                  <div>
-                    <p className="font-display text-lg font-bold text-slate-900 dark:text-white">{group.displayName}</p>
-                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                      {sizeCount} talle{sizeCount === 1 ? '' : 's'} — {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
-                      {samePrice && group.products[0] ? ` · ${formatCurrency(group.products[0].price)}` : ''}
-                      {group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? ' · stock bajo' : ''}
-                    </p>
+                return (
+                  <div key={group.key} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)]">
+                    <button
+                      type="button"
+                      className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left"
+                      onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !current[group.key] }))}
+                    >
+                      <div>
+                        <p className="font-display text-lg font-bold text-slate-900 dark:text-white">{group.displayName}</p>
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                          {sizeCount} {sizeCount === 1 ? (preset.variantLabel?.toLowerCase() ?? 'variante') : variantLabelPlural} —{' '}
+                          {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
+                          {samePrice && group.products[0] ? ` · ${formatCurrency(group.products[0].price)}` : ''}
+                          {group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? ' · stock bajo' : ''}
+                        </p>
+                      </div>
+                      <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                        {isExpanded ? `Ocultar ${variantLabelPlural}` : `Ver ${variantLabelPlural}`}
+                      </span>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="space-y-3 border-t border-[color:var(--border)] px-4 py-3">
+                        <div className="flex flex-wrap gap-2">
+                          {group.products.map((product) => {
+                            const isEditingStock = inlineEdit?.productId === product.id && inlineEdit.field === 'stockAvailable';
+                            const isEditingPrice = inlineEdit?.productId === product.id && inlineEdit.field === 'price';
+                            const low = product.stockAvailable <= LOW_STOCK_THRESHOLD;
+
+                            return (
+                              <div
+                                key={product.id}
+                                className={`stock-chip ${low ? 'border-amber-400/30 bg-amber-400/10' : ''}`}
+                              >
+                                <span className="font-semibold text-slate-800 dark:text-slate-200">{product.size ?? '-'}:</span>
+                                <InlineNumber
+                                  value={product.stockAvailable}
+                                  editing={Boolean(isEditingStock)}
+                                  draftValue={inlineEdit?.value ?? ''}
+                                  onStart={() => setInlineEdit({ productId: product.id, field: 'stockAvailable', value: String(product.stockAvailable) })}
+                                  onChange={(value) => setInlineEdit({ productId: product.id, field: 'stockAvailable', value })}
+                                  onCommit={() => void commitInlineEdit()}
+                                  onCancel={() => setInlineEdit(null)}
+                                />
+                                <span className="text-slate-600">·</span>
+                                <InlineNumber
+                                  value={product.price}
+                                  editing={Boolean(isEditingPrice)}
+                                  draftValue={inlineEdit?.value ?? ''}
+                                  onStart={() => setInlineEdit({ productId: product.id, field: 'price', value: String(product.price) })}
+                                  onChange={(value) => setInlineEdit({ productId: product.id, field: 'price', value })}
+                                  onCommit={() => void commitInlineEdit()}
+                                  onCancel={() => setInlineEdit(null)}
+                                  formatDisplay={formatCurrency}
+                                />
+                                <IconButton label={`Eliminar ${product.name}`} danger onClick={() => setPendingDeleteProduct(product)}>
+                                  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
+                                    <path d="M4 7h16" />
+                                    <path d="M9 7V5h6v2" />
+                                    <path d="M6 7l1 13h10l1-13" />
+                                  </svg>
+                                </IconButton>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{isExpanded ? 'Ocultar talles' : 'Ver talles'}</span>
-                </button>
+                );
+              })
+            : flatProducts.map((product) => {
+                const isEditingStock = inlineEdit?.productId === product.id && inlineEdit.field === 'stockAvailable';
+                const isEditingPrice = inlineEdit?.productId === product.id && inlineEdit.field === 'price';
+                const low = product.stockAvailable <= LOW_STOCK_THRESHOLD;
+                const meta = [product.productType, product.productModel].filter(Boolean).join(' · ');
 
-                {isExpanded && (
-                  <div className="space-y-3 border-t border-[color:var(--border)] px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      {group.products.map((product) => {
-                        const isEditingStock = inlineEdit?.productId === product.id && inlineEdit.field === 'stockAvailable';
-                        const isEditingPrice = inlineEdit?.productId === product.id && inlineEdit.field === 'price';
-                        const low = product.stockAvailable <= LOW_STOCK_THRESHOLD;
-
-                        return (
-                          <div
-                            key={product.id}
-                            className={`stock-chip ${low ? 'border-amber-400/30 bg-amber-400/10' : ''}`}
-                          >
-                            <span className="font-semibold text-slate-800 dark:text-slate-200">{product.size ?? '-'}:</span>
-                            <InlineNumber
-                              value={product.stockAvailable}
-                              editing={Boolean(isEditingStock)}
-                              draftValue={inlineEdit?.value ?? ''}
-                              onStart={() => setInlineEdit({ productId: product.id, field: 'stockAvailable', value: String(product.stockAvailable) })}
-                              onChange={(value) => setInlineEdit({ productId: product.id, field: 'stockAvailable', value })}
-                              onCommit={() => void commitInlineEdit()}
-                              onCancel={() => setInlineEdit(null)}
-                            />
-                            <span className="text-slate-600">·</span>
-                            <InlineNumber
-                              value={product.price}
-                              editing={Boolean(isEditingPrice)}
-                              draftValue={inlineEdit?.value ?? ''}
-                              onStart={() => setInlineEdit({ productId: product.id, field: 'price', value: String(product.price) })}
-                              onChange={(value) => setInlineEdit({ productId: product.id, field: 'price', value })}
-                              onCommit={() => void commitInlineEdit()}
-                              onCancel={() => setInlineEdit(null)}
-                              formatDisplay={formatCurrency}
-                            />
-                            <IconButton label={`Eliminar ${product.name}`} danger onClick={() => setPendingDeleteProduct(product)}>
-                              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
-                                <path d="M4 7h16" />
-                                <path d="M9 7V5h6v2" />
-                                <path d="M6 7l1 13h10l1-13" />
-                              </svg>
-                            </IconButton>
-                          </div>
-                        );
-                      })}
+                return (
+                  <div
+                    key={product.id}
+                    className={`rounded-2xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-3 ${
+                      low ? 'border-amber-400/30 bg-amber-400/10' : ''
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-display text-lg font-bold text-slate-900 dark:text-white">{product.name}</p>
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                          {meta || 'Sin categoría'}
+                          {low ? ' · stock bajo' : ''}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="stock-chip">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">Stock:</span>
+                          <InlineNumber
+                            value={product.stockAvailable}
+                            editing={Boolean(isEditingStock)}
+                            draftValue={inlineEdit?.value ?? ''}
+                            onStart={() => setInlineEdit({ productId: product.id, field: 'stockAvailable', value: String(product.stockAvailable) })}
+                            onChange={(value) => setInlineEdit({ productId: product.id, field: 'stockAvailable', value })}
+                            onCommit={() => void commitInlineEdit()}
+                            onCancel={() => setInlineEdit(null)}
+                          />
+                          <span className="text-slate-600">·</span>
+                          <InlineNumber
+                            value={product.price}
+                            editing={Boolean(isEditingPrice)}
+                            draftValue={inlineEdit?.value ?? ''}
+                            onStart={() => setInlineEdit({ productId: product.id, field: 'price', value: String(product.price) })}
+                            onChange={(value) => setInlineEdit({ productId: product.id, field: 'price', value })}
+                            onCommit={() => void commitInlineEdit()}
+                            onCancel={() => setInlineEdit(null)}
+                            formatDisplay={formatCurrency}
+                          />
+                        </div>
+                        <IconButton label={`Eliminar ${product.name}`} danger onClick={() => setPendingDeleteProduct(product)}>
+                          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
+                            <path d="M4 7h16" />
+                            <path d="M9 7V5h6v2" />
+                            <path d="M6 7l1 13h10l1-13" />
+                          </svg>
+                        </IconButton>
+                      </div>
                     </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
 
           {products.length === 0 && <div className="px-1 py-6 text-sm text-slate-600 dark:text-slate-400">No hay productos cargados todavía.</div>}
-          {products.length > 0 && filteredGroups.length === 0 && (
+          {products.length > 0 && (preset.useVariants ? filteredGroups.length === 0 : flatProducts.length === 0) && (
             <div className="rounded-2xl border border-dashed border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-8 text-center text-sm text-slate-600 dark:text-slate-400">
               {onlyLowStock
                 ? 'No hay productos con stock bajo o agotado.'
@@ -623,6 +720,7 @@ export function ProductsAbmPanel({
             onSubmit={handleSubmit}
             submitLabel={isEditing ? 'Guardar' : 'Crear'}
             submitting={saving}
+            preset={preset}
           />
         )}
 

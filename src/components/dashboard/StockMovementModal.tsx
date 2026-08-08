@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ParsedActionUnion, Product } from '../../domain/types';
+import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { toUserFacingError } from '../../services/apiClient';
 
 export type StockMovementMode = 'ingreso' | 'venta';
@@ -18,12 +19,16 @@ const normalizeSearch = (value: string) =>
     .replace(/\p{Diacritic}/gu, '')
     .trim();
 
-const productLabel = (product: Product) => {
-  const meta = [product.productType, product.productModel, product.size].filter(Boolean).join(' ');
+const productLabel = (product: Product, includeSize: boolean) => {
+  const parts = includeSize
+    ? [product.productType, product.productModel, product.size]
+    : [product.productType, product.productModel];
+  const meta = parts.filter(Boolean).join(' ');
   return meta || product.name;
 };
 
 export function StockMovementModal({ mode, products, onClose, onSubmit }: StockMovementModalProps) {
+  const preset = useBusinessCategoryPreset();
   const isIngreso = mode === 'ingreso';
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -38,7 +43,9 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
 
   const filteredProducts = useMemo(() => {
     const normalizedQuery = normalizeSearch(searchQuery);
-    const sorted = [...products].sort((a, b) => productLabel(a).localeCompare(productLabel(b), 'es', { sensitivity: 'base' }));
+    const sorted = [...products].sort((a, b) =>
+      productLabel(a, preset.useVariants).localeCompare(productLabel(b, preset.useVariants), 'es', { sensitivity: 'base' }),
+    );
 
     if (!normalizedQuery) {
       return sorted.slice(0, 40);
@@ -46,11 +53,15 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
 
     return sorted
       .filter((product) => {
-        const haystack = normalizeSearch([product.name, product.productType, product.productModel, product.size].filter(Boolean).join(' '));
+        const haystack = normalizeSearch(
+          [product.name, product.productType, product.productModel, preset.useVariants ? product.size : null]
+            .filter(Boolean)
+            .join(' '),
+        );
         return haystack.includes(normalizedQuery);
       })
       .slice(0, 40);
-  }, [products, searchQuery]);
+  }, [products, searchQuery, preset.useVariants]);
 
   const qty = Number(qtyText);
   const qtyValid = Number.isFinite(qty) && qty > 0 && Number.isInteger(qty);
@@ -77,7 +88,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
           productName: selectedProduct.name,
           productType: selectedProduct.productType ?? undefined,
           productModel: selectedProduct.productModel ?? undefined,
-          size: selectedProduct.size ?? undefined,
+          size: preset.useVariants ? selectedProduct.size ?? undefined : undefined,
           qty,
           price: selectedProduct.price,
         }
@@ -86,14 +97,14 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
           productName: selectedProduct.name,
           productType: selectedProduct.productType ?? undefined,
           productModel: selectedProduct.productModel ?? undefined,
-          size: selectedProduct.size ?? undefined,
+          size: preset.useVariants ? selectedProduct.size ?? undefined : undefined,
           qty,
           price: selectedProduct.price,
         };
 
     const sourceText = isIngreso
-      ? `Ingreso manual: +${qty} ${productLabel(selectedProduct)}`
-      : `Venta manual: -${qty} ${productLabel(selectedProduct)}`;
+      ? `Ingreso manual: +${qty} ${productLabel(selectedProduct, preset.useVariants)}`
+      : `Venta manual: -${qty} ${productLabel(selectedProduct, preset.useVariants)}`;
 
     try {
       await onSubmit(sourceText, [action]);
@@ -104,6 +115,11 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
       setSubmitting(false);
     }
   };
+
+  const searchLabel =
+    preset.useVariants && preset.variantLabel
+      ? `Buscar producto + ${preset.variantLabel.toLowerCase()}`
+      : 'Buscar producto';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
@@ -123,10 +139,10 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
         </div>
 
         <label className="mt-5 block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
-          Buscar producto + talle
+          {searchLabel}
           <input
             className="erp-input h-11 rounded-xl text-[15px]"
-            placeholder="Ej: Boca titular M"
+            placeholder="Ej: producto..."
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             autoFocus
@@ -153,7 +169,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
                       : 'border border-transparent text-slate-800 hover:bg-slate-900/5 dark:text-slate-200 dark:hover:bg-white/5'
                   }`}
                 >
-                  <span className="font-medium">{productLabel(product)}</span>
+                  <span className="font-medium">{productLabel(product, preset.useVariants)}</span>
                   <span className="shrink-0 text-xs text-slate-600 dark:text-slate-400">{product.stockAvailable} disp.</span>
                 </button>
               );
@@ -178,7 +194,8 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
 
         {selectedProduct && (
           <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-            Seleccionado: <span className="text-slate-800 dark:text-slate-200">{productLabel(selectedProduct)}</span>
+            Seleccionado:{' '}
+            <span className="text-slate-800 dark:text-slate-200">{productLabel(selectedProduct, preset.useVariants)}</span>
             {!isIngreso && ` · Disponible: ${selectedProduct.stockAvailable}`}
           </p>
         )}

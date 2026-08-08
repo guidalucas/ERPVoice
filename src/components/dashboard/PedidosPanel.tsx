@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
 import type { PedidoEstado } from '../../domain/types';
 import { toUserFacingError } from '../../services/apiClient';
@@ -16,12 +17,19 @@ const estadoClass: Record<PedidoEstado, string> = {
   descartado: 'border-slate-400/30 bg-slate-400/10 text-slate-700 dark:text-slate-300',
 };
 
-const productOptionLabel = (product: { name: string; productType?: string | null; productModel?: string | null; size?: string | null }) => {
-  const meta = [product.productType, product.productModel, product.size].filter(Boolean).join(' ');
+const productOptionLabel = (
+  product: { name: string; productType?: string | null; productModel?: string | null; size?: string | null },
+  includeSize: boolean,
+) => {
+  const parts = includeSize
+    ? [product.productType, product.productModel, product.size]
+    : [product.productType, product.productModel];
+  const meta = parts.filter(Boolean).join(' ');
   return meta || product.name;
 };
 
 export function PedidosPanel() {
+  const preset = useBusinessCategoryPreset();
   const { pedidos, clients, products, createPedidoRecord, createClientRecord, updatePedidoRecord } = useInventory();
   const [estadoFilter, setEstadoFilter] = useState<PedidoEstado | 'todos'>('pendiente');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -37,8 +45,12 @@ export function PedidosPanel() {
 
   const sortedProducts = useMemo(
     () =>
-      [...products].sort((a, b) => productOptionLabel(a).localeCompare(productOptionLabel(b), 'es', { sensitivity: 'base' })),
-    [products],
+      [...products].sort((a, b) =>
+        productOptionLabel(a, preset.useVariants).localeCompare(productOptionLabel(b, preset.useVariants), 'es', {
+          sensitivity: 'base',
+        }),
+      ),
+    [products, preset.useVariants],
   );
 
   const filtered = useMemo(
@@ -60,16 +72,18 @@ export function PedidosPanel() {
 
     for (const pedido of filtered) {
       const producto = pedido.producto.trim() || 'Sin producto';
-      const talle = (pedido.talle ?? '').trim() || '-';
-      const key = `${producto.toLowerCase()}||${talle.toLowerCase()}`;
+      const talle = preset.useVariants ? (pedido.talle ?? '').trim() || '-' : '';
+      const key = preset.useVariants ? `${producto.toLowerCase()}||${talle.toLowerCase()}` : producto.toLowerCase();
       const current = map.get(key) ?? { key, producto, talle, pedidos: [], totalQty: 0 };
       current.pedidos.push(pedido);
       current.totalQty += pedido.qty;
       map.set(key, current);
     }
 
-    return [...map.values()].sort((a, b) => a.producto.localeCompare(b.producto, 'es') || a.talle.localeCompare(b.talle, 'es'));
-  }, [filtered]);
+    return [...map.values()].sort(
+      (a, b) => a.producto.localeCompare(b.producto, 'es') || a.talle.localeCompare(b.talle, 'es'),
+    );
+  }, [filtered, preset.useVariants]);
 
   const changeEstado = async (pedidoId: string, estado: PedidoEstado) => {
     setUpdatingId(pedidoId);
@@ -120,7 +134,7 @@ export function PedidosPanel() {
         producto: selectedProduct.name,
         productType: selectedProduct.productType,
         productModel: selectedProduct.productModel,
-        talle: selectedProduct.size,
+        talle: preset.useVariants ? selectedProduct.size : null,
         qty,
         estado: 'pendiente',
         notas: 'Pedido manual',
@@ -149,12 +163,21 @@ export function PedidosPanel() {
     return 'bg-slate-500 text-white';
   };
 
+  const productFieldLabel =
+    preset.useVariants && preset.variantLabel
+      ? `Producto + ${preset.variantLabel.toLowerCase()}`
+      : 'Producto';
+
   return (
     <article className="erp-panel space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Pedidos para proveedor</h3>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Agrupados por producto y talle. Cambiar estado no mueve stock.</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            {preset.useVariants && preset.variantLabel
+              ? `Agrupados por producto y ${preset.variantLabel.toLowerCase()}. Cambiar estado no mueve stock.`
+              : 'Agrupados por producto. Cambiar estado no mueve stock.'}
+          </p>
         </div>
         <button type="button" className="erp-button-primary min-h-11" onClick={() => setFormOpen((open) => !open)}>
           {formOpen ? 'Cerrar formulario' : '+ Nuevo pedido'}
@@ -196,12 +219,12 @@ export function PedidosPanel() {
               />
             </label>
             <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200 sm:col-span-2">
-              Producto + talle
+              {productFieldLabel}
               <select className="erp-input min-h-11" value={productId} onChange={(event) => setProductId(event.target.value)}>
                 <option value="">Elegir…</option>
                 {sortedProducts.map((product) => (
                   <option key={product.id} value={product.id}>
-                    {productOptionLabel(product)} · {product.stockAvailable} disp.
+                    {productOptionLabel(product, preset.useVariants)} · {product.stockAvailable} disp.
                   </option>
                 ))}
               </select>
@@ -255,7 +278,7 @@ export function PedidosPanel() {
       {groups.length === 0 ? (
         <EmptyState
           title="Sin pedidos"
-          description="Cargá un pedido manual o anotá por voz algo como “Juan me pidió una camiseta de Boca talle M”."
+          description="Cargá un pedido manual o anotá por voz algo como “Juan me pidió 2 unidades de este producto”."
           actionLabel="+ Nuevo pedido"
           onAction={() => setFormOpen(true)}
         />
@@ -272,7 +295,9 @@ export function PedidosPanel() {
                   <div>
                     <p className="font-display text-lg font-bold text-slate-900 dark:text-white">
                       {group.producto}
-                      <span className="ml-2 text-base font-semibold text-emerald-700 dark:text-emerald-300">— {group.talle}</span>
+                      {preset.useVariants && group.talle ? (
+                        <span className="ml-2 text-base font-semibold text-emerald-700 dark:text-emerald-300">— {group.talle}</span>
+                      ) : null}
                     </p>
                     <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                       {group.totalQty} pedido{group.totalQty === 1 ? '' : 's'} ({names.join(', ')})
@@ -294,7 +319,7 @@ export function PedidosPanel() {
                           {pedido.notas ? ` · ${pedido.notas}` : ''}
                         </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold ${estadoClass[pedido.estado]}`}>
                           {estadoLabel[pedido.estado]}
                         </span>

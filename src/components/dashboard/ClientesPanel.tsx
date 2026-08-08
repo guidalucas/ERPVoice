@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
+import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
 import { EmptyState } from './EmptyState';
 
 export function ClientesPanel() {
+  const preset = useBusinessCategoryPreset();
   const { clients, pedidos, createClientRecord, updateClientRecord, deleteClientRecord, mergeClientRecords } = useInventory();
   const [name, setName] = useState('');
   const [notas, setNotas] = useState('');
@@ -151,7 +153,8 @@ export function ClientesPanel() {
                           <div key={pedido.id} className="flex items-center justify-between gap-3 text-sm">
                             <p className="text-slate-800 dark:text-slate-200">
                               {pedido.producto}
-                              {pedido.talle ? ` — ${pedido.talle}` : ''} <span className="text-slate-500 dark:text-slate-400">x{pedido.qty}</span>
+                              {preset.useVariants && pedido.talle ? ` — ${pedido.talle}` : ''}{' '}
+                              <span className="text-slate-500 dark:text-slate-400">x{pedido.qty}</span>
                             </p>
                             <span className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">{pedido.estado}</span>
                           </div>
