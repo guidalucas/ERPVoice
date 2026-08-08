@@ -29,30 +29,30 @@ function SummaryCard({ title, value, subtitle, icon, accentClassName, onClick }:
   const content = (
     <div className="flex h-full flex-col justify-between gap-4">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">{title}</p>
+        <p className="text-[15px] type-body-strong text-[color:var(--muted)]">{title}</p>
         <div
-          className={`flex h-9 w-9 items-center justify-center rounded-xl border text-slate-600 dark:text-slate-300 ${accentClassName ?? ''}`}
+          className={`flex h-9 w-9 items-center justify-center rounded-xl border text-[color:var(--muted)] ${accentClassName ?? ''}`}
           style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
         >
           {icon}
         </div>
       </div>
       <div className="space-y-1">
-        <p className={`font-display text-[2rem] font-bold tracking-tight ${accentClassName ?? 'text-slate-900 dark:text-white'}`}>{value}</p>
-        <p className="text-sm text-slate-600 dark:text-slate-400">{subtitle}</p>
+        <p className={`type-metric-strong text-[2rem] ${accentClassName ?? 'text-[color:var(--text)]'}`}>{value}</p>
+        <p className="text-sm text-[color:var(--muted)]">{subtitle}</p>
       </div>
     </div>
   );
 
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} className="erp-card min-h-[158px] w-full p-5 text-left transition hover:border-emerald-500/30">
+      <button type="button" onClick={onClick} className="erp-card min-h-[158px] w-full p-5 text-left transition hover:border-[color:var(--accent-border)]">
         {content}
       </button>
     );
   }
 
-  return <article className="erp-card min-h-[158px] p-5 transition hover:border-emerald-500/30">{content}</article>;
+  return <article className="erp-card min-h-[158px] p-5 transition hover:border-[color:var(--accent-border)]">{content}</article>;
 }
 
 function InventoryIcon() {
@@ -141,7 +141,7 @@ const kindMeta: Record<ActivityKind, { tag: string; label: string; className: st
   ingreso: { tag: '+', label: 'Ingreso', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' },
   venta: { tag: '−', label: 'Venta', className: 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-200' },
   pedido: { tag: 'P', label: 'Pedido', className: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-200' },
-  mixto: { tag: '•', label: 'Movimiento', className: 'border-[color:var(--border)] bg-[color:var(--overlay-soft)] text-slate-700 dark:text-slate-300' },
+  mixto: { tag: '•', label: 'Movimiento', className: 'border-[color:var(--border)] bg-[color:var(--overlay-soft)] text-[color:var(--muted)]' },
 };
 
 type ActivityFilter = 'all' | 'ingresos' | 'ventas' | 'pedidos' | 'voz';
@@ -277,21 +277,21 @@ function ActivityFeed({ transactions, showFilters = true }: { transactions: Tran
                         <span aria-hidden="true">{meta.tag}</span>
                         {meta.label}
                       </span>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</p>
+                      <p className="text-sm type-subtitle text-[color:var(--text)]">{title}</p>
                     </div>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{new Date(group.timestamp).toLocaleString('es-AR')}</p>
+                    <p className="mt-1 text-xs text-[color:var(--muted)]">{new Date(group.timestamp).toLocaleString('es-AR')}</p>
                     {group.sourceText && (
-                      <p className="mt-1.5 line-clamp-2 text-sm text-slate-600 dark:text-slate-300">“{group.sourceText}”</p>
+                      <p className="mt-1.5 line-clamp-2 text-sm text-[color:var(--muted)]">“{group.sourceText}”</p>
                     )}
                   </div>
                   {group.items.length > 1 && (
-                    <span className="shrink-0 text-xs font-semibold text-emerald-700 dark:text-emerald-300">{isExpanded ? 'Ocultar' : 'Ver'}</span>
+                    <span className="erp-toggle-link shrink-0 text-xs">{isExpanded ? 'Ocultar' : 'Ver'}</span>
                   )}
                 </button>
                 {(isExpanded || group.items.length === 1) && group.items.length > 1 && (
                   <div className="space-y-2 border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
                     {group.items.map((item) => (
-                      <p key={item.id} className="text-sm text-slate-700 dark:text-slate-300">
+                      <p key={item.id} className="text-sm text-[color:var(--muted)]">
                         {item.summary}
                       </p>
                     ))}
@@ -425,10 +425,10 @@ export function DashboardPanel() {
 
           <article className="erp-panel">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Actividad reciente</h3>
+              <h3 className="type-title text-lg text-[color:var(--text)]">Actividad reciente</h3>
               <button
                 type="button"
-                className="inline-flex min-h-11 items-center rounded-full px-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300"
+                className="erp-accent-text inline-flex min-h-11 items-center rounded-full px-3 text-sm font-semibold"
                 onClick={() => handleSectionChange('actividad')}
               >
                 Ver todo
@@ -448,7 +448,7 @@ export function DashboardPanel() {
       {activeSection === 'actividad' && (
         <div className="space-y-4">
           <article className="erp-panel">
-            <h3 className="mb-4 font-display text-lg font-bold text-slate-900 dark:text-slate-100">Movimientos</h3>
+            <h3 className="mb-4 type-title text-lg text-[color:var(--text)]">Movimientos</h3>
             <ActivityFeed transactions={transactions} />
           </article>
           <MetaMessagesPanel />

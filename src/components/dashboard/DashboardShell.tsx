@@ -82,16 +82,16 @@ export function DashboardShell({
           {(businessName || phoneNumber) && (
             <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent-soft)] text-xs type-subtitle text-[color:var(--accent)]">
                   {accountInitials(businessName, phoneNumber)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cuenta</p>
-                  <p className="mt-0.5 truncate text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--muted)]">Cuenta</p>
+                  <p className="mt-0.5 truncate text-sm type-subtitle text-[color:var(--text)]">
                     {businessName?.trim() || 'Sin nombre'}
                   </p>
                   {phoneNumber && (
-                    <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">{formatPhoneDisplay(phoneNumber)}</p>
+                    <p className="mt-0.5 truncate text-xs text-[color:var(--muted)]">{formatPhoneDisplay(phoneNumber)}</p>
                   )}
                 </div>
               </div>
@@ -111,10 +111,10 @@ export function DashboardShell({
           <div className="flex min-w-0 items-center gap-3">
             <StockyLogo size="sm" />
             <div className="min-w-0">
-              <p className="truncate text-[10px] uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300">
+              <p className="erp-brand-gradient-text truncate text-[10px] uppercase tracking-[0.35em]">
                 {displayBusinessName}
               </p>
-              <h2 className="font-display text-xl font-bold text-slate-900 dark:text-white">{sectionTitles[activeSection]}</h2>
+              <h2 className="type-title text-xl text-[color:var(--text)]">{sectionTitles[activeSection]}</h2>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -127,8 +127,8 @@ export function DashboardShell({
 
         <header className="mb-5 hidden items-start justify-between gap-3 lg:flex">
           <div>
-            <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-white">{sectionTitles[activeSection]}</h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            <h2 className="type-title text-2xl text-[color:var(--text)]">{sectionTitles[activeSection]}</h2>
+            <p className="mt-1 text-sm text-[color:var(--muted)]">
               {activeSection === 'inicio' && 'Resumen de stock y actividad reciente'}
               {activeSection === 'productos' && 'Stock, precios y movimientos por modelo'}
               {activeSection === 'pedidos' && 'Qué te pidieron, agrupado para armar el pedido al proveedor'}

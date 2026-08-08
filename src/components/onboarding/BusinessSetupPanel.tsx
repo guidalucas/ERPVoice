@@ -42,7 +42,7 @@ export function BusinessSetupPanel() {
   };
 
   return (
-    <main className="min-h-screen bg-mesh-soft-light px-4 py-8 text-slate-900 dark:bg-mesh-soft dark:text-slate-100">
+    <main className="min-h-screen bg-mesh-soft-light px-4 py-8 text-[color:var(--text)] dark:bg-mesh-soft">
       <section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-3xl items-center justify-center">
         <div className="erp-shell w-full p-6">
           <div className="rounded-[1.5rem] border p-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
@@ -50,19 +50,19 @@ export function BusinessSetupPanel() {
               <div className="flex items-center gap-3">
                 <StockyLogo size="lg" />
                 <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300">Stocky Setup</p>
-                  <h1 className="mt-1 font-display text-2xl font-bold text-slate-900 dark:text-white">Configurá tu negocio</h1>
+                  <p className="erp-brand-gradient-text text-xs uppercase tracking-[0.35em]">Stocky Setup</p>
+                  <h1 className="mt-1 type-title text-2xl text-[color:var(--text)]">Configurá tu negocio</h1>
                 </div>
               </div>
               <ThemeToggle />
             </div>
 
-            <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-300">
+            <p className="mt-4 text-sm leading-6 text-[color:var(--muted)]">
               Elegí el nombre de tu emprendimiento y el rubro. Eso adapta los campos del stock (por ejemplo talles, medidas o solo nombre).
             </p>
 
             <div className="mt-6 space-y-5">
-              <label className="block space-y-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
+              <label className="block space-y-2 text-sm type-subtitle text-[color:var(--text)]">
                 Nombre de tu emprendimiento
                 <input
                   value={businessName}
@@ -74,7 +74,7 @@ export function BusinessSetupPanel() {
               </label>
 
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Categoría</p>
+                <p className="text-sm type-subtitle text-[color:var(--text)]">Categoría</p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {BUSINESS_CATEGORIES.map((category) => {
                     const selected = businessCategory === category.id;
@@ -86,8 +86,8 @@ export function BusinessSetupPanel() {
                         onClick={() => setBusinessCategory(category.id)}
                         className={`rounded-2xl border px-4 py-3 text-left transition ${
                           selected
-                            ? 'border-emerald-500 bg-emerald-500/10 shadow-[0_0_0_1px_rgba(16,185,129,0.35)]'
-                            : 'border-[color:var(--border)] bg-[color:var(--overlay-soft)] hover:border-emerald-500/40'
+                            ? 'border-[color:var(--accent)] bg-[color:var(--accent-soft)] shadow-[0_0_0_1px_var(--accent-border)]'
+                            : 'border-[color:var(--border)] bg-[color:var(--overlay-soft)] hover:border-[color:var(--accent-border)]'
                         }`}
                       >
                         <div className="flex items-start gap-3">
@@ -95,8 +95,8 @@ export function BusinessSetupPanel() {
                             {category.icon}
                           </span>
                           <div className="min-w-0">
-                            <p className="font-semibold text-slate-900 dark:text-white">{category.label}</p>
-                            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                            <p className="type-subtitle text-[color:var(--text)]">{category.label}</p>
+                            <p className="mt-1 text-xs text-[color:var(--muted)]">
                               {category.useVariants
                                 ? `Usa ${category.variantLabel?.toLowerCase() ?? 'variantes'}`
                                 : 'Sin variantes / talles'}
@@ -111,7 +111,7 @@ export function BusinessSetupPanel() {
 
               {statusText && (
                 <p
-                  className="rounded-2xl border px-4 py-3 text-sm text-slate-800 dark:text-slate-200"
+                  className="rounded-2xl border px-4 py-3 text-sm text-[color:var(--text)]"
                   style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
                 >
                   {statusText}

@@ -80,7 +80,7 @@ export function ClientesPanel() {
   return (
     <div className="space-y-4">
       <article className="erp-panel">
-        <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Nuevo cliente</h3>
+        <h3 className="type-title text-xl text-[color:var(--text)]">Nuevo cliente</h3>
         <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
           <input className="erp-input min-h-11" placeholder="Nombre" value={name} onChange={(event) => setName(event.target.value)} />
           <input className="erp-input min-h-11" placeholder="Notas (opcional)" value={notas} onChange={(event) => setNotas(event.target.value)} />
@@ -91,7 +91,7 @@ export function ClientesPanel() {
       </article>
 
       <article className="erp-panel">
-        <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Clientes</h3>
+        <h3 className="type-title text-xl text-[color:var(--text)]">Clientes</h3>
         {clients.length === 0 ? (
           <div className="mt-4">
             <EmptyState title="Sin clientes" description="Se crean solos cuando registrás un pedido por voz, o podés agregarlos acá." />
@@ -108,8 +108,8 @@ export function ClientesPanel() {
                 <div key={client.id} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)]">
                   <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                     <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setExpandedId(isExpanded ? null : client.id)}>
-                      <p className="font-semibold text-slate-900 dark:text-slate-100">{client.name}</p>
-                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      <p className="type-subtitle text-[color:var(--text)]">{client.name}</p>
+                      <p className="mt-0.5 text-xs text-[color:var(--muted)]">
                         {clientPedidos.length} pedido{clientPedidos.length === 1 ? '' : 's'}
                         {pendientes > 0 ? ` · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}` : ''}
                         {client.notas ? ` · ${client.notas}` : ''}
@@ -147,16 +147,16 @@ export function ClientesPanel() {
                   {isExpanded && (
                     <div className="space-y-2 border-t border-[color:var(--border)] px-4 py-3">
                       {clientPedidos.length === 0 ? (
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Sin pedidos asociados.</p>
+                        <p className="text-sm text-[color:var(--muted)]">Sin pedidos asociados.</p>
                       ) : (
                         clientPedidos.map((pedido) => (
                           <div key={pedido.id} className="flex items-center justify-between gap-3 text-sm">
-                            <p className="text-slate-800 dark:text-slate-200">
+                            <p className="text-[color:var(--text)]">
                               {pedido.producto}
                               {preset.useVariants && pedido.talle ? ` — ${pedido.talle}` : ''}{' '}
-                              <span className="text-slate-500 dark:text-slate-400">x{pedido.qty}</span>
+                              <span className="text-[color:var(--muted)]">x{pedido.qty}</span>
                             </p>
-                            <span className="text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">{pedido.estado}</span>
+                            <span className="text-xs uppercase tracking-wide text-[color:var(--muted)]">{pedido.estado}</span>
                           </div>
                         ))
                       )}
@@ -178,10 +178,10 @@ export function ClientesPanel() {
             aria-expanded={mergeOpen}
           >
             <div>
-              <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Fusionar duplicados</h3>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Opcional · los pedidos del segundo pasan al que conservás.</p>
+              <h3 className="type-title text-lg text-[color:var(--text)]">Fusionar duplicados</h3>
+              <p className="mt-1 text-sm text-[color:var(--muted)]">Opcional · los pedidos del segundo pasan al que conservás.</p>
             </div>
-            <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">{mergeOpen ? 'Ocultar' : 'Mostrar'}</span>
+            <span className="erp-toggle-link text-sm">{mergeOpen ? 'Ocultar' : 'Mostrar'}</span>
           </button>
           {mergeOpen && (
             <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">

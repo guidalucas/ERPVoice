@@ -16,14 +16,14 @@ export function EmptyState({ title, description, actionLabel, onAction, icon }: 
     >
       {icon && (
         <div
-          className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border text-slate-500 dark:text-slate-400"
+          className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border text-[color:var(--muted)]"
           style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
         >
           {icon}
         </div>
       )}
-      <h4 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">{title}</h4>
-      <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600 dark:text-slate-400">{description}</p>
+      <h4 className="type-title text-lg text-[color:var(--text)]">{title}</h4>
+      <p className="mt-2 max-w-sm text-sm leading-6 text-[color:var(--muted)]">{description}</p>
       {actionLabel && onAction && (
         <button type="button" className="erp-button-primary mt-5" onClick={onAction}>
           {actionLabel}

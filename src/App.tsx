@@ -10,10 +10,9 @@ import { StockyLogo } from './components/brand/StockyLogo';
 
 function Shell() {
   return (
-    <main className="min-h-screen bg-mesh-soft-light text-slate-900 dark:bg-mesh-soft dark:text-slate-100">
+    <main className="min-h-screen bg-mesh-soft-light text-[color:var(--text)] dark:bg-mesh-soft">
       <div className="mx-auto min-h-screen max-w-[1600px] px-4 py-4 lg:px-6 lg:py-6">
         <div className="erp-shell relative p-4 lg:p-6">
-          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[2rem] bg-[radial-gradient(circle_at_top_left,rgba(25,195,125,0.08),transparent_28%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.06),transparent_24%)]" />
           <div className="relative">
             <DashboardPanel />
           </div>
@@ -42,12 +41,12 @@ function AppGate() {
 
   if (isBootstrapping) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-mesh-soft-light px-4 text-slate-900 dark:bg-mesh-soft dark:text-slate-100">
+      <main className="flex min-h-screen items-center justify-center bg-mesh-soft-light px-4 text-[color:var(--text)] dark:bg-mesh-soft">
         <div className="erp-card flex max-w-md flex-col items-center text-center">
           <StockyLogo size="lg" />
-          <p className="mt-4 text-xs uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300">Stocky Access</p>
-          <h1 className="mt-3 font-display text-2xl font-bold text-slate-900 dark:text-white">Validando sesión</h1>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Chequeando tu acceso seguro...</p>
+          <p className="erp-brand-gradient-text mt-4 text-xs uppercase tracking-[0.35em]">Stocky</p>
+          <h1 className="mt-3 type-title text-2xl text-[color:var(--text)]">Abriendo tu sesión</h1>
+          <p className="mt-2 text-sm text-[color:var(--muted)]">Un momento, estamos preparando tu panel…</p>
         </div>
       </main>
     );
