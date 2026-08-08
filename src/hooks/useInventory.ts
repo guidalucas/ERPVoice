@@ -1,5 +1,6 @@
 import { useAppStore } from '../store/AppStore';
 import {
+  applyStateActions,
   createClient,
   createPedido,
   createProduct,
@@ -12,13 +13,23 @@ import {
   updatePedido,
   updateProduct,
 } from '../services/productService';
-import type { Client, Pedido, PedidoEstado, Product } from '../domain/types';
+import type { Client, ParsedActionUnion, Pedido, PedidoEstado, Product } from '../domain/types';
 
 export const useInventory = () => {
   const { state, confirmPendingProposal, clearPendingProposal, hydratePersistedState } = useAppStore();
 
   const refreshState = async () => {
     const snapshot = await fetchPersistedState();
+    hydratePersistedState({
+      products: snapshot.products,
+      clients: snapshot.clients,
+      pedidos: snapshot.pedidos ?? [],
+      transactions: snapshot.transactions,
+    });
+  };
+
+  const applyActions = async (sourceText: string, actions: ParsedActionUnion[]) => {
+    const snapshot = await applyStateActions(sourceText, actions);
     hydratePersistedState({
       products: snapshot.products,
       clients: snapshot.clients,
@@ -119,6 +130,7 @@ export const useInventory = () => {
     confirmPendingProposal,
     clearPendingProposal,
     refreshState,
+    applyActions,
     createProductRecord,
     updateProductRecord,
     deleteProductRecord,
