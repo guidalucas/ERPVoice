@@ -21,23 +21,29 @@ export function WhatsAppSimulator() {
   } = useChatBot();
 
   return (
-    <div className="fixed bottom-[5.75rem] right-4 z-50 lg:bottom-4">
+    <div
+      className={
+        isOpen
+          ? 'fixed inset-x-0 top-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 lg:inset-auto lg:bottom-4 lg:right-4 lg:top-auto'
+          : 'fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-4 z-50 lg:bottom-4'
+      }
+    >
       {isOpen ? (
-        <section className="flex h-[min(42rem,calc(100vh-2rem))] w-[min(92vw,34rem)] flex-col overflow-hidden rounded-[1.35rem] border border-emerald-950/50 bg-[#0b1424] shadow-2xl shadow-sky-950/40">
-          <header className="flex items-center justify-between gap-3 bg-[#12a65a] px-4 py-3 text-white">
+        <section className="flex h-full w-full flex-col overflow-hidden border-b border-emerald-950/50 bg-[#0b1424] shadow-2xl shadow-sky-950/40 lg:h-[min(42rem,calc(100dvh-2rem))] lg:w-[min(92vw,34rem)] lg:rounded-[1.35rem] lg:border">
+          <header className="flex shrink-0 items-center justify-between gap-3 bg-[#12a65a] px-4 py-3 text-white pt-[max(0.75rem,env(safe-area-inset-top))]">
             <div className="flex items-center gap-3">
               <div className="overflow-hidden rounded-full ring-2 ring-white/20">
                 <StockyLogo size="sm" className="rounded-full" />
               </div>
               <div>
                 <h2 className="text-[1.05rem] font-bold leading-tight">Stocky</h2>
-                <p className="text-xs font-medium text-white/85">Modo offline</p>
+                <p className="text-xs font-medium text-white/85">En línea</p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-white/95 transition hover:bg-white/10"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white/95 transition hover:bg-white/10"
               aria-label="Cerrar chat"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[2.2]">
@@ -47,14 +53,14 @@ export function WhatsAppSimulator() {
             </button>
           </header>
 
-          <div className="flex-1 overflow-y-auto bg-[#0b1424] px-3 py-3">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#0b1424] px-3 py-3">
             {messages.map((message) => (
               <ChatBubble key={message.id} message={message} />
             ))}
           </div>
 
           {pendingProposal && (
-            <div className="mx-3 mb-3 rounded-2xl border border-sky-500/15 bg-sky-500/10 p-4">
+            <div className="mx-3 mb-3 shrink-0 rounded-2xl border border-sky-500/15 bg-sky-500/10 p-4">
               <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-sky-300">Acciones detectadas</p>
               <div className="mt-2 space-y-1 text-sm text-slate-200">
                 {pendingActionsText.map((line) => (
@@ -80,14 +86,14 @@ export function WhatsAppSimulator() {
             </div>
           )}
 
-          <div className="border-t border-emerald-950/50 bg-[#0b1424] px-3 py-3">
+          <div className="shrink-0 border-t border-emerald-950/50 bg-[#0b1424] px-3 py-3">
             <div className="flex items-end gap-3">
               <button
                 type="button"
                 onClick={toggleRecording}
                 disabled={isProcessing || isTranscribing}
                 aria-label={isRecording ? 'Detener grabación' : 'Grabar audio'}
-                className={`mb-0.5 flex h-10 w-10 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`mb-0.5 flex h-11 w-11 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-60 ${
                   isRecording ? 'bg-rose-500 text-white hover:bg-rose-600' : 'text-emerald-400 hover:bg-white/5'
                 }`}
               >
@@ -108,7 +114,7 @@ export function WhatsAppSimulator() {
                 }}
                 placeholder="Escribí un mensaje..."
                 disabled={isRecording || isTranscribing}
-                className="min-w-0 flex-1 rounded-2xl border border-sky-950/70 bg-[#101a2e] px-3 py-2.5 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-400"
+                className="min-w-0 flex-1 rounded-2xl border border-sky-950/70 bg-[#101a2e] px-3 py-2.5 text-base text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-sky-400 lg:text-sm"
               />
 
               <button
@@ -116,7 +122,7 @@ export function WhatsAppSimulator() {
                 onClick={sendText}
                 disabled={isProcessing || isRecording || isTranscribing}
                 aria-label="Enviar mensaje"
-                className="mb-0.5 flex h-10 w-10 items-center justify-center rounded-full text-emerald-400 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mb-0.5 flex h-11 w-11 items-center justify-center rounded-full text-emerald-400 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[2]">
                   <path d="M4 20 20 4l-5 16-3-7-8-3Z" />

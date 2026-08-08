@@ -57,7 +57,7 @@ function SummaryCard({ title, value, subtitle, icon, accentClassName, onClick }:
 
 function InventoryIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4.5 w-4.5 fill-none stroke-current stroke-[1.8]">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
       <path d="M12 3 4 7l8 4 8-4-8-4Z" />
       <path d="M4 7v10l8 4 8-4V7" />
       <path d="m12 11 8-4" />
@@ -68,7 +68,7 @@ function InventoryIcon() {
 
 function AlertIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4.5 w-4.5 fill-none stroke-current stroke-[1.8]">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
       <path d="M12 9v4" />
       <path d="M12 17h.01" />
       <path d="M10.3 4.3 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z" />
@@ -78,7 +78,7 @@ function AlertIcon() {
 
 function SalesIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4.5 w-4.5 fill-none stroke-current stroke-[1.8]">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
       <path d="M4 19h16" />
       <path d="M7 16V9" />
       <path d="M12 16V5" />
@@ -89,7 +89,7 @@ function SalesIcon() {
 
 function OrdersIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4.5 w-4.5 fill-none stroke-current stroke-[1.8]">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
       <path d="M8 6h13" />
       <path d="M8 12h13" />
       <path d="M8 18h13" />

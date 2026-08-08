@@ -1,6 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import { buildMetaVerificationResponse, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
+import { buildMetaVerificationResponse, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import {
   createAuthOtpChallenge,
   createProductRecord,
@@ -580,6 +580,35 @@ app.post('/api/state/apply', authenticateRequest, async (req, res) => {
     const actions = Array.isArray(req.body?.actions) ? req.body.actions : [];
     const snapshot = await applyActionsToDatabase(actions, sourceText, clientPhone);
     res.json(snapshot);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/voice/parse', authenticateRequest, async (req, res) => {
+  try {
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+
+    if (!text) {
+      res.status(400).json({ error: 'Texto vacío' });
+      return;
+    }
+
+    const parsed = await parseVoiceText(text);
+
+    if (!parsed) {
+      res.json({
+        schemaVersion: 1,
+        sourceText: text,
+        intent: 'unknown',
+        confidence: 0,
+        requiresConfirmation: true,
+        actions: [],
+      });
+      return;
+    }
+
+    res.json(parsed);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }

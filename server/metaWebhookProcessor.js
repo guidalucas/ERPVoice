@@ -42,9 +42,11 @@ Reglas:
 - Si la frase incluye prenda, modelo y talle, separá productType, productModel y size. Ejemplo: "3 camisetas de boca titular, talle M" -> productType: "Camiseta", productModel: "Boca Titular", size: "M", productName: "Camiseta Boca Titular M".
 - Si alguien te pide / pidió / quiere / encargó un producto (ej: "Juan me pidió una camiseta de Boca titular talle M"), usá client_order. NO uses reserve_stock ni sell. Un pedido de cliente NO mueve stock.
 - client_order requiere clientName y productName. qty default 1 si dice "una/un".
-- Diferenciá claramente: "compré / entraron / llegaron" = add_stock; "me pidió / pidió / quiere / encargó" = client_order.
+- Diferenciá claramente: "compré / compraron / entraron / llegaron / ingreso / ingresaron / recibí" = add_stock; "me pidió / pidió / quiere / encargó" = client_order.
+- Si no hay cantidad explícita en un ingreso/compra, usá qty 1.
 - Si una frase tiene dos movimientos, devolvé dos objetos en actions.
 - Ejemplo: "compre 20 camisetas de argentina, les deje 3 al gimnasio" -> [{"type":"add_stock","productName":"camisetas de argentina","qty":20},{"type":"reserve_stock","productName":"camisetas de argentina","qty":3,"clientName":"gimnasio"}].
+- Ejemplo: "ingresaron buzos de boca retro en talle XXL" -> [{"type":"add_stock","productType":"Buzo","productModel":"Boca Retro","size":"XXL","productName":"Buzo Boca Retro XXL","qty":1}].
 - Ejemplo: "Juan me pidió una camiseta de Boca titular talle M" -> [{"type":"client_order","clientName":"Juan","productType":"Camiseta","productModel":"Boca Titular","size":"M","productName":"Camiseta Boca Titular M","qty":1}].
 
 Texto del usuario:
@@ -427,24 +429,31 @@ const extractMultipleActionsFromText = (text) => {
       continue;
     }
 
-    const addStockMatch = fragment.match(/\b(?:compre|compré|compra(?:r|ste|ron)?|adquiri|adquirí|entraron|entran|llegaron|recibi|recibieron|recibí)\s+(\d+)\s+(.+)$/u);
+    const addStockMatch = fragment.match(
+      /\b(?:compre|compré|compra(?:r|ste|ron)?|adquiri|adquirí|entraron|entran|llegaron|recibi|recibieron|recibí|ingreso|ingrese|ingresaron)\s+(?:(\d+)\s+)?(.+)$/u,
+    );
     if (addStockMatch) {
-      const qty = Number(addStockMatch[1]);
+      const qty = addStockMatch[1] ? Number(addStockMatch[1]) : parseQuantity(addStockMatch[2]) ?? 1;
       if (qty > 0) {
-        const rawProductText = addStockMatch[2].trim();
+        const rawProductText = addStockMatch[2]
+          .replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '')
+          .replace(/\ben\s+talle\b/gi, 'talle')
+          .trim();
         const price = parsePrice(rawProductText) ?? parsePrice(fragment);
         const cleanedProductText = rawProductText.replace(/\s*(?:valen?|vale|a|por|precio)\s*\$?\s*[0-9]+(?:[.,][0-9]{3})*\s*$/i, '').trim();
         const productDescriptor = parseProductDescriptor(cleanedProductText);
-        actions.push({
-          type: 'add_stock',
-          productName: productDescriptor.productName,
-          productType: productDescriptor.productType,
-          productModel: productDescriptor.productModel,
-          size: productDescriptor.size,
-          qty,
-          price: price ?? undefined,
-        });
-        lastProductName = productDescriptor.productName;
+        if (productDescriptor.productName) {
+          actions.push({
+            type: 'add_stock',
+            productName: productDescriptor.productName,
+            productType: productDescriptor.productType,
+            productModel: productDescriptor.productModel,
+            size: productDescriptor.size,
+            qty,
+            price: price ?? undefined,
+          });
+          lastProductName = productDescriptor.productName;
+        }
       }
       continue;
     }
@@ -836,3 +845,12 @@ export const sendMetaReply = async ({ to, text }) => {
 };
 
 export const buildMetaVerificationResponse = (challenge) => String(challenge ?? '');
+
+export const parseVoiceText = async (text) => {
+  const trimmed = String(text ?? '').trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return parseVoiceTextWithModel(trimmed);
+};
