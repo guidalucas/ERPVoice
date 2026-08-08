@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { StockyLogo } from '../brand/StockyLogo';
 import { DashboardNav, sectionTitles } from './DashboardNav';
 import type { DashboardSection } from './dashboardTypes';
 import { ThemeToggle } from './ThemeToggle';
@@ -14,13 +15,20 @@ type DashboardShellProps = {
 function formatPhoneDisplay(phoneNumber: string): string {
   const digits = phoneNumber.replace(/\D/g, '');
 
-  if (digits.length === 13 && digits.startsWith('54')) {
+  // Argentina móvil: 54 + 9 + área (2) + local (8) → +54 9 11 0000-0000
+  if (digits.length === 13 && digits.startsWith('549')) {
+    const area = digits.slice(3, 5);
+    const local = digits.slice(5);
+    return `+54 9 ${area} ${local.slice(0, 4)}-${local.slice(4)}`;
+  }
+
+  if (digits.length === 12 && digits.startsWith('54')) {
     const area = digits.slice(2, 4);
     const local = digits.slice(4);
     return `+54 ${area} ${local.slice(0, 4)}-${local.slice(4)}`;
   }
 
-  if (digits.length === 12 && digits.startsWith('54')) {
+  if (digits.length === 13 && digits.startsWith('54')) {
     const area = digits.slice(2, 4);
     const local = digits.slice(4);
     return `+54 ${area} ${local.slice(0, 4)}-${local.slice(4)}`;
@@ -46,15 +54,7 @@ export function DashboardShell({ activeSection, onSectionChange, phoneNumber, on
     <div className="dashboard-layout">
       <aside className="dashboard-sidebar hidden lg:flex">
         <div className="flex items-center gap-3 px-2 pb-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20">
-            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-current">
-              <path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3Zm5-3a1 1 0 1 0-2 0 3 3 0 0 1-6 0 1 1 0 1 0-2 0 5 5 0 0 0 4 4.9V19H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.1a5 5 0 0 0 4-4.9Z" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300">Stocky</p>
-            <p className="font-display text-sm font-bold text-slate-900 dark:text-white">FullMatch</p>
-          </div>
+          <StockyLogo size="md" withWordmark subtitle="FullMatch" />
         </div>
 
         <DashboardNav activeSection={activeSection} onSectionChange={onSectionChange} variant="sidebar" />
@@ -84,13 +84,16 @@ export function DashboardShell({ activeSection, onSectionChange, phoneNumber, on
 
       <div className="dashboard-main min-w-0 flex-1">
         <header className="mb-4 flex items-center justify-between gap-3 lg:hidden">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300">Stocky</p>
-            <h2 className="font-display text-xl font-bold text-slate-900 dark:text-white">{sectionTitles[activeSection]}</h2>
+          <div className="flex min-w-0 items-center gap-3">
+            <StockyLogo size="sm" />
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300">Stocky</p>
+              <h2 className="font-display text-xl font-bold text-slate-900 dark:text-white">{sectionTitles[activeSection]}</h2>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <button type="button" className="erp-button-secondary shrink-0 px-3 py-1.5 text-xs" onClick={onLogout}>
+            <button type="button" className="erp-button-secondary min-h-11 shrink-0 px-3 py-2 text-sm" onClick={onLogout}>
               Salir
             </button>
           </div>
@@ -106,12 +109,6 @@ export function DashboardShell({ activeSection, onSectionChange, phoneNumber, on
               {activeSection === 'clientes' && 'Clientes y sus pedidos'}
               {activeSection === 'actividad' && 'Cargas por voz y mensajes recientes'}
             </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <ThemeToggle />
-            <button type="button" className="erp-button-secondary px-3 py-1.5 text-sm" onClick={onLogout}>
-              Salir
-            </button>
           </div>
         </header>
 

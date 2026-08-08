@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchDevAuthStatus } from '../../services/authService';
 import { useAuth } from '../../store/AuthStore';
+import { StockyLogo } from '../brand/StockyLogo';
 import { ThemeToggle } from '../dashboard/ThemeToggle';
 
 type Step = 'phone' | 'code';
@@ -109,7 +110,13 @@ export function LoginPanel() {
           <div className="flex flex-col justify-between rounded-[1.5rem] border p-6" style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}>
             <div>
               <div className="flex items-start justify-between gap-3">
-                <p className="text-xs uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300">Stocky Access</p>
+                <div className="flex items-center gap-3">
+                  <StockyLogo size="lg" />
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300">Stocky Access</p>
+                    <p className="mt-1 font-display text-lg font-bold text-slate-900 dark:text-white">Stocky</p>
+                  </div>
+                </div>
                 <ThemeToggle />
               </div>
               <h1 className="mt-3 font-display text-4xl font-bold tracking-tight text-slate-900 dark:text-white">Ingreso sin contraseña por WhatsApp</h1>

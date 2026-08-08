@@ -13,6 +13,7 @@ export function ClientesPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editNotas, setEditNotas] = useState('');
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   const pedidosByClient = useMemo(() => {
     const map: Record<string, typeof pedidos> = {};
@@ -79,48 +80,13 @@ export function ClientesPanel() {
       <article className="erp-panel">
         <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Nuevo cliente</h3>
         <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-          <input className="erp-input" placeholder="Nombre" value={name} onChange={(event) => setName(event.target.value)} />
-          <input className="erp-input" placeholder="Notas (opcional)" value={notas} onChange={(event) => setNotas(event.target.value)} />
-          <button type="button" className="erp-button-primary" disabled={saving || !name.trim()} onClick={() => void handleCreate()}>
+          <input className="erp-input min-h-11" placeholder="Nombre" value={name} onChange={(event) => setName(event.target.value)} />
+          <input className="erp-input min-h-11" placeholder="Notas (opcional)" value={notas} onChange={(event) => setNotas(event.target.value)} />
+          <button type="button" className="erp-button-primary min-h-11" disabled={saving || !name.trim()} onClick={() => void handleCreate()}>
             Agregar
           </button>
         </div>
       </article>
-
-      {clients.length > 1 && (
-        <article className="erp-panel">
-          <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Fusionar duplicados</h3>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Los pedidos del segundo cliente pasan al que conservás.</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-            <select className="erp-input" value={mergeKeepId} onChange={(event) => setMergeKeepId(event.target.value)}>
-              <option value="">Conservar…</option>
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {client.name}
-                </option>
-              ))}
-            </select>
-            <select className="erp-input" value={mergeOtherId} onChange={(event) => setMergeOtherId(event.target.value)}>
-              <option value="">Fusionar y eliminar…</option>
-              {clients
-                .filter((client) => client.id !== mergeKeepId)
-                .map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name}
-                  </option>
-                ))}
-            </select>
-            <button
-              type="button"
-              className="erp-button-secondary"
-              disabled={saving || !mergeKeepId || !mergeOtherId}
-              onClick={() => void handleMerge()}
-            >
-              Fusionar
-            </button>
-          </div>
-        </article>
-      )}
 
       <article className="erp-panel">
         <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Clientes</h3>
@@ -148,12 +114,12 @@ export function ClientesPanel() {
                       </p>
                     </button>
                     <div className="flex gap-2">
-                      <button type="button" className="erp-button-secondary px-3 py-1.5 text-xs" onClick={() => startEdit(client.id)}>
+                      <button type="button" className="erp-button-secondary min-h-11 px-3 text-sm" onClick={() => startEdit(client.id)}>
                         Editar
                       </button>
                       <button
                         type="button"
-                        className="erp-button-danger px-3 py-1.5 text-xs"
+                        className="erp-button-danger min-h-11 px-3 text-sm"
                         onClick={() => void deleteClientRecord(client.id)}
                       >
                         Eliminar
@@ -164,12 +130,12 @@ export function ClientesPanel() {
                   {isEditing && (
                     <div className="border-t border-[color:var(--border)] px-4 py-3">
                       <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]">
-                        <input className="erp-input" value={editName} onChange={(event) => setEditName(event.target.value)} />
-                        <input className="erp-input" value={editNotas} onChange={(event) => setEditNotas(event.target.value)} placeholder="Notas" />
-                        <button type="button" className="erp-button-primary" disabled={saving} onClick={() => void saveEdit()}>
+                        <input className="erp-input min-h-11" value={editName} onChange={(event) => setEditName(event.target.value)} />
+                        <input className="erp-input min-h-11" value={editNotas} onChange={(event) => setEditNotas(event.target.value)} placeholder="Notas" />
+                        <button type="button" className="erp-button-primary min-h-11" disabled={saving} onClick={() => void saveEdit()}>
                           Guardar
                         </button>
-                        <button type="button" className="erp-button-secondary" onClick={() => setEditingId(null)}>
+                        <button type="button" className="erp-button-secondary min-h-11" onClick={() => setEditingId(null)}>
                           Cancelar
                         </button>
                       </div>
@@ -199,6 +165,53 @@ export function ClientesPanel() {
           </div>
         )}
       </article>
+
+      {clients.length > 1 && (
+        <article className="erp-panel">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left"
+            onClick={() => setMergeOpen((open) => !open)}
+            aria-expanded={mergeOpen}
+          >
+            <div>
+              <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Fusionar duplicados</h3>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Opcional · los pedidos del segundo pasan al que conservás.</p>
+            </div>
+            <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">{mergeOpen ? 'Ocultar' : 'Mostrar'}</span>
+          </button>
+          {mergeOpen && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+              <select className="erp-input min-h-11" value={mergeKeepId} onChange={(event) => setMergeKeepId(event.target.value)}>
+                <option value="">Conservar…</option>
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </select>
+              <select className="erp-input min-h-11" value={mergeOtherId} onChange={(event) => setMergeOtherId(event.target.value)}>
+                <option value="">Fusionar y eliminar…</option>
+                {clients
+                  .filter((client) => client.id !== mergeKeepId)
+                  .map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+              </select>
+              <button
+                type="button"
+                className="erp-button-secondary min-h-11"
+                disabled={saving || !mergeKeepId || !mergeOtherId}
+                onClick={() => void handleMerge()}
+              >
+                Fusionar
+              </button>
+            </div>
+          )}
+        </article>
+      )}
     </div>
   );
 }

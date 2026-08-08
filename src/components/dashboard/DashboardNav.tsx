@@ -93,13 +93,13 @@ function NavButton({
       onClick={onClick}
     >
       <span className="shrink-0">{item.icon}</span>
-      <span className={variant === 'bottom' ? 'truncate text-[10px] font-semibold' : 'font-semibold'}>{item.label}</span>
+      <span className={variant === 'bottom' ? 'truncate text-[11px] font-semibold' : 'font-semibold'}>{item.label}</span>
     </button>
   );
 }
 
 export function DashboardNav({ activeSection, onSectionChange, variant }: DashboardNavProps) {
-  const containerClass = variant === 'sidebar' ? 'dashboard-nav flex flex-col gap-1' : 'dashboard-bottom-nav flex items-stretch gap-1';
+  const containerClass = variant === 'sidebar' ? 'dashboard-nav' : 'dashboard-bottom-nav';
 
   return (
     <nav className={containerClass} aria-label="Navegación del panel">

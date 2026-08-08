@@ -342,6 +342,7 @@ const sumSellMetrics = (transactions: Transaction[], sinceMs: number) => {
 export function DashboardPanel() {
   const { products, transactions, pedidos, applyActions } = useInventory();
   const [activeSection, setActiveSection] = useState<DashboardSection>('inicio');
+  const [productsStockFilter, setProductsStockFilter] = useState<'all' | 'low-stock'>('all');
   const [movementMode, setMovementMode] = useState<StockMovementMode | null>(null);
   const { session, logout } = useAuth();
 
@@ -355,10 +356,22 @@ export function DashboardPanel() {
     return sumSellMetrics(transactions, sinceMs);
   }, [transactions]);
 
+  const handleSectionChange = (section: DashboardSection) => {
+    setActiveSection(section);
+    if (section !== 'productos') {
+      setProductsStockFilter('all');
+    }
+  };
+
+  const openLowStockProducts = () => {
+    setProductsStockFilter('low-stock');
+    setActiveSection('productos');
+  };
+
   return (
     <DashboardShell
       activeSection={activeSection}
-      onSectionChange={setActiveSection}
+      onSectionChange={handleSectionChange}
       phoneNumber={session?.phoneNumber}
       onLogout={logout}
     >
@@ -377,7 +390,7 @@ export function DashboardPanel() {
               subtitle={lowStockProducts.length ? `≤ ${LOW_STOCK_THRESHOLD} u. disponibles` : 'Todo en orden'}
               icon={<AlertIcon />}
               accentClassName={lowStockProducts.length ? 'text-amber-600 dark:text-amber-300' : undefined}
-              onClick={() => setActiveSection('productos')}
+              onClick={openLowStockProducts}
             />
             <SummaryCard
               title="Ventas del período"
@@ -394,16 +407,16 @@ export function DashboardPanel() {
               value={String(pendingPedidos)}
               subtitle={pendingPedidos ? 'Abrir módulo de pedidos' : 'Sin pedidos en cola'}
               icon={<OrdersIcon />}
-              accentClassName={pendingPedidos ? 'text-emerald-700 dark:text-emerald-300' : undefined}
-              onClick={() => setActiveSection('pedidos')}
+              accentClassName={pendingPedidos ? 'text-amber-600 dark:text-amber-300' : undefined}
+              onClick={() => handleSectionChange('pedidos')}
             />
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button type="button" className="erp-button-primary" onClick={() => setMovementMode('ingreso')}>
+            <button type="button" className="erp-button-primary min-h-11" onClick={() => setMovementMode('ingreso')}>
               + Registrar ingreso
             </button>
-            <button type="button" className="erp-button-danger" onClick={() => setMovementMode('venta')}>
+            <button type="button" className="erp-button-danger min-h-11" onClick={() => setMovementMode('venta')}>
               − Registrar venta
             </button>
           </div>
@@ -411,7 +424,11 @@ export function DashboardPanel() {
           <article className="erp-panel">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Actividad reciente</h3>
-              <button type="button" className="text-xs font-semibold text-emerald-700 dark:text-emerald-300" onClick={() => setActiveSection('actividad')}>
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center rounded-full px-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300"
+                onClick={() => handleSectionChange('actividad')}
+              >
                 Ver todo
               </button>
             </div>
@@ -420,7 +437,9 @@ export function DashboardPanel() {
         </div>
       )}
 
-      {activeSection === 'productos' && <ProductsAbmPanel />}
+      {activeSection === 'productos' && (
+        <ProductsAbmPanel stockFilter={productsStockFilter} onStockFilterChange={setProductsStockFilter} />
+      )}
       {activeSection === 'pedidos' && <PedidosPanel />}
       {activeSection === 'clientes' && <ClientesPanel />}
 
