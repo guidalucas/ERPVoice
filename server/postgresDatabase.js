@@ -576,6 +576,81 @@ const resolveProduct = (products, actionName) => {
   return bestProduct;
 };
 
+const scoreNameMatch = (candidateName, queryName) => {
+  const candidate = normalizeText(candidateName).replace(/\bde\b/g, ' ').replace(/\s+/g, ' ').trim();
+  const query = normalizeText(queryName).replace(/\bde\b/g, ' ').replace(/\s+/g, ' ').trim();
+
+  if (!candidate || !query) {
+    return 0;
+  }
+
+  if (candidate === query || candidate.includes(query) || query.includes(candidate)) {
+    return 100;
+  }
+
+  const candidateTokens = candidate.split(/\s+/).filter((token) => token.length > 1);
+  const queryTokens = query.split(/\s+/).filter((token) => token.length > 1);
+  if (!queryTokens.length) {
+    return 0;
+  }
+
+  const matches = queryTokens.filter((token) => candidateTokens.some((part) => part.includes(token) || token.includes(part)));
+  return matches.length;
+};
+
+const resolveProductFlexible = (products, action) => {
+  const exact = resolveProduct(products, action);
+  if (exact) {
+    return exact;
+  }
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const product of products) {
+    const score = Math.max(
+      scoreNameMatch(product.name, action.productName),
+      scoreNameMatch([product.productType, product.productModel, product.size].filter(Boolean).join(' '), action.productName),
+    );
+    if (score > bestScore) {
+      bestScore = score;
+      best = product;
+    }
+  }
+
+  return bestScore >= 1 ? best : null;
+};
+
+const resolvePedidoFlexible = (pedidos, productName, clientName) => {
+  const pendingFirst = [...pedidos].sort((left, right) => {
+    if (left.estado === 'pendiente' && right.estado !== 'pendiente') return -1;
+    if (right.estado === 'pendiente' && left.estado !== 'pendiente') return 1;
+    return 0;
+  });
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const pedido of pendingFirst) {
+    let score = Math.max(
+      scoreNameMatch(pedido.producto, productName),
+      scoreNameMatch([pedido.productType, pedido.productModel, pedido.talle].filter(Boolean).join(' '), productName),
+    );
+
+    if (clientName?.trim()) {
+      // slight preference only; client match isn't available on pedido without clients list here
+      score += 0;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = pedido;
+    }
+  }
+
+  return bestScore >= 1 ? best : null;
+};
+
 const createProduct = (name, index, metadata = {}) => ({
   id: `product-${slugify(name)}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,
   name: String(name ?? '').trim(),
@@ -651,14 +726,50 @@ const summarizeAction = (action) => {
   if (action.type === 'client_order') {
     const qty = action.qty && action.qty > 0 ? action.qty : 1;
     const sizeLabel = action.size ? ` talle ${action.size}` : '';
-    return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+    if (action.clientName?.trim()) {
+      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+    }
+    return `Pedido: ${qty} ${action.productName}${sizeLabel}`;
+  }
+
+  if (action.type === 'update_product') {
+    const parts = [];
+    if (Number.isFinite(action.price) && action.price > 0) {
+      parts.push(`precio $${Number(action.price).toLocaleString('es-AR')}`);
+    }
+    if (Number.isFinite(action.stockAvailable) && action.stockAvailable >= 0) {
+      parts.push(`stock ${action.stockAvailable}`);
+    }
+    return `Actualizar ${action.productName}${parts.length ? `: ${parts.join(', ')}` : ''}`;
+  }
+
+  if (action.type === 'update_pedido') {
+    const parts = [];
+    if (Number.isFinite(action.qty) && action.qty > 0) {
+      parts.push(`cantidad ${action.qty}`);
+    }
+    if (action.estado) {
+      parts.push(`estado ${action.estado}`);
+    }
+    return `Actualizar pedido ${action.productName}${parts.length ? `: ${parts.join(', ')}` : ''}`;
+  }
+
+  if (action.type === 'delete_pedido') {
+    return `Eliminar pedido ${action.productName}`;
+  }
+
+  if (action.type === 'delete_product') {
+    return `Eliminar producto ${action.productName}`;
   }
 
   return `+$${action.amount.toLocaleString('es-AR')} en cuenta de ${action.clientName}`;
 };
 
+const ANONYMOUS_PEDIDO_CLIENT = 'Sin cliente';
+
 const resolveOrCreateClientByName = (clients, clientName) => {
-  const target = normalizeText(clientName).trim();
+  const resolvedName = String(clientName ?? '').trim() || ANONYMOUS_PEDIDO_CLIENT;
+  const target = normalizeText(resolvedName).trim();
   const exactMatches = clients.filter((entry) => normalizeText(entry.name).trim() === target);
 
   if (exactMatches.length === 1) {
@@ -667,9 +778,9 @@ const resolveOrCreateClientByName = (clients, clientName) => {
 
   const created = {
     id: `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    name: titleCase(clientName),
+    name: titleCase(resolvedName),
     debt: 0,
-    notas: null,
+    notas: resolvedName === ANONYMOUS_PEDIDO_CLIENT ? 'Pedidos sin cliente asignado' : null,
   };
   clients.push(created);
   return created;
@@ -1066,8 +1177,9 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     const currentSnapshot = await queryAllState(normalizedOwnerPhone, client);
     const nextProducts = currentSnapshot.products.map((product) => ({ ...product }));
     const nextClients = currentSnapshot.clients.map((clientEntry) => ({ ...clientEntry }));
+    const nextPedidos = currentSnapshot.pedidos.map((pedido) => ({ ...pedido }));
     const newTransactions = [];
-    const newPedidos = [];
+    const originalPedidoIds = new Set(currentSnapshot.pedidos.map((pedido) => pedido.id));
 
     const lastSellAction = [...actions].reverse().find((action) => action.type === 'sell');
     const computedDebtAmount = lastSellAction ? calculateSaleDebt(nextProducts, lastSellAction) : null;
@@ -1116,11 +1228,11 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
         }
       }
 
-      if (action.type === 'client_order' && typeof action.clientName === 'string' && typeof action.productName === 'string') {
+      if (action.type === 'client_order' && typeof action.productName === 'string') {
         const clientEntry = resolveOrCreateClientByName(nextClients, action.clientName);
         const qty = Number.isFinite(Number(action.qty)) && Number(action.qty) > 0 ? Math.trunc(Number(action.qty)) : 1;
         const productDescriptor = parseProductDescriptor(action.productName);
-        newPedidos.push({
+        nextPedidos.unshift({
           id: `pedido-${Date.now().toString(36)}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,
           clienteId: clientEntry.id,
           producto: buildPedidoProductoLabel({
@@ -1139,6 +1251,50 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
         });
       }
 
+      if (action.type === 'update_product' && typeof action.productName === 'string') {
+        const product = resolveProductFlexible(nextProducts, action);
+        if (product) {
+          if (Number.isFinite(action.price) && action.price > 0) {
+            product.price = Math.trunc(action.price);
+          }
+          if (Number.isFinite(action.stockAvailable) && action.stockAvailable >= 0) {
+            product.stockAvailable = Math.trunc(action.stockAvailable);
+          }
+        }
+      }
+
+      if (action.type === 'update_pedido' && typeof action.productName === 'string') {
+        const pedido = resolvePedidoFlexible(nextPedidos, action.productName, action.clientName);
+        if (pedido) {
+          if (Number.isFinite(action.qty) && action.qty > 0) {
+            pedido.qty = Math.trunc(action.qty);
+          }
+          if (action.estado && PEDIDO_ESTADOS.has(action.estado)) {
+            pedido.estado = action.estado;
+          }
+        }
+      }
+
+      if (action.type === 'delete_pedido' && typeof action.productName === 'string') {
+        const pedido = resolvePedidoFlexible(nextPedidos, action.productName, action.clientName);
+        if (pedido) {
+          const pedidoIndex = nextPedidos.findIndex((entry) => entry.id === pedido.id);
+          if (pedidoIndex >= 0) {
+            nextPedidos.splice(pedidoIndex, 1);
+          }
+        }
+      }
+
+      if (action.type === 'delete_product' && typeof action.productName === 'string') {
+        const product = resolveProductFlexible(nextProducts, action);
+        if (product) {
+          const productIndex = nextProducts.findIndex((entry) => entry.id === product.id);
+          if (productIndex >= 0) {
+            nextProducts.splice(productIndex, 1);
+          }
+        }
+      }
+
       newTransactions.push({
         id: `transaction-${Date.now()}-${index + 1}`,
         timestamp: new Date().toISOString(),
@@ -1150,26 +1306,66 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
 
     await replaceStateTables(client, normalizedOwnerPhone, nextProducts, nextClients);
 
-    for (const pedido of newPedidos) {
-      await client.query(
-        `
-          INSERT INTO pedidos (id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        `,
-        [
-          pedido.id,
-          normalizedOwnerPhone,
-          pedido.clienteId,
-          pedido.producto,
-          pedido.productType,
-          pedido.productModel,
-          pedido.talle,
-          pedido.qty,
-          pedido.estado,
-          pedido.fechaPedido,
-          pedido.notas,
-        ],
-      );
+    const nextPedidoIds = new Set(nextPedidos.map((pedido) => pedido.id));
+
+    for (const pedidoId of originalPedidoIds) {
+      if (!nextPedidoIds.has(pedidoId)) {
+        await client.query('DELETE FROM pedidos WHERE id = $1 AND owner_phone = ANY($2)', [
+          pedidoId,
+          getOwnerPhoneVariants(normalizedOwnerPhone),
+        ]);
+      }
+    }
+
+    for (const pedido of nextPedidos) {
+      if (originalPedidoIds.has(pedido.id)) {
+        await client.query(
+          `
+            UPDATE pedidos
+            SET cliente_id = $1,
+                producto = $2,
+                product_type = $3,
+                product_model = $4,
+                talle = $5,
+                qty = $6,
+                estado = $7,
+                notas = $8
+            WHERE id = $9 AND owner_phone = ANY($10)
+          `,
+          [
+            pedido.clienteId,
+            pedido.producto,
+            pedido.productType,
+            pedido.productModel,
+            pedido.talle,
+            pedido.qty,
+            pedido.estado,
+            pedido.notas,
+            pedido.id,
+            getOwnerPhoneVariants(normalizedOwnerPhone),
+          ],
+        );
+      } else {
+        await client.query(
+          `
+            INSERT INTO pedidos (id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          `,
+          [
+            pedido.id,
+            normalizedOwnerPhone,
+            pedido.clienteId,
+            pedido.producto,
+            pedido.productType,
+            pedido.productModel,
+            pedido.talle,
+            pedido.qty,
+            pedido.estado,
+            pedido.fechaPedido,
+            pedido.notas,
+          ],
+        );
+      }
     }
 
     for (const transaction of newTransactions) {

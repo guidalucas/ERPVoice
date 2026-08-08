@@ -179,7 +179,37 @@ export const useChatBot = () => {
           preset.useVariants && action.size && preset.variantLabel
             ? ` ${preset.variantLabel.toLowerCase()} ${action.size}`
             : '';
-        return `${index + 1}. client_order -> ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+        return `${index + 1}. client_order -> ${action.clientName?.trim() ? `${action.clientName} pidió ` : ''}${qty} ${action.productName}${sizeLabel}`;
+      }
+
+      if (action.type === 'update_product') {
+        const parts = [];
+        if (Number.isFinite(action.price) && (action.price ?? 0) > 0) {
+          parts.push(`precio $${Number(action.price).toLocaleString('es-AR')}`);
+        }
+        if (Number.isFinite(action.stockAvailable ?? NaN)) {
+          parts.push(`stock ${action.stockAvailable}`);
+        }
+        return `${index + 1}. update_product -> ${action.productName}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+      }
+
+      if (action.type === 'update_pedido') {
+        const parts = [];
+        if (Number.isFinite(action.qty ?? NaN) && (action.qty ?? 0) > 0) {
+          parts.push(`qty ${action.qty}`);
+        }
+        if (action.estado) {
+          parts.push(action.estado);
+        }
+        return `${index + 1}. update_pedido -> ${action.productName}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+      }
+
+      if (action.type === 'delete_pedido') {
+        return `${index + 1}. delete_pedido -> ${action.productName}`;
+      }
+
+      if (action.type === 'delete_product') {
+        return `${index + 1}. delete_product -> ${action.productName}`;
       }
 
       // add_debt
