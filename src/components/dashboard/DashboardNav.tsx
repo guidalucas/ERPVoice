@@ -18,16 +18,6 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    id: 'stock',
-    label: 'Stock',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
-        <path d="M12 3 4 7l8 4 8-4-8-4Z" />
-        <path d="M4 7v10l8 4 8-4V7" />
-      </svg>
-    ),
-  },
-  {
     id: 'productos',
     label: 'Productos',
     icon: (
@@ -128,7 +118,6 @@ export function DashboardNav({ activeSection, onSectionChange, variant }: Dashbo
 
 export const sectionTitles: Record<DashboardSection, string> = {
   inicio: 'Inicio',
-  stock: 'Stock',
   productos: 'Productos',
   pedidos: 'Pedidos',
   clientes: 'Clientes',

@@ -2,17 +2,19 @@ import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useInventory } from '../../hooks/useInventory';
 import { useAuth } from '../../store/AuthStore';
-import type { Transaction } from '../../domain/types';
+import type { ParsedActionUnion, Transaction } from '../../domain/types';
 import { ClientesPanel } from './ClientesPanel';
 import { DashboardShell } from './DashboardShell';
 import { LOW_STOCK_THRESHOLD, type DashboardSection } from './dashboardTypes';
 import { MetaMessagesPanel } from './MetaMessagesPanel';
 import { PedidosPanel } from './PedidosPanel';
 import { ProductsAbmPanel } from './ProductsAbmPanel';
-import { RealStockPanel } from './RealStockPanel';
 import { EmptyState } from './EmptyState';
+import { StockMovementModal, type StockMovementMode } from './StockMovementModal';
 
 const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
+
+const SALES_PERIOD_DAYS = 7;
 
 type SummaryCardProps = {
   title: string;
@@ -64,15 +66,6 @@ function InventoryIcon() {
   );
 }
 
-function StockIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4.5 w-4.5 fill-none stroke-current stroke-[1.8]">
-      <path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z" />
-      <path d="M12 21v-8" />
-    </svg>
-  );
-}
-
 function AlertIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4.5 w-4.5 fill-none stroke-current stroke-[1.8]">
@@ -83,18 +76,79 @@ function AlertIcon() {
   );
 }
 
+function SalesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4.5 w-4.5 fill-none stroke-current stroke-[1.8]">
+      <path d="M4 19h16" />
+      <path d="M7 16V9" />
+      <path d="M12 16V5" />
+      <path d="M17 16v-7" />
+    </svg>
+  );
+}
+
+function OrdersIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4.5 w-4.5 fill-none stroke-current stroke-[1.8]">
+      <path d="M8 6h13" />
+      <path d="M8 12h13" />
+      <path d="M8 18h13" />
+      <path d="M3 6h.01" />
+      <path d="M3 12h.01" />
+      <path d="M3 18h.01" />
+    </svg>
+  );
+}
+
+type ActivityKind = 'ingreso' | 'venta' | 'pedido' | 'mixto';
+
 type ActivityGroup = {
   id: string;
   sourceText: string;
   timestamp: string;
   items: Transaction[];
+  kind: ActivityKind;
 };
 
-type ActivityFilter = 'all' | 'ingresos' | 'pedidos' | 'voz';
+const actionKinds = (actions: ParsedActionUnion[]): ActivityKind[] => {
+  const kinds = new Set<ActivityKind>();
+  for (const action of actions) {
+    if (action.type === 'add_stock') kinds.add('ingreso');
+    else if (action.type === 'sell') kinds.add('venta');
+    else if (action.type === 'client_order') kinds.add('pedido');
+  }
+  return [...kinds];
+};
+
+const resolveGroupKind = (items: Transaction[]): ActivityKind => {
+  const kinds = new Set<ActivityKind>();
+  for (const item of items) {
+    for (const kind of actionKinds(item.actions)) {
+      kinds.add(kind);
+    }
+  }
+  if (kinds.size === 1) {
+    return [...kinds][0]!;
+  }
+  if (kinds.size === 0) {
+    return 'mixto';
+  }
+  return 'mixto';
+};
+
+const kindMeta: Record<ActivityKind, { tag: string; label: string; className: string }> = {
+  ingreso: { tag: '+', label: 'Ingreso', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200' },
+  venta: { tag: '−', label: 'Venta', className: 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-200' },
+  pedido: { tag: 'P', label: 'Pedido', className: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-200' },
+  mixto: { tag: '•', label: 'Movimiento', className: 'border-[color:var(--border)] bg-[color:var(--overlay-soft)] text-slate-700 dark:text-slate-300' },
+};
+
+type ActivityFilter = 'all' | 'ingresos' | 'ventas' | 'pedidos' | 'voz';
 
 const ACTIVITY_FILTERS: { id: ActivityFilter; label: string }[] = [
   { id: 'all', label: 'Todos' },
   { id: 'ingresos', label: 'Ingresos' },
+  { id: 'ventas', label: 'Ventas' },
   { id: 'pedidos', label: 'Pedidos' },
   { id: 'voz', label: 'Voz' },
 ];
@@ -107,8 +161,15 @@ const groupTransactions = (transactions: Transaction[]): ActivityGroup[] => {
   for (const transaction of transactions) {
     const ts = new Date(transaction.timestamp).getTime();
     const last = groups[groups.length - 1];
+    const kind = resolveGroupKind([transaction]);
+    const canMergeWithLast =
+      last &&
+      last.sourceText === transaction.sourceText &&
+      Math.abs(new Date(last.timestamp).getTime() - ts) <= 5000 &&
+      last.kind === 'ingreso' &&
+      kind === 'ingreso';
 
-    if (last && last.sourceText === transaction.sourceText && Math.abs(new Date(last.timestamp).getTime() - ts) <= 5000) {
+    if (canMergeWithLast) {
       last.items.push(transaction);
       continue;
     }
@@ -118,6 +179,7 @@ const groupTransactions = (transactions: Transaction[]): ActivityGroup[] => {
       sourceText: transaction.sourceText,
       timestamp: transaction.timestamp,
       items: [transaction],
+      kind,
     });
   }
 
@@ -133,6 +195,10 @@ const matchesActivityFilter = (transaction: Transaction, filter: ActivityFilter)
 
   if (filter === 'ingresos') {
     return actionTypes.includes('add_stock');
+  }
+
+  if (filter === 'ventas') {
+    return actionTypes.includes('sell');
   }
 
   if (filter === 'pedidos') {
@@ -161,7 +227,7 @@ function ActivityFeed({ transactions, showFilters = true }: { transactions: Tran
   const hasMore = groups.length > visibleCount;
 
   if (transactions.length === 0) {
-    return <EmptyState title="Sin actividad" description="Las cargas por voz y WhatsApp aparecen acá agrupadas por sesión." />;
+    return <EmptyState title="Sin actividad" description="Las cargas por voz, ventas y pedidos aparecen acá." />;
   }
 
   return (
@@ -191,10 +257,10 @@ function ActivityFeed({ transactions, showFilters = true }: { transactions: Tran
         <>
           {visibleGroups.map((group) => {
             const isExpanded = Boolean(expandedIds[group.id]);
-            const isVoiceLoad = group.items.every((item) => item.actions.some((action) => action.type === 'add_stock'));
+            const meta = kindMeta[group.kind];
             const title =
-              group.items.length > 1
-                ? `${isVoiceLoad ? 'Carga por voz' : 'Sesión'} — ${group.items.length} items`
+              group.items.length > 1 && group.kind === 'ingreso'
+                ? `Carga por voz — ${group.items.length} items`
                 : group.items[0]?.summary ?? group.sourceText;
 
             return (
@@ -204,8 +270,14 @@ function ActivityFeed({ transactions, showFilters = true }: { transactions: Tran
                   className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
                   onClick={() => setExpandedIds((current) => ({ ...current, [group.id]: !current[group.id] }))}
                 >
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.className}`}>
+                        <span aria-hidden="true">{meta.tag}</span>
+                        {meta.label}
+                      </span>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</p>
+                    </div>
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{new Date(group.timestamp).toLocaleString('es-AR')}</p>
                     {group.sourceText && (
                       <p className="mt-1.5 line-clamp-2 text-sm text-slate-600 dark:text-slate-300">“{group.sourceText}”</p>
@@ -243,10 +315,34 @@ function ActivityFeed({ transactions, showFilters = true }: { transactions: Tran
   );
 }
 
+const sumSellMetrics = (transactions: Transaction[], sinceMs: number) => {
+  let units = 0;
+  let amount = 0;
+
+  for (const transaction of transactions) {
+    const ts = new Date(transaction.timestamp).getTime();
+    if (Number.isNaN(ts) || ts < sinceMs) {
+      continue;
+    }
+
+    for (const action of transaction.actions) {
+      if (action.type !== 'sell') {
+        continue;
+      }
+      units += action.qty;
+      if (typeof action.price === 'number' && Number.isFinite(action.price)) {
+        amount += action.qty * action.price;
+      }
+    }
+  }
+
+  return { units, amount };
+};
+
 export function DashboardPanel() {
-  const { products, transactions, pedidos } = useInventory();
+  const { products, transactions, pedidos, applyActions } = useInventory();
   const [activeSection, setActiveSection] = useState<DashboardSection>('inicio');
-  const [filterLowStock, setFilterLowStock] = useState(false);
+  const [movementMode, setMovementMode] = useState<StockMovementMode | null>(null);
   const { session, logout } = useAuth();
 
   const totalUnits = products.reduce((total, product) => total + product.stockAvailable + product.stockReserved, 0);
@@ -254,26 +350,21 @@ export function DashboardPanel() {
   const lowStockProducts = products.filter((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD);
   const pendingPedidos = pedidos.filter((pedido) => pedido.estado === 'pendiente').length;
 
-  const goToLowStock = () => {
-    setFilterLowStock(true);
-    setActiveSection('stock');
-  };
+  const salesPeriod = useMemo(() => {
+    const sinceMs = Date.now() - SALES_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+    return sumSellMetrics(transactions, sinceMs);
+  }, [transactions]);
 
   return (
     <DashboardShell
       activeSection={activeSection}
-      onSectionChange={(section) => {
-        if (section !== 'stock') {
-          setFilterLowStock(false);
-        }
-        setActiveSection(section);
-      }}
+      onSectionChange={setActiveSection}
       phoneNumber={session?.phoneNumber}
       onLogout={logout}
     >
       {activeSection === 'inicio' && (
         <div className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
               title="Valor inventario"
               value={formatCurrency(inventoryValue)}
@@ -281,34 +372,41 @@ export function DashboardPanel() {
               icon={<InventoryIcon />}
             />
             <SummaryCard
-              title="Stock disponible"
-              value={String(products.reduce((total, product) => total + product.stockAvailable, 0))}
-              subtitle={`${products.length} variantes en catálogo`}
-              icon={<StockIcon />}
-              onClick={() => setActiveSection('stock')}
-            />
-            <SummaryCard
               title="Stock bajo / agotado"
               value={String(lowStockProducts.length)}
-              subtitle={lowStockProducts.length ? 'Ver productos con poco stock' : 'Todo en orden'}
+              subtitle={lowStockProducts.length ? `≤ ${LOW_STOCK_THRESHOLD} u. disponibles` : 'Todo en orden'}
               icon={<AlertIcon />}
               accentClassName={lowStockProducts.length ? 'text-amber-600 dark:text-amber-300' : undefined}
-              onClick={goToLowStock}
+              onClick={() => setActiveSection('productos')}
+            />
+            <SummaryCard
+              title="Ventas del período"
+              value={String(salesPeriod.units)}
+              subtitle={
+                salesPeriod.amount > 0
+                  ? `${formatCurrency(salesPeriod.amount)} · últimos ${SALES_PERIOD_DAYS} días`
+                  : `Unidades · últimos ${SALES_PERIOD_DAYS} días`
+              }
+              icon={<SalesIcon />}
+            />
+            <SummaryCard
+              title="Pedidos pendientes"
+              value={String(pendingPedidos)}
+              subtitle={pendingPedidos ? 'Abrir módulo de pedidos' : 'Sin pedidos en cola'}
+              icon={<OrdersIcon />}
+              accentClassName={pendingPedidos ? 'text-emerald-700 dark:text-emerald-300' : undefined}
+              onClick={() => setActiveSection('pedidos')}
             />
           </div>
 
-          {pendingPedidos > 0 && (
-            <button
-              type="button"
-              onClick={() => setActiveSection('pedidos')}
-              className="w-full rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-left transition hover:bg-emerald-500/15"
-            >
-              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
-                {pendingPedidos} pedido{pendingPedidos === 1 ? '' : 's'} pendiente{pendingPedidos === 1 ? '' : 's'}
-              </p>
-              <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-200/70">Abrir vista agrupada para armar el pedido al proveedor</p>
+          <div className="flex flex-wrap gap-3">
+            <button type="button" className="erp-button-primary" onClick={() => setMovementMode('ingreso')}>
+              + Registrar ingreso
             </button>
-          )}
+            <button type="button" className="erp-button-danger" onClick={() => setMovementMode('venta')}>
+              − Registrar venta
+            </button>
+          </div>
 
           <article className="erp-panel">
             <div className="mb-4 flex items-center justify-between gap-3">
@@ -319,22 +417,6 @@ export function DashboardPanel() {
             </div>
             <ActivityFeed transactions={transactions} />
           </article>
-        </div>
-      )}
-
-      {activeSection === 'stock' && (
-        <div className="space-y-3">
-          {filterLowStock && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3">
-              <p className="text-sm text-amber-900 dark:text-amber-100">
-                Mostrando {lowStockProducts.length} producto{lowStockProducts.length === 1 ? '' : 's'} con stock ≤ {LOW_STOCK_THRESHOLD}
-              </p>
-              <button type="button" className="text-xs font-semibold text-amber-900 dark:text-amber-100" onClick={() => setFilterLowStock(false)}>
-                Quitar filtro
-              </button>
-            </div>
-          )}
-          <RealStockPanel filterProductIds={filterLowStock ? lowStockProducts.map((product) => product.id) : undefined} />
         </div>
       )}
 
@@ -350,6 +432,10 @@ export function DashboardPanel() {
           </article>
           <MetaMessagesPanel />
         </div>
+      )}
+
+      {movementMode && (
+        <StockMovementModal mode={movementMode} products={products} onClose={() => setMovementMode(null)} onSubmit={applyActions} />
       )}
     </DashboardShell>
   );

@@ -1,4 +1,4 @@
-import type { Client, Pedido, PedidoEstado, Product, Transaction } from '../domain/types';
+import type { Client, ParsedActionUnion, Pedido, PedidoEstado, Product, Transaction } from '../domain/types';
 import { requestJson } from './apiClient';
 
 export type PersistedState = {
@@ -36,6 +36,13 @@ export type PedidoInput = {
 };
 
 export const fetchPersistedState = async () => requestJson<PersistedState>('/api/state');
+
+/** Aplica acciones con el mismo shape que el parser de voz (add_stock, sell, etc.). */
+export const applyStateActions = async (sourceText: string, actions: ParsedActionUnion[]) =>
+  requestJson<PersistedState>('/api/state/apply', {
+    method: 'POST',
+    body: JSON.stringify({ sourceText, actions }),
+  });
 
 export const createProduct = async (product: ProductInput) =>
   requestJson<Product>('/api/products', {
