@@ -422,15 +422,12 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
   }
 
   if (value.type === 'client_order') {
-    if (typeof value.clientName !== 'string') {
-      return null;
-    }
-
     const productType = typeof value.productType === 'string' ? value.productType : undefined;
     const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
     const size = typeof value.size === 'string' ? value.size : undefined;
     const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
     const orderQty = Number.isNaN(qty) || qty <= 0 ? 1 : qty;
+    const rawClient = typeof value.clientName === 'string' ? value.clientName.trim() : '';
 
     if (!productName) {
       return null;
@@ -438,7 +435,7 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
 
     return {
       type: 'client_order',
-      clientName: value.clientName,
+      ...(rawClient ? { clientName: rawClient } : {}),
       productName,
       productType,
       productModel,
@@ -446,6 +443,45 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
       qty: orderQty,
       notas: typeof value.notas === 'string' ? value.notas : undefined,
     };
+  }
+
+  if (value.type === 'update_product' && typeof value.productName === 'string' && value.productName.trim()) {
+    const priceValue = Number.isFinite(Number(value.price)) ? Number(value.price) : amount;
+    const stockValue = Number(value.stockAvailable);
+    const hasPrice = Number.isFinite(priceValue) && priceValue > 0;
+    const hasStock = Number.isFinite(stockValue) && stockValue >= 0;
+    if (!hasPrice && !hasStock) {
+      return null;
+    }
+    return {
+      type: 'update_product',
+      productName: value.productName.trim(),
+      ...(hasPrice ? { price: priceValue } : {}),
+      ...(hasStock ? { stockAvailable: Math.trunc(stockValue) } : {}),
+    };
+  }
+
+  if (value.type === 'update_pedido' && typeof value.productName === 'string' && value.productName.trim()) {
+    const estado = typeof value.estado === 'string' ? value.estado.trim().toLowerCase() : undefined;
+    const validEstado = estado === 'pendiente' || estado === 'conseguido' || estado === 'descartado' ? estado : undefined;
+    const orderQty = Number.isNaN(qty) || qty <= 0 ? undefined : qty;
+    if (!orderQty && !validEstado) {
+      return null;
+    }
+    return {
+      type: 'update_pedido',
+      productName: value.productName.trim(),
+      ...(orderQty ? { qty: orderQty } : {}),
+      ...(validEstado ? { estado: validEstado } : {}),
+    };
+  }
+
+  if (value.type === 'delete_pedido' && typeof value.productName === 'string' && value.productName.trim()) {
+    return { type: 'delete_pedido', productName: value.productName.trim() };
+  }
+
+  if (value.type === 'delete_product' && typeof value.productName === 'string' && value.productName.trim()) {
+    return { type: 'delete_product', productName: value.productName.trim() };
   }
 
   return null;
@@ -469,28 +505,96 @@ export class VoiceParserService {
     const suggested: string[] = [];
 
     let lastProductName: string | undefined;
+    let inPedidoList = /^(?:pedido\s*:|tengo que (?:hacer un )?pedido\b|tengo que (?:pedir|encargar)\b|necesito (?:pedir|encargar)\b|hay que (?:pedir|encargar)\b)/i.test(
+      normalized.trim(),
+    );
+
+    const parseQtyAndProductText = (value: string) => {
+      const raw = value.replace(/\s+/g, ' ').trim();
+      if (!raw) {
+        return null;
+      }
+
+      const cantidadMatch = raw.match(/^(.*?)\s+cantidad\s+(\d+)\s*$/i);
+      if (cantidadMatch) {
+        const productText = cantidadMatch[1]!.trim();
+        const qty = Number(cantidadMatch[2]);
+        if (productText && qty > 0) {
+          return { productText, qty };
+        }
+      }
+
+      const leadingQtyMatch = raw.match(/^(\d+)\s+(.+)$/);
+      if (leadingQtyMatch) {
+        const qty = Number(leadingQtyMatch[1]);
+        const productText = leadingQtyMatch[2]!.trim();
+        if (productText && qty > 0) {
+          return { productText, qty };
+        }
+      }
+
+      const qty = parseQuantity(raw) ?? 1;
+      const productText = raw
+        .replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '')
+        .replace(/\s+cantidad\s+\d+\s*$/i, '')
+        .trim();
+
+      return productText ? { productText, qty } : null;
+    };
+
+    const pushPedido = (productText: string, qty: number, clientName?: string) => {
+      const productDescriptor = parseProductDescriptor(productText);
+      if (!productDescriptor.productName) {
+        return;
+      }
+      const normalizedClient = clientName?.trim();
+      actions.push({
+        type: 'client_order',
+        ...(normalizedClient ? { clientName: normalizedClient } : {}),
+        productName: productDescriptor.productName,
+        productType: productDescriptor.productType,
+        productModel: productDescriptor.productModel,
+        size: productDescriptor.size,
+        qty,
+      });
+      suggested.push(
+        normalizedClient
+          ? `${normalizedClient} pidió ${qty} ${productDescriptor.productName}`
+          : `pedido ${qty} ${productDescriptor.productName}`,
+      );
+    };
 
     for (const fragment of splitCompoundText(normalized)) {
       const orderMatch = fragment.match(/^(.+?)\s+(?:me\s+)?(?:pidio|pidió|pide|quiere|encargo|encargó|encargaron)\s+(.+)$/u);
       if (orderMatch) {
         const clientName = orderMatch[1]!.trim();
-        const rest = orderMatch[2]!.trim();
-        const qty = parseQuantity(rest) ?? 1;
-        const productText = rest.replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '').trim();
-        const productDescriptor = parseProductDescriptor(productText);
-        if (clientName && productDescriptor.productName) {
-          actions.push({
-            type: 'client_order',
-            clientName,
-            productName: productDescriptor.productName,
-            productType: productDescriptor.productType,
-            productModel: productDescriptor.productModel,
-            size: productDescriptor.size,
-            qty,
-          });
-          suggested.push(`${clientName} pidió ${qty} ${productDescriptor.productName}`);
+        if (!/^(?:pedido|pedidos)$/i.test(clientName)) {
+          const parsed = parseQtyAndProductText(orderMatch[2]!.trim());
+          if (clientName && parsed) {
+            pushPedido(parsed.productText, parsed.qty, clientName);
+          }
+          continue;
+        }
+      }
+
+      const pedidoPrefix = fragment.match(
+        /^(?:pedido\s*:?\s*|tengo que (?:hacer un )?pedido (?:de\s+)?|tengo que (?:pedir|encargar)\s+|necesito (?:pedir|encargar)\s+|hay que (?:pedir|encargar)\s+)(.+)$/i,
+      );
+      if (pedidoPrefix) {
+        inPedidoList = true;
+        const parsed = parseQtyAndProductText(pedidoPrefix[1]!.trim());
+        if (parsed) {
+          pushPedido(parsed.productText, parsed.qty);
         }
         continue;
+      }
+
+      if (inPedidoList) {
+        const parsed = parseQtyAndProductText(fragment);
+        if (parsed && !/\b(?:compre|compré|vendi|vendí|reserve|reservé|ingreso)\b/i.test(parsed.productText)) {
+          pushPedido(parsed.productText, parsed.qty);
+          continue;
+        }
       }
 
       for (const p of patterns) {

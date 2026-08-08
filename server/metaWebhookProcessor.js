@@ -7,12 +7,12 @@ const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-large-v3-turbo';
 const DEFAULT_META_GRAPH_API_VERSION = 'v21.0';
 
 const buildPrompt = (text) => `
-Sos un analista de operaciones para Stocky, un sistema de stock y pedidos de clientes para una tienda de camisetas.
+Sos un analista de operaciones para Stocky, un sistema de stock y pedidos (de clientes o propios al proveedor) para un negocio.
 Convertí la frase del usuario en un JSON válido con esta estructura exacta:
 {
   "schemaVersion": 1,
   "sourceText": string,
-  "intent": "add_stock" | "reserve_stock" | "sell" | "add_debt" | "payment_received" | "client_order" | "mixed" | "unknown",
+  "intent": "add_stock" | "reserve_stock" | "sell" | "add_debt" | "payment_received" | "client_order" | "update_product" | "update_pedido" | "delete_pedido" | "delete_product" | "mixed" | "unknown",
   "confidence": number,
   "requiresConfirmation": boolean,
   "actions": [
@@ -21,7 +21,11 @@ Convertí la frase del usuario en un JSON válido con esta estructura exacta:
     { "type": "sell", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number, "price"?: number },
     { "type": "add_debt", "clientName": string, "amount": number, "productType"?: string, "productModel"?: string, "size"?: string, "productName"?: string, "qty"?: number },
     { "type": "payment_received", "clientName": string, "amount": number },
-    { "type": "client_order", "clientName": string, "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty"?: number }
+    { "type": "client_order", "clientName"?: string, "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty"?: number },
+    { "type": "update_product", "productName": string, "productType"?: string, "productModel"?: string, "size"?: string, "price"?: number, "stockAvailable"?: number },
+    { "type": "update_pedido", "productName": string, "qty"?: number, "estado"?: "pendiente" | "conseguido" | "descartado", "clientName"?: string },
+    { "type": "delete_pedido", "productName": string, "clientName"?: string },
+    { "type": "delete_product", "productName": string }
   ],
   "missingFields"?: string[],
   "suggestedPhrases"?: string[]
@@ -40,14 +44,23 @@ Reglas:
 - Si la frase menciona precio unitario, completá price en add_stock o sell con ese valor numérico.
 - Si la frase dice "para X" en una reserva, separá X como clientName y dejá solo el producto en productName.
 - Si la frase incluye prenda, modelo y talle, separá productType, productModel y size. Ejemplo: "3 camisetas de boca titular, talle M" -> productType: "Camiseta", productModel: "Boca Titular", size: "M", productName: "Camiseta Boca Titular M".
-- Si alguien te pide / pidió / quiere / encargó un producto (ej: "Juan me pidió una camiseta de Boca titular talle M"), usá client_order. NO uses reserve_stock ni sell. Un pedido de cliente NO mueve stock.
-- client_order requiere clientName y productName. qty default 1 si dice "una/un".
-- Diferenciá claramente: "compré / compraron / entraron / llegaron / ingreso / ingresaron / recibí" = add_stock; "me pidió / pidió / quiere / encargó" = client_order.
+- Usá client_order para pedidos: si un cliente te pidió algo ("Juan me pidió…") O si vos tenés que pedir/encargar al proveedor ("pedido: …", "tengo que pedir …", lista bajo "pedido:"). NO uses reserve_stock ni sell. Un pedido NO mueve stock.
+- client_order requiere productName. clientName es OPCIONAL: si no hay cliente, omitilo o usá "". qty default 1.
+- Si el texto es una lista (una línea por producto) bajo "pedido:", creá un client_order por cada ítem.
+- Si dice "cantidad N" al final, usá ese N como qty.
+- Diferenciá claramente: "compré / compraron / entraron / llegaron / ingreso / ingresaron / recibí" = add_stock; "me pidió / pidió / quiere / encargó / pedido: / tengo que pedir" = client_order.
 - Si no hay cantidad explícita en un ingreso/compra, usá qty 1.
 - Si una frase tiene dos movimientos, devolvé dos objetos en actions.
 - Ejemplo: "compre 20 camisetas de argentina, les deje 3 al gimnasio" -> [{"type":"add_stock","productName":"camisetas de argentina","qty":20},{"type":"reserve_stock","productName":"camisetas de argentina","qty":3,"clientName":"gimnasio"}].
 - Ejemplo: "ingresaron buzos de boca retro en talle XXL" -> [{"type":"add_stock","productType":"Buzo","productModel":"Boca Retro","size":"XXL","productName":"Buzo Boca Retro XXL","qty":1}].
 - Ejemplo: "Juan me pidió una camiseta de Boca titular talle M" -> [{"type":"client_order","clientName":"Juan","productType":"Camiseta","productModel":"Boca Titular","size":"M","productName":"Camiseta Boca Titular M","qty":1}].
+- Ejemplo: "Pedido: camiseta del barca cantidad 3" -> [{"type":"client_order","productName":"Camiseta del Barca","qty":3}].
+- Ejemplo: "pedido: prolongador\\ncanilla bronce" -> [{"type":"client_order","productName":"Prolongador","qty":1},{"type":"client_order","productName":"Canilla bronce","qty":1}].
+- Si dice que un producto "vale / cuesta / precio" un monto, usá update_product con price (NO add_stock). Ejemplo: "la camiseta de boca titular vale 70000" -> [{"type":"update_product","productName":"camiseta de boca titular","price":70000}].
+- Si actualiza un pedido existente (cantidad o estado), usá update_pedido. Ejemplo: "actualiza el pedido de canilla, la cantidad son 5" -> [{"type":"update_pedido","productName":"canilla","qty":5}].
+- "el pedido de X ya está conseguido / marcá como conseguido" -> update_pedido con estado "conseguido". "descartá el pedido" -> estado "descartado".
+- "borrá / eliminá el pedido de X" -> delete_pedido. "borrá el producto X" -> delete_product.
+- update_product y update_pedido NO crean registros nuevos: solo modifican existentes.
 
 Texto del usuario:
 ${text}
@@ -126,6 +139,70 @@ const parseProductDescriptor = (value) => {
     size,
     productName: composeProductName({ productType, productModel, size, fallback: value }),
   };
+};
+
+const parseQtyAndProductText = (value) => {
+  const raw = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!raw) {
+    return null;
+  }
+
+  const cantidadMatch = raw.match(/^(.*?)\s+cantidad\s+(\d+)\s*$/i);
+  if (cantidadMatch) {
+    const productText = cantidadMatch[1].trim();
+    const qty = Number(cantidadMatch[2]);
+    if (productText && qty > 0) {
+      return { productText, qty };
+    }
+  }
+
+  const leadingQtyMatch = raw.match(/^(\d+)\s+(.+)$/);
+  if (leadingQtyMatch) {
+    const qty = Number(leadingQtyMatch[1]);
+    const productText = leadingQtyMatch[2].trim();
+    if (productText && qty > 0) {
+      return { productText, qty };
+    }
+  }
+
+  const qty = parseQuantity(raw) ?? 1;
+  const productText = raw
+    .replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '')
+    .replace(/\s+cantidad\s+\d+\s*$/i, '')
+    .trim();
+
+  if (!productText) {
+    return null;
+  }
+
+  return { productText, qty };
+};
+
+const buildClientOrderAction = (productText, qty, clientName) => {
+  const productDescriptor = parseProductDescriptor(productText);
+  if (!productDescriptor.productName) {
+    return null;
+  }
+
+  const normalizedClient = typeof clientName === 'string' ? clientName.trim() : '';
+
+  return {
+    type: 'client_order',
+    ...(normalizedClient ? { clientName: normalizedClient } : {}),
+    productName: productDescriptor.productName,
+    productType: productDescriptor.productType,
+    productModel: productDescriptor.productModel,
+    size: productDescriptor.size,
+    qty: qty > 0 ? qty : 1,
+  };
+};
+
+const stripPedidoPrefix = (fragment) => {
+  const trimmed = String(fragment ?? '').trim();
+  const match = trimmed.match(
+    /^(?:pedido\s*:?\s*|tengo que (?:hacer un )?pedido (?:de\s+)?|tengo que (?:pedir|encargar)\s+|necesito (?:pedir|encargar)\s+|hay que (?:pedir|encargar)\s+)(.+)$/i,
+  );
+  return match ? match[1].trim() : null;
 };
 
 const splitCompoundText = (value) =>
@@ -347,12 +424,13 @@ const parseAction = (value) => {
     };
   }
 
-  if (value.type === 'client_order' && typeof value.clientName === 'string') {
+  if (value.type === 'client_order') {
     const productType = typeof value.productType === 'string' ? value.productType : undefined;
     const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
     const size = typeof value.size === 'string' ? value.size : undefined;
     const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
     const orderQty = Number.isFinite(qty) && qty > 0 ? qty : 1;
+    const rawClient = typeof value.clientName === 'string' ? value.clientName.trim() : '';
 
     if (!productName) {
       return null;
@@ -360,7 +438,7 @@ const parseAction = (value) => {
 
     return {
       type: 'client_order',
-      clientName: value.clientName,
+      ...(rawClient ? { clientName: rawClient } : {}),
       productName,
       productType,
       productModel,
@@ -370,6 +448,129 @@ const parseAction = (value) => {
     };
   }
 
+  if (value.type === 'update_product' && typeof value.productName === 'string' && value.productName.trim()) {
+    const priceValue = Number.isFinite(Number(value.price)) ? Number(value.price) : amount;
+    const stockValue = Number(value.stockAvailable);
+    const hasPrice = Number.isFinite(priceValue) && priceValue > 0;
+    const hasStock = Number.isFinite(stockValue) && stockValue >= 0;
+
+    if (!hasPrice && !hasStock) {
+      return null;
+    }
+
+    return {
+      type: 'update_product',
+      productName: value.productName.trim(),
+      productType: typeof value.productType === 'string' ? value.productType : undefined,
+      productModel: typeof value.productModel === 'string' ? value.productModel : undefined,
+      size: typeof value.size === 'string' ? value.size : undefined,
+      ...(hasPrice ? { price: priceValue } : {}),
+      ...(hasStock ? { stockAvailable: Math.trunc(stockValue) } : {}),
+    };
+  }
+
+  if (value.type === 'update_pedido' && typeof value.productName === 'string' && value.productName.trim()) {
+    const estado = typeof value.estado === 'string' ? value.estado.trim().toLowerCase() : undefined;
+    const validEstado = ['pendiente', 'conseguido', 'descartado'].includes(estado) ? estado : undefined;
+    const orderQty = Number.isFinite(qty) && qty > 0 ? qty : undefined;
+
+    if (!orderQty && !validEstado) {
+      return null;
+    }
+
+    return {
+      type: 'update_pedido',
+      productName: value.productName.trim(),
+      ...(orderQty ? { qty: orderQty } : {}),
+      ...(validEstado ? { estado: validEstado } : {}),
+      ...(typeof value.clientName === 'string' && value.clientName.trim() ? { clientName: value.clientName.trim() } : {}),
+    };
+  }
+
+  if (value.type === 'delete_pedido' && typeof value.productName === 'string' && value.productName.trim()) {
+    return {
+      type: 'delete_pedido',
+      productName: value.productName.trim(),
+      ...(typeof value.clientName === 'string' && value.clientName.trim() ? { clientName: value.clientName.trim() } : {}),
+    };
+  }
+
+  if (value.type === 'delete_product' && typeof value.productName === 'string' && value.productName.trim()) {
+    return {
+      type: 'delete_product',
+      productName: value.productName.trim(),
+      productType: typeof value.productType === 'string' ? value.productType : undefined,
+      productModel: typeof value.productModel === 'string' ? value.productModel : undefined,
+      size: typeof value.size === 'string' ? value.size : undefined,
+    };
+  }
+
+  return null;
+};
+
+const tryParseMutationAction = (fragment) => {
+  const updatePriceMatch = fragment.match(
+    /^(?:(?:la|el|las|los)\s+)?(.+?)\s+(?:vale|cuesta|sale|precio(?:\s+(?:es|actual))?\s*(?:es|de|=|:)?)\s*\$?\s*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]+)?)\s*$/u,
+  );
+  if (updatePriceMatch) {
+    const productText = updatePriceMatch[1].trim().replace(/^(?:producto|precio de)\s+/i, '');
+    const price = parsePrice(updatePriceMatch[2]) ?? Number(String(updatePriceMatch[2]).replace(/\./g, '').replace(',', '.'));
+    if (productText && Number.isFinite(price) && price > 0) {
+      return { type: 'update_product', productName: productText, price };
+    }
+  }
+
+  const updatePedidoQtyMatch = fragment.match(
+    /^(?:actualiza(?:r)?|cambia(?:r)?|modifica(?:r)?|pone(?:le)?|actualizá|cambiá)?\s*(?:el\s+)?pedido\s+(?:de\s+)?(.+?)\s*,?\s*(?:la\s+)?cantidad\s+(?:son|es|a|=|:)?\s*(\d+)\s*$/u,
+  );
+  if (updatePedidoQtyMatch && /\b(?:actualiza|cambia|modifica|pedido|cantidad)\b/i.test(fragment)) {
+    const productText = updatePedidoQtyMatch[1].trim();
+    const qty = Number(updatePedidoQtyMatch[2]);
+    if (productText && qty > 0 && !/^(?:la|el)$/i.test(productText)) {
+      return { type: 'update_pedido', productName: productText, qty };
+    }
+  }
+
+  const pedidoConseguidoMatch = fragment.match(
+    /^(?:(?:marc[aá]|pone(?:le)?|dejal[oa]|deja)\s+(?:el\s+)?pedido\s+(?:de\s+)?(.+?)\s+(?:como\s+)?(?:conseguido|listo|ok)|(?:el\s+)?pedido\s+(?:de\s+)?(.+?)\s+(?:ya\s+)?(?:est[aá]\s+)?(?:conseguido|listo)|consegu[ií]\s+(?:el\s+)?pedido\s+(?:de\s+)?(.+))$/u,
+  );
+  if (pedidoConseguidoMatch) {
+    const productText = (pedidoConseguidoMatch[1] || pedidoConseguidoMatch[2] || pedidoConseguidoMatch[3] || '').trim();
+    if (productText) {
+      return { type: 'update_pedido', productName: productText, estado: 'conseguido' };
+    }
+  }
+
+  const pedidoDescartadoMatch = fragment.match(
+    /^(?:(?:descart[aá]|cancel[aá])\s+(?:el\s+)?pedido\s+(?:de\s+)?(.+)|(?:el\s+)?pedido\s+(?:de\s+)?(.+?)\s+(?:qued[oó]\s+)?descartado)$/u,
+  );
+  if (pedidoDescartadoMatch) {
+    const productText = (pedidoDescartadoMatch[1] || pedidoDescartadoMatch[2] || '').trim();
+    if (productText) {
+      return { type: 'update_pedido', productName: productText, estado: 'descartado' };
+    }
+  }
+
+  const deletePedidoMatch = fragment.match(
+    /^(?:borra(?:r)?|elimin[aá](?:r)?|sac[aá]|quita(?:r)?)\s+(?:el\s+)?pedido\s+(?:de\s+)?(.+)$/u,
+  );
+  if (deletePedidoMatch) {
+    const productText = deletePedidoMatch[1].trim();
+    if (productText) {
+      return { type: 'delete_pedido', productName: productText };
+    }
+  }
+
+  const deleteProductMatch = fragment.match(
+    /^(?:borra(?:r)?|elimin[aá](?:r)?|sac[aá]|quita(?:r)?)\s+(?:el\s+)?producto\s+(.+)$/u,
+  );
+  if (deleteProductMatch) {
+    const productText = deleteProductMatch[1].trim();
+    if (productText) {
+      return { type: 'delete_product', productName: productText };
+    }
+  }
+
   return null;
 };
 
@@ -377,9 +578,35 @@ const extractMultipleActionsFromText = (text) => {
   const normalized = normalizeText(text);
   const fragments = splitCompoundText(normalized);
   const actions = [];
+  const seen = new Set();
+  const pushAction = (action) => {
+    if (!action) {
+      return;
+    }
+    const key = JSON.stringify(action);
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    actions.push(action);
+  };
+
+  // Texto completo (conserva comas) para updates del tipo "actualiza el pedido de X, la cantidad son 5"
+  const fullLine = normalized.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+  pushAction(tryParseMutationAction(fullLine));
+
   let lastProductName;
+  let inPedidoList = /^(?:pedido\s*:|tengo que (?:hacer un )?pedido\b|tengo que (?:pedir|encargar)\b|necesito (?:pedir|encargar)\b|hay que (?:pedir|encargar)\b)/i.test(
+    normalized.trim(),
+  );
 
   for (const fragment of fragments) {
+    const mutation = tryParseMutationAction(fragment);
+    if (mutation) {
+      pushAction(mutation);
+      continue;
+    }
+
     const paymentMatch = fragment.match(/^(.+?)\s+me\s+pag(?:o|ó)\s+(\d+)\s*(mil)?$/u);
     if (paymentMatch) {
       const amountBase = Number(paymentMatch[2]);
@@ -411,28 +638,42 @@ const extractMultipleActionsFromText = (text) => {
     const orderMatch = fragment.match(/^(.+?)\s+(?:me\s+)?(?:pidio|pidió|pide|quiere|encargo|encargó|encargaron)\s+(.+)$/u);
     if (orderMatch) {
       const clientName = orderMatch[1].trim();
-      const rest = orderMatch[2].trim();
-      const qty = parseQuantity(rest) ?? 1;
-      const productText = rest.replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '').trim();
-      const productDescriptor = parseProductDescriptor(productText);
-      if (clientName && productDescriptor.productName) {
-        actions.push({
-          type: 'client_order',
-          clientName,
-          productName: productDescriptor.productName,
-          productType: productDescriptor.productType,
-          productModel: productDescriptor.productModel,
-          size: productDescriptor.size,
-          qty,
-        });
+      if (!/^(?:pedido|pedidos)$/i.test(clientName)) {
+        const parsed = parseQtyAndProductText(orderMatch[2].trim());
+        if (clientName && parsed) {
+          const action = buildClientOrderAction(parsed.productText, parsed.qty, clientName);
+          pushAction(action);
+        }
+        continue;
+      }
+    }
+
+    const pedidoBody = stripPedidoPrefix(fragment);
+    if (pedidoBody) {
+      inPedidoList = true;
+      const parsed = parseQtyAndProductText(pedidoBody);
+      if (parsed) {
+        pushAction(buildClientOrderAction(parsed.productText, parsed.qty));
       }
       continue;
+    }
+
+    if (inPedidoList) {
+      const parsed = parseQtyAndProductText(fragment);
+      if (parsed && !/\b(?:compre|compré|vendi|vendí|reserve|reservé|ingreso)\b/i.test(parsed.productText)) {
+        const action = buildClientOrderAction(parsed.productText, parsed.qty);
+        if (action) {
+          pushAction(action);
+          continue;
+        }
+      }
     }
 
     const addStockMatch = fragment.match(
       /\b(?:compre|compré|compra(?:r|ste|ron)?|adquiri|adquirí|entraron|entran|llegaron|recibi|recibieron|recibí|ingreso|ingrese|ingresaron)\s+(?:(\d+)\s+)?(.+)$/u,
     );
     if (addStockMatch) {
+      inPedidoList = false;
       const qty = addStockMatch[1] ? Number(addStockMatch[1]) : parseQuantity(addStockMatch[2]) ?? 1;
       if (qty > 0) {
         const rawProductText = addStockMatch[2]
@@ -460,6 +701,7 @@ const extractMultipleActionsFromText = (text) => {
 
     const reserveMatch = fragment.match(/\b(?:les deje|les dejé|deje|dejé|reserve|reservé|reservaron)\s+(\d+)\s+(.+)$/u);
     if (reserveMatch) {
+      inPedidoList = false;
       const qty = Number(reserveMatch[1]);
       if (qty > 0) {
         const targetRaw = reserveMatch[2].trim();
@@ -483,6 +725,7 @@ const extractMultipleActionsFromText = (text) => {
 
     const sellMatch = fragment.match(/\b(?:vend(?:i|í)o|vendiste|vendieron|vendi)\s+(\d+)\s+(.+)$/u);
     if (sellMatch) {
+      inPedidoList = false;
       const qty = Number(sellMatch[1]);
       if (qty > 0) {
         const rawProductText = sellMatch[2].trim();
@@ -676,7 +919,40 @@ const formatAction = (action) => {
   if (action.type === 'client_order') {
     const qty = action.qty && action.qty > 0 ? action.qty : 1;
     const sizeLabel = action.size ? ` talle ${action.size}` : '';
-    return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+    if (action.clientName?.trim()) {
+      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+    }
+    return `Pedido: ${qty} ${action.productName}${sizeLabel}`;
+  }
+
+  if (action.type === 'update_product') {
+    const parts = [];
+    if (Number.isFinite(action.price) && action.price > 0) {
+      parts.push(`precio $${Number(action.price).toLocaleString('es-AR')}`);
+    }
+    if (Number.isFinite(action.stockAvailable) && action.stockAvailable >= 0) {
+      parts.push(`stock ${action.stockAvailable}`);
+    }
+    return `Actualizar ${action.productName}${parts.length ? `: ${parts.join(', ')}` : ''}`;
+  }
+
+  if (action.type === 'update_pedido') {
+    const parts = [];
+    if (Number.isFinite(action.qty) && action.qty > 0) {
+      parts.push(`cantidad ${action.qty}`);
+    }
+    if (action.estado) {
+      parts.push(`estado ${action.estado}`);
+    }
+    return `Actualizar pedido ${action.productName}${parts.length ? `: ${parts.join(', ')}` : ''}`;
+  }
+
+  if (action.type === 'delete_pedido') {
+    return `Eliminar pedido ${action.productName}`;
+  }
+
+  if (action.type === 'delete_product') {
+    return `Eliminar producto ${action.productName}`;
   }
 
   return `+$${action.amount.toLocaleString('es-AR')} en cuenta de ${action.clientName}`;

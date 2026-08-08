@@ -35,9 +35,9 @@ Reglas:
 - Si el texto dice que un cliente te tiene que pagar por productos o que todavía no te los pagó, usá sell y también add_debt con clientName, productName, qty y amount 0 si todavía no podés calcularlo.
 - Si ya tenés productName y qty, no pidas precio unitario: devolvé la venta y dejá amount en 0 para que el ERP lo calcule.
 - Si la frase dice "para X" en una reserva, separá X como clientName y dejá solo el producto en productName.
-- Si alguien te pide / pidió / quiere / encargó un producto (ej: "Juan me pidió una camiseta de Boca titular talle M"), usá client_order. NO uses reserve_stock ni sell. Un pedido de cliente NO mueve stock.
-- client_order requiere clientName y productName. qty default 1 si dice "una/un".
-- Diferenciá claramente: "compré / entraron / llegaron" = add_stock; "me pidió / pidió / quiere / encargó" = client_order.
+- Usá client_order para pedidos de cliente o propios al proveedor ("pedido: …", "tengo que pedir …"). clientName es OPCIONAL.
+- client_order requiere productName. qty default 1.
+- Diferenciá claramente: "compré / entraron / llegaron" = add_stock; "me pidió / pidió / quiere / encargó / pedido:" = client_order.
 - Si una frase tiene dos movimientos, devolvé dos objetos en actions.
 - Ejemplo: "compre 20 camisetas de argentina, les deje 3 al gimnasio" -> [{"type":"add_stock","productName":"camisetas de argentina","qty":20},{"type":"reserve_stock","productName":"camisetas de argentina","qty":3,"clientName":"gimnasio"}].
 - Ejemplo: "Juan me pidió una camiseta de Boca titular talle M" -> [{"type":"client_order","clientName":"Juan","productType":"Camiseta","productModel":"Boca Titular","size":"M","productName":"Camiseta Boca Titular M","qty":1}].
@@ -324,12 +324,13 @@ const parseAction = (value) => {
     };
   }
 
-  if (value.type === 'client_order' && typeof value.clientName === 'string') {
+  if (value.type === 'client_order') {
     const productType = typeof value.productType === 'string' ? value.productType : undefined;
     const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
     const size = typeof value.size === 'string' ? value.size : undefined;
     const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
     const orderQty = Number.isFinite(qty) && qty > 0 ? qty : 1;
+    const rawClient = typeof value.clientName === 'string' ? value.clientName.trim() : '';
 
     if (!productName) {
       return null;
@@ -337,7 +338,7 @@ const parseAction = (value) => {
 
     return {
       type: 'client_order',
-      clientName: value.clientName,
+      ...(rawClient ? { clientName: rawClient } : {}),
       productName,
       productType,
       productModel,
@@ -345,6 +346,45 @@ const parseAction = (value) => {
       qty: orderQty,
       notas: typeof value.notas === 'string' ? value.notas : undefined,
     };
+  }
+
+  if (value.type === 'update_product' && typeof value.productName === 'string' && value.productName.trim()) {
+    const priceValue = Number.isFinite(Number(value.price)) ? Number(value.price) : amount;
+    const stockValue = Number(value.stockAvailable);
+    const hasPrice = Number.isFinite(priceValue) && priceValue > 0;
+    const hasStock = Number.isFinite(stockValue) && stockValue >= 0;
+    if (!hasPrice && !hasStock) {
+      return null;
+    }
+    return {
+      type: 'update_product',
+      productName: value.productName.trim(),
+      ...(hasPrice ? { price: priceValue } : {}),
+      ...(hasStock ? { stockAvailable: Math.trunc(stockValue) } : {}),
+    };
+  }
+
+  if (value.type === 'update_pedido' && typeof value.productName === 'string' && value.productName.trim()) {
+    const estado = typeof value.estado === 'string' ? value.estado.trim().toLowerCase() : undefined;
+    const validEstado = ['pendiente', 'conseguido', 'descartado'].includes(estado) ? estado : undefined;
+    const orderQty = Number.isFinite(qty) && qty > 0 ? qty : undefined;
+    if (!orderQty && !validEstado) {
+      return null;
+    }
+    return {
+      type: 'update_pedido',
+      productName: value.productName.trim(),
+      ...(orderQty ? { qty: orderQty } : {}),
+      ...(validEstado ? { estado: validEstado } : {}),
+    };
+  }
+
+  if (value.type === 'delete_pedido' && typeof value.productName === 'string' && value.productName.trim()) {
+    return { type: 'delete_pedido', productName: value.productName.trim() };
+  }
+
+  if (value.type === 'delete_product' && typeof value.productName === 'string' && value.productName.trim()) {
+    return { type: 'delete_product', productName: value.productName.trim() };
   }
 
   return null;
@@ -618,7 +658,10 @@ const formatAction = (action) => {
   if (action.type === 'client_order') {
     const qty = action.qty && action.qty > 0 ? action.qty : 1;
     const sizeLabel = action.size ? ` talle ${action.size}` : '';
-    return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+    if (action.clientName?.trim()) {
+      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+    }
+    return `Pedido: ${qty} ${action.productName}${sizeLabel}`;
   }
 
   return `+$${action.amount.toLocaleString('es-AR')} en cuenta de ${action.clientName}`;

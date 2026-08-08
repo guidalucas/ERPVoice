@@ -38,6 +38,10 @@ export type VoiceIntent =
   | 'add_debt'
   | 'payment_received'
   | 'client_order'
+  | 'update_product'
+  | 'update_pedido'
+  | 'delete_pedido'
+  | 'delete_product'
   | 'mixed'
   | 'unknown';
 
@@ -78,13 +82,41 @@ export type ParsedAction =
     }
   | {
       type: 'client_order';
-      clientName: string;
+      clientName?: string;
       productName: string;
       productType?: string;
       productModel?: string;
       size?: string;
       qty?: number;
       notas?: string;
+    }
+  | {
+      type: 'update_product';
+      productName: string;
+      productType?: string;
+      productModel?: string;
+      size?: string;
+      price?: number;
+      stockAvailable?: number;
+    }
+  | {
+      type: 'update_pedido';
+      productName: string;
+      qty?: number;
+      estado?: PedidoEstado;
+      clientName?: string;
+    }
+  | {
+      type: 'delete_pedido';
+      productName: string;
+      clientName?: string;
+    }
+  | {
+      type: 'delete_product';
+      productName: string;
+      productType?: string;
+      productModel?: string;
+      size?: string;
     };
 
 export type ParsedActionSell = {

@@ -172,8 +172,9 @@ const calculateProductDebt = (products: Product[], debtAction: Partial<ProductMa
   return product.price * debtAction.qty;
 };
 
-const resolveOrCreateClient = (clients: Client[], clientName: string) => {
-  const target = normalizeText(clientName).trim();
+const resolveOrCreateClient = (clients: Client[], clientName?: string) => {
+  const resolvedName = String(clientName ?? '').trim() || 'Sin cliente';
+  const target = normalizeText(resolvedName).trim();
   const exactMatches = clients.filter((entry) => normalizeText(entry.name).trim() === target);
 
   if (exactMatches.length === 1) {
@@ -182,9 +183,9 @@ const resolveOrCreateClient = (clients: Client[], clientName: string) => {
 
   const created: Client = {
     id: createId('client'),
-    name: titleCase(clientName),
+    name: titleCase(resolvedName),
     debt: 0,
-    notas: null,
+    notas: resolvedName === 'Sin cliente' ? 'Pedidos sin cliente asignado' : null,
   };
   clients.push(created);
   return created;
@@ -219,7 +220,40 @@ const summarizeAction = (action: ParsedAction) => {
   if (action.type === 'client_order') {
     const qty = action.qty && action.qty > 0 ? action.qty : 1;
     const sizeLabel = action.size ? ` talle ${action.size}` : '';
-    return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+    if (action.clientName?.trim()) {
+      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+    }
+    return `Pedido: ${qty} ${action.productName}${sizeLabel}`;
+  }
+
+  if (action.type === 'update_product') {
+    const parts = [];
+    if (Number.isFinite(action.price) && (action.price as number) > 0) {
+      parts.push(`precio $${Number(action.price).toLocaleString('es-AR')}`);
+    }
+    if (Number.isFinite(action.stockAvailable as number)) {
+      parts.push(`stock ${action.stockAvailable}`);
+    }
+    return `Actualizar ${action.productName}${parts.length ? `: ${parts.join(', ')}` : ''}`;
+  }
+
+  if (action.type === 'update_pedido') {
+    const parts = [];
+    if (Number.isFinite(action.qty as number) && (action.qty as number) > 0) {
+      parts.push(`cantidad ${action.qty}`);
+    }
+    if (action.estado) {
+      parts.push(`estado ${action.estado}`);
+    }
+    return `Actualizar pedido ${action.productName}${parts.length ? `: ${parts.join(', ')}` : ''}`;
+  }
+
+  if (action.type === 'delete_pedido') {
+    return `Eliminar pedido ${action.productName}`;
+  }
+
+  if (action.type === 'delete_product') {
+    return `Eliminar producto ${action.productName}`;
   }
 
   const debt = action as { type: 'add_debt'; clientName: string; amount: number };
@@ -295,6 +329,55 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
         notas: action.notas ?? null,
       };
       nextPedidos.unshift(pedido);
+    }
+
+    if (action.type === 'update_product') {
+      const product = resolveProduct(nextProducts, action);
+      if (product) {
+        if (Number.isFinite(action.price) && (action.price as number) > 0) {
+          product.price = Math.trunc(action.price as number);
+        }
+        if (Number.isFinite(action.stockAvailable as number) && (action.stockAvailable as number) >= 0) {
+          product.stockAvailable = Math.trunc(action.stockAvailable as number);
+        }
+      }
+    }
+
+    if (action.type === 'update_pedido') {
+      const query = normalizeText(action.productName);
+      const pedido = nextPedidos.find((entry) => {
+        const haystack = normalizeText([entry.producto, entry.productType, entry.productModel, entry.talle].filter(Boolean).join(' '));
+        return haystack.includes(query) || query.includes(normalizeText(entry.producto));
+      });
+      if (pedido) {
+        if (Number.isFinite(action.qty as number) && (action.qty as number) > 0) {
+          pedido.qty = Math.trunc(action.qty as number);
+        }
+        if (action.estado) {
+          pedido.estado = action.estado;
+        }
+      }
+    }
+
+    if (action.type === 'delete_pedido') {
+      const query = normalizeText(action.productName);
+      const pedidoIndex = nextPedidos.findIndex((entry) => {
+        const haystack = normalizeText([entry.producto, entry.productType, entry.productModel, entry.talle].filter(Boolean).join(' '));
+        return haystack.includes(query) || query.includes(normalizeText(entry.producto));
+      });
+      if (pedidoIndex >= 0) {
+        nextPedidos.splice(pedidoIndex, 1);
+      }
+    }
+
+    if (action.type === 'delete_product') {
+      const product = resolveProduct(nextProducts, action);
+      if (product) {
+        const productIndex = nextProducts.findIndex((entry) => entry.id === product.id);
+        if (productIndex >= 0) {
+          nextProducts.splice(productIndex, 1);
+        }
+      }
     }
 
     newTransactions.push({
