@@ -1,3 +1,5 @@
+import { useTheme } from '../../hooks/useTheme';
+
 type StockyLogoProps = {
   size?: 'sm' | 'md' | 'lg';
   className?: string;
@@ -12,9 +14,12 @@ const sizeClass: Record<NonNullable<StockyLogoProps['size']>, string> = {
 };
 
 export function StockyLogo({ size = 'md', className = '', withWordmark = false, subtitle }: StockyLogoProps) {
+  const { theme } = useTheme();
+  const logoSrc = theme === 'light' ? '/stocky-logo-light.png' : '/stocky-logo.png';
+
   const mark = (
     <img
-      src="/stocky-logo.png"
+      src={logoSrc}
       alt={withWordmark ? '' : 'Stocky'}
       width={size === 'lg' ? 56 : size === 'sm' ? 32 : 40}
       height={size === 'lg' ? 56 : size === 'sm' ? 32 : 40}
@@ -31,8 +36,8 @@ export function StockyLogo({ size = 'md', className = '', withWordmark = false, 
     <div className="flex items-center gap-3">
       {mark}
       <div className="min-w-0">
-        <p className="font-display text-sm font-bold tracking-tight text-slate-900 dark:text-white">Stocky</p>
-        {subtitle ? <p className="truncate text-xs text-slate-600 dark:text-slate-400">{subtitle}</p> : null}
+        <p className="type-brand erp-brand-gradient-text text-sm tracking-tight">Stocky</p>
+        {subtitle ? <p className="type-subtitle truncate text-xs text-[color:var(--muted)]">{subtitle}</p> : null}
       </div>
     </div>
   );

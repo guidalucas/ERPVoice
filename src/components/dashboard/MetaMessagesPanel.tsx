@@ -65,17 +65,17 @@ export function MetaMessagesPanel() {
   return (
     <article className="erp-panel">
       <div>
-        <h3 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Mensajes WhatsApp</h3>
-        <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Últimos mensajes y audios que llegaron al negocio</p>
+        <h3 className="type-title text-lg text-[color:var(--text)]">Mensajes WhatsApp</h3>
+        <p className="mt-1 text-xs text-[color:var(--muted)]">Últimos mensajes y audios que llegaron al negocio</p>
       </div>
 
       <div className="mt-4 space-y-3">
-        {isLoading && <div className="erp-card-soft text-sm text-slate-600 dark:text-slate-400">Cargando mensajes…</div>}
+        {isLoading && <div className="erp-card-soft text-sm text-[color:var(--muted)]">Cargando mensajes…</div>}
 
         {!isLoading && error && <div className="erp-card-soft text-sm text-rose-700 dark:text-rose-200">{error}</div>}
 
         {!isLoading && !error && events.length === 0 && (
-          <div className="erp-card-soft text-sm text-slate-600 dark:text-slate-400">
+          <div className="erp-card-soft text-sm text-[color:var(--muted)]">
             Todavía no llegaron mensajes por WhatsApp. Cuando un cliente escriba o mande audio, aparecen acá.
           </div>
         )}
@@ -84,32 +84,32 @@ export function MetaMessagesPanel() {
           <div key={`${event.at}-${index}`} className="erp-card-soft">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-semibold text-slate-900 dark:text-slate-100">{event.from ?? 'Número desconocido'}</p>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{formatDateTime(event.at)}</p>
+                <p className="type-subtitle text-[color:var(--text)]">{event.from ?? 'Número desconocido'}</p>
+                <p className="mt-1 text-xs text-[color:var(--muted)]">{formatDateTime(event.at)}</p>
               </div>
-              <span className="erp-chip text-emerald-700 dark:text-emerald-300">{kindLabel(event.kind)}</span>
+              <span className="erp-chip">{kindLabel(event.kind)}</span>
             </div>
 
-            <div className="mt-3 space-y-2 text-sm text-slate-700 dark:text-slate-300">
+            <div className="mt-3 space-y-2 text-sm text-[color:var(--muted)]">
               {event.body && (
                 <p>
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">Mensaje:</span> {event.body}
+                  <span className="type-subtitle text-[color:var(--text)]">Mensaje:</span> {event.body}
                 </p>
               )}
               {typeof event.numMedia === 'number' && event.numMedia > 0 && <p>Archivos: {event.numMedia}</p>}
               {event.sourceText && (
                 <p>
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">Texto usado:</span> {event.sourceText}
+                  <span className="type-subtitle text-[color:var(--text)]">Texto usado:</span> {event.sourceText}
                 </p>
               )}
               {event.transcript && (
                 <p>
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">Transcripción:</span> {event.transcript}
+                  <span className="type-subtitle text-[color:var(--text)]">Transcripción:</span> {event.transcript}
                 </p>
               )}
               {event.replyText && (
-                <p className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-3 py-2 text-slate-700 dark:text-slate-300">
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">Respuesta:</span> {event.replyText}
+                <p className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-3 py-2 text-[color:var(--muted)]">
+                  <span className="type-subtitle text-[color:var(--text)]">Respuesta:</span> {event.replyText}
                 </p>
               )}
               {event.error && (

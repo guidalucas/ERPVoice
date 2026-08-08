@@ -123,13 +123,13 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-slate-900 shadow-2xl shadow-black/70 dark:text-slate-100">
+      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h4 className="text-[1.55rem] font-bold leading-none text-slate-900 dark:text-slate-100">
+            <h4 className="type-title text-[1.55rem] leading-none text-[color:var(--text)]">
               {isIngreso ? 'Registrar ingreso' : 'Registrar venta'}
             </h4>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            <p className="mt-2 text-sm text-[color:var(--muted)]">
               {isIngreso ? 'Suma stock disponible al producto elegido.' : 'Resta del stock disponible (sin tocar reservado).'}
             </p>
           </div>
@@ -138,7 +138,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
           </button>
         </div>
 
-        <label className="mt-5 block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+        <label className="mt-5 block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
           {searchLabel}
           <input
             className="erp-input h-11 rounded-xl text-[15px]"
@@ -151,7 +151,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
 
         <div className="mt-3 max-h-56 space-y-1 overflow-y-auto rounded-xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)] p-2">
           {filteredProducts.length === 0 ? (
-            <p className="px-2 py-3 text-sm text-slate-500 dark:text-slate-400">No hay productos que coincidan.</p>
+            <p className="px-2 py-3 text-sm text-[color:var(--muted)]">No hay productos que coincidan.</p>
           ) : (
             filteredProducts.map((product) => {
               const selected = product.id === selectedProductId;
@@ -165,19 +165,19 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
                   }}
                   className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
                     selected
-                      ? 'border border-emerald-500/40 bg-emerald-500/15 text-emerald-800 dark:text-emerald-100'
-                      : 'border border-transparent text-slate-800 hover:bg-slate-900/5 dark:text-slate-200 dark:hover:bg-white/5'
+                      ? 'border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] text-[color:var(--text)]'
+                      : 'border border-transparent text-[color:var(--text)] hover:bg-[color:var(--card-hover)]'
                   }`}
                 >
-                  <span className="font-medium">{productLabel(product, preset.useVariants)}</span>
-                  <span className="shrink-0 text-xs text-slate-600 dark:text-slate-400">{product.stockAvailable} disp.</span>
+                  <span className="type-body-strong">{productLabel(product, preset.useVariants)}</span>
+                  <span className="type-metric shrink-0 text-xs text-[color:var(--muted)]">{product.stockAvailable} disp.</span>
                 </button>
               );
             })
           )}
         </div>
 
-        <label className="mt-4 block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+        <label className="mt-4 block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
           Cantidad
           <input
             className="erp-input h-11 rounded-xl text-[15px]"
@@ -193,9 +193,9 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
         </label>
 
         {selectedProduct && (
-          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+          <p className="mt-2 text-xs text-[color:var(--muted)]">
             Seleccionado:{' '}
-            <span className="text-slate-800 dark:text-slate-200">{productLabel(selectedProduct, preset.useVariants)}</span>
+            <span className="text-[color:var(--text)]">{productLabel(selectedProduct, preset.useVariants)}</span>
             {!isIngreso && ` · Disponible: ${selectedProduct.stockAvailable}`}
           </p>
         )}

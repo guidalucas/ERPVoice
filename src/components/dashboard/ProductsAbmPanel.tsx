@@ -94,7 +94,7 @@ function IconButton({
       className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition ${
         danger
           ? 'border-rose-500/20 bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 hover:text-rose-700 dark:text-rose-300 dark:hover:text-rose-200'
-          : 'border-[color:var(--border)] bg-[color:var(--overlay-soft)] text-slate-800 hover:bg-slate-900/5 hover:text-slate-900 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white'
+          : 'border-[color:var(--border)] bg-[color:var(--overlay-soft)] text-[color:var(--text)] hover:bg-slate-900/5 hover:text-[color:var(--text)] dark:hover:bg-white/10'
       }`}
     >
       <span className="pointer-events-none">{children}</span>
@@ -115,10 +115,10 @@ function ConfirmDeleteModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-slate-900 dark:text-slate-100 shadow-2xl shadow-black/70">
-        <h4 className="text-xl font-bold text-slate-900 dark:text-slate-100">Eliminar producto</h4>
-        <p className="mt-3 text-sm leading-6 text-slate-700 dark:text-slate-300">
-          Vas a eliminar <span className="font-semibold text-slate-900 dark:text-white">{productName}</span>. Esta acción no se puede deshacer.
+      <div className="w-full max-w-md rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
+        <h4 className="type-title text-xl text-[color:var(--text)]">Eliminar producto</h4>
+        <p className="mt-3 text-sm leading-6 text-[color:var(--muted)]">
+          Vas a eliminar <span className="type-subtitle text-[color:var(--text)]">{productName}</span>. Esta acción no se puede deshacer.
         </p>
         <div className="mt-6 flex items-center justify-end gap-3">
           <button type="button" onClick={onCancel} className="erp-button-secondary">
@@ -154,42 +154,42 @@ function ProductFormModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-3xl rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-slate-900 dark:text-slate-100 shadow-2xl shadow-black/70">
+      <div className="w-full max-w-3xl rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
         <div className="flex items-start justify-between gap-3">
-          <h4 className="text-[1.55rem] font-bold leading-none text-slate-900 dark:text-slate-100">{title}</h4>
+          <h4 className="type-title text-[1.55rem] leading-none text-[color:var(--text)]">{title}</h4>
           <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" onClick={onClose}>
             ×
           </button>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
             {preset.productTypeLabel}
             <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.productType} onChange={(event) => onDraftChange({ ...draft, productType: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
             {preset.productModelLabel}
             <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.productModel} onChange={(event) => onDraftChange({ ...draft, productModel: event.target.value })} />
           </label>
           {preset.useVariants && preset.variantLabel && (
-            <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+            <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
               {preset.variantLabel}
               <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.size} onChange={(event) => onDraftChange({ ...draft, size: event.target.value })} />
             </label>
           )}
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
             Precio
             <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.price} onChange={(event) => onDraftChange({ ...draft, price: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
             Stock Disponible
             <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.stockAvailable} onChange={(event) => onDraftChange({ ...draft, stockAvailable: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
             Stock Reservado
             <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.stockReserved} onChange={(event) => onDraftChange({ ...draft, stockReserved: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200 sm:col-span-2 lg:col-span-3">
+          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)] sm:col-span-2 lg:col-span-3">
             Nombre (opcional)
             <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} />
           </label>
@@ -250,7 +250,7 @@ function InlineNumber({
   }
 
   return (
-    <button type="button" className="font-semibold text-emerald-700 dark:text-emerald-300 underline-offset-2 hover:underline" onClick={onStart}>
+    <button type="button" className="erp-editable-value type-subtitle" onClick={onStart}>
       {formatDisplay ? formatDisplay(value) : value}
     </button>
   );
@@ -487,27 +487,27 @@ export function ProductsAbmPanel({
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-3">
-        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[color:var(--overlay-soft)] p-5 shadow-lg shadow-sky-950/20">
-          <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">Stock Disponible</p>
+        <article className="erp-card min-h-[144px] rounded-[1.35rem] p-5">
+          <p className="text-[15px] type-body-strong text-[color:var(--muted)]">Stock Disponible</p>
           <div className="mt-10">
-            <p className="font-display text-[2rem] font-bold tracking-tight text-sky-600 dark:text-sky-400">{stockSummary.totalAvailable}</p>
-            <p className="text-sm text-slate-600 dark:text-slate-400">unidades listas para venta</p>
+            <p className="type-metric-strong text-[2rem] text-[color:var(--text)]">{stockSummary.totalAvailable}</p>
+            <p className="text-sm text-[color:var(--muted)]">unidades listas para venta</p>
           </div>
         </article>
 
-        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[color:var(--overlay-soft)] p-5 shadow-lg shadow-sky-950/20">
-          <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">Stock Reservado</p>
+        <article className="erp-card min-h-[144px] rounded-[1.35rem] p-5">
+          <p className="text-[15px] type-body-strong text-[color:var(--muted)]">Stock Reservado</p>
           <div className="mt-10">
-            <p className="font-display text-[2rem] font-bold tracking-tight text-cyan-600 dark:text-cyan-400">{stockSummary.totalReserved}</p>
-            <p className="text-sm text-slate-600 dark:text-slate-400">unidades apartadas</p>
+            <p className="type-metric-strong text-[2rem] text-[color:var(--text)]">{stockSummary.totalReserved}</p>
+            <p className="text-sm text-[color:var(--muted)]">unidades apartadas</p>
           </div>
         </article>
 
-        <article className="min-h-[144px] rounded-[1.35rem] border border-sky-500/10 bg-[color:var(--overlay-soft)] p-5 shadow-lg shadow-sky-950/20">
-          <p className="text-[15px] font-medium text-slate-600 dark:text-slate-400">Valor Total</p>
+        <article className="erp-card min-h-[144px] rounded-[1.35rem] p-5">
+          <p className="text-[15px] type-body-strong text-[color:var(--muted)]">Valor Total</p>
           <div className="mt-10">
-            <p className="font-display text-[2rem] font-bold tracking-tight text-slate-900 dark:text-slate-100">{formatCurrency(stockSummary.totalValue)}</p>
-            <p className="text-sm text-slate-600 dark:text-slate-400">inventario valorizado</p>
+            <p className="type-metric-strong text-[2rem] text-[color:var(--text)]">{formatCurrency(stockSummary.totalValue)}</p>
+            <p className="text-sm text-[color:var(--muted)]">inventario valorizado</p>
           </div>
         </article>
       </div>
@@ -515,8 +515,8 @@ export function ProductsAbmPanel({
       <article className="erp-panel">
         <div className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] pb-4">
           <div>
-            <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Inventario</h3>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            <h3 className="type-title text-xl text-[color:var(--text)]">Inventario</h3>
+            <p className="mt-1 text-sm text-[color:var(--muted)]">
               {preset.useVariants
                 ? `Agrupados por modelo. Click en stock o precio para editar inline.`
                 : 'Lista plana por producto. Click en stock o precio para editar inline.'}
@@ -529,7 +529,7 @@ export function ProductsAbmPanel({
         </div>
 
         <div className="mt-4 flex flex-wrap items-end gap-3">
-          <label className="min-w-[12rem] flex-1 space-y-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300">
+          <label className="min-w-[12rem] flex-1 space-y-1.5 text-sm type-subtitle text-[color:var(--muted)]">
             Buscar modelo
             <input
               className="erp-input min-h-11"
@@ -544,7 +544,7 @@ export function ProductsAbmPanel({
             <button
               type="button"
               className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
-                !onlyLowStock ? 'bg-emerald-500 text-slate-950' : 'text-slate-600 dark:text-slate-300'
+                !onlyLowStock ? 'bg-[color:var(--accent)] text-white' : 'text-[color:var(--muted)]'
               }`}
               style={onlyLowStock ? { background: 'var(--overlay-soft)' } : undefined}
               onClick={() => onStockFilterChange?.('all')}
@@ -554,7 +554,7 @@ export function ProductsAbmPanel({
             <button
               type="button"
               className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
-                onlyLowStock ? 'bg-amber-400 text-slate-950' : 'text-slate-600 dark:text-slate-300'
+                onlyLowStock ? 'bg-amber-400 text-slate-950' : 'text-[color:var(--muted)]'
               }`}
               style={!onlyLowStock ? { background: 'var(--overlay-soft)' } : undefined}
               onClick={() => onStockFilterChange?.('low-stock')}
@@ -580,15 +580,15 @@ export function ProductsAbmPanel({
                       onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !current[group.key] }))}
                     >
                       <div>
-                        <p className="font-display text-lg font-bold text-slate-900 dark:text-white">{group.displayName}</p>
-                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                        <p className="type-title text-lg text-[color:var(--text)]">{group.displayName}</p>
+                        <p className="mt-1 text-sm text-[color:var(--muted)]">
                           {sizeCount} {sizeCount === 1 ? (preset.variantLabel?.toLowerCase() ?? 'variante') : variantLabelPlural} —{' '}
                           {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
                           {samePrice && group.products[0] ? ` · ${formatCurrency(group.products[0].price)}` : ''}
                           {group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? ' · stock bajo' : ''}
                         </p>
                       </div>
-                      <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                      <span className="erp-toggle-link text-xs">
                         {isExpanded ? `Ocultar ${variantLabelPlural}` : `Ver ${variantLabelPlural}`}
                       </span>
                     </button>
@@ -606,7 +606,7 @@ export function ProductsAbmPanel({
                                 key={product.id}
                                 className={`stock-chip ${low ? 'border-amber-400/30 bg-amber-400/10' : ''}`}
                               >
-                                <span className="font-semibold text-slate-800 dark:text-slate-200">{product.size ?? '-'}:</span>
+                                <span className="type-subtitle text-[color:var(--text)]">{product.size ?? '-'}:</span>
                                 <InlineNumber
                                   value={product.stockAvailable}
                                   editing={Boolean(isEditingStock)}
@@ -616,7 +616,7 @@ export function ProductsAbmPanel({
                                   onCommit={() => void commitInlineEdit()}
                                   onCancel={() => setInlineEdit(null)}
                                 />
-                                <span className="text-slate-600">·</span>
+                                <span className="text-[color:var(--muted)]">·</span>
                                 <InlineNumber
                                   value={product.price}
                                   editing={Boolean(isEditingPrice)}
@@ -658,15 +658,15 @@ export function ProductsAbmPanel({
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="font-display text-lg font-bold text-slate-900 dark:text-white">{product.name}</p>
-                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                        <p className="type-title text-lg text-[color:var(--text)]">{product.name}</p>
+                        <p className="mt-1 text-sm text-[color:var(--muted)]">
                           {meta || 'Sin categoría'}
                           {low ? ' · stock bajo' : ''}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="stock-chip">
-                          <span className="font-semibold text-slate-800 dark:text-slate-200">Stock:</span>
+                          <span className="type-subtitle text-[color:var(--text)]">Stock:</span>
                           <InlineNumber
                             value={product.stockAvailable}
                             editing={Boolean(isEditingStock)}
@@ -676,7 +676,7 @@ export function ProductsAbmPanel({
                             onCommit={() => void commitInlineEdit()}
                             onCancel={() => setInlineEdit(null)}
                           />
-                          <span className="text-slate-600">·</span>
+                          <span className="text-[color:var(--muted)]">·</span>
                           <InlineNumber
                             value={product.price}
                             editing={Boolean(isEditingPrice)}
@@ -701,9 +701,9 @@ export function ProductsAbmPanel({
                 );
               })}
 
-          {products.length === 0 && <div className="px-1 py-6 text-sm text-slate-600 dark:text-slate-400">No hay productos cargados todavía.</div>}
+          {products.length === 0 && <div className="px-1 py-6 text-sm text-[color:var(--muted)]">No hay productos cargados todavía.</div>}
           {products.length > 0 && (preset.useVariants ? filteredGroups.length === 0 : flatProducts.length === 0) && (
-            <div className="rounded-2xl border border-dashed border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-8 text-center text-sm text-slate-600 dark:text-slate-400">
+            <div className="rounded-2xl border border-dashed border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-8 text-center text-sm text-[color:var(--muted)]">
               {onlyLowStock
                 ? 'No hay productos con stock bajo o agotado.'
                 : `No se encontraron productos para '${searchQuery.trim()}'`}

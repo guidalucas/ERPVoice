@@ -36,7 +36,7 @@ export function WhatsAppSimulator() {
                 <StockyLogo size="sm" className="rounded-full" />
               </div>
               <div>
-                <h2 className="text-[1.05rem] font-bold leading-tight">Stocky</h2>
+                <h2 className="type-brand text-[1.05rem] leading-tight">Stocky</h2>
                 <p className="text-xs font-medium text-white/85">En línea</p>
               </div>
             </div>
@@ -136,7 +136,7 @@ export function WhatsAppSimulator() {
           type="button"
           onClick={() => setIsOpen(true)}
           aria-label="Abrir simulador WhatsApp"
-          className="group flex h-14 w-14 items-center justify-center rounded-full border border-emerald-400/20 bg-emerald-500 text-white shadow-glow transition hover:scale-105 hover:bg-emerald-400"
+          className="group flex h-14 w-14 items-center justify-center rounded-full border border-[color:var(--accent-border)] bg-[color:var(--accent)] text-white shadow-glow transition hover:scale-105 hover:bg-[color:var(--accent-hover)]"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7 fill-current text-white transition group-hover:text-white">
             <path d="M12 2a9.98 9.98 0 0 0-8.6 15.02L2 22l5.15-1.34A10 10 0 1 0 12 2zm0 18a7.96 7.96 0 0 1-4.07-1.12l-.29-.17-3.06.8.82-2.98-.19-.31A8 8 0 1 1 12 20zm4.64-5.8c-.25-.12-1.47-.72-1.7-.8-.23-.08-.4-.12-.57.12-.17.25-.66.8-.8.97-.14.17-.3.19-.55.06-.25-.12-1.05-.39-2-1.25-.74-.66-1.24-1.48-1.39-1.73-.15-.25-.02-.38.11-.5.11-.11.25-.3.37-.45.12-.15.16-.25.24-.42.08-.17.04-.32-.02-.45-.06-.12-.57-1.36-.78-1.86-.2-.48-.41-.41-.57-.42-.15-.01-.32-.01-.49-.01-.17 0-.45.06-.68.32-.23.25-.88.86-.88 2.1 0 1.24.9 2.44 1.02 2.61.12.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.08.15-1.18-.06-.1-.23-.16-.48-.29z" />

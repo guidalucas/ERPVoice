@@ -80,10 +80,11 @@ function NavButton({
   onClick: () => void;
   variant: 'sidebar' | 'bottom';
 }) {
-  const baseClass = variant === 'sidebar' ? 'dashboard-nav-item w-full' : 'dashboard-bottom-nav-item flex-1 min-w-0';
+  const baseClass = variant === 'sidebar' ? 'dashboard-nav-item w-full relative' : 'dashboard-bottom-nav-item flex-1 min-w-0 relative';
   const activeClass = isActive
-    ? 'border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-    : 'border-transparent text-slate-500 hover:bg-slate-900/5 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200';
+    ? 'border-transparent bg-[color:var(--card-hover)] text-[color:var(--text)]'
+    : 'border-transparent text-[color:var(--muted)] hover:bg-[color:var(--card-hover)] hover:text-[color:var(--text)]';
+  const iconClass = isActive ? 'text-[color:var(--accent)]' : '';
 
   return (
     <button
@@ -92,7 +93,13 @@ function NavButton({
       className={`${baseClass} ${activeClass}`}
       onClick={onClick}
     >
-      <span className="shrink-0">{item.icon}</span>
+      {isActive && variant === 'sidebar' && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[color:var(--accent)]"
+        />
+      )}
+      <span className={`shrink-0 ${iconClass}`}>{item.icon}</span>
       <span className={variant === 'bottom' ? 'truncate text-[11px] font-semibold' : 'font-semibold'}>{item.label}</span>
     </button>
   );

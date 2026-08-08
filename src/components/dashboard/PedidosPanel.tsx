@@ -14,7 +14,7 @@ const estadoLabel: Record<PedidoEstado, string> = {
 const estadoClass: Record<PedidoEstado, string> = {
   pendiente: 'border-amber-400/30 bg-amber-400/10 text-amber-800 dark:text-amber-200',
   conseguido: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-800 dark:text-emerald-200',
-  descartado: 'border-slate-400/30 bg-slate-400/10 text-slate-700 dark:text-slate-300',
+  descartado: 'border-slate-400/30 bg-slate-400/10 text-[color:var(--muted)]',
 };
 
 const productOptionLabel = (
@@ -152,7 +152,7 @@ export function PedidosPanel() {
 
   const filterActiveClass = (value: PedidoEstado | 'todos') => {
     if (estadoFilter !== value) {
-      return 'text-slate-600 hover:bg-slate-900/5 dark:text-slate-300 dark:hover:bg-white/10';
+      return 'text-[color:var(--muted)] hover:bg-slate-900/5 dark:hover:bg-white/10';
     }
     if (value === 'pendiente') {
       return 'bg-amber-400 text-slate-950';
@@ -172,8 +172,8 @@ export function PedidosPanel() {
     <article className="erp-panel space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">Pedidos para proveedor</h3>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          <h3 className="type-title text-xl text-[color:var(--text)]">Pedidos para proveedor</h3>
+          <p className="mt-1 text-sm text-[color:var(--muted)]">
             {preset.useVariants && preset.variantLabel
               ? `Agrupados por producto y ${preset.variantLabel.toLowerCase()}. Cambiar estado no mueve stock.`
               : 'Agrupados por producto. Cambiar estado no mueve stock.'}
@@ -186,9 +186,9 @@ export function PedidosPanel() {
 
       {formOpen && (
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Cargar pedido manual</p>
+          <p className="text-sm type-subtitle text-[color:var(--text)]">Cargar pedido manual</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+            <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
               Cliente existente
               <select
                 className="erp-input min-h-11"
@@ -208,7 +208,7 @@ export function PedidosPanel() {
                 ))}
               </select>
             </label>
-            <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+            <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
               O nuevo cliente
               <input
                 className="erp-input min-h-11"
@@ -218,7 +218,7 @@ export function PedidosPanel() {
                 placeholder="Nombre"
               />
             </label>
-            <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200 sm:col-span-2">
+            <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)] sm:col-span-2">
               {productFieldLabel}
               <select className="erp-input min-h-11" value={productId} onChange={(event) => setProductId(event.target.value)}>
                 <option value="">Elegir…</option>
@@ -229,7 +229,7 @@ export function PedidosPanel() {
                 ))}
               </select>
             </label>
-            <label className="block space-y-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
+            <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
               Cantidad
               <input
                 className="erp-input min-h-11"
@@ -293,13 +293,13 @@ export function PedidosPanel() {
               <div key={group.key} className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="font-display text-lg font-bold text-slate-900 dark:text-white">
+                    <p className="type-title text-lg text-[color:var(--text)]">
                       {group.producto}
                       {preset.useVariants && group.talle ? (
-                        <span className="ml-2 text-base font-semibold text-emerald-700 dark:text-emerald-300">— {group.talle}</span>
+                        <span className="type-subtitle ml-2 text-base text-[color:var(--muted)]">— {group.talle}</span>
                       ) : null}
                     </p>
-                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                    <p className="mt-1 text-sm text-[color:var(--muted)]">
                       {group.totalQty} pedido{group.totalQty === 1 ? '' : 's'} ({names.join(', ')})
                     </p>
                   </div>
@@ -313,8 +313,8 @@ export function PedidosPanel() {
                       style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}
                     >
                       <div>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{clientsById[pedido.clienteId]?.name ?? 'Cliente'}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <p className="text-sm type-subtitle text-[color:var(--text)]">{clientsById[pedido.clienteId]?.name ?? 'Cliente'}</p>
+                        <p className="text-xs text-[color:var(--muted)]">
                           x{pedido.qty} · {new Date(pedido.fechaPedido).toLocaleString('es-AR')}
                           {pedido.notas ? ` · ${pedido.notas}` : ''}
                         </p>
@@ -331,7 +331,7 @@ export function PedidosPanel() {
                               type="button"
                               disabled={updatingId === pedido.id}
                               onClick={() => void changeEstado(pedido.id, estado)}
-                              className="min-h-10 rounded-full border px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-900/5 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-white/10"
+                              className="min-h-10 rounded-full border px-3 py-1.5 text-[11px] font-semibold text-[color:var(--muted)] transition hover:bg-slate-900/5 disabled:opacity-50 dark:hover:bg-white/10"
                               style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
                             >
                               {estadoLabel[estado]}
