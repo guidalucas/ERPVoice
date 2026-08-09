@@ -1,6 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
-import { buildMetaVerificationResponse, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
+import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { getBusinessCategoryPreset } from './businessCategories.js';
 import {
   createAuthOtpChallenge,
@@ -703,6 +703,18 @@ const handleMetaWebhook = async (req, res) => {
         } catch (error) {
           console.warn('[MetaWebhook] business category lookup failed:', error instanceof Error ? error.message : error);
           return null;
+        }
+      },
+      resolveConversationHistory: async (fromNumber, messageId) => {
+        try {
+          const recentEvents = await getMetaEvents(8, fromNumber);
+          return buildConversationTurnsFromEvents(recentEvents, {
+            excludeMessageId: messageId,
+            maxTurns: 3,
+          });
+        } catch (error) {
+          console.warn('[MetaWebhook] conversation history lookup failed:', error instanceof Error ? error.message : error);
+          return [];
         }
       },
     });

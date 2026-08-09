@@ -12,8 +12,48 @@ const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 const DEFAULT_TRANSCRIPTION_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-large-v3-turbo';
 const DEFAULT_META_GRAPH_API_VERSION = 'v21.0';
+const MAX_CONVERSATION_TURNS = 3;
+const MAX_CONTEXT_REPLY_CHARS = 450;
 
-const buildPrompt = (text, preset) => `
+const truncateText = (value, maxChars) => {
+  const text = String(value ?? '').trim();
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxChars - 1)).trim()}…`;
+};
+
+const formatConversationContext = (conversationTurns = []) => {
+  if (!Array.isArray(conversationTurns) || !conversationTurns.length) {
+    return '';
+  }
+
+  const lines = conversationTurns
+    .map((turn) => {
+      const role = turn?.role === 'assistant' ? 'Stocky' : 'Usuario';
+      const text = String(turn?.text ?? '').trim();
+      if (!text) {
+        return null;
+      }
+      return `${role}: ${text}`;
+    })
+    .filter(Boolean);
+
+  if (!lines.length) {
+    return '';
+  }
+
+  return `
+Contexto reciente de la conversacion (usa esto para interpretar mensajes cortos o de seguimiento):
+${lines.join('\n')}
+- Si el mensaje actual es un seguimiento ("y las de river?", "de argentina?", "y en talle M?", "a 18 c/u"), completa la accion reusando intent/productType/campos del contexto.
+- Ejemplo: contexto consulto stock de "Camiseta Boca" y el usuario dice "y las de river?" -> query_stock de "Camiseta River".
+- Ejemplo: contexto consulto stock de "Camiseta" y dice "de argentina?" -> query_stock de "Camiseta Argentina".
+- No ignores el mensaje actual: el contexto solo completa lo que falta.
+`.trim();
+};
+
+const buildPrompt = (text, preset, conversationTurns = []) => `
 Sos un analista de operaciones para Stocky, un sistema de stock y pedidos (de clientes o propios al proveedor) para un negocio.
 Convertí la frase del usuario en un JSON válido con esta estructura exacta:
 {
@@ -41,11 +81,13 @@ Convertí la frase del usuario en un JSON válido con esta estructura exacta:
 
 ${buildCategoryPromptContext(preset)}
 
+${formatConversationContext(conversationTurns)}
+
 Reglas generales:
 - Respondé solo JSON, sin markdown ni texto extra.
 - Si faltan datos críticos, llená missingFields.
 - Si detectás múltiples acciones, intent debe ser "mixed".
-- sourceText debe ser el texto original.
+- sourceText debe ser el texto original del mensaje actual (no el del contexto).
 - confidence debe estar entre 0 y 1.
 - Nunca devuelvas acciones con qty 0.
 - Si el texto indica que un cliente te pagó dinero, usá payment_received y no add_debt.
@@ -71,7 +113,7 @@ Reglas generales:
 - "borrá / eliminá el pedido de X" -> delete_pedido. "borrá el producto X" -> delete_product.
 - update_product y update_pedido NO crean registros nuevos: solo modifican existentes.
 
-Texto del usuario:
+Texto del usuario (mensaje actual):
 ${text}
 `;
 
@@ -889,7 +931,90 @@ const extractMultipleActionsFromText = (text) => {
   return actions;
 };
 
-const parseLocalText = (text) => {
+const findLastActionOfType = (conversationTurns, type) => {
+  if (!Array.isArray(conversationTurns)) {
+    return null;
+  }
+
+  for (let index = conversationTurns.length - 1; index >= 0; index -= 1) {
+    const actions = Array.isArray(conversationTurns[index]?.actions) ? conversationTurns[index].actions : [];
+    for (let actionIndex = actions.length - 1; actionIndex >= 0; actionIndex -= 1) {
+      if (actions[actionIndex]?.type === type) {
+        return actions[actionIndex];
+      }
+    }
+  }
+
+  return null;
+};
+
+const tryResolveQueryStockFollowUp = (text, conversationTurns = []) => {
+  const cleaned = String(text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[¿?¡!.,;:]+$/g, '')
+    .trim();
+
+  if (!cleaned || cleaned.length > 60) {
+    return null;
+  }
+
+  const normalized = normalizeText(cleaned);
+  if (
+    /\b(?:compre|compra|vendi|vendiste|reserve|reserv|recib|ingreso|ingresaron|pedido|actualiza|borra|elimina|cuanto|cuanta|cuantas|cuantos|stock|tengo|hay|vale|cuesta|precio)\b/i.test(
+      normalized,
+    )
+  ) {
+    return null;
+  }
+
+  const followUpMatch = cleaned.match(/^(?:y\s+)?(?:(?:las?|los?|el|la)\s+)?(?:de\s+)?(.+)$/iu);
+  if (!followUpMatch?.[1]) {
+    return null;
+  }
+
+  const fragment = followUpMatch[1].trim();
+  if (!fragment || fragment.length < 2) {
+    return null;
+  }
+
+  const lastQuery = findLastActionOfType(conversationTurns, 'query_stock');
+  if (!lastQuery?.productName && !lastQuery?.productType) {
+    return null;
+  }
+
+  const productType = lastQuery.productType || undefined;
+  const productModel = titleCase(fragment);
+  const productName = composeProductName({
+    productType,
+    productModel,
+    fallback: productType ? `${productType} ${productModel}` : productModel,
+  });
+
+  return buildPayload(
+    text,
+    [
+      {
+        type: 'query_stock',
+        productName,
+        ...(productType ? { productType } : {}),
+        productModel,
+      },
+    ],
+    {
+      intent: 'query_stock',
+      confidence: 0.82,
+      requiresConfirmation: false,
+    },
+  );
+};
+
+const parseLocalText = (text, conversationTurns = []) => {
+  const followUp = tryResolveQueryStockFollowUp(text, conversationTurns);
+  if (followUp) {
+    return followUp;
+  }
+
   const actions = extractMultipleActionsFromText(text);
   if (!actions.length) {
     return null;
@@ -897,6 +1022,56 @@ const parseLocalText = (text) => {
 
   applyPriceFromText(actions, text);
   return buildPayload(text, actions);
+};
+
+/**
+ * Build short conversation turns from saved Meta events for prompt context.
+ * Each event contributes user text + bot reply (1 turn).
+ */
+export const buildConversationTurnsFromEvents = (events, { excludeMessageId = null, maxTurns = MAX_CONVERSATION_TURNS } = {}) => {
+  if (!Array.isArray(events) || !events.length) {
+    return [];
+  }
+
+  const chronological = [...events]
+    .filter((event) => {
+      if (!event) {
+        return false;
+      }
+      if (excludeMessageId && event.id === excludeMessageId) {
+        return false;
+      }
+      const userText = String(event.sourceText || event.transcript || '').trim();
+      return Boolean(userText);
+    })
+    .sort((left, right) => new Date(left.at).getTime() - new Date(right.at).getTime())
+    .slice(-Math.max(1, maxTurns));
+
+  const turns = [];
+
+  for (const event of chronological) {
+    const userText = String(event.sourceText || event.transcript || '').trim();
+    const actions = Array.isArray(event.actions) ? event.actions : [];
+
+    if (userText) {
+      turns.push({
+        role: 'user',
+        text: userText,
+        actions,
+      });
+    }
+
+    const replyText = String(event.replyText || '').trim();
+    if (replyText && !/^procesando tu mensaje/i.test(replyText)) {
+      turns.push({
+        role: 'assistant',
+        text: truncateText(replyText, MAX_CONTEXT_REPLY_CHARS),
+        actions,
+      });
+    }
+  }
+
+  return turns;
 };
 
 const transcribeMetaAudioId = async (audioId) => {
@@ -970,11 +1145,15 @@ const transcribeMetaAudioId = async (audioId) => {
   return responseText.trim();
 };
 
-const parseVoiceTextWithModel = async (text, preset = getBusinessCategoryPreset('general')) => {
+const parseVoiceTextWithModel = async (
+  text,
+  preset = getBusinessCategoryPreset('general'),
+  conversationTurns = [],
+) => {
   const { apiKey, model, modelEndpoint } = readEnv();
 
   if (!apiKey) {
-    return parseLocalText(text);
+    return parseLocalText(text, conversationTurns);
   }
 
   const requestBody = {
@@ -987,7 +1166,7 @@ const parseVoiceTextWithModel = async (text, preset = getBusinessCategoryPreset(
       },
       {
         role: 'user',
-        content: buildPrompt(text, preset),
+        content: buildPrompt(text, preset, conversationTurns),
       },
     ],
   };
@@ -1002,14 +1181,14 @@ const parseVoiceTextWithModel = async (text, preset = getBusinessCategoryPreset(
   });
 
   if (!response.ok) {
-    return parseLocalText(text);
+    return parseLocalText(text, conversationTurns);
   }
 
   const data = await response.json();
   const content = extractContent(data);
 
   if (!content) {
-    return parseLocalText(text);
+    return parseLocalText(text, conversationTurns);
   }
 
   try {
@@ -1024,7 +1203,7 @@ const parseVoiceTextWithModel = async (text, preset = getBusinessCategoryPreset(
     }
 
     if (!normalizedActions.length) {
-      return parseLocalText(text);
+      return parseLocalText(text, conversationTurns);
     }
 
     return buildPayload(sourceText, normalizedActions, {
@@ -1035,7 +1214,7 @@ const parseVoiceTextWithModel = async (text, preset = getBusinessCategoryPreset(
       suggestedPhrases: Array.isArray(parsed.suggestedPhrases) ? parsed.suggestedPhrases.filter((value) => typeof value === 'string') : undefined,
     });
   } catch {
-    return parseLocalText(text);
+    return parseLocalText(text, conversationTurns);
   }
 };
 
@@ -1150,10 +1329,14 @@ const extractMetaMessages = (body) => {
   return messages;
 };
 
-const processMetaMessage = async (metaMessage, preset = getBusinessCategoryPreset('general')) => {
+const processMetaMessage = async (
+  metaMessage,
+  preset = getBusinessCategoryPreset('general'),
+  conversationTurns = [],
+) => {
   if (metaMessage.messageType === 'audio' && metaMessage.audioId) {
     const transcript = await transcribeMetaAudioId(metaMessage.audioId);
-    const parsed = await parseVoiceTextWithModel(transcript, preset);
+    const parsed = await parseVoiceTextWithModel(transcript, preset, conversationTurns);
 
     return {
       ...metaMessage,
@@ -1167,7 +1350,7 @@ const processMetaMessage = async (metaMessage, preset = getBusinessCategoryPrese
   }
 
   if (metaMessage.textBody) {
-    const parsed = await parseVoiceTextWithModel(metaMessage.textBody, preset);
+    const parsed = await parseVoiceTextWithModel(metaMessage.textBody, preset, conversationTurns);
 
     return {
       ...metaMessage,
@@ -1191,7 +1374,7 @@ const processMetaMessage = async (metaMessage, preset = getBusinessCategoryPrese
   };
 };
 
-export const processMetaWebhook = async (body, { resolveBusinessCategory } = {}) => {
+export const processMetaWebhook = async (body, { resolveBusinessCategory, resolveConversationHistory } = {}) => {
   if (!body || body.object !== 'whatsapp_business_account') {
     return [];
   }
@@ -1209,8 +1392,17 @@ export const processMetaWebhook = async (body, { resolveBusinessCategory } = {})
       }
     }
 
+    let conversationTurns = [];
+    if (typeof resolveConversationHistory === 'function' && message.fromNumber) {
+      try {
+        conversationTurns = (await resolveConversationHistory(message.fromNumber, message.messageId)) ?? [];
+      } catch (error) {
+        console.warn('[MetaWebhook] failed to resolve conversation history:', error instanceof Error ? error.message : error);
+      }
+    }
+
     const preset = getBusinessCategoryPreset(categoryId);
-    results.push(await processMetaMessage(message, preset));
+    results.push(await processMetaMessage(message, preset, conversationTurns));
   }
 
   return results;
@@ -1291,5 +1483,6 @@ export const parseVoiceText = async (text, options = {}) => {
   }
 
   const preset = getBusinessCategoryPreset(options.businessCategory);
-  return parseVoiceTextWithModel(trimmed, preset);
+  const conversationTurns = Array.isArray(options.conversationTurns) ? options.conversationTurns : [];
+  return parseVoiceTextWithModel(trimmed, preset, conversationTurns);
 };
