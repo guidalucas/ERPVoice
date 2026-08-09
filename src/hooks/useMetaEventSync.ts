@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
-import type { Client, Pedido, Product, Transaction } from '../domain/types';
+import type { Client, Pedido, Product, Proveedor, Transaction } from '../domain/types';
 import { useAppStore } from '../store/AppStore';
 import { requestJson } from '../services/apiClient';
 
 type PersistedStateSnapshot = {
   products: Product[];
   clients: Client[];
+  proveedores?: Proveedor[];
   pedidos?: Pedido[];
   transactions: Transaction[];
 };
@@ -29,6 +30,7 @@ export const useMetaEventSync = () => {
         const normalized = {
           products: snapshot.products,
           clients: snapshot.clients,
+          proveedores: snapshot.proveedores ?? [],
           pedidos: snapshot.pedidos ?? [],
           transactions: snapshot.transactions,
         };

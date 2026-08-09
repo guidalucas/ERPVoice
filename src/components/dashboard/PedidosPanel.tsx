@@ -30,18 +30,33 @@ const productOptionLabel = (
 
 export function PedidosPanel() {
   const preset = useBusinessCategoryPreset();
-  const { pedidos, clients, products, createPedidoRecord, createClientRecord, updatePedidoRecord } = useInventory();
+  const {
+    pedidos,
+    clients,
+    proveedores,
+    products,
+    createPedidoRecord,
+    createClientRecord,
+    createProveedorRecord,
+    updatePedidoRecord,
+  } = useInventory();
   const [estadoFilter, setEstadoFilter] = useState<PedidoEstado | 'todos'>('pendiente');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [clienteId, setClienteId] = useState('');
   const [newClientName, setNewClientName] = useState('');
+  const [proveedorId, setProveedorId] = useState('');
+  const [newProveedorName, setNewProveedorName] = useState('');
   const [productId, setProductId] = useState('');
   const [qtyText, setQtyText] = useState('1');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const clientsById = useMemo(() => Object.fromEntries(clients.map((client) => [client.id, client])), [clients]);
+  const proveedoresById = useMemo(
+    () => Object.fromEntries(proveedores.map((proveedor) => [proveedor.id, proveedor])),
+    [proveedores],
+  );
 
   const sortedProducts = useMemo(
     () =>
@@ -97,6 +112,8 @@ export function PedidosPanel() {
   const resetForm = () => {
     setClienteId('');
     setNewClientName('');
+    setProveedorId('');
+    setNewProveedorName('');
     setProductId('');
     setQtyText('1');
     setFormError(null);
@@ -129,8 +146,15 @@ export function PedidosPanel() {
         resolvedClientId = created.id;
       }
 
+      let resolvedProveedorId: string | null = proveedorId || null;
+      if (!resolvedProveedorId && newProveedorName.trim()) {
+        const created = await createProveedorRecord({ name: newProveedorName.trim() });
+        resolvedProveedorId = created.id;
+      }
+
       await createPedidoRecord({
         clienteId: resolvedClientId,
+        proveedorId: resolvedProveedorId,
         producto: selectedProduct.name,
         productType: selectedProduct.productType,
         productModel: selectedProduct.productModel,
@@ -175,8 +199,8 @@ export function PedidosPanel() {
           <h3 className="type-title text-xl text-[color:var(--text)]">Pedidos para proveedor</h3>
           <p className="mt-1 text-sm text-[color:var(--muted)]">
             {preset.useVariants && preset.variantLabel
-              ? `Agrupados por producto y ${preset.variantLabel.toLowerCase()}. Cambiar estado no mueve stock.`
-              : 'Agrupados por producto. Cambiar estado no mueve stock.'}
+              ? `Agrupados por producto y ${preset.variantLabel.toLowerCase()}. Marcar como conseguido suma stock; revertirlo lo resta.`
+              : 'Agrupados por producto. Marcar como conseguido suma stock; revertirlo lo resta.'}
           </p>
         </div>
         <button type="button" className="erp-button-primary min-h-11" onClick={() => setFormOpen((open) => !open)}>
@@ -215,6 +239,36 @@ export function PedidosPanel() {
                 value={newClientName}
                 disabled={Boolean(clienteId)}
                 onChange={(event) => setNewClientName(event.target.value)}
+                placeholder="Nombre"
+              />
+            </label>
+            <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
+              Proveedor (opcional)
+              <select
+                className="erp-input min-h-11"
+                value={proveedorId}
+                onChange={(event) => {
+                  setProveedorId(event.target.value);
+                  if (event.target.value) {
+                    setNewProveedorName('');
+                  }
+                }}
+              >
+                <option value="">Sin proveedor…</option>
+                {proveedores.map((proveedor) => (
+                  <option key={proveedor.id} value={proveedor.id}>
+                    {proveedor.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
+              O nuevo proveedor
+              <input
+                className="erp-input min-h-11"
+                value={newProveedorName}
+                disabled={Boolean(proveedorId)}
+                onChange={(event) => setNewProveedorName(event.target.value)}
                 placeholder="Nombre"
               />
             </label>
@@ -288,6 +342,10 @@ export function PedidosPanel() {
             const names = group.pedidos
               .map((pedido) => clientsById[pedido.clienteId]?.name ?? 'Cliente')
               .filter((name, index, arr) => arr.indexOf(name) === index);
+            const proveedorNames = group.pedidos
+              .map((pedido) => (pedido.proveedorId ? proveedoresById[pedido.proveedorId]?.name : null))
+              .filter((name): name is string => Boolean(name))
+              .filter((name, index, arr) => arr.indexOf(name) === index);
 
             return (
               <div key={group.key} className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
@@ -301,6 +359,7 @@ export function PedidosPanel() {
                     </p>
                     <p className="mt-1 text-sm text-[color:var(--muted)]">
                       {group.totalQty} pedido{group.totalQty === 1 ? '' : 's'} ({names.join(', ')})
+                      {proveedorNames.length > 0 ? ` · proveedor: ${proveedorNames.join(', ')}` : ''}
                     </p>
                   </div>
                 </div>
@@ -316,6 +375,7 @@ export function PedidosPanel() {
                         <p className="text-sm type-subtitle text-[color:var(--text)]">{clientsById[pedido.clienteId]?.name ?? 'Cliente'}</p>
                         <p className="text-xs text-[color:var(--muted)]">
                           x{pedido.qty} · {new Date(pedido.fechaPedido).toLocaleString('es-AR')}
+                          {pedido.proveedorId ? ` · ${proveedoresById[pedido.proveedorId]?.name ?? 'Proveedor'}` : ''}
                           {pedido.notas ? ` · ${pedido.notas}` : ''}
                         </p>
                       </div>

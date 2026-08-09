@@ -16,11 +16,18 @@ export interface Client {
   notas?: string | null;
 }
 
+export interface Proveedor {
+  id: string;
+  name: string;
+  notas?: string | null;
+}
+
 export type PedidoEstado = 'pendiente' | 'conseguido' | 'descartado';
 
 export interface Pedido {
   id: string;
   clienteId: string;
+  proveedorId?: string | null;
   producto: string;
   productType?: string | null;
   productModel?: string | null;
@@ -84,6 +91,7 @@ export type ParsedAction =
   | {
       type: 'client_order';
       clientName?: string;
+      proveedorName?: string;
       productName: string;
       productType?: string;
       productModel?: string;
@@ -171,6 +179,7 @@ export interface ChatMessage {
 export interface AppState {
   products: Product[];
   clients: Client[];
+  proveedores: Proveedor[];
   pedidos: Pedido[];
   transactions: Transaction[];
   chatMessages: ChatMessage[];

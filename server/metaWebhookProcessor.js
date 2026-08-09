@@ -68,7 +68,7 @@ Convertí la frase del usuario en un JSON válido con esta estructura exacta:
     { "type": "sell", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number, "price"?: number },
     { "type": "add_debt", "clientName": string, "amount": number, "productType"?: string, "productModel"?: string, "size"?: string, "productName"?: string, "qty"?: number },
     { "type": "payment_received", "clientName": string, "amount": number },
-    { "type": "client_order", "clientName"?: string, "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty"?: number },
+    { "type": "client_order", "clientName"?: string, "proveedorName"?: string, "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty"?: number },
     { "type": "query_stock", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string },
     { "type": "update_product", "productName": string, "productType"?: string, "productModel"?: string, "size"?: string, "price"?: number, "stockAvailable"?: number },
     { "type": "update_pedido", "productName": string, "qty"?: number, "size"?: string, "estado"?: "pendiente" | "conseguido" | "descartado", "clientName"?: string },
@@ -97,6 +97,7 @@ Reglas generales:
 - Si la frase dice "para X" en una reserva, separá X como clientName y dejá solo el producto en productName.
 - Usá client_order para pedidos: si un cliente te pidió algo ("Juan me pidió…") O si vos tenés que pedir/encargar al proveedor ("pedido: …", "tengo que pedir …", lista bajo "pedido:"). NO uses reserve_stock ni sell. Un pedido NO mueve stock.
 - client_order requiere productName. clientName es OPCIONAL: si no hay cliente, omitilo o usá "". qty default 1.
+- Si mencionás el proveedor ("pedido del proveedor Acme", "encargar a Distribuidora X"), incluí proveedorName.
 - Si el texto es una lista (una línea por producto) bajo "pedido:", creá un client_order por cada ítem.
 - Si dice "cantidad N" al final, usá ese N como qty.
 - Diferenciá claramente: "compré / compraron / entraron / llegaron / ingreso / ingresaron / recibí" = add_stock; "me pidió / pidió / quiere / encargó / pedido: / tengo que pedir" = client_order.
@@ -505,6 +506,7 @@ const parseAction = (value) => {
     const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
     const orderQty = Number.isFinite(qty) && qty > 0 ? qty : 1;
     const rawClient = typeof value.clientName === 'string' ? value.clientName.trim() : '';
+    const rawProveedor = typeof value.proveedorName === 'string' ? value.proveedorName.trim() : '';
 
     if (!productName) {
       return null;
@@ -513,6 +515,7 @@ const parseAction = (value) => {
     return {
       type: 'client_order',
       ...(rawClient ? { clientName: rawClient } : {}),
+      ...(rawProveedor ? { proveedorName: rawProveedor } : {}),
       productName,
       productType,
       productModel,
@@ -1238,10 +1241,11 @@ const formatAction = (action, preset = getBusinessCategoryPreset('general')) => 
   if (action.type === 'client_order') {
     const qty = action.qty && action.qty > 0 ? action.qty : 1;
     const sizeLabel = action.size ? ` ${formatVariantRef(preset, action.size)}` : '';
+    const proveedorLabel = action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
     if (action.clientName?.trim()) {
-      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
     }
-    return `Pedido: ${qty} ${action.productName}${sizeLabel}`;
+    return `Pedido: ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
   }
 
   if (action.type === 'query_stock') {

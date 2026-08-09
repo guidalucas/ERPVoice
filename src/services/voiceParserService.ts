@@ -513,6 +513,7 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
     const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
     const orderQty = Number.isNaN(qty) || qty <= 0 ? 1 : qty;
     const rawClient = typeof value.clientName === 'string' ? value.clientName.trim() : '';
+    const rawProveedor = typeof value.proveedorName === 'string' ? value.proveedorName.trim() : '';
 
     if (!productName) {
       return null;
@@ -521,6 +522,7 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
     return {
       type: 'client_order',
       ...(rawClient ? { clientName: rawClient } : {}),
+      ...(rawProveedor ? { proveedorName: rawProveedor } : {}),
       productName,
       productType,
       productModel,
@@ -659,15 +661,17 @@ export class VoiceParserService {
       return productText ? { productText, qty } : null;
     };
 
-    const pushPedido = (productText: string, qty: number, clientName?: string) => {
+    const pushPedido = (productText: string, qty: number, clientName?: string, proveedorName?: string) => {
       const productDescriptor = parseProductDescriptor(productText);
       if (!productDescriptor.productName) {
         return;
       }
       const normalizedClient = clientName?.trim();
+      const normalizedProveedor = proveedorName?.trim();
       actions.push({
         type: 'client_order',
         ...(normalizedClient ? { clientName: normalizedClient } : {}),
+        ...(normalizedProveedor ? { proveedorName: normalizedProveedor } : {}),
         productName: productDescriptor.productName,
         productType: productDescriptor.productType,
         productModel: productDescriptor.productModel,
@@ -676,12 +680,36 @@ export class VoiceParserService {
       });
       suggested.push(
         normalizedClient
-          ? `${normalizedClient} pidió ${qty} ${productDescriptor.productName}`
-          : `pedido ${qty} ${productDescriptor.productName}`,
+          ? `${normalizedClient} pidió ${qty} ${productDescriptor.productName}${normalizedProveedor ? ` · proveedor ${normalizedProveedor}` : ''}`
+          : `pedido ${qty} ${productDescriptor.productName}${normalizedProveedor ? ` · proveedor ${normalizedProveedor}` : ''}`,
       );
     };
 
     for (const fragment of splitCompoundText(normalized)) {
+      const proveedorPedidoMatch = fragment.match(
+        /^(?:pedido|pedidos)\s+(?:del?|al?|para(?:\s+el)?)\s+proveedor\s+(.+?)\s*:\s*(.+)$/i,
+      );
+      if (proveedorPedidoMatch) {
+        const proveedorName = proveedorPedidoMatch[1]!.trim();
+        const parsed = parseQtyAndProductText(proveedorPedidoMatch[2]!.trim());
+        if (proveedorName && parsed) {
+          pushPedido(parsed.productText, parsed.qty, undefined, proveedorName);
+        }
+        continue;
+      }
+
+      const proveedorEncargarMatch = fragment.match(
+        /^(?:pedir|encargar|pedido)\s+(?:a|al|del)\s+proveedor\s+(.+?)\s+(.+)$/i,
+      );
+      if (proveedorEncargarMatch) {
+        const proveedorName = proveedorEncargarMatch[1]!.trim();
+        const parsed = parseQtyAndProductText(proveedorEncargarMatch[2]!.trim());
+        if (proveedorName && parsed) {
+          pushPedido(parsed.productText, parsed.qty, undefined, proveedorName);
+        }
+        continue;
+      }
+
       const orderMatch = fragment.match(/^(.+?)\s+(?:me\s+)?(?:pidio|pidió|pide|quiere|encargo|encargó|encargaron)\s+(.+)$/u);
       if (orderMatch) {
         const clientName = orderMatch[1]!.trim();
@@ -699,7 +727,16 @@ export class VoiceParserService {
       );
       if (pedidoPrefix) {
         inPedidoList = true;
-        const parsed = parseQtyAndProductText(pedidoPrefix[1]!.trim());
+        const rest = pedidoPrefix[1]!.trim();
+        const proveedorInline = rest.match(/^(?:del?|al?|para(?:\s+el)?)\s+proveedor\s+(.+?)\s*:\s*(.+)$/i);
+        if (proveedorInline) {
+          const parsed = parseQtyAndProductText(proveedorInline[2]!.trim());
+          if (parsed) {
+            pushPedido(parsed.productText, parsed.qty, undefined, proveedorInline[1]!.trim());
+          }
+          continue;
+        }
+        const parsed = parseQtyAndProductText(rest);
         if (parsed) {
           pushPedido(parsed.productText, parsed.qty);
         }

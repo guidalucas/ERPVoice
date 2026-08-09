@@ -45,6 +45,7 @@ const tenantSuffix = (ownerPhone) =>
 const DEFAULT_STATE_SNAPSHOT = {
   products: [],
   clients: [],
+  proveedores: [],
   pedidos: [],
   transactions: [],
 };
@@ -246,10 +247,18 @@ const rowToClient = (row) => ({
   notas: row.notas ?? null,
 });
 
+const rowToProveedor = (row) => ({
+  id: row.id,
+  ownerPhone: row.owner_phone,
+  name: row.name,
+  notas: row.notas ?? null,
+});
+
 const rowToPedido = (row) => ({
   id: row.id,
   ownerPhone: row.owner_phone,
   clienteId: row.cliente_id,
+  proveedorId: row.proveedor_id ?? null,
   producto: row.producto,
   productType: row.product_type,
   productModel: row.product_model,
@@ -321,10 +330,18 @@ const initializeDatabase = async () => {
       notas TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS proveedores (
+      id TEXT PRIMARY KEY,
+      owner_phone TEXT NOT NULL DEFAULT '__default__',
+      name TEXT NOT NULL,
+      notas TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS pedidos (
       id TEXT PRIMARY KEY,
       owner_phone TEXT NOT NULL DEFAULT '__default__',
       cliente_id TEXT NOT NULL,
+      proveedor_id TEXT,
       producto TEXT NOT NULL,
       product_type TEXT,
       product_model TEXT,
@@ -382,8 +399,10 @@ const initializeDatabase = async () => {
     CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions (timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_products_owner_phone ON products (owner_phone);
     CREATE INDEX IF NOT EXISTS idx_clients_owner_phone ON clients (owner_phone);
+    CREATE INDEX IF NOT EXISTS idx_proveedores_owner_phone ON proveedores (owner_phone);
     CREATE INDEX IF NOT EXISTS idx_pedidos_owner_phone ON pedidos (owner_phone);
     CREATE INDEX IF NOT EXISTS idx_pedidos_cliente_id ON pedidos (cliente_id);
+    CREATE INDEX IF NOT EXISTS idx_pedidos_proveedor_id ON pedidos (proveedor_id);
     CREATE INDEX IF NOT EXISTS idx_pedidos_estado ON pedidos (estado);
     CREATE INDEX IF NOT EXISTS idx_transactions_owner_phone ON transactions (owner_phone);
         CREATE INDEX IF NOT EXISTS idx_meta_events_at ON meta_events (at DESC);
@@ -395,9 +414,12 @@ const initializeDatabase = async () => {
     ALTER TABLE products ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS notas TEXT;
+    ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+    ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS notas TEXT;
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE meta_events ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+    ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS proveedor_id TEXT;
     ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_name TEXT;
     ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_category TEXT;
   `);
@@ -444,7 +466,7 @@ const ensureTenantState = async (client, ownerPhone) => {
   const variants = getOwnerPhoneVariants(ownerPhone).filter((value) => value !== normalizedOwnerPhone);
 
   if (variants.length) {
-    const tables = ['products', 'clients', 'pedidos', 'transactions', 'meta_events'];
+    const tables = ['products', 'clients', 'proveedores', 'pedidos', 'transactions', 'meta_events'];
     for (const table of tables) {
       await client.query(
         `UPDATE ${table} SET owner_phone = $1 WHERE owner_phone = ANY($2)`,
@@ -470,8 +492,13 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null) =>
     [ownerPhoneVariants],
     client,
   );
+  const proveedoresRows = await queryRows(
+    'SELECT id, owner_phone, name, notas FROM proveedores WHERE owner_phone = ANY($1) ORDER BY name ASC',
+    [ownerPhoneVariants],
+    client,
+  );
   const pedidosRows = await queryRows(
-    `SELECT id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
+    `SELECT id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
      FROM pedidos WHERE owner_phone = ANY($1)
      ORDER BY fecha_pedido DESC`,
     [ownerPhoneVariants],
@@ -486,6 +513,7 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null) =>
   return {
     products: productsRows.map(rowToProduct),
     clients: clientsRows.map(rowToClient),
+    proveedores: proveedoresRows.map(rowToProveedor),
     pedidos: pedidosRows.map(rowToPedido),
     transactions: transactionsRows.map(rowToTransaction),
   };
@@ -494,6 +522,7 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null) =>
 const cloneDefaultStateSnapshot = () => ({
   products: DEFAULT_STATE_SNAPSHOT.products.map((product) => ({ ...product })),
   clients: DEFAULT_STATE_SNAPSHOT.clients.map((client) => ({ ...client })),
+  proveedores: DEFAULT_STATE_SNAPSHOT.proveedores.map((proveedor) => ({ ...proveedor })),
   pedidos: [],
   transactions: [],
 });
@@ -852,6 +881,76 @@ const ensureProduct = (products, action) => {
   return product;
 };
 
+/**
+ * Al pasar un pedido a "conseguido" suma stock; al salir de "conseguido" lo resta.
+ * Mutates `products` in place. Returns effect metadata or null if no stock change.
+ */
+const applyPedidoEstadoStockEffect = (products, pedido, previousEstado, nextEstado) => {
+  if (!pedido || previousEstado === nextEstado) {
+    return null;
+  }
+
+  const enteredConseguido = previousEstado !== 'conseguido' && nextEstado === 'conseguido';
+  const leftConseguido = previousEstado === 'conseguido' && nextEstado !== 'conseguido';
+
+  if (!enteredConseguido && !leftConseguido) {
+    return null;
+  }
+
+  const qty = Math.max(1, Math.trunc(Number(pedido.qty) || 1));
+  const matchInput = {
+    productName: pedido.producto,
+    productType: pedido.productType,
+    productModel: pedido.productModel,
+    size: pedido.talle,
+  };
+
+  const existingIds = new Set(products.map((entry) => entry.id));
+  const product = ensureProduct(products, matchInput);
+  const created = !existingIds.has(product.id);
+
+  if (enteredConseguido) {
+    product.stockAvailable += qty;
+  } else {
+    product.stockAvailable = Math.max(0, product.stockAvailable - qty);
+  }
+
+  const sizeLabel = pedido.talle ? ` (${pedido.talle})` : '';
+  const productLabel = pedido.producto || product.name;
+  const summary = enteredConseguido
+    ? `Pedido conseguido: +${qty} stock de ${productLabel}${sizeLabel}`
+    : `Pedido revertido: -${qty} stock de ${productLabel}${sizeLabel}`;
+
+  const action = enteredConseguido
+    ? {
+        type: 'add_stock',
+        productName: productLabel,
+        productType: pedido.productType || undefined,
+        productModel: pedido.productModel || undefined,
+        size: pedido.talle || undefined,
+        qty,
+      }
+    : {
+        type: 'update_pedido',
+        productName: productLabel,
+        estado: nextEstado,
+        qty,
+        size: pedido.talle || undefined,
+      };
+
+  return {
+    product,
+    created,
+    qty,
+    enteredConseguido,
+    summary,
+    action,
+    sourceText: enteredConseguido
+      ? `Pedido marcado como conseguido: ${productLabel}${sizeLabel}`
+      : `Pedido revertido de conseguido: ${productLabel}${sizeLabel}`,
+  };
+};
+
 const calculateSaleDebt = (products, sellAction) => {
   const product = resolveProduct(products, sellAction.productName);
 
@@ -896,10 +995,11 @@ const summarizeAction = (action) => {
   if (action.type === 'client_order') {
     const qty = action.qty && action.qty > 0 ? action.qty : 1;
     const sizeLabel = action.size ? ` ${action.size}` : '';
+    const proveedorLabel = action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
     if (action.clientName?.trim()) {
-      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
     }
-    return `Pedido: ${qty} ${action.productName}${sizeLabel}`;
+    return `Pedido: ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
   }
 
   if (action.type === 'update_product') {
@@ -960,6 +1060,28 @@ const resolveOrCreateClientByName = (clients, clientName) => {
   return created;
 };
 
+const resolveOrCreateProveedorByName = (proveedores, proveedorName) => {
+  const resolvedName = String(proveedorName ?? '').trim();
+  if (!resolvedName) {
+    return null;
+  }
+
+  const target = normalizeText(resolvedName).trim();
+  const exactMatches = proveedores.filter((entry) => normalizeText(entry.name).trim() === target);
+
+  if (exactMatches.length === 1) {
+    return exactMatches[0];
+  }
+
+  const created = {
+    id: `proveedor-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    name: titleCase(resolvedName),
+    notas: null,
+  };
+  proveedores.push(created);
+  return created;
+};
+
 const buildPedidoProductoLabel = (action) => {
   const fromParts = composeProductName({
     productType: action.productType,
@@ -995,12 +1117,13 @@ const withTransaction = async (callback) => {
   });
 };
 
-const replaceStateTables = async (client, ownerPhone, products, clients) => {
+const replaceStateTables = async (client, ownerPhone, products, clients, proveedores = []) => {
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
   const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
 
   await client.query('DELETE FROM products WHERE owner_phone = ANY($1)', [ownerPhoneVariants]);
   await client.query('DELETE FROM clients WHERE owner_phone = ANY($1)', [ownerPhoneVariants]);
+  await client.query('DELETE FROM proveedores WHERE owner_phone = ANY($1)', [ownerPhoneVariants]);
 
   for (const product of products) {
     await client.query(
@@ -1029,6 +1152,16 @@ const replaceStateTables = async (client, ownerPhone, products, clients) => {
         VALUES ($1, $2, $3, $4, $5)
       `,
       [clientEntry.id, normalizedOwnerPhone, clientEntry.name, clientEntry.debt, clientEntry.notas ?? null],
+    );
+  }
+
+  for (const proveedorEntry of proveedores) {
+    await client.query(
+      `
+        INSERT INTO proveedores (id, owner_phone, name, notas)
+        VALUES ($1, $2, $3, $4)
+      `,
+      [proveedorEntry.id, normalizedOwnerPhone, proveedorEntry.name, proveedorEntry.notas ?? null],
     );
   }
 };
@@ -1234,6 +1367,115 @@ export const mergeClientRecords = async (keepId, mergeId, ownerPhone = DEFAULT_O
   });
 };
 
+export const createProveedorRecord = async (proveedorInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const name = String(proveedorInput?.name ?? '').trim();
+
+  if (!name) {
+    return null;
+  }
+
+  const id = `proveedor-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const result = await getPool().query(
+    `
+      INSERT INTO proveedores (id, owner_phone, name, notas)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, owner_phone, name, notas
+    `,
+    [id, normalizedOwnerPhone, titleCase(name), normalizeNullableString(proveedorInput?.notas)],
+  );
+
+  return rowToProveedor(result.rows[0]);
+};
+
+export const updateProveedorRecord = async (proveedorId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
+  const existing = await queryRow(
+    'SELECT id, owner_phone, name, notas FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)',
+    [proveedorId, ownerPhoneVariants],
+  );
+
+  if (!existing) {
+    return null;
+  }
+
+  const current = rowToProveedor(existing);
+  const nextName = typeof updates.name === 'string' && updates.name.trim() ? titleCase(updates.name.trim()) : current.name;
+  const nextNotas = updates.notas === undefined ? current.notas : normalizeNullableString(updates.notas);
+
+  const result = await getPool().query(
+    `
+      UPDATE proveedores
+      SET name = $1, notas = $2
+      WHERE id = $3 AND owner_phone = $4
+      RETURNING id, owner_phone, name, notas
+    `,
+    [nextName, nextNotas, proveedorId, normalizedOwnerPhone],
+  );
+
+  return result.rows[0] ? rowToProveedor(result.rows[0]) : null;
+};
+
+export const deleteProveedorRecord = async (proveedorId, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
+
+  return withTransaction(async (client) => {
+    await client.query('UPDATE pedidos SET proveedor_id = NULL WHERE proveedor_id = $1 AND owner_phone = ANY($2)', [
+      proveedorId,
+      ownerPhoneVariants,
+    ]);
+    const result = await client.query('DELETE FROM proveedores WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [
+      proveedorId,
+      ownerPhoneVariants,
+    ]);
+    return result.rowCount > 0;
+  });
+};
+
+export const mergeProveedorRecords = async (keepId, mergeId, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
+
+  if (!keepId || !mergeId || keepId === mergeId) {
+    return null;
+  }
+
+  return withTransaction(async (client) => {
+    const keep = await queryRow(
+      'SELECT id, owner_phone, name, notas FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)',
+      [keepId, ownerPhoneVariants],
+      client,
+    );
+    const merge = await queryRow(
+      'SELECT id, owner_phone, name, notas FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)',
+      [mergeId, ownerPhoneVariants],
+      client,
+    );
+
+    if (!keep || !merge) {
+      return null;
+    }
+
+    await client.query(
+      'UPDATE pedidos SET proveedor_id = $1 WHERE proveedor_id = $2 AND owner_phone = ANY($3)',
+      [keepId, mergeId, ownerPhoneVariants],
+    );
+
+    const keepProveedor = rowToProveedor(keep);
+    const mergeProveedor = rowToProveedor(merge);
+    const mergedNotas = [keepProveedor.notas, mergeProveedor.notas].filter(Boolean).join('\n').trim() || null;
+
+    await client.query('UPDATE proveedores SET notas = $1 WHERE id = $2', [mergedNotas, keepId]);
+    await client.query('DELETE FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)', [mergeId, ownerPhoneVariants]);
+
+    return queryAllState(normalizeOwnerPhone(ownerPhone), client);
+  });
+};
+
 export const createPedidoRecord = async (pedidoInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
   await ensureReady();
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
@@ -1245,17 +1487,19 @@ export const createPedidoRecord = async (pedidoInput, ownerPhone = DEFAULT_OWNER
   }
 
   const estado = PEDIDO_ESTADOS.has(pedidoInput?.estado) ? pedidoInput.estado : 'pendiente';
+  const proveedorId = normalizeNullableString(pedidoInput?.proveedorId);
   const id = `pedido-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const result = await getPool().query(
     `
-      INSERT INTO pedidos (id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)
-      RETURNING id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
+      INSERT INTO pedidos (id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)
+      RETURNING id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
     `,
     [
       id,
       normalizedOwnerPhone,
       clienteId,
+      proveedorId,
       producto,
       normalizeNullableString(pedidoInput?.productType),
       normalizeNullableString(pedidoInput?.productModel),
@@ -1273,48 +1517,152 @@ export const updatePedidoRecord = async (pedidoId, updates, ownerPhone = DEFAULT
   await ensureReady();
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
   const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
-  const existing = await queryRow(
-    `SELECT id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
-     FROM pedidos WHERE id = $1 AND owner_phone = ANY($2)`,
-    [pedidoId, ownerPhoneVariants],
-  );
 
-  if (!existing) {
-    return null;
-  }
+  return withTransaction(async (client) => {
+    await ensureTenantState(client, normalizedOwnerPhone);
 
-  const current = rowToPedido(existing);
-  const nextEstado = updates.estado && PEDIDO_ESTADOS.has(updates.estado) ? updates.estado : current.estado;
-  // Cambiar estado NUNCA descuenta stock — solo actualiza el anotador.
-  const result = await getPool().query(
-    `
-      UPDATE pedidos
-      SET cliente_id = $1,
-          producto = $2,
-          product_type = $3,
-          product_model = $4,
-          talle = $5,
-          qty = $6,
-          estado = $7,
-          notas = $8
-      WHERE id = $9 AND owner_phone = $10
-      RETURNING id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
-    `,
-    [
-      typeof updates.clienteId === 'string' && updates.clienteId.trim() ? updates.clienteId.trim() : current.clienteId,
-      typeof updates.producto === 'string' && updates.producto.trim() ? updates.producto.trim() : current.producto,
-      updates.productType === undefined ? current.productType : normalizeNullableString(updates.productType),
-      updates.productModel === undefined ? current.productModel : normalizeNullableString(updates.productModel),
-      updates.talle === undefined ? current.talle : normalizeNullableString(updates.talle),
-      updates.qty === undefined ? current.qty : Math.max(1, normalizeInteger(updates.qty, current.qty)),
+    const existing = await queryRow(
+      `SELECT id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
+       FROM pedidos WHERE id = $1 AND owner_phone = ANY($2)`,
+      [pedidoId, ownerPhoneVariants],
+      client,
+    );
+
+    if (!existing) {
+      return null;
+    }
+
+    const current = rowToPedido(existing);
+    const nextEstado = updates.estado && PEDIDO_ESTADOS.has(updates.estado) ? updates.estado : current.estado;
+    const nextClienteId =
+      typeof updates.clienteId === 'string' && updates.clienteId.trim() ? updates.clienteId.trim() : current.clienteId;
+    const nextProveedorId =
+      updates.proveedorId === undefined
+        ? current.proveedorId
+        : updates.proveedorId === null || updates.proveedorId === ''
+          ? null
+          : normalizeNullableString(updates.proveedorId);
+    const nextProducto =
+      typeof updates.producto === 'string' && updates.producto.trim() ? updates.producto.trim() : current.producto;
+    const nextProductType = updates.productType === undefined ? current.productType : normalizeNullableString(updates.productType);
+    const nextProductModel =
+      updates.productModel === undefined ? current.productModel : normalizeNullableString(updates.productModel);
+    const nextTalle = updates.talle === undefined ? current.talle : normalizeNullableString(updates.talle);
+    const nextQty = updates.qty === undefined ? current.qty : Math.max(1, normalizeInteger(updates.qty, current.qty));
+    const nextNotas = updates.notas === undefined ? current.notas : normalizeNullableString(updates.notas);
+
+    const snapshot = await queryAllState(normalizedOwnerPhone, client);
+    const nextProducts = snapshot.products.map((product) => ({ ...product }));
+    const qtyForStock =
+      current.estado === 'conseguido' && nextEstado !== 'conseguido' ? current.qty : nextQty;
+    const stockEffect = applyPedidoEstadoStockEffect(
+      nextProducts,
+      {
+        producto: nextProducto,
+        productType: nextProductType,
+        productModel: nextProductModel,
+        talle: nextTalle,
+        qty: qtyForStock,
+      },
+      current.estado,
       nextEstado,
-      updates.notas === undefined ? current.notas : normalizeNullableString(updates.notas),
-      pedidoId,
-      normalizedOwnerPhone,
-    ],
-  );
+    );
 
-  return result.rows[0] ? rowToPedido(result.rows[0]) : null;
+    const result = await client.query(
+      `
+        UPDATE pedidos
+        SET cliente_id = $1,
+            proveedor_id = $2,
+            producto = $3,
+            product_type = $4,
+            product_model = $5,
+            talle = $6,
+            qty = $7,
+            estado = $8,
+            notas = $9
+        WHERE id = $10 AND owner_phone = $11
+        RETURNING id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
+      `,
+      [
+        nextClienteId,
+        nextProveedorId,
+        nextProducto,
+        nextProductType,
+        nextProductModel,
+        nextTalle,
+        nextQty,
+        nextEstado,
+        nextNotas,
+        pedidoId,
+        normalizedOwnerPhone,
+      ],
+    );
+
+    if (stockEffect) {
+      const product = stockEffect.product;
+      if (stockEffect.created) {
+        await client.query(
+          `
+            INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `,
+          [
+            product.id,
+            normalizedOwnerPhone,
+            product.name,
+            product.productType ?? null,
+            product.productModel ?? null,
+            product.size ?? null,
+            product.stockAvailable,
+            product.stockReserved,
+            product.price,
+          ],
+        );
+      } else {
+        await client.query(
+          `
+            UPDATE products
+            SET stock_available = $1,
+                stock_reserved = $2,
+                price = $3,
+                product_type = $4,
+                product_model = $5,
+                size = $6,
+                name = $7
+            WHERE id = $8 AND owner_phone = ANY($9)
+          `,
+          [
+            product.stockAvailable,
+            product.stockReserved,
+            product.price,
+            product.productType ?? null,
+            product.productModel ?? null,
+            product.size ?? null,
+            product.name,
+            product.id,
+            ownerPhoneVariants,
+          ],
+        );
+      }
+
+      await client.query(
+        `
+          INSERT INTO transactions (id, owner_phone, timestamp, source_text, summary, actions_json)
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+        `,
+        [
+          `transaction-${Date.now()}-pedido-stock`,
+          normalizedOwnerPhone,
+          new Date().toISOString(),
+          stockEffect.sourceText,
+          stockEffect.summary,
+          toJsonbParam([stockEffect.action]),
+        ],
+      );
+    }
+
+    return result.rows[0] ? rowToPedido(result.rows[0]) : null;
+  });
 };
 
 export const deletePedidoRecord = async (pedidoId, ownerPhone = DEFAULT_OWNER_PHONE) => {
@@ -1351,6 +1699,7 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     const currentSnapshot = await queryAllState(normalizedOwnerPhone, client);
     const nextProducts = currentSnapshot.products.map((product) => ({ ...product }));
     const nextClients = currentSnapshot.clients.map((clientEntry) => ({ ...clientEntry }));
+    const nextProveedores = currentSnapshot.proveedores.map((proveedorEntry) => ({ ...proveedorEntry }));
     const nextPedidos = currentSnapshot.pedidos.map((pedido) => ({ ...pedido }));
     const newTransactions = [];
     const originalPedidoIds = new Set(currentSnapshot.pedidos.map((pedido) => pedido.id));
@@ -1408,11 +1757,13 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
 
       if (action.type === 'client_order' && typeof action.productName === 'string') {
         const clientEntry = resolveOrCreateClientByName(nextClients, action.clientName);
+        const proveedorEntry = resolveOrCreateProveedorByName(nextProveedores, action.proveedorName);
         const qty = Number.isFinite(Number(action.qty)) && Number(action.qty) > 0 ? Math.trunc(Number(action.qty)) : 1;
         const productDescriptor = parseProductDescriptor(action.productName);
         nextPedidos.unshift({
           id: `pedido-${Date.now().toString(36)}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,
           clienteId: clientEntry.id,
+          proveedorId: proveedorEntry?.id ?? null,
           producto: buildPedidoProductoLabel({
             ...action,
             productType: action.productType || productDescriptor.productType,
@@ -1444,6 +1795,9 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
       if (action.type === 'update_pedido' && typeof action.productName === 'string') {
         const pedido = resolvePedidoFlexible(nextPedidos, action.productName, action.clientName);
         if (pedido) {
+          const previousEstado = pedido.estado;
+          const previousQty = pedido.qty;
+
           if (Number.isFinite(action.qty) && action.qty > 0) {
             pedido.qty = Math.trunc(action.qty);
           }
@@ -1453,6 +1807,21 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
           if (action.estado && PEDIDO_ESTADOS.has(action.estado)) {
             pedido.estado = action.estado;
           }
+
+          const qtyForStock =
+            previousEstado === 'conseguido' && pedido.estado !== 'conseguido' ? previousQty : pedido.qty;
+          applyPedidoEstadoStockEffect(
+            nextProducts,
+            {
+              producto: pedido.producto,
+              productType: pedido.productType,
+              productModel: pedido.productModel,
+              talle: pedido.talle,
+              qty: qtyForStock,
+            },
+            previousEstado,
+            pedido.estado,
+          );
         }
       }
 
@@ -1485,7 +1854,7 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
       });
     });
 
-    await replaceStateTables(client, normalizedOwnerPhone, nextProducts, nextClients);
+    await replaceStateTables(client, normalizedOwnerPhone, nextProducts, nextClients, nextProveedores);
 
     const nextPedidoIds = new Set(nextPedidos.map((pedido) => pedido.id));
 
@@ -1504,17 +1873,19 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
           `
             UPDATE pedidos
             SET cliente_id = $1,
-                producto = $2,
-                product_type = $3,
-                product_model = $4,
-                talle = $5,
-                qty = $6,
-                estado = $7,
-                notas = $8
-            WHERE id = $9 AND owner_phone = ANY($10)
+                proveedor_id = $2,
+                producto = $3,
+                product_type = $4,
+                product_model = $5,
+                talle = $6,
+                qty = $7,
+                estado = $8,
+                notas = $9
+            WHERE id = $10 AND owner_phone = ANY($11)
           `,
           [
             pedido.clienteId,
+            pedido.proveedorId ?? null,
             pedido.producto,
             pedido.productType,
             pedido.productModel,
@@ -1529,13 +1900,14 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
       } else {
         await client.query(
           `
-            INSERT INTO pedidos (id, owner_phone, cliente_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            INSERT INTO pedidos (id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           `,
           [
             pedido.id,
             normalizedOwnerPhone,
             pedido.clienteId,
+            pedido.proveedorId ?? null,
             pedido.producto,
             pedido.productType,
             pedido.productModel,
@@ -1667,6 +2039,8 @@ export const getClientPhones = async () => {
       SELECT owner_phone AS phone FROM products
       UNION
       SELECT owner_phone AS phone FROM clients
+      UNION
+      SELECT owner_phone AS phone FROM proveedores
       UNION
       SELECT owner_phone AS phone FROM transactions
       UNION

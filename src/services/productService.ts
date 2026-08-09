@@ -1,9 +1,10 @@
-import type { Client, ParsedActionUnion, Pedido, PedidoEstado, Product, Transaction } from '../domain/types';
+import type { Client, ParsedActionUnion, Pedido, PedidoEstado, Product, Proveedor, Transaction } from '../domain/types';
 import { requestJson } from './apiClient';
 
 export type PersistedState = {
   products: Product[];
   clients: Client[];
+  proveedores: Proveedor[];
   pedidos: Pedido[];
   transactions: Transaction[];
 };
@@ -24,8 +25,14 @@ export type ClientInput = {
   debt?: number;
 };
 
+export type ProveedorInput = {
+  name: string;
+  notas?: string | null;
+};
+
 export type PedidoInput = {
   clienteId: string;
+  proveedorId?: string | null;
   producto: string;
   productType?: string | null;
   productModel?: string | null;
@@ -80,6 +87,29 @@ export const deleteClient = async (clientId: string) =>
 
 export const mergeClients = async (keepId: string, mergeId: string) =>
   requestJson<PersistedState>('/api/clients/merge', {
+    method: 'POST',
+    body: JSON.stringify({ keepId, mergeId }),
+  });
+
+export const createProveedor = async (proveedor: ProveedorInput) =>
+  requestJson<Proveedor>('/api/proveedores', {
+    method: 'POST',
+    body: JSON.stringify(proveedor),
+  });
+
+export const updateProveedor = async (proveedorId: string, proveedor: Partial<ProveedorInput>) =>
+  requestJson<Proveedor>(`/api/proveedores/${proveedorId}`, {
+    method: 'PUT',
+    body: JSON.stringify(proveedor),
+  });
+
+export const deleteProveedor = async (proveedorId: string) =>
+  requestJson<void>(`/api/proveedores/${proveedorId}`, {
+    method: 'DELETE',
+  });
+
+export const mergeProveedores = async (keepId: string, mergeId: string) =>
+  requestJson<PersistedState>('/api/proveedores/merge', {
     method: 'POST',
     body: JSON.stringify({ keepId, mergeId }),
   });

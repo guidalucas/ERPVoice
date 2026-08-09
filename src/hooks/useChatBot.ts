@@ -180,7 +180,8 @@ export const useChatBot = () => {
           preset.useVariants && action.size && preset.variantLabel
             ? ` ${preset.variantLabel.toLowerCase()} ${action.size}`
             : '';
-        return `${index + 1}. client_order -> ${action.clientName?.trim() ? `${action.clientName} pidió ` : ''}${qty} ${action.productName}${sizeLabel}`;
+        const proveedorLabel = action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
+        return `${index + 1}. client_order -> ${action.clientName?.trim() ? `${action.clientName} pidió ` : ''}${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
       }
 
       if (action.type === 'query_stock') {
