@@ -1,4 +1,5 @@
 import type { AppState, Client, ParsedActionUnion as ParsedAction, Pedido, Product, Transaction } from '../domain/types';
+import { matchProductsForUpdate } from '../domain/stockQuery';
 
 const createId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -242,6 +243,9 @@ const summarizeAction = (action: ParsedAction) => {
     if (Number.isFinite(action.qty as number) && (action.qty as number) > 0) {
       parts.push(`cantidad ${action.qty}`);
     }
+    if (action.size) {
+      parts.push(`variante ${action.size}`);
+    }
     if (action.estado) {
       parts.push(`estado ${action.estado}`);
     }
@@ -332,8 +336,8 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
     }
 
     if (action.type === 'update_product') {
-      const product = resolveProduct(nextProducts, action);
-      if (product) {
+      const productsToUpdate = matchProductsForUpdate(nextProducts, action);
+      for (const product of productsToUpdate) {
         if (Number.isFinite(action.price) && (action.price as number) > 0) {
           product.price = Math.trunc(action.price as number);
         }
@@ -352,6 +356,9 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
       if (pedido) {
         if (Number.isFinite(action.qty as number) && (action.qty as number) > 0) {
           pedido.qty = Math.trunc(action.qty as number);
+        }
+        if (action.size?.trim()) {
+          pedido.talle = action.size.trim().toUpperCase();
         }
         if (action.estado) {
           pedido.estado = action.estado;

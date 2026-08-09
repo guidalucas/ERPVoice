@@ -1,4 +1,5 @@
 import type { ParsedAction, ParsedActionUnion, ParsedVoicePayload, VoiceIntent } from '../domain/types';
+import { VARIANT_KEYWORD_ALT } from '../domain/businessCategories';
 
 const normalizeText = (value: string) =>
   value
@@ -45,9 +46,11 @@ const composeProductName = (parts: { productType?: string; productModel?: string
 
 const parseProductDescriptor = (value: string) => {
   const normalized = normalizeText(value).replace(/\s+/g, ' ').trim();
-  const sizeMatch = normalized.match(/(?:,\s*|\s+)talle\s+([a-z0-9]+)\b/i);
+  const sizeMatch = normalized.match(new RegExp(`(?:,\\s*|\\s+)(?:${VARIANT_KEYWORD_ALT})\\s+([a-z0-9\\/]+)\\b`, 'i'));
   const size = sizeMatch ? sizeMatch[1]!.toUpperCase() : undefined;
-  const withoutSize = normalized.replace(/(?:,\s*|\s+)talle\s+[a-z0-9]+\b/i, '').trim();
+  const withoutSize = normalized
+    .replace(new RegExp(`(?:,\\s*|\\s+)(?:${VARIANT_KEYWORD_ALT})\\s+[a-z0-9\\/]+\\b`, 'i'), '')
+    .trim();
   const descriptorParts = withoutSize.split(/\s+de\s+/i);
   const rawProductType = descriptorParts[0] ?? withoutSize;
   const rawProductModel = descriptorParts.slice(1).join(' de ') || undefined;
@@ -61,6 +64,69 @@ const parseProductDescriptor = (value: string) => {
     size,
     productName: composeProductName({ productType, productModel, size, fallback: value }),
   };
+};
+
+const tryParseQueryStockAction = (fragment: string): ParsedActionUnion | null => {
+  const cleaned = String(fragment ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[¿?¡!.,;:]+$/g, '')
+    .trim();
+
+  if (!cleaned) {
+    return null;
+  }
+
+  const patterns = [
+    new RegExp(
+      `^(?:cuant[oa]s?|cu[aá]nto)\\s+(?:stock\\s+(?:me\\s+)?(?:queda|tengo|hay)\\s+de\\s+)?(.+?)(?:\\s+(?:me\\s+)?(?:quedan|queda|tengo|hay))?(?:\\s+y\\s+(?:qu[eé]\\s+)?(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?)?$`,
+      'iu',
+    ),
+    new RegExp(`^(?:qu[eé]\\s+(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?\\s+(?:de\\s+)?)(.+)$`, 'iu'),
+    /^(?:tengo\s+stock\s+de\s+)(.+)$/iu,
+    /^(?:hay\s+)(.+?)(?:\s+en\s+stock)$/iu,
+    /^(?:stock\s+(?:de\s+)?)(.+)$/iu,
+  ];
+
+  for (const pattern of patterns) {
+    const match = cleaned.match(pattern);
+    if (!match?.[1]) {
+      continue;
+    }
+
+    const productText = match[1]
+      .replace(/^(?:de\s+)/i, '')
+      .replace(new RegExp(`\\s+y\\s+(?:qu[eé]\\s+)?(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?$`, 'iu'), '')
+      .replace(/\s+(?:me\s+)?(?:quedan|queda|tengo|hay)$/iu, '')
+      .replace(new RegExp(`\\ben\\s+(?:${VARIANT_KEYWORD_ALT})\\b`, 'gi'), 'talle')
+      .trim();
+
+    if (!productText || productText.length < 2) {
+      continue;
+    }
+
+    if (/\b(?:compre|compr[eé]|vend[ií]|reserve|reserv[eé]|pidio|pidi[oó]|pedido|ingreso|ingresaron)\b/i.test(productText)) {
+      continue;
+    }
+
+    const productDescriptor = parseProductDescriptor(productText);
+    if (!productDescriptor.productName) {
+      continue;
+    }
+
+    return {
+      type: 'query_stock',
+      productName: composeProductName({
+        productType: productDescriptor.productType,
+        productModel: productDescriptor.productModel,
+        fallback: productDescriptor.productName,
+      }),
+      productType: productDescriptor.productType,
+      productModel: productDescriptor.productModel,
+    };
+  }
+
+  return null;
 };
 
 const extractFirstNumber = (value: string) => {
@@ -134,13 +200,28 @@ const parseNumericValue = (value: string) => {
 
 const parsePrice = (value: string) => {
   const normalized = String(value ?? '').toLowerCase();
-  const match = normalized.match(/(?:valen?|vale|cuestan|precio|a|por)\s*\$?\s*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]+)?)/i);
+  const moneyMatch = normalized.match(
+    /(?:valen?|vale|cuestan|cuesta|sale|precio|a|por)\s*\$?\s*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]+)?)\s*(?:c\/u|c\.u\.|pesos|\$)?/i,
+  );
 
-  if (!match) {
+  if (!moneyMatch || moneyMatch.index === undefined) {
     return null;
   }
 
-  return parseNumericValue(match[1]);
+  const fullMatch = moneyMatch[0];
+  const window = normalized.slice(Math.max(0, moneyMatch.index - 2), moneyMatch.index + fullMatch.length + 12);
+  if (/(?:por|de|a)\s*\$?\s*[0-9]+(?:[.,][0-9]+)?\s*(?:g|gr|gramos?|kg|kilos?|ml|lts?|litros?|cm|mm)\b/i.test(window)) {
+    return null;
+  }
+
+  if (/\bpor\s+[0-9]/i.test(fullMatch) && !/[\$]|c\/u|c\.u\.|pesos|vale|precio|cuestan?/i.test(fullMatch)) {
+    const after = normalized.slice(moneyMatch.index + fullMatch.length, moneyMatch.index + fullMatch.length + 16);
+    if (/^\s*(?:g|gr|gramos?|kg|kilos?|ml|lts?|litros?|unidades?|u\.?\b)/i.test(after)) {
+      return null;
+    }
+  }
+
+  return parseNumericValue(moneyMatch[1]);
 };
 
 const applyPriceFromText = (actions: ParsedActionUnion[], text: string) => {
@@ -265,7 +346,7 @@ const extractMultipleActionsFromText = (text: string): ParsedActionUnion[] => {
 
       const productText = buyMatch[2]!
         .replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '')
-        .replace(/\ben\s+talle\b/gi, 'talle')
+        .replace(new RegExp(`\\ben\\s+(?:${VARIANT_KEYWORD_ALT})\\b`, 'gi'), 'talle')
         .trim();
       const productDescriptor = parseProductDescriptor(productText);
       if (!productDescriptor.productName) {
@@ -348,16 +429,20 @@ const buildPayload = (
   sourceText: string,
   actions: ParsedActionUnion[],
   options: Partial<Pick<ParsedVoicePayload, 'confidence' | 'requiresConfirmation' | 'missingFields' | 'suggestedPhrases' | 'intent'>> = {},
-): ParsedVoicePayload => ({
-  schemaVersion: 1,
-  sourceText,
-  intent: options.intent ?? inferIntent(actions),
-  confidence: options.confidence ?? (actions.length > 1 ? 0.92 : 0.83),
-  requiresConfirmation: options.requiresConfirmation ?? actions.length > 0,
-  actions,
-  missingFields: options.missingFields,
-  suggestedPhrases: options.suggestedPhrases,
-});
+): ParsedVoicePayload => {
+  const allQueryStock = actions.length > 0 && actions.every((action) => action.type === 'query_stock');
+
+  return {
+    schemaVersion: 1,
+    sourceText,
+    intent: options.intent ?? inferIntent(actions),
+    confidence: options.confidence ?? (actions.length > 1 ? 0.92 : 0.83),
+    requiresConfirmation: options.requiresConfirmation ?? (actions.length > 0 && !allQueryStock),
+    actions,
+    missingFields: options.missingFields,
+    suggestedPhrases: options.suggestedPhrases,
+  };
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
@@ -445,6 +530,25 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
     };
   }
 
+  if (value.type === 'query_stock') {
+    const productType = typeof value.productType === 'string' ? value.productType : undefined;
+    const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
+    const size = typeof value.size === 'string' ? value.size : undefined;
+    const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
+
+    if (!productName) {
+      return null;
+    }
+
+    return {
+      type: 'query_stock',
+      productName,
+      productType,
+      productModel,
+      size,
+    };
+  }
+
   if (value.type === 'update_product' && typeof value.productName === 'string' && value.productName.trim()) {
     const priceValue = Number.isFinite(Number(value.price)) ? Number(value.price) : amount;
     const stockValue = Number(value.stockAvailable);
@@ -465,13 +569,18 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
     const estado = typeof value.estado === 'string' ? value.estado.trim().toLowerCase() : undefined;
     const validEstado = estado === 'pendiente' || estado === 'conseguido' || estado === 'descartado' ? estado : undefined;
     const orderQty = Number.isNaN(qty) || qty <= 0 ? undefined : qty;
-    if (!orderQty && !validEstado) {
+    const size =
+      typeof value.size === 'string' && value.size.trim()
+        ? value.size.trim().toUpperCase()
+        : undefined;
+    if (!orderQty && !validEstado && !size) {
       return null;
     }
     return {
       type: 'update_pedido',
       productName: value.productName.trim(),
       ...(orderQty ? { qty: orderQty } : {}),
+      ...(size ? { size } : {}),
       ...(validEstado ? { estado: validEstado } : {}),
     };
   }
@@ -490,6 +599,14 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
 export class VoiceParserService {
   parse(text: string): ParsedVoicePayload {
     const normalized = normalizeText(text);
+    const queryStockAction = tryParseQueryStockAction(normalized.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim());
+    if (queryStockAction) {
+      return buildPayload(text, [queryStockAction], {
+        intent: 'query_stock',
+        requiresConfirmation: false,
+      });
+    }
+
     // Generic patterns: operation + cantidad + producto
     const patterns: { regex: RegExp; type: ParsedAction['type'] | 'sell' | 'payment_received' }[] = [
       {
@@ -606,7 +723,7 @@ export class VoiceParserService {
         const qty = m[1] ? Number(m[1]) : parseQuantity(m[2]!.trim()) ?? 1;
         const productRaw = m[2]!
           .replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '')
-          .replace(/\ben\s+talle\b/gi, 'talle')
+          .replace(new RegExp(`\\ben\\s+(?:${VARIANT_KEYWORD_ALT})\\b`, 'gi'), 'talle')
           .trim();
         const productName = productRaw
           .split(/\s+/)

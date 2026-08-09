@@ -368,13 +368,18 @@ const parseAction = (value) => {
     const estado = typeof value.estado === 'string' ? value.estado.trim().toLowerCase() : undefined;
     const validEstado = ['pendiente', 'conseguido', 'descartado'].includes(estado) ? estado : undefined;
     const orderQty = Number.isFinite(qty) && qty > 0 ? qty : undefined;
-    if (!orderQty && !validEstado) {
+    const size =
+      typeof value.size === 'string' && value.size.trim()
+        ? value.size.trim().toUpperCase()
+        : undefined;
+    if (!orderQty && !validEstado && !size) {
       return null;
     }
     return {
       type: 'update_pedido',
       productName: value.productName.trim(),
       ...(orderQty ? { qty: orderQty } : {}),
+      ...(size ? { size } : {}),
       ...(validEstado ? { estado: validEstado } : {}),
     };
   }

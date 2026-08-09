@@ -36,7 +36,7 @@ export function ChatBubble({ message }: ChatBubbleProps) {
                 {action.type === 'add_debt' && `${index + 1}. add_debt ${action.clientName} $${action.amount.toLocaleString('es-AR')}`}
                 {action.type === 'client_order' && `${index + 1}. client_order ${action.clientName ? `${action.clientName} -> ` : ''}${describeProduct(action)} x${action.qty ?? 1}`}
                 {action.type === 'update_product' && `${index + 1}. update_product ${describeProduct(action)}${action.price ? ` $${action.price.toLocaleString('es-AR')}` : ''}${Number.isFinite(action.stockAvailable) ? ` stock ${action.stockAvailable}` : ''}`}
-                {action.type === 'update_pedido' && `${index + 1}. update_pedido ${action.productName}${action.qty ? ` qty ${action.qty}` : ''}${action.estado ? ` ${action.estado}` : ''}`}
+                {action.type === 'update_pedido' && `${index + 1}. update_pedido ${action.productName}${action.qty ? ` qty ${action.qty}` : ''}${action.size ? ` ${(preset.variantLabel ?? 'variante').toLowerCase()} ${action.size}` : ''}${action.estado ? ` ${action.estado}` : ''}`}
                 {action.type === 'delete_pedido' && `${index + 1}. delete_pedido ${action.productName}`}
                 {action.type === 'delete_product' && `${index + 1}. delete_product ${describeProduct(action)}`}
               </p>

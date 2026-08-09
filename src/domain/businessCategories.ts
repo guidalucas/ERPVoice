@@ -16,6 +16,15 @@ export interface BusinessCategoryPreset {
   useVariants: boolean;
 }
 
+/** Keywords users may say for the `size` field (normalized without accents). */
+export const VARIANT_KEYWORD_ALT = 'talle|talles|numero|numeros|nro|num|medida|medidas|variante|variantes';
+
+export const getVariantWord = (preset: BusinessCategoryPreset): string =>
+  preset.variantLabel?.trim().toLowerCase() || 'variante';
+
+export const formatVariantRef = (preset: BusinessCategoryPreset, size: string): string =>
+  `${getVariantWord(preset)} ${String(size).trim()}`;
+
 export const BUSINESS_CATEGORIES: BusinessCategoryPreset[] = [
   {
     id: 'indumentaria',

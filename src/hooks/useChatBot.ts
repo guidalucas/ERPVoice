@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ParsedVoicePayload, ParsedActionUnion } from '../domain/types';
+import { answerStockQuery } from '../domain/stockQuery';
 import { useBusinessCategoryPreset } from './useBusinessCategoryPreset';
 import { voiceModelService } from '../services/voiceModelService';
 import { createChatMessage, useAppStore } from '../store/AppStore';
@@ -182,6 +183,10 @@ export const useChatBot = () => {
         return `${index + 1}. client_order -> ${action.clientName?.trim() ? `${action.clientName} pidió ` : ''}${qty} ${action.productName}${sizeLabel}`;
       }
 
+      if (action.type === 'query_stock') {
+        return `${index + 1}. query_stock -> ${formatProductMeta(action, preset.useVariants)}`;
+      }
+
       if (action.type === 'update_product') {
         const parts = [];
         if (Number.isFinite(action.price) && (action.price ?? 0) > 0) {
@@ -197,6 +202,9 @@ export const useChatBot = () => {
         const parts = [];
         if (Number.isFinite(action.qty ?? NaN) && (action.qty ?? 0) > 0) {
           parts.push(`qty ${action.qty}`);
+        }
+        if (action.size) {
+          parts.push(`${(preset.variantLabel ?? 'variante').toLowerCase()} ${action.size}`);
         }
         if (action.estado) {
           parts.push(action.estado);
@@ -265,10 +273,45 @@ export const useChatBot = () => {
       return;
     }
 
-    const botMessage = createChatMessage('bot', buildBotMessage(enrichedParsed.actions.length), enrichedParsed);
+    const queryActions = enrichedParsed.actions.filter((action) => action.type === 'query_stock');
+    const mutationActions = enrichedParsed.actions.filter((action) => action.type !== 'query_stock');
+
+    if (queryActions.length) {
+      const answerText = queryActions
+        .map((action) =>
+          answerStockQuery(
+            state.products,
+            {
+              productName: action.productName,
+              productType: action.productType,
+              productModel: action.productModel,
+              size: action.size,
+            },
+            { variantLabel: preset.variantLabel },
+          ),
+        )
+        .join('\n\n');
+      addChatMessage(createChatMessage('bot', answerText));
+    }
+
+    if (!mutationActions.length) {
+      clearPendingProposal();
+      setDraftText('');
+      setIsProcessing(false);
+      return;
+    }
+
+    const mutationProposal: ParsedVoicePayload = {
+      ...enrichedParsed,
+      intent: mutationActions.length > 1 ? 'mixed' : (mutationActions[0]!.type as ParsedVoicePayload['intent']),
+      requiresConfirmation: true,
+      actions: mutationActions,
+    };
+
+    const botMessage = createChatMessage('bot', buildBotMessage(mutationProposal.actions.length), mutationProposal);
 
     addChatMessage(botMessage);
-    setPendingProposal(enrichedParsed);
+    setPendingProposal(mutationProposal);
     setIsProcessing(false);
   };
 
