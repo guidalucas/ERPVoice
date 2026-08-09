@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useReducer, type ReactNode } from 'react';
-import type { AppState, ChatMessage, ParsedVoicePayload, Product, Client, Pedido, Transaction } from '../domain/types';
+import type { AppState, ChatMessage, ParsedVoicePayload, Product, Client, Pedido, Proveedor, Transaction } from '../domain/types';
 import { initialAppState } from '../domain/mockDb';
 import { applyConfirmedActions } from '../services/transactionService';
 import { requestJson } from '../services/apiClient';
@@ -7,6 +7,7 @@ import { requestJson } from '../services/apiClient';
 type PersistedSnapshot = {
   products: Product[];
   clients: Client[];
+  proveedores?: Proveedor[];
   pedidos: Pedido[];
   transactions: Transaction[];
 };
@@ -57,6 +58,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         ...state,
         products: action.snapshot.products,
         clients: action.snapshot.clients,
+        proveedores: action.snapshot.proveedores ?? [],
         pedidos: action.snapshot.pedidos ?? [],
         transactions: action.snapshot.transactions,
       };
@@ -93,6 +95,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             snapshot: {
               products: snapshot.products,
               clients: snapshot.clients,
+              proveedores: snapshot.proveedores ?? [],
               pedidos: snapshot.pedidos ?? [],
               transactions: snapshot.transactions,
             },

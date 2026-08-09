@@ -132,7 +132,9 @@ export function DashboardShell({
               {activeSection === 'inicio' && 'Resumen de stock y actividad reciente'}
               {activeSection === 'productos' && 'Stock, precios y movimientos por modelo'}
               {activeSection === 'pedidos' && 'Qué te pidieron, agrupado para armar el pedido al proveedor'}
+              {activeSection === 'ventas' && 'Historial detallado de ventas y stock descontado'}
               {activeSection === 'clientes' && 'Clientes y sus pedidos'}
+              {activeSection === 'proveedores' && 'Proveedores a los que pedís mercadería'}
               {activeSection === 'actividad' && 'Cargas por voz y mensajes recientes'}
             </p>
           </div>

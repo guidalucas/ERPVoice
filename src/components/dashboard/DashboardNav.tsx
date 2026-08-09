@@ -40,6 +40,18 @@ const navItems: NavItem[] = [
     ),
   },
   {
+    id: 'ventas',
+    label: 'Ventas',
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
+        <path d="M4 19h16" />
+        <path d="M7 16V9" />
+        <path d="M12 16V5" />
+        <path d="M17 16v-7" />
+      </svg>
+    ),
+  },
+  {
     id: 'clientes',
     label: 'Clientes',
     icon: (
@@ -48,6 +60,17 @@ const navItems: NavItem[] = [
         <circle cx="9" cy="7" r="4" />
         <path d="M20 21v-2a4 4 0 0 0-3-3.87" />
         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    ),
+  },
+  {
+    id: 'proveedores',
+    label: 'Proveedores',
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
+        <path d="M3 21h18" />
+        <path d="M5 21V8l7-4 7 4v13" />
+        <path d="M9 21v-6h6v6" />
       </svg>
     ),
   },
@@ -127,6 +150,8 @@ export const sectionTitles: Record<DashboardSection, string> = {
   inicio: 'Inicio',
   productos: 'Inventario',
   pedidos: 'Pedidos',
+  ventas: 'Ventas',
   clientes: 'Clientes',
+  proveedores: 'Proveedores',
   actividad: 'Actividad',
 };

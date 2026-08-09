@@ -9,8 +9,10 @@ import { LOW_STOCK_THRESHOLD, type DashboardSection } from './dashboardTypes';
 import { MetaMessagesPanel } from './MetaMessagesPanel';
 import { PedidosPanel } from './PedidosPanel';
 import { ProductsAbmPanel } from './ProductsAbmPanel';
+import { ProveedoresPanel } from './ProveedoresPanel';
 import { EmptyState } from './EmptyState';
 import { StockMovementModal, type StockMovementMode } from './StockMovementModal';
+import { VentasPanel } from './VentasPanel';
 
 const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
 
@@ -403,6 +405,7 @@ export function DashboardPanel() {
                   : `Unidades · últimos ${SALES_PERIOD_DAYS} días`
               }
               icon={<SalesIcon />}
+              onClick={() => handleSectionChange('ventas')}
             />
             <SummaryCard
               title="Pedidos pendientes"
@@ -443,7 +446,9 @@ export function DashboardPanel() {
         <ProductsAbmPanel stockFilter={productsStockFilter} onStockFilterChange={setProductsStockFilter} />
       )}
       {activeSection === 'pedidos' && <PedidosPanel />}
+      {activeSection === 'ventas' && <VentasPanel />}
       {activeSection === 'clientes' && <ClientesPanel />}
+      {activeSection === 'proveedores' && <ProveedoresPanel />}
 
       {activeSection === 'actividad' && (
         <div className="space-y-4">

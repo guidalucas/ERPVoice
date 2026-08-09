@@ -18,7 +18,7 @@ Convertí la frase del usuario en un JSON válido con esta estructura exacta:
     { "type": "sell", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty": number, "price"?: number },
     { "type": "add_debt", "clientName": string, "amount": number, "productType"?: string, "productModel"?: string, "size"?: string, "productName"?: string, "qty"?: number },
     { "type": "payment_received", "clientName": string, "amount": number },
-    { "type": "client_order", "clientName": string, "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty"?: number }
+    { "type": "client_order", "clientName": string, "proveedorName"?: string, "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty"?: number }
   ],
   "missingFields"?: string[],
   "suggestedPhrases"?: string[]
@@ -36,6 +36,7 @@ Reglas:
 - Si ya tenés productName y qty, no pidas precio unitario: devolvé la venta y dejá amount en 0 para que el ERP lo calcule.
 - Si la frase dice "para X" en una reserva, separá X como clientName y dejá solo el producto en productName.
 - Usá client_order para pedidos de cliente o propios al proveedor ("pedido: …", "tengo que pedir …"). clientName es OPCIONAL.
+- Si mencionás el proveedor ("pedido del proveedor Acme", "encargar a Distribuidora X"), poné proveedorName.
 - client_order requiere productName. qty default 1.
 - Diferenciá claramente: "compré / entraron / llegaron" = add_stock; "me pidió / pidió / quiere / encargó / pedido:" = client_order.
 - Si una frase tiene dos movimientos, devolvé dos objetos en actions.
@@ -331,6 +332,7 @@ const parseAction = (value) => {
     const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
     const orderQty = Number.isFinite(qty) && qty > 0 ? qty : 1;
     const rawClient = typeof value.clientName === 'string' ? value.clientName.trim() : '';
+    const rawProveedor = typeof value.proveedorName === 'string' ? value.proveedorName.trim() : '';
 
     if (!productName) {
       return null;
@@ -339,6 +341,7 @@ const parseAction = (value) => {
     return {
       type: 'client_order',
       ...(rawClient ? { clientName: rawClient } : {}),
+      ...(rawProveedor ? { proveedorName: rawProveedor } : {}),
       productName,
       productType,
       productModel,
@@ -663,10 +666,11 @@ const formatAction = (action) => {
   if (action.type === 'client_order') {
     const qty = action.qty && action.qty > 0 ? action.qty : 1;
     const sizeLabel = action.size ? ` talle ${action.size}` : '';
+    const proveedorLabel = action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
     if (action.clientName?.trim()) {
-      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
     }
-    return `Pedido: ${qty} ${action.productName}${sizeLabel}`;
+    return `Pedido: ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
   }
 
   return `+$${action.amount.toLocaleString('es-AR')} en cuenta de ${action.clientName}`;

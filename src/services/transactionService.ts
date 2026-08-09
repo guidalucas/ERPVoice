@@ -1,4 +1,4 @@
-import type { AppState, Client, ParsedActionUnion as ParsedAction, Pedido, Product, Transaction } from '../domain/types';
+import type { AppState, Client, ParsedActionUnion as ParsedAction, Pedido, Product, Proveedor, Transaction } from '../domain/types';
 import { matchProductsForUpdate } from '../domain/stockQuery';
 
 const createId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -192,6 +192,28 @@ const resolveOrCreateClient = (clients: Client[], clientName?: string) => {
   return created;
 };
 
+const resolveOrCreateProveedor = (proveedores: Proveedor[], proveedorName?: string) => {
+  const resolvedName = String(proveedorName ?? '').trim();
+  if (!resolvedName) {
+    return null;
+  }
+
+  const target = normalizeText(resolvedName).trim();
+  const exactMatches = proveedores.filter((entry) => normalizeText(entry.name).trim() === target);
+
+  if (exactMatches.length === 1) {
+    return exactMatches[0]!;
+  }
+
+  const created: Proveedor = {
+    id: createId('proveedor'),
+    name: titleCase(resolvedName),
+    notas: null,
+  };
+  proveedores.push(created);
+  return created;
+};
+
 const buildPedidoProducto = (action: Extract<ParsedAction, { type: 'client_order' }>) => {
   const parts = [action.productType, action.productModel].map((value) => String(value ?? '').trim()).filter(Boolean);
   if (parts.length) {
@@ -221,10 +243,11 @@ const summarizeAction = (action: ParsedAction) => {
   if (action.type === 'client_order') {
     const qty = action.qty && action.qty > 0 ? action.qty : 1;
     const sizeLabel = action.size ? ` talle ${action.size}` : '';
+    const proveedorLabel = action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
     if (action.clientName?.trim()) {
-      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
+      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
     }
-    return `Pedido: ${qty} ${action.productName}${sizeLabel}`;
+    return `Pedido: ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
   }
 
   if (action.type === 'update_product') {
@@ -264,9 +287,45 @@ const summarizeAction = (action: ParsedAction) => {
   return `+$${debt.amount.toLocaleString('es-AR')} en cuenta de ${debt.clientName}`;
 };
 
+/**
+ * Al pasar un pedido a "conseguido" suma stock; al salir de "conseguido" lo resta.
+ */
+const applyPedidoEstadoStockEffect = (
+  products: Product[],
+  pedido: Pick<Pedido, 'producto' | 'productType' | 'productModel' | 'talle' | 'qty'>,
+  previousEstado: Pedido['estado'],
+  nextEstado: Pedido['estado'],
+) => {
+  if (previousEstado === nextEstado) {
+    return;
+  }
+
+  const enteredConseguido = previousEstado !== 'conseguido' && nextEstado === 'conseguido';
+  const leftConseguido = previousEstado === 'conseguido' && nextEstado !== 'conseguido';
+
+  if (!enteredConseguido && !leftConseguido) {
+    return;
+  }
+
+  const qty = Math.max(1, Math.trunc(Number(pedido.qty) || 1));
+  const { product } = ensureProduct(products, {
+    productName: pedido.producto,
+    productType: pedido.productType,
+    productModel: pedido.productModel,
+    size: pedido.talle,
+  });
+
+  if (enteredConseguido) {
+    product.stockAvailable += qty;
+  } else {
+    product.stockAvailable = Math.max(0, product.stockAvailable - qty);
+  }
+};
+
 export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], sourceText: string): AppState => {
   const nextProducts = state.products.map((product) => ({ ...product }));
   const nextClients = state.clients.map((client) => ({ ...client }));
+  const nextProveedores = state.proveedores.map((proveedor) => ({ ...proveedor }));
   const nextPedidos = [...state.pedidos];
   const newTransactions: Transaction[] = [];
   const lastSellAction = [...actions].reverse().find((action) => action.type === 'sell') as { type: 'sell'; productName: string; qty: number } | undefined;
@@ -319,10 +378,12 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
 
     if (action.type === 'client_order') {
       const client = resolveOrCreateClient(nextClients, action.clientName);
+      const proveedor = resolveOrCreateProveedor(nextProveedores, action.proveedorName);
       const qty = action.qty && action.qty > 0 ? action.qty : 1;
       const pedido: Pedido = {
         id: createId('pedido'),
         clienteId: client.id,
+        proveedorId: proveedor?.id ?? null,
         producto: buildPedidoProducto(action),
         productType: action.productType ?? null,
         productModel: action.productModel ?? null,
@@ -354,6 +415,9 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
         return haystack.includes(query) || query.includes(normalizeText(entry.producto));
       });
       if (pedido) {
+        const previousEstado = pedido.estado;
+        const previousQty = pedido.qty;
+
         if (Number.isFinite(action.qty as number) && (action.qty as number) > 0) {
           pedido.qty = Math.trunc(action.qty as number);
         }
@@ -363,6 +427,21 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
         if (action.estado) {
           pedido.estado = action.estado;
         }
+
+        const qtyForStock =
+          previousEstado === 'conseguido' && pedido.estado !== 'conseguido' ? previousQty : pedido.qty;
+        applyPedidoEstadoStockEffect(
+          nextProducts,
+          {
+            producto: pedido.producto,
+            productType: pedido.productType,
+            productModel: pedido.productModel,
+            talle: pedido.talle,
+            qty: qtyForStock,
+          },
+          previousEstado,
+          pedido.estado,
+        );
       }
     }
 
@@ -400,6 +479,7 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
     ...state,
     products: nextProducts,
     clients: nextClients,
+    proveedores: nextProveedores,
     pedidos: nextPedidos,
     transactions: [...newTransactions.reverse(), ...state.transactions],
     pendingProposal: null,

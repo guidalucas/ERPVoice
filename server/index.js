@@ -6,9 +6,11 @@ import {
   createAuthOtpChallenge,
   createProductRecord,
   createClientRecord,
+  createProveedorRecord,
   createPedidoRecord,
   deleteProductRecord,
   deleteClientRecord,
+  deleteProveedorRecord,
   deletePedidoRecord,
   applyActionsToDatabase,
   answerStockQuery,
@@ -19,6 +21,7 @@ import {
   getMetaEvents,
   markMetaEventProcessed,
   mergeClientRecords,
+  mergeProveedorRecords,
   saveBusinessProfile,
   saveMetaEvent,
   upsertAuthUser,
@@ -26,6 +29,7 @@ import {
   hasDatabaseConfig,
   updateProductRecord,
   updateClientRecord,
+  updateProveedorRecord,
   updatePedidoRecord,
 } from './postgresDatabase.js';
 import { extractBearerToken, issueJwt, normalizePhone, verifyJwt } from './auth.js';
@@ -515,11 +519,82 @@ app.post('/api/clients/merge', authenticateRequest, async (req, res) => {
   }
 });
 
+app.post('/api/proveedores', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const proveedor = await createProveedorRecord({
+      name: req.body?.name,
+      notas: req.body?.notas,
+    }, clientPhone);
+
+    if (!proveedor) {
+      res.status(400).json({ error: 'Nombre de proveedor requerido' });
+      return;
+    }
+
+    res.status(201).json(proveedor);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.put('/api/proveedores/:id', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const proveedor = await updateProveedorRecord(req.params.id, {
+      name: req.body?.name,
+      notas: req.body?.notas,
+    }, clientPhone);
+
+    if (!proveedor) {
+      res.status(404).json({ error: 'Proveedor no encontrado' });
+      return;
+    }
+
+    res.json(proveedor);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.delete('/api/proveedores/:id', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const deleted = await deleteProveedorRecord(req.params.id, clientPhone);
+
+    if (!deleted) {
+      res.status(404).json({ error: 'Proveedor no encontrado' });
+      return;
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/proveedores/merge', authenticateRequest, async (req, res) => {
+  try {
+    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const snapshot = await mergeProveedorRecords(req.body?.keepId, req.body?.mergeId, clientPhone);
+
+    if (!snapshot) {
+      res.status(400).json({ error: 'No se pudieron fusionar los proveedores' });
+      return;
+    }
+
+    res.json(snapshot);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 app.post('/api/pedidos', authenticateRequest, async (req, res) => {
   try {
     const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
     const pedido = await createPedidoRecord({
       clienteId: req.body?.clienteId,
+      proveedorId: req.body?.proveedorId,
       producto: req.body?.producto,
       productType: req.body?.productType,
       productModel: req.body?.productModel,
@@ -545,6 +620,7 @@ app.put('/api/pedidos/:id', authenticateRequest, async (req, res) => {
     const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
     const pedido = await updatePedidoRecord(req.params.id, {
       clienteId: req.body?.clienteId,
+      proveedorId: req.body?.proveedorId,
       producto: req.body?.producto,
       productType: req.body?.productType,
       productModel: req.body?.productModel,

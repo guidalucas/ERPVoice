@@ -5,6 +5,7 @@ const createId = (prefix: string) => `${prefix}-${Math.random().toString(36).sli
 export const initialAppState: AppState = {
   products: [],
   clients: [],
+  proveedores: [],
   pedidos: [],
   transactions: [],
   chatMessages: [
