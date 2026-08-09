@@ -164,9 +164,9 @@ const composeProductName = ({ productType, productModel, size, fallback }) => {
 
 const parseProductDescriptor = (value) => {
   const normalized = normalizeText(value).replace(/\s+/g, ' ').trim();
-  const sizeMatch = normalized.match(/(?:,\s*|\s+)talle\s+([a-z0-9]+)\b/i);
+  const sizeMatch = normalized.match(/(?:,\s*|\s+)(?:talle|talles|numero|numeros|nro|num|medida|medidas|variante|variantes)\s+([a-z0-9\/]+)\b/i);
   const size = sizeMatch ? sizeMatch[1].toUpperCase() : undefined;
-  const withoutSize = normalized.replace(/(?:,\s*|\s+)talle\s+[a-z0-9]+\b/i, '').trim();
+  const withoutSize = normalized.replace(/(?:,\s*|\s+)(?:talle|talles|numero|numeros|nro|num|medida|medidas|variante|variantes)\s+[a-z0-9\/]+\b/i, '').trim();
   const descriptorParts = withoutSize.split(/\s+de\s+/i);
   const rawProductType = descriptorParts[0] ?? withoutSize;
   const rawProductModel = descriptorParts.slice(1).join(' de ') || undefined;
@@ -621,6 +621,176 @@ const resolveProductFlexible = (products, action) => {
   return bestScore >= 1 ? best : null;
 };
 
+const includesNormalized = (candidate, query) => {
+  const candidateNorm = normalizeText(candidate).replace(/\s+/g, ' ').trim();
+  const queryNorm = normalizeText(query).replace(/\s+/g, ' ').trim();
+  if (!candidateNorm || !queryNorm) {
+    return false;
+  }
+  return candidateNorm.includes(queryNorm) || queryNorm.includes(candidateNorm);
+};
+
+export const matchProductsForQuery = (products, action) => {
+  if (!Array.isArray(products) || !products.length || !action) {
+    return [];
+  }
+
+  const actionType = normalizeNullableString(action.productType);
+  const actionModel = normalizeNullableString(action.productModel);
+  const actionName = String(action.productName ?? '').trim();
+
+  if (actionType || actionModel) {
+    return products.filter((product) => {
+      const productType = normalizeNullableString(product.productType);
+      const productModel = normalizeNullableString(product.productModel);
+      const productName = String(product.name ?? '');
+
+      const typeOk = !actionType
+        || (productType && includesNormalized(productType, actionType))
+        || includesNormalized(productName, actionType);
+
+      if (!typeOk) {
+        return false;
+      }
+
+      if (!actionModel) {
+        return true;
+      }
+
+      return (
+        (productModel && includesNormalized(productModel, actionModel))
+        || includesNormalized(productName, actionModel)
+      );
+    });
+  }
+
+  if (!actionName) {
+    return [];
+  }
+
+  const actionTokens = normalizeTextList(actionName);
+  const scored = [];
+
+  for (const product of products) {
+    const score = Math.max(
+      scoreNameMatch(product.name, actionName),
+      scoreNameMatch([product.productType, product.productModel, product.size].filter(Boolean).join(' '), actionName),
+      actionTokens.length
+        ? actionTokens.filter((token) => normalizeTextList(product.name).includes(token)).length
+        : 0,
+    );
+
+    if (score >= 1) {
+      scored.push({ product, score });
+    }
+  }
+
+  if (!scored.length) {
+    return [];
+  }
+
+  const bestScore = Math.max(...scored.map((entry) => entry.score));
+  return scored.filter((entry) => entry.score === bestScore).map((entry) => entry.product);
+};
+
+/** Match all variants for update/delete. Without size → every talle of that model. With size → only that talle. */
+export const matchProductsForUpdate = (products, action) => {
+  if (!Array.isArray(products) || !products.length || !action) {
+    return [];
+  }
+
+  const descriptor = parseProductDescriptor(String(action.productName ?? ''));
+  const productType = normalizeNullableString(action.productType) || descriptor.productType || undefined;
+  const productModel = normalizeNullableString(action.productModel) || descriptor.productModel || undefined;
+  const explicitSize = normalizeNullableString(action.size) || descriptor.size || null;
+  const productName = composeProductName({
+    productType,
+    productModel,
+    fallback: action.productName,
+  });
+
+  let matches = matchProductsForQuery(products, {
+    productName,
+    productType,
+    productModel,
+  });
+
+  if (explicitSize) {
+    matches = matches.filter((product) => {
+      const productSize = normalizeNullableString(product.size);
+      return productSize && (productSize === explicitSize || includesNormalized(productSize, explicitSize));
+    });
+  }
+
+  return matches;
+};
+
+export const answerStockQuery = (products, action, options = {}) => {
+  const label = String(action?.productName ?? 'producto').trim() || 'producto';
+  const matches = matchProductsForQuery(products, action);
+  const variantWord = typeof options.variantLabel === 'string' && options.variantLabel.trim()
+    ? options.variantLabel.trim().toLowerCase()
+    : 'variante';
+  const missingVariant = `sin ${variantWord}`;
+
+  if (!matches.length) {
+    return `No encontré stock de "${label}" en tu inventario.`;
+  }
+
+  const totalAvailable = matches.reduce((sum, product) => sum + Number(product.stockAvailable ?? 0), 0);
+  const totalReserved = matches.reduce((sum, product) => sum + Number(product.stockReserved ?? 0), 0);
+
+  const groups = new Map();
+
+  for (const product of matches) {
+    const groupKey = normalizeNullableString(product.productModel)
+      || normalizeNullableString(product.productType)
+      || product.name
+      || 'Producto';
+    const existing = groups.get(groupKey) ?? [];
+    existing.push(product);
+    groups.set(groupKey, existing);
+  }
+
+  const lines = [];
+  const sizeOrder = ['xxs', 'xs', 's', 'm', 'l', 'xl', 'xxl', 'xxxl'];
+
+  for (const [groupName, groupProducts] of groups.entries()) {
+    const groupTotal = groupProducts.reduce((sum, product) => sum + Number(product.stockAvailable ?? 0), 0);
+    const sizeParts = groupProducts
+      .slice()
+      .sort((left, right) => {
+        const leftSize = normalizeText(left.size ?? '');
+        const rightSize = normalizeText(right.size ?? '');
+        const leftIndex = sizeOrder.indexOf(leftSize);
+        const rightIndex = sizeOrder.indexOf(rightSize);
+        if (leftIndex >= 0 && rightIndex >= 0) {
+          return leftIndex - rightIndex;
+        }
+        if (leftIndex >= 0) {
+          return -1;
+        }
+        if (rightIndex >= 0) {
+          return 1;
+        }
+        return String(left.size ?? '').localeCompare(String(right.size ?? ''), 'es', { numeric: true });
+      })
+      .map((product) => {
+        const sizeLabel = normalizeNullableString(product.size) || missingVariant;
+        return `${sizeLabel}: ${Number(product.stockAvailable ?? 0)}`;
+      });
+
+    lines.push(`${groupName}: ${sizeParts.join(', ')} (total ${groupTotal})`);
+  }
+
+  const header = `Tenés ${totalAvailable} unidad${totalAvailable === 1 ? '' : 'es'} disponible${totalAvailable === 1 ? '' : 's'} de ${label}:`;
+  const reservedLine = totalReserved > 0
+    ? `\nAdemás hay ${totalReserved} unidad${totalReserved === 1 ? '' : 'es'} reservada${totalReserved === 1 ? '' : 's'}.`
+    : '';
+
+  return `${header}\n${lines.join('\n')}${reservedLine}`;
+};
+
 const resolvePedidoFlexible = (pedidos, productName, clientName) => {
   const pendingFirst = [...pedidos].sort((left, right) => {
     if (left.estado === 'pendiente' && right.estado !== 'pendiente') return -1;
@@ -725,7 +895,7 @@ const summarizeAction = (action) => {
 
   if (action.type === 'client_order') {
     const qty = action.qty && action.qty > 0 ? action.qty : 1;
-    const sizeLabel = action.size ? ` talle ${action.size}` : '';
+    const sizeLabel = action.size ? ` ${action.size}` : '';
     if (action.clientName?.trim()) {
       return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}`;
     }
@@ -740,13 +910,17 @@ const summarizeAction = (action) => {
     if (Number.isFinite(action.stockAvailable) && action.stockAvailable >= 0) {
       parts.push(`stock ${action.stockAvailable}`);
     }
-    return `Actualizar ${action.productName}${parts.length ? `: ${parts.join(', ')}` : ''}`;
+    const scope = action.size ? `variante ${action.size}` : 'todas las variantes';
+    return `Actualizar ${action.productName} (${scope})${parts.length ? `: ${parts.join(', ')}` : ''}`;
   }
 
   if (action.type === 'update_pedido') {
     const parts = [];
     if (Number.isFinite(action.qty) && action.qty > 0) {
       parts.push(`cantidad ${action.qty}`);
+    }
+    if (typeof action.size === 'string' && action.size.trim()) {
+      parts.push(`variante ${action.size.trim().toUpperCase()}`);
     }
     if (action.estado) {
       parts.push(`estado ${action.estado}`);
@@ -803,7 +977,7 @@ const buildPedidoProductoLabel = (action) => {
     return 'Producto';
   }
 
-  return rawName.replace(/(?:,\s*|\s+)talle\s+[a-z0-9]+\b/i, '').trim() || rawName;
+  return rawName.replace(/(?:,\s*|\s+)(?:talle|talles|numero|numeros|nro|num|medida|medidas|variante|variantes)\s+[a-z0-9\/]+\b/i, '').trim() || rawName;
 };
 
 const withTransaction = async (callback) => {
@@ -1185,6 +1359,10 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     const computedDebtAmount = lastSellAction ? calculateSaleDebt(nextProducts, lastSellAction) : null;
 
     actions.forEach((action, index) => {
+      if (action.type === 'query_stock') {
+        return;
+      }
+
       if (action.type === 'add_stock') {
         const product = ensureProduct(nextProducts, action);
         product.stockAvailable += action.qty;
@@ -1252,8 +1430,8 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
       }
 
       if (action.type === 'update_product' && typeof action.productName === 'string') {
-        const product = resolveProductFlexible(nextProducts, action);
-        if (product) {
+        const productsToUpdate = matchProductsForUpdate(nextProducts, action);
+        for (const product of productsToUpdate) {
           if (Number.isFinite(action.price) && action.price > 0) {
             product.price = Math.trunc(action.price);
           }
@@ -1268,6 +1446,9 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
         if (pedido) {
           if (Number.isFinite(action.qty) && action.qty > 0) {
             pedido.qty = Math.trunc(action.qty);
+          }
+          if (typeof action.size === 'string' && action.size.trim()) {
+            pedido.talle = action.size.trim().toUpperCase();
           }
           if (action.estado && PEDIDO_ESTADOS.has(action.estado)) {
             pedido.estado = action.estado;

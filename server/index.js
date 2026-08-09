@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
+import { getBusinessCategoryPreset } from './businessCategories.js';
 import {
   createAuthOtpChallenge,
   createProductRecord,
@@ -10,6 +11,7 @@ import {
   deleteClientRecord,
   deletePedidoRecord,
   applyActionsToDatabase,
+  answerStockQuery,
   findMetaEventById,
   revokeAuthOtpChallenge,
   getAuthUserProfile,
@@ -606,7 +608,8 @@ app.post('/api/state/apply', authenticateRequest, async (req, res) => {
     const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
     const sourceText = typeof req.body?.sourceText === 'string' ? req.body.sourceText : '';
     const actions = Array.isArray(req.body?.actions) ? req.body.actions : [];
-    const snapshot = await applyActionsToDatabase(actions, sourceText, clientPhone);
+    const mutationActions = actions.filter((action) => action?.type !== 'query_stock');
+    const snapshot = await applyActionsToDatabase(mutationActions, sourceText, clientPhone);
     res.json(snapshot);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -622,7 +625,18 @@ app.post('/api/voice/parse', authenticateRequest, async (req, res) => {
       return;
     }
 
-    const parsed = await parseVoiceText(text);
+    const phoneNumber = String(req.auth?.phoneNumber ?? '').trim();
+    let businessCategory = null;
+    if (phoneNumber) {
+      try {
+        const profile = await getAuthUserProfile(phoneNumber);
+        businessCategory = profile?.businessCategory ?? null;
+      } catch (error) {
+        console.warn('[voice/parse] failed to load business category:', error instanceof Error ? error.message : error);
+      }
+    }
+
+    const parsed = await parseVoiceText(text, { businessCategory });
 
     if (!parsed) {
       res.json({
@@ -658,11 +672,11 @@ const handleMetaWebhook = async (req, res) => {
         const fromNumber = message.from;
         const messageId = typeof message.id === 'string' ? message.id : null;
         const senderName = changes?.contacts?.[0]?.profile?.name || 'Usuario';
-        const textBody = message?.text?.body ?? '';
 
         console.log(`Texto recibido. Intentando responder a: ${fromNumber}`);
 
-        const responseText = `¡Recibido, ${senderName}! Procesando comando: "${textBody}"`;
+        // ACK corto: la confirmación real del resultado se envía al terminar de procesar.
+        const responseText = `Procesando tu mensaje, ${senderName}…`;
 
         // no await, pero capturamos errores para no bloquear el flujo
         sendMetaReply({ to: fromNumber, text: responseText })
@@ -681,7 +695,17 @@ const handleMetaWebhook = async (req, res) => {
   }
 
   try {
-    const results = await processMetaWebhook(req.body ?? {});
+    const results = await processMetaWebhook(req.body ?? {}, {
+      resolveBusinessCategory: async (fromNumber) => {
+        try {
+          const profile = await getAuthUserProfile(fromNumber);
+          return profile?.businessCategory ?? null;
+        } catch (error) {
+          console.warn('[MetaWebhook] business category lookup failed:', error instanceof Error ? error.message : error);
+          return null;
+        }
+      },
+    });
 
     for (const result of results) {
       const incomingId = result.messageId ?? createEventId();
@@ -706,9 +730,33 @@ const handleMetaWebhook = async (req, res) => {
         processed: Boolean(result.parsed?.actions?.length),
       };
 
-      if (result.parsed?.actions?.length) {
-        await applyActionsToDatabase(result.parsed.actions, result.sourceText, result.fromNumber);
+      const allActions = result.parsed?.actions ?? [];
+      const queryActions = allActions.filter((action) => action.type === 'query_stock');
+      const mutationActions = allActions.filter((action) => action.type !== 'query_stock');
+      const categoryPreset = getBusinessCategoryPreset(result.businessCategory);
+
+      let overrideReplyText = null;
+      if (queryActions.length) {
+        const snapshot = await getStateSnapshot(result.fromNumber);
+        overrideReplyText = queryActions
+          .map((action) => answerStockQuery(snapshot.products, action, { variantLabel: categoryPreset.variantLabel }))
+          .join('\n\n');
       }
+
+      if (mutationActions.length) {
+        await applyActionsToDatabase(mutationActions, result.sourceText, result.fromNumber);
+      }
+
+      const finalReplyText = overrideReplyText
+        ? (mutationActions.length
+          ? `${overrideReplyText}\n\n${result.replyText}`
+          : (result.transcript
+            ? `${overrideReplyText}\n\nTexto: ${result.transcript}`
+            : overrideReplyText))
+        : result.replyText;
+
+      eventRecord.replyText = finalReplyText;
+      eventRecord.processed = Boolean(queryActions.length || mutationActions.length);
 
       console.log('[MetaWebhook] response debug:', {
         messageId: incomingId,
@@ -716,29 +764,28 @@ const handleMetaWebhook = async (req, res) => {
         kind: result.kind,
         sourceText: result.sourceText,
         transcript: result.transcript ?? null,
-        replyText: result.replyText,
+        replyText: finalReplyText,
         actions: result.parsed?.actions ?? [],
       });
 
       await saveMetaEvent(eventRecord);
       await markMetaEventProcessed(eventRecord.id, { processed: eventRecord.processed });
 
-      const alreadyFastReplied = result.kind === 'text' && result.messageId && fastRepliedMessageIds.has(result.messageId);
-
-      if (!alreadyFastReplied) {
+      // Siempre enviar el resultado final (aunque ya haya habido un ACK de "procesando").
+      if (finalReplyText) {
         try {
           const replyResult = await sendMetaReply({
             to: result.fromNumber,
-            text: result.replyText,
+            text: finalReplyText,
           });
           if (!replyResult?.sent) {
             console.warn('[MetaWebhook] reply not sent:', replyResult);
+          } else if (result.kind === 'text' && result.messageId && fastRepliedMessageIds.has(result.messageId)) {
+            console.log('[MetaWebhook] sent result reply after fast ACK:', result.messageId);
           }
         } catch (replyError) {
           console.error('[MetaWebhook] reply failed for event:', incomingId, replyError);
         }
-      } else {
-        console.log('[MetaWebhook] skipped duplicate text reply for message:', result.messageId);
       }
 
       console.log('[MetaWebhook] processed event:', {

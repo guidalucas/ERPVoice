@@ -34,8 +34,6 @@ type ProductGroup = {
   products: ProductRow[];
 };
 
-type InlineField = 'stockAvailable' | 'price';
-
 const emptyDraft = (): ProductDraft => ({
   name: '',
   productType: '',
@@ -208,54 +206,6 @@ function ProductFormModal({
   );
 }
 
-function InlineNumber({
-  value,
-  editing,
-  draftValue,
-  onStart,
-  onChange,
-  onCommit,
-  onCancel,
-  formatDisplay,
-}: {
-  value: number;
-  editing: boolean;
-  draftValue: string;
-  onStart: () => void;
-  onChange: (value: string) => void;
-  onCommit: () => void;
-  onCancel: () => void;
-  formatDisplay?: (value: number) => string;
-}) {
-  if (editing) {
-    return (
-      <input
-        autoFocus
-        className="stock-chip-input"
-        value={draftValue}
-        onChange={(event) => onChange(event.target.value)}
-        onBlur={() => void onCommit()}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            void onCommit();
-          }
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            onCancel();
-          }
-        }}
-      />
-    );
-  }
-
-  return (
-    <button type="button" className="erp-editable-value type-subtitle" onClick={onStart}>
-      {formatDisplay ? formatDisplay(value) : value}
-    </button>
-  );
-}
-
 export function ProductsAbmPanel({
   stockFilter = 'all',
   onStockFilterChange,
@@ -277,7 +227,6 @@ export function ProductsAbmPanel({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
-  const [inlineEdit, setInlineEdit] = useState<{ productId: string; field: InlineField; value: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const onlyLowStock = stockFilter === 'low-stock';
 
@@ -416,6 +365,12 @@ export function ProductsAbmPanel({
     setIsFormOpen(true);
   };
 
+  const openEditForm = (product: ProductRow) => {
+    setEditingProductId(product.id);
+    setDraft(toDraft(product));
+    setIsFormOpen(true);
+  };
+
   const handleSubmit = async () => {
     setSaving(true);
     try {
@@ -457,33 +412,6 @@ export function ProductsAbmPanel({
     }
   };
 
-  const commitInlineEdit = async () => {
-    if (!inlineEdit) {
-      return;
-    }
-
-    const product = products.find((entry) => entry.id === inlineEdit.productId);
-    if (!product) {
-      setInlineEdit(null);
-      return;
-    }
-
-    const nextValue = Number(inlineEdit.value);
-    if (!Number.isFinite(nextValue) || nextValue < 0) {
-      setInlineEdit(null);
-      return;
-    }
-
-    const currentValue = inlineEdit.field === 'price' ? product.price : product.stockAvailable;
-    if (currentValue === nextValue) {
-      setInlineEdit(null);
-      return;
-    }
-
-    await updateProductRecord(product.id, { [inlineEdit.field]: nextValue });
-    setInlineEdit(null);
-  };
-
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-3">
@@ -518,8 +446,8 @@ export function ProductsAbmPanel({
             <h3 className="type-title text-xl text-[color:var(--text)]">Inventario</h3>
             <p className="mt-1 text-sm text-[color:var(--muted)]">
               {preset.useVariants
-                ? `Agrupados por modelo. Click en stock o precio para editar inline.`
-                : 'Lista plana por producto. Click en stock o precio para editar inline.'}
+                ? `Agrupados por modelo. Usá el lápiz para editar stock, precio y datos del producto.`
+                : 'Lista plana por producto. Usá el lápiz para editar stock, precio y datos del producto.'}
             </p>
           </div>
           <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex min-h-11 items-center gap-2">
@@ -568,6 +496,7 @@ export function ProductsAbmPanel({
           {preset.useVariants
             ? filteredGroups.map((group) => {
                 const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
+                const totalReserved = group.products.reduce((sum, product) => sum + product.stockReserved, 0);
                 const samePrice = group.products.every((product) => product.price === group.products[0]?.price);
                 const isExpanded = Boolean(expandedGroups[group.key]);
                 const sizeCount = group.products.length;
@@ -584,6 +513,7 @@ export function ProductsAbmPanel({
                         <p className="mt-1 text-sm text-[color:var(--muted)]">
                           {sizeCount} {sizeCount === 1 ? (preset.variantLabel?.toLowerCase() ?? 'variante') : variantLabelPlural} —{' '}
                           {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
+                          {totalReserved > 0 ? ` · ${totalReserved} reservada${totalReserved === 1 ? '' : 's'}` : ''}
                           {samePrice && group.products[0] ? ` · ${formatCurrency(group.products[0].price)}` : ''}
                           {group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? ' · stock bajo' : ''}
                         </p>
@@ -597,8 +527,6 @@ export function ProductsAbmPanel({
                       <div className="space-y-3 border-t border-[color:var(--border)] px-4 py-3">
                         <div className="flex flex-wrap gap-2">
                           {group.products.map((product) => {
-                            const isEditingStock = inlineEdit?.productId === product.id && inlineEdit.field === 'stockAvailable';
-                            const isEditingPrice = inlineEdit?.productId === product.id && inlineEdit.field === 'price';
                             const low = product.stockAvailable <= LOW_STOCK_THRESHOLD;
 
                             return (
@@ -607,26 +535,23 @@ export function ProductsAbmPanel({
                                 className={`stock-chip ${low ? 'border-amber-400/30 bg-amber-400/10' : ''}`}
                               >
                                 <span className="type-subtitle text-[color:var(--text)]">{product.size ?? '-'}:</span>
-                                <InlineNumber
-                                  value={product.stockAvailable}
-                                  editing={Boolean(isEditingStock)}
-                                  draftValue={inlineEdit?.value ?? ''}
-                                  onStart={() => setInlineEdit({ productId: product.id, field: 'stockAvailable', value: String(product.stockAvailable) })}
-                                  onChange={(value) => setInlineEdit({ productId: product.id, field: 'stockAvailable', value })}
-                                  onCommit={() => void commitInlineEdit()}
-                                  onCancel={() => setInlineEdit(null)}
-                                />
+                                <span className="type-subtitle font-semibold text-emerald-700 dark:text-emerald-300">{product.stockAvailable}</span>
+                                {product.stockReserved > 0 && (
+                                  <>
+                                    <span className="text-[color:var(--muted)]">·</span>
+                                    <span className="text-xs font-medium text-cyan-700 dark:text-cyan-300" title="Stock reservado">
+                                      R:{product.stockReserved}
+                                    </span>
+                                  </>
+                                )}
                                 <span className="text-[color:var(--muted)]">·</span>
-                                <InlineNumber
-                                  value={product.price}
-                                  editing={Boolean(isEditingPrice)}
-                                  draftValue={inlineEdit?.value ?? ''}
-                                  onStart={() => setInlineEdit({ productId: product.id, field: 'price', value: String(product.price) })}
-                                  onChange={(value) => setInlineEdit({ productId: product.id, field: 'price', value })}
-                                  onCommit={() => void commitInlineEdit()}
-                                  onCancel={() => setInlineEdit(null)}
-                                  formatDisplay={formatCurrency}
-                                />
+                                <span className="type-subtitle font-semibold text-emerald-700 dark:text-emerald-300">{formatCurrency(product.price)}</span>
+                                <IconButton label={`Editar ${product.name}`} onClick={() => openEditForm(product)}>
+                                  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
+                                    <path d="M4 20h4l10.5-10.5a1.5 1.5 0 0 0-2.1-2.1L5.9 17.9 4 20z" />
+                                    <path d="M13.5 6.5l4 4" />
+                                  </svg>
+                                </IconButton>
                                 <IconButton label={`Eliminar ${product.name}`} danger onClick={() => setPendingDeleteProduct(product)}>
                                   <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
                                     <path d="M4 7h16" />
@@ -644,8 +569,6 @@ export function ProductsAbmPanel({
                 );
               })
             : flatProducts.map((product) => {
-                const isEditingStock = inlineEdit?.productId === product.id && inlineEdit.field === 'stockAvailable';
-                const isEditingPrice = inlineEdit?.productId === product.id && inlineEdit.field === 'price';
                 const low = product.stockAvailable <= LOW_STOCK_THRESHOLD;
                 const meta = [product.productType, product.productModel].filter(Boolean).join(' · ');
 
@@ -661,33 +584,31 @@ export function ProductsAbmPanel({
                         <p className="type-title text-lg text-[color:var(--text)]">{product.name}</p>
                         <p className="mt-1 text-sm text-[color:var(--muted)]">
                           {meta || 'Sin categoría'}
+                          {product.stockReserved > 0 ? ` · ${product.stockReserved} reservada${product.stockReserved === 1 ? '' : 's'}` : ''}
                           {low ? ' · stock bajo' : ''}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="stock-chip">
                           <span className="type-subtitle text-[color:var(--text)]">Stock:</span>
-                          <InlineNumber
-                            value={product.stockAvailable}
-                            editing={Boolean(isEditingStock)}
-                            draftValue={inlineEdit?.value ?? ''}
-                            onStart={() => setInlineEdit({ productId: product.id, field: 'stockAvailable', value: String(product.stockAvailable) })}
-                            onChange={(value) => setInlineEdit({ productId: product.id, field: 'stockAvailable', value })}
-                            onCommit={() => void commitInlineEdit()}
-                            onCancel={() => setInlineEdit(null)}
-                          />
+                          <span className="type-subtitle font-semibold text-emerald-700 dark:text-emerald-300">{product.stockAvailable}</span>
+                          {product.stockReserved > 0 && (
+                            <>
+                              <span className="text-[color:var(--muted)]">·</span>
+                              <span className="text-xs font-medium text-cyan-700 dark:text-cyan-300" title="Stock reservado">
+                                R:{product.stockReserved}
+                              </span>
+                            </>
+                          )}
                           <span className="text-[color:var(--muted)]">·</span>
-                          <InlineNumber
-                            value={product.price}
-                            editing={Boolean(isEditingPrice)}
-                            draftValue={inlineEdit?.value ?? ''}
-                            onStart={() => setInlineEdit({ productId: product.id, field: 'price', value: String(product.price) })}
-                            onChange={(value) => setInlineEdit({ productId: product.id, field: 'price', value })}
-                            onCommit={() => void commitInlineEdit()}
-                            onCancel={() => setInlineEdit(null)}
-                            formatDisplay={formatCurrency}
-                          />
+                          <span className="type-subtitle font-semibold text-emerald-700 dark:text-emerald-300">{formatCurrency(product.price)}</span>
                         </div>
+                        <IconButton label={`Editar ${product.name}`} onClick={() => openEditForm(product)}>
+                          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
+                            <path d="M4 20h4l10.5-10.5a1.5 1.5 0 0 0-2.1-2.1L5.9 17.9 4 20z" />
+                            <path d="M13.5 6.5l4 4" />
+                          </svg>
+                        </IconButton>
                         <IconButton label={`Eliminar ${product.name}`} danger onClick={() => setPendingDeleteProduct(product)}>
                           <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
                             <path d="M4 7h16" />
