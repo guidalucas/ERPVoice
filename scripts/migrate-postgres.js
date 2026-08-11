@@ -62,6 +62,13 @@ const main = async () => {
         debt INTEGER NOT NULL DEFAULT 0
       );
 
+      CREATE TABLE IF NOT EXISTS proveedores (
+        id TEXT PRIMARY KEY,
+        owner_phone TEXT NOT NULL DEFAULT '__default__',
+        name TEXT NOT NULL,
+        notas TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS transactions (
         id TEXT PRIMARY KEY,
         owner_phone TEXT NOT NULL DEFAULT '__default__',
@@ -110,8 +117,12 @@ const main = async () => {
 
       ALTER TABLE products ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
       ALTER TABLE clients ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+      ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+      ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS notas TEXT;
       ALTER TABLE transactions ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
       ALTER TABLE meta_events ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+      ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+      ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS proveedor_id TEXT;
 
       CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions (timestamp DESC);
       CREATE INDEX IF NOT EXISTS idx_products_owner_phone ON products (owner_phone);
