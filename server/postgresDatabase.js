@@ -396,21 +396,6 @@ const initializeDatabase = async () => {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
-    CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions (timestamp DESC);
-    CREATE INDEX IF NOT EXISTS idx_products_owner_phone ON products (owner_phone);
-    CREATE INDEX IF NOT EXISTS idx_clients_owner_phone ON clients (owner_phone);
-    CREATE INDEX IF NOT EXISTS idx_proveedores_owner_phone ON proveedores (owner_phone);
-    CREATE INDEX IF NOT EXISTS idx_pedidos_owner_phone ON pedidos (owner_phone);
-    CREATE INDEX IF NOT EXISTS idx_pedidos_cliente_id ON pedidos (cliente_id);
-    CREATE INDEX IF NOT EXISTS idx_pedidos_proveedor_id ON pedidos (proveedor_id);
-    CREATE INDEX IF NOT EXISTS idx_pedidos_estado ON pedidos (estado);
-    CREATE INDEX IF NOT EXISTS idx_transactions_owner_phone ON transactions (owner_phone);
-        CREATE INDEX IF NOT EXISTS idx_meta_events_at ON meta_events (at DESC);
-    CREATE INDEX IF NOT EXISTS idx_meta_events_owner_phone ON meta_events (owner_phone);
-    CREATE INDEX IF NOT EXISTS idx_auth_otp_phone_number ON auth_otp_challenges (phone_number);
-
-    CREATE INDEX IF NOT EXISTS idx_auth_otp_expires_at ON auth_otp_challenges (expires_at);
-
     ALTER TABLE products ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS notas TEXT;
@@ -422,6 +407,20 @@ const initializeDatabase = async () => {
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS proveedor_id TEXT;
     ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_name TEXT;
     ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_category TEXT;
+
+    CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions (timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_products_owner_phone ON products (owner_phone);
+    CREATE INDEX IF NOT EXISTS idx_clients_owner_phone ON clients (owner_phone);
+    CREATE INDEX IF NOT EXISTS idx_proveedores_owner_phone ON proveedores (owner_phone);
+    CREATE INDEX IF NOT EXISTS idx_pedidos_owner_phone ON pedidos (owner_phone);
+    CREATE INDEX IF NOT EXISTS idx_pedidos_cliente_id ON pedidos (cliente_id);
+    CREATE INDEX IF NOT EXISTS idx_pedidos_proveedor_id ON pedidos (proveedor_id);
+    CREATE INDEX IF NOT EXISTS idx_pedidos_estado ON pedidos (estado);
+    CREATE INDEX IF NOT EXISTS idx_transactions_owner_phone ON transactions (owner_phone);
+    CREATE INDEX IF NOT EXISTS idx_meta_events_at ON meta_events (at DESC);
+    CREATE INDEX IF NOT EXISTS idx_meta_events_owner_phone ON meta_events (owner_phone);
+    CREATE INDEX IF NOT EXISTS idx_auth_otp_phone_number ON auth_otp_challenges (phone_number);
+    CREATE INDEX IF NOT EXISTS idx_auth_otp_expires_at ON auth_otp_challenges (expires_at);
   `);
 
   await withClient(async (client) => {
