@@ -5,14 +5,6 @@ import {
   fetchCurrentSession,
   requestDevLogin,
   saveBusinessProfile,
-  type SaveBusinessProfilePayload,
-} from '../services/authService';
-import { clearAuthSession, getAuthSession, setAuthSession, subscribeAuthSession } from '../services/authTokenStore';
-import {
-  fetchCurrentSession,
-  requestDevLogin,
-  saveBusinessProfile,
-  verifyLoginCode,
   type AuthUserProfile,
   type PendingInvite,
   type SaveBusinessProfilePayload,
@@ -156,18 +148,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-const handleCompleteWhatsAppLogin = async (payload: { token: string; phoneNumber: string }) =>
-  applyAuthenticatedSession(payload.token, payload.phoneNumber);
+  const handleCompleteWhatsAppLogin = async (payload: { token: string; phoneNumber: string }) =>
+    applyAuthenticatedSession(payload.token, payload.phoneNumber);
 
-const applyProfile = (profile: AuthUserProfile): AuthSession => {
-  if (!session) {
-    throw new Error('No hay sesión activa');
-  }
+  const applyProfile = (profile: AuthUserProfile): AuthSession => {
+    if (!session) {
+      throw new Error('No hay sesión activa');
+    }
 
-  const nextSession = buildSession(session.token, profile);
-  setSession(nextSession);
-  return nextSession;
-};
+    const nextSession = buildSession(session.token, profile);
+    setSession(nextSession);
+    return nextSession;
+  };
 
   const handleDevLogin = async (phoneNumber?: string) => {
     const result = await requestDevLogin(phoneNumber);
