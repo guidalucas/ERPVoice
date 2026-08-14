@@ -104,6 +104,30 @@ const main = async () => {
       ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_name TEXT;
       ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_category TEXT;
 
+      CREATE TABLE IF NOT EXISTS business_members (
+        tenant_phone TEXT NOT NULL,
+        member_phone TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'member',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (tenant_phone, member_phone)
+      );
+
+      CREATE TABLE IF NOT EXISTS business_invites (
+        id TEXT PRIMARY KEY,
+        tenant_phone TEXT NOT NULL,
+        invited_phone TEXT NOT NULL,
+        invited_by TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_business_members_member_phone ON business_members (member_phone);
+      CREATE INDEX IF NOT EXISTS idx_business_members_tenant_phone ON business_members (tenant_phone);
+      CREATE INDEX IF NOT EXISTS idx_business_invites_invited_phone ON business_invites (invited_phone);
+      CREATE INDEX IF NOT EXISTS idx_business_invites_tenant_phone ON business_invites (tenant_phone);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_business_invites_pending_phone ON business_invites (invited_phone) WHERE status = 'pending';
+
       CREATE TABLE IF NOT EXISTS auth_otp_challenges (
         id TEXT PRIMARY KEY,
         phone_number TEXT NOT NULL,

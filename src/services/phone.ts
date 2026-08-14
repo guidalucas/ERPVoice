@@ -1,5 +1,33 @@
 export const normalizePhone = (value: string) => String(value ?? '').replace(/\D/g, '').trim();
 
+export const formatPhoneDisplay = (phoneNumber: string): string => {
+  const digits = phoneNumber.replace(/\D/g, '');
+
+  if (digits.length === 13 && digits.startsWith('549')) {
+    const area = digits.slice(3, 5);
+    const local = digits.slice(5);
+    return `+54 9 ${area} ${local.slice(0, 4)}-${local.slice(4)}`;
+  }
+
+  if (digits.length === 12 && digits.startsWith('54')) {
+    const area = digits.slice(2, 4);
+    const local = digits.slice(4);
+    return `+54 ${area} ${local.slice(0, 4)}-${local.slice(4)}`;
+  }
+
+  if (digits.length === 13 && digits.startsWith('54')) {
+    const area = digits.slice(2, 4);
+    const local = digits.slice(4);
+    return `+54 ${area} ${local.slice(0, 4)}-${local.slice(4)}`;
+  }
+
+  if (digits.length >= 10) {
+    return `+${digits.slice(0, digits.length - 10)} ${digits.slice(-10, -6)} ${digits.slice(-6, -4)}-${digits.slice(-4)}`.trim();
+  }
+
+  return phoneNumber;
+};
+
 export const getWhatsAppVariants = (canonicalPhone: string) => {
   const raw = normalizePhone(canonicalPhone);
 

@@ -7,16 +7,23 @@ import {
   requestLoginCode,
   saveBusinessProfile,
   verifyLoginCode,
+  type AuthUserProfile,
+  type PendingInvite,
   type SaveBusinessProfilePayload,
 } from '../services/authService';
+import { acceptTeamInvite, declineTeamInvite } from '../services/teamService';
 import { clearAuthSession, getAuthSession, setAuthSession, subscribeAuthSession } from '../services/authTokenStore';
 
 export type AuthSession = {
   token: string;
   phoneNumber: string;
+  tenantPhone: string;
+  role: 'owner' | 'member';
   businessName: string | null;
   businessCategory: BusinessCategoryId | null;
   needsOnboarding: boolean;
+  pendingInvite: PendingInvite | null;
+  hasOwnBusiness: boolean;
 };
 
 type AuthContextValue = {
@@ -33,6 +40,10 @@ type AuthContextValue = {
   verifyLoginCode: (payload: { phoneNumber: string; otpCode: string; challengeId: string }) => Promise<AuthSession>;
   loginWithDevBypass: (phoneNumber?: string) => Promise<AuthSession>;
   completeOnboarding: (payload: SaveBusinessProfilePayload) => Promise<AuthSession>;
+  refreshSession: () => Promise<AuthSession | null>;
+  acceptInvite: (inviteId: string) => Promise<AuthSession>;
+  declineInvite: (inviteId: string) => Promise<AuthSession>;
+  applyProfile: (profile: AuthUserProfile) => AuthSession;
   logout: () => void;
 };
 
@@ -45,9 +56,13 @@ const buildSession = (
   token: string,
   profile: {
     phoneNumber: string;
+    tenantPhone?: string | null;
+    role?: string | null;
     businessName?: string | null;
     businessCategory?: string | null;
     needsOnboarding?: boolean;
+    pendingInvite?: PendingInvite | null;
+    hasOwnBusiness?: boolean;
   },
 ): AuthSession => {
   const businessCategory = toBusinessCategory(profile.businessCategory);
@@ -57,9 +72,13 @@ const buildSession = (
   return {
     token,
     phoneNumber: profile.phoneNumber,
+    tenantPhone: profile.tenantPhone || profile.phoneNumber,
+    role: profile.role === 'member' ? 'member' : 'owner',
     businessName,
     businessCategory,
     needsOnboarding: profile.needsOnboarding ?? !businessCategory,
+    pendingInvite: profile.pendingInvite ?? null,
+    hasOwnBusiness: Boolean(profile.hasOwnBusiness),
   };
 };
 
@@ -141,6 +160,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const applyProfile = (profile: AuthUserProfile): AuthSession => {
+    if (!session) {
+      throw new Error('No hay sesión activa');
+    }
+
+    const nextSession = buildSession(session.token, profile);
+    setSession(nextSession);
+    return nextSession;
+  };
+
   const handleVerifyLoginCode = async (payload: { phoneNumber: string; otpCode: string; challengeId: string }) => {
     const result = await verifyLoginCode(payload);
     return applyAuthenticatedSession(result.token, result.phoneNumber);
@@ -157,9 +186,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const profile = await saveBusinessProfile(payload);
-    const nextSession = buildSession(session.token, profile);
-    setSession(nextSession);
-    return nextSession;
+    return applyProfile(profile);
+  };
+
+  const refreshSession = async () => {
+    if (!session) {
+      return null;
+    }
+
+    const profile = await fetchCurrentSession();
+    return applyProfile(profile);
+  };
+
+  const handleAcceptInvite = async (inviteId: string) => {
+    const profile = await acceptTeamInvite(inviteId);
+    return applyProfile(profile);
+  };
+
+  const handleDeclineInvite = async (inviteId: string) => {
+    const profile = await declineTeamInvite(inviteId);
+    return applyProfile(profile);
   };
 
   const value: AuthContextValue = {
@@ -169,6 +215,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     verifyLoginCode: handleVerifyLoginCode,
     loginWithDevBypass: handleDevLogin,
     completeOnboarding: handleCompleteOnboarding,
+    refreshSession,
+    acceptInvite: handleAcceptInvite,
+    declineInvite: handleDeclineInvite,
+    applyProfile,
     logout: () => {
       clearAuthSession();
       setSession(null);

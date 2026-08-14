@@ -31,6 +31,15 @@ import {
   updateClientRecord,
   updateProveedorRecord,
   updatePedidoRecord,
+  resolveTenant,
+  TeamError,
+  createBusinessInvite,
+  cancelBusinessInvite,
+  acceptBusinessInvite,
+  declineBusinessInvite,
+  leaveBusinessTeam,
+  removeBusinessMember,
+  getBusinessTeam,
 } from './postgresDatabase.js';
 import { extractBearerToken, issueJwt, normalizePhone, verifyJwt } from './auth.js';
 
@@ -136,7 +145,7 @@ const getRequestIp = (req) => {
   return forwarded.split(',')[0]?.trim() || req.ip || null;
 };
 
-const authenticateRequest = (req, res, next) => {
+const authenticateRequest = async (req, res, next) => {
   if (!authEnabled) {
     next();
     return;
@@ -156,9 +165,32 @@ const authenticateRequest = (req, res, next) => {
     return;
   }
 
-  req.auth = payload;
-  next();
+  try {
+    req.auth = {
+      ...payload,
+      tenantPhone: await resolveTenant(payload.phoneNumber),
+    };
+    next();
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
 };
+
+const tenantPhoneOf = (req) => String(req.auth?.tenantPhone ?? req.auth?.phoneNumber ?? '').trim();
+const authPhoneOf = (req) => String(req.auth?.phoneNumber ?? '').trim();
+
+const sendTeamError = (res, error) => {
+  if (error instanceof TeamError) {
+    res.status(error.status || 400).json({ error: error.message });
+    return;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const status = message.includes('inválid') || message.includes('obligatorio') ? 400 : 500;
+  res.status(status).json({ error: message });
+};
+
+const PUBLIC_APP_URL = String(process.env.PUBLIC_APP_URL || process.env.APP_URL || 'https://erp-voice.vercel.app').replace(/\/$/, '');
 
 app.use((req, res, next) => {
   const requestOrigin = req.headers.origin;
@@ -365,15 +397,123 @@ app.post('/api/business-profile', authenticateRequest, async (req, res) => {
     const profile = await saveBusinessProfile(phoneNumber, { businessName, businessCategory });
     res.json(profile);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const status = message.includes('inválida') || message.includes('obligatorio') ? 400 : 500;
-    res.status(status).json({ error: message });
+    sendTeamError(res, error);
+  }
+});
+
+app.get('/api/team', authenticateRequest, async (req, res) => {
+  try {
+    const team = await getBusinessTeam(authPhoneOf(req));
+    res.json(team);
+  } catch (error) {
+    sendTeamError(res, error);
+  }
+});
+
+app.post('/api/team/invites', authenticateRequest, async (req, res) => {
+  try {
+    const ownerPhone = authPhoneOf(req);
+    const invitedPhone = normalizePhone(req.body?.phoneNumber);
+    const { invite, resent } = await createBusinessInvite(ownerPhone, invitedPhone);
+    const ownerProfile = await getAuthUserProfile(ownerPhone);
+    const businessName = ownerProfile.businessName || 'un negocio en Stocky';
+    const inviteText = `${businessName} te invitó a operar el stock en Stocky. Entrá al panel con este número para aceptar.\n${PUBLIC_APP_URL}`;
+
+    if (isAuthDevBypassEnabled()) {
+      console.log(`[team:dev] Invitación para ${invite.invitedPhone}: ${inviteText}`);
+      res.status(resent ? 200 : 201).json({
+        id: invite.id,
+        phoneNumber: invite.invitedPhone,
+        expiresAt: invite.expiresAt,
+        resent,
+        devMode: true,
+      });
+      return;
+    }
+
+    const replyResult = await sendMetaReply({
+      to: invite.invitedPhone,
+      text: inviteText,
+    });
+
+    if (!replyResult?.sent) {
+      if (!resent) {
+        await cancelBusinessInvite(ownerPhone, invite.id);
+      }
+
+      const statusByReason = {
+        missing_credentials_or_recipient: 400,
+        auth_error: 502,
+        recipient_not_allowed: 403,
+        recipient_unreachable: 502,
+      };
+
+      res.status(statusByReason[replyResult?.reason] ?? 500).json({
+        error: describeOtpSendFailure(replyResult).replace('código', 'mensaje de invitación'),
+        reason: replyResult?.reason ?? 'unknown',
+      });
+      return;
+    }
+
+    res.status(resent ? 200 : 201).json({
+      id: invite.id,
+      phoneNumber: invite.invitedPhone,
+      expiresAt: invite.expiresAt,
+      resent,
+    });
+  } catch (error) {
+    sendTeamError(res, error);
+  }
+});
+
+app.delete('/api/team/invites/:id', authenticateRequest, async (req, res) => {
+  try {
+    await cancelBusinessInvite(authPhoneOf(req), req.params.id);
+    res.status(204).send();
+  } catch (error) {
+    sendTeamError(res, error);
+  }
+});
+
+app.post('/api/team/invites/:id/accept', authenticateRequest, async (req, res) => {
+  try {
+    const profile = await acceptBusinessInvite(authPhoneOf(req), req.params.id);
+    res.json(profile);
+  } catch (error) {
+    sendTeamError(res, error);
+  }
+});
+
+app.post('/api/team/invites/:id/decline', authenticateRequest, async (req, res) => {
+  try {
+    const profile = await declineBusinessInvite(authPhoneOf(req), req.params.id);
+    res.json(profile);
+  } catch (error) {
+    sendTeamError(res, error);
+  }
+});
+
+app.delete('/api/team/members/:phone', authenticateRequest, async (req, res) => {
+  try {
+    await removeBusinessMember(authPhoneOf(req), req.params.phone);
+    res.status(204).send();
+  } catch (error) {
+    sendTeamError(res, error);
+  }
+});
+
+app.post('/api/team/leave', authenticateRequest, async (req, res) => {
+  try {
+    const profile = await leaveBusinessTeam(authPhoneOf(req));
+    res.json(profile);
+  } catch (error) {
+    sendTeamError(res, error);
   }
 });
 
 app.get('/api/state', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const snapshot = await getStateSnapshot(clientPhone);
     res.json(snapshot);
   } catch (error) {
@@ -383,7 +523,7 @@ app.get('/api/state', authenticateRequest, async (req, res) => {
 
 app.post('/api/products', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
 
     const product = await createProductRecord({
       name: req.body?.name,
@@ -408,7 +548,7 @@ app.post('/api/products', authenticateRequest, async (req, res) => {
 
 app.put('/api/products/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
 
     const product = await updateProductRecord(req.params.id, {
       name: req.body?.name,
@@ -433,7 +573,7 @@ app.put('/api/products/:id', authenticateRequest, async (req, res) => {
 
 app.delete('/api/products/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const deleted = await deleteProductRecord(req.params.id, clientPhone);
 
     if (!deleted) {
@@ -449,7 +589,7 @@ app.delete('/api/products/:id', authenticateRequest, async (req, res) => {
 
 app.post('/api/clients', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const client = await createClientRecord({
       name: req.body?.name,
       notas: req.body?.notas,
@@ -469,7 +609,7 @@ app.post('/api/clients', authenticateRequest, async (req, res) => {
 
 app.put('/api/clients/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const client = await updateClientRecord(req.params.id, {
       name: req.body?.name,
       notas: req.body?.notas,
@@ -489,7 +629,7 @@ app.put('/api/clients/:id', authenticateRequest, async (req, res) => {
 
 app.delete('/api/clients/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const deleted = await deleteClientRecord(req.params.id, clientPhone);
 
     if (!deleted) {
@@ -505,7 +645,7 @@ app.delete('/api/clients/:id', authenticateRequest, async (req, res) => {
 
 app.post('/api/clients/merge', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const snapshot = await mergeClientRecords(req.body?.keepId, req.body?.mergeId, clientPhone);
 
     if (!snapshot) {
@@ -521,7 +661,7 @@ app.post('/api/clients/merge', authenticateRequest, async (req, res) => {
 
 app.post('/api/proveedores', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const proveedor = await createProveedorRecord({
       name: req.body?.name,
       notas: req.body?.notas,
@@ -540,7 +680,7 @@ app.post('/api/proveedores', authenticateRequest, async (req, res) => {
 
 app.put('/api/proveedores/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const proveedor = await updateProveedorRecord(req.params.id, {
       name: req.body?.name,
       notas: req.body?.notas,
@@ -559,7 +699,7 @@ app.put('/api/proveedores/:id', authenticateRequest, async (req, res) => {
 
 app.delete('/api/proveedores/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const deleted = await deleteProveedorRecord(req.params.id, clientPhone);
 
     if (!deleted) {
@@ -575,7 +715,7 @@ app.delete('/api/proveedores/:id', authenticateRequest, async (req, res) => {
 
 app.post('/api/proveedores/merge', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const snapshot = await mergeProveedorRecords(req.body?.keepId, req.body?.mergeId, clientPhone);
 
     if (!snapshot) {
@@ -591,7 +731,7 @@ app.post('/api/proveedores/merge', authenticateRequest, async (req, res) => {
 
 app.post('/api/pedidos', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const pedido = await createPedidoRecord({
       clienteId: req.body?.clienteId,
       proveedorId: req.body?.proveedorId,
@@ -617,7 +757,7 @@ app.post('/api/pedidos', authenticateRequest, async (req, res) => {
 
 app.put('/api/pedidos/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const pedido = await updatePedidoRecord(req.params.id, {
       clienteId: req.body?.clienteId,
       proveedorId: req.body?.proveedorId,
@@ -643,7 +783,7 @@ app.put('/api/pedidos/:id', authenticateRequest, async (req, res) => {
 
 app.delete('/api/pedidos/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const deleted = await deletePedidoRecord(req.params.id, clientPhone);
 
     if (!deleted) {
@@ -658,7 +798,7 @@ app.delete('/api/pedidos/:id', authenticateRequest, async (req, res) => {
 });
 
 app.get('/api/meta-events', authenticateRequest, (_req, res) => {
-  const clientPhone = String(_req.auth?.phoneNumber ?? '').trim();
+  const clientPhone = tenantPhoneOf(_req);
 
   getMetaEvents(50, clientPhone)
     .then((events) => res.json(events))
@@ -681,7 +821,7 @@ app.get('/api/meta-webhook', (req, res) => {
 
 app.post('/api/state/apply', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     const sourceText = typeof req.body?.sourceText === 'string' ? req.body.sourceText : '';
     const actions = Array.isArray(req.body?.actions) ? req.body.actions : [];
     const mutationActions = actions.filter((action) => action?.type !== 'query_stock');
@@ -783,7 +923,7 @@ const handleMetaWebhook = async (req, res) => {
       },
       resolveConversationHistory: async (fromNumber, messageId) => {
         try {
-          const recentEvents = await getMetaEvents(8, fromNumber);
+          const recentEvents = await getMetaEvents(8, null, { senderPhone: fromNumber });
           return buildConversationTurnsFromEvents(recentEvents, {
             excludeMessageId: messageId,
             maxTurns: 3,
@@ -803,10 +943,13 @@ const handleMetaWebhook = async (req, res) => {
         continue;
       }
 
+      const tenantPhone = result.fromNumber ? await resolveTenant(result.fromNumber) : null;
+
       const eventRecord = {
         id: incomingId,
         at: new Date().toISOString(),
         fromNumber: result.fromNumber ?? null,
+        ownerPhone: tenantPhone,
         body: result.rawMessage ? JSON.stringify(result.rawMessage) : null,
         numMedia: result.kind === 'audio' ? 1 : 0,
         kind: result.kind,
@@ -825,14 +968,14 @@ const handleMetaWebhook = async (req, res) => {
 
       let overrideReplyText = null;
       if (queryActions.length) {
-        const snapshot = await getStateSnapshot(result.fromNumber);
+        const snapshot = await getStateSnapshot(tenantPhone || result.fromNumber);
         overrideReplyText = queryActions
           .map((action) => answerStockQuery(snapshot.products, action, { variantLabel: categoryPreset.variantLabel }))
           .join('\n\n');
       }
 
       if (mutationActions.length) {
-        await applyActionsToDatabase(mutationActions, result.sourceText, result.fromNumber);
+        await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber);
       }
 
       const finalReplyText = overrideReplyText

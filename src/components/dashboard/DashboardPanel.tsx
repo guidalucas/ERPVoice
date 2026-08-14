@@ -5,6 +5,7 @@ import { useAuth } from '../../store/AuthStore';
 import type { ParsedActionUnion, Transaction } from '../../domain/types';
 import { ClientesPanel } from './ClientesPanel';
 import { DashboardShell } from './DashboardShell';
+import { EquipoPanel } from './EquipoPanel';
 import { LOW_STOCK_THRESHOLD, type DashboardSection } from './dashboardTypes';
 import { MetaMessagesPanel } from './MetaMessagesPanel';
 import { PedidosPanel } from './PedidosPanel';
@@ -348,6 +349,7 @@ export function DashboardPanel() {
   const [productsStockFilter, setProductsStockFilter] = useState<'all' | 'low-stock'>('all');
   const [movementMode, setMovementMode] = useState<StockMovementMode | null>(null);
   const { session, logout } = useAuth();
+  const [teamOpen, setTeamOpen] = useState(false);
 
   const totalUnits = products.reduce((total, product) => total + product.stockAvailable + product.stockReserved, 0);
   const inventoryValue = products.reduce((total, product) => total + (product.stockAvailable + product.stockReserved) * product.price, 0);
@@ -377,6 +379,8 @@ export function DashboardPanel() {
       onSectionChange={handleSectionChange}
       phoneNumber={session?.phoneNumber}
       businessName={session?.businessName}
+      role={session?.role}
+      onOpenTeam={() => setTeamOpen(true)}
       onLogout={logout}
     >
       {activeSection === 'inicio' && (
@@ -463,6 +467,7 @@ export function DashboardPanel() {
       {movementMode && (
         <StockMovementModal mode={movementMode} products={products} onClose={() => setMovementMode(null)} onSubmit={applyActions} />
       )}
+      {teamOpen && <EquipoPanel onClose={() => setTeamOpen(false)} />}
     </DashboardShell>
   );
 }
