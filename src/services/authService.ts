@@ -2,22 +2,31 @@ import type { BusinessCategoryId } from '../domain/businessCategories';
 import { requestJson } from './apiClient';
 import { normalizePhone } from './phone';
 
-export type RequestLoginCodeResponse = {
-  challengeId: string;
-  phoneNumber: string;
+export type WhatsAppLoginChallenge = {
+  loginToken: string;
+  sessionSecret: string;
   expiresAt: string;
   expiresInSeconds: number;
-  devOtpCode?: string;
-  devMode?: boolean;
+  whatsappNumber: string;
+  whatsappUrl: string;
 };
 
-export type VerifyLoginCodeResponse = {
+export type WhatsAppLoginPollResponse =
+  | { status: 'pending' }
+  | { status: 'expired' }
+  | { status: 'used' }
+  | { status: 'not_found' }
+  | {
+      status: 'authenticated';
+      token: string;
+      tokenType: 'Bearer';
+      phoneNumber: string;
+    };
+
+export type DevLoginResponse = {
   token: string;
   tokenType: 'Bearer';
   phoneNumber: string;
-};
-
-export type DevLoginResponse = VerifyLoginCodeResponse & {
   devMode?: boolean;
 };
 
@@ -33,23 +42,18 @@ export type SaveBusinessProfilePayload = {
   businessCategory: BusinessCategoryId;
 };
 
-export const requestLoginCode = async (phoneNumber: string) =>
-  requestJson<RequestLoginCodeResponse>('/api/auth/request-code', {
+export const createWhatsAppLogin = async () =>
+  requestJson<WhatsAppLoginChallenge>('/api/auth/wa-login', {
     method: 'POST',
-    body: JSON.stringify({ phoneNumber: normalizePhone(phoneNumber) }),
+    body: JSON.stringify({}),
   });
 
-export const verifyLoginCode = async (payload: {
-  phoneNumber: string;
-  otpCode: string;
-  challengeId: string;
-}) =>
-  requestJson<VerifyLoginCodeResponse>('/api/auth/verify-code', {
+export const pollWhatsAppLogin = async (payload: { loginToken: string; sessionSecret: string }) =>
+  requestJson<WhatsAppLoginPollResponse>('/api/auth/wa-login/poll', {
     method: 'POST',
     body: JSON.stringify({
-      phoneNumber: normalizePhone(payload.phoneNumber),
-      otpCode: payload.otpCode.trim(),
-      challengeId: payload.challengeId,
+      loginToken: payload.loginToken,
+      sessionSecret: payload.sessionSecret,
     }),
   });
 

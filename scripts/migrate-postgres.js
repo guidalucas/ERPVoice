@@ -131,6 +131,20 @@ const main = async () => {
       CREATE INDEX IF NOT EXISTS idx_meta_events_at ON meta_events (at DESC);
       CREATE INDEX IF NOT EXISTS idx_auth_otp_phone_number ON auth_otp_challenges (phone_number);
       CREATE INDEX IF NOT EXISTS idx_auth_otp_expires_at ON auth_otp_challenges (expires_at);
+
+      CREATE TABLE IF NOT EXISTS auth_wa_challenges (
+        login_token TEXT PRIMARY KEY,
+        secret_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        phone_number TEXT,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        authenticated_at TIMESTAMPTZ,
+        consumed_at TIMESTAMPTZ
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_auth_wa_expires_at ON auth_wa_challenges (expires_at);
+      CREATE INDEX IF NOT EXISTS idx_auth_wa_status ON auth_wa_challenges (status);
     `);
 
     await client.query("UPDATE products SET owner_phone = '__default__' WHERE owner_phone IS NULL");

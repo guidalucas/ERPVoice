@@ -396,6 +396,17 @@ const initializeDatabase = async () => {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS auth_wa_challenges (
+      login_token TEXT PRIMARY KEY,
+      secret_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      phone_number TEXT,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      authenticated_at TIMESTAMPTZ,
+      consumed_at TIMESTAMPTZ
+    );
+
     ALTER TABLE products ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE clients ADD COLUMN IF NOT EXISTS notas TEXT;
@@ -421,6 +432,8 @@ const initializeDatabase = async () => {
     CREATE INDEX IF NOT EXISTS idx_meta_events_owner_phone ON meta_events (owner_phone);
     CREATE INDEX IF NOT EXISTS idx_auth_otp_phone_number ON auth_otp_challenges (phone_number);
     CREATE INDEX IF NOT EXISTS idx_auth_otp_expires_at ON auth_otp_challenges (expires_at);
+    CREATE INDEX IF NOT EXISTS idx_auth_wa_expires_at ON auth_wa_challenges (expires_at);
+    CREATE INDEX IF NOT EXISTS idx_auth_wa_status ON auth_wa_challenges (status);
   `);
 
   await withClient(async (client) => {
@@ -2307,4 +2320,123 @@ export const verifyAuthOtpChallenge = async ({ phoneNumber, otpCode, challengeId
   await upsertAuthUser(normalizedPhoneNumber);
 
   return { ok: true, phoneNumber: normalizedPhoneNumber, challengeId: challenge.id };
+};
+
+const hashWaSecret = (secret) => crypto.createHash('sha256').update(String(secret ?? '')).digest('hex');
+
+export const createWaLoginChallenge = async ({ loginToken, secretHash, expiresAt }) => {
+  await ensureReady();
+
+  await getPool().query(
+    `
+      INSERT INTO auth_wa_challenges (login_token, secret_hash, status, expires_at)
+      VALUES ($1, $2, 'pending', $3)
+    `,
+    [loginToken, secretHash, expiresAt],
+  );
+};
+
+export const authenticateWaLoginChallenge = async (loginToken, phoneNumber) => {
+  await ensureReady();
+
+  const token = String(loginToken ?? '').trim().toUpperCase();
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+
+  if (!token || !normalizedPhoneNumber) {
+    return { ok: false, reason: 'missing_fields' };
+  }
+
+  const challenge = await queryRow('SELECT * FROM auth_wa_challenges WHERE login_token = $1', [token]);
+
+  if (!challenge) {
+    return { ok: false, reason: 'not_found' };
+  }
+
+  if (challenge.status === 'consumed') {
+    return { ok: false, reason: 'already_used' };
+  }
+
+  if (new Date(challenge.expires_at).getTime() < Date.now()) {
+    return { ok: false, reason: 'expired' };
+  }
+
+  if (challenge.status === 'authenticated') {
+    const existingPhone = normalizeAuthPhoneNumber(challenge.phone_number);
+    if (existingPhone && getOwnerPhoneVariants(existingPhone).includes(normalizedPhoneNumber)) {
+      return { ok: true, reason: 'already_authenticated', phoneNumber: existingPhone };
+    }
+    return { ok: false, reason: 'already_used' };
+  }
+
+  const updated = await queryRow(
+    `
+      UPDATE auth_wa_challenges
+      SET status = 'authenticated',
+          phone_number = $2,
+          authenticated_at = NOW()
+      WHERE login_token = $1 AND status = 'pending'
+      RETURNING phone_number
+    `,
+    [token, normalizedPhoneNumber],
+  );
+
+  if (!updated) {
+    return { ok: false, reason: 'already_used' };
+  }
+
+  return { ok: true, reason: 'authenticated', phoneNumber: normalizedPhoneNumber };
+};
+
+export const claimWaLoginChallenge = async (loginToken, sessionSecret) => {
+  await ensureReady();
+
+  const token = String(loginToken ?? '').trim().toUpperCase();
+  const secretHash = hashWaSecret(sessionSecret);
+
+  if (!token || !String(sessionSecret ?? '').trim()) {
+    return { ok: false, reason: 'missing_fields' };
+  }
+
+  const challenge = await queryRow('SELECT * FROM auth_wa_challenges WHERE login_token = $1', [token]);
+
+  if (!challenge) {
+    return { ok: false, reason: 'not_found' };
+  }
+
+  if (!isSameHex(challenge.secret_hash, secretHash)) {
+    return { ok: false, reason: 'invalid_secret' };
+  }
+
+  if (challenge.status === 'pending') {
+    if (new Date(challenge.expires_at).getTime() < Date.now()) {
+      return { ok: false, reason: 'expired' };
+    }
+    return { ok: true, status: 'pending' };
+  }
+
+  if (challenge.status !== 'authenticated' && challenge.status !== 'consumed') {
+    return { ok: false, reason: 'not_found' };
+  }
+
+  const expiresAt = new Date(challenge.expires_at).getTime();
+  const authenticatedAt = challenge.authenticated_at ? new Date(challenge.authenticated_at).getTime() : 0;
+  const claimWindowOpen = Date.now() < expiresAt || (authenticatedAt > 0 && Date.now() - authenticatedAt < 60_000);
+
+  if (!claimWindowOpen || !challenge.phone_number) {
+    return { ok: false, reason: 'expired' };
+  }
+
+  await getPool().query(
+    `
+      UPDATE auth_wa_challenges
+      SET status = 'consumed',
+          consumed_at = COALESCE(consumed_at, NOW())
+      WHERE login_token = $1 AND status IN ('authenticated', 'consumed')
+    `,
+    [token],
+  );
+
+  const phoneNumber = normalizeAuthPhoneNumber(challenge.phone_number);
+  await upsertAuthUser(phoneNumber);
+  return { ok: true, status: 'authenticated', phoneNumber };
 };

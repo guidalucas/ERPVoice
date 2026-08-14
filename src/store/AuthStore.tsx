@@ -4,9 +4,7 @@ import { isBusinessCategoryId } from '../domain/businessCategories';
 import {
   fetchCurrentSession,
   requestDevLogin,
-  requestLoginCode,
   saveBusinessProfile,
-  verifyLoginCode,
   type SaveBusinessProfilePayload,
 } from '../services/authService';
 import { clearAuthSession, getAuthSession, setAuthSession, subscribeAuthSession } from '../services/authTokenStore';
@@ -22,15 +20,7 @@ export type AuthSession = {
 type AuthContextValue = {
   session: AuthSession | null;
   isBootstrapping: boolean;
-  requestLoginCode: (phoneNumber: string) => Promise<{
-    challengeId: string;
-    phoneNumber: string;
-    expiresAt: string;
-    expiresInSeconds: number;
-    devOtpCode?: string;
-    devMode?: boolean;
-  }>;
-  verifyLoginCode: (payload: { phoneNumber: string; otpCode: string; challengeId: string }) => Promise<AuthSession>;
+  completeWhatsAppLogin: (payload: { token: string; phoneNumber: string }) => Promise<AuthSession>;
   loginWithDevBypass: (phoneNumber?: string) => Promise<AuthSession>;
   completeOnboarding: (payload: SaveBusinessProfilePayload) => Promise<AuthSession>;
   logout: () => void;
@@ -119,8 +109,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const handleRequestLoginCode = async (phoneNumber: string) => requestLoginCode(phoneNumber);
-
   const applyAuthenticatedSession = async (token: string, phoneNumber: string): Promise<AuthSession> => {
     setAuthSession({ token, phoneNumber });
 
@@ -141,10 +129,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleVerifyLoginCode = async (payload: { phoneNumber: string; otpCode: string; challengeId: string }) => {
-    const result = await verifyLoginCode(payload);
-    return applyAuthenticatedSession(result.token, result.phoneNumber);
-  };
+  const handleCompleteWhatsAppLogin = async (payload: { token: string; phoneNumber: string }) =>
+    applyAuthenticatedSession(payload.token, payload.phoneNumber);
 
   const handleDevLogin = async (phoneNumber?: string) => {
     const result = await requestDevLogin(phoneNumber);
@@ -165,8 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextValue = {
     session,
     isBootstrapping,
-    requestLoginCode: handleRequestLoginCode,
-    verifyLoginCode: handleVerifyLoginCode,
+    completeWhatsAppLogin: handleCompleteWhatsAppLogin,
     loginWithDevBypass: handleDevLogin,
     completeOnboarding: handleCompleteOnboarding,
     logout: () => {
