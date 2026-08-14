@@ -9,6 +9,18 @@ dotenv.config();
 const DEFAULT_OWNER_PHONE = '__default__';
 const AUTH_OTP_TTL_MS = Math.max(5, Number(process.env.AUTH_OTP_TTL_MINUTES ?? 10)) * 60 * 1000;
 const AUTH_OTP_MAX_ATTEMPTS = 5;
+const BUSINESS_INVITE_TTL_MS = Math.max(1, Number(process.env.BUSINESS_INVITE_TTL_DAYS ?? 7)) * 24 * 60 * 60 * 1000;
+
+const memoryMembers = new Map();
+const memoryInvites = new Map();
+
+export class TeamError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.name = 'TeamError';
+    this.status = status;
+  }
+}
 
 const normalizeOwnerPhone = (value) => {
   const normalized = normalizePhone(value);
@@ -418,6 +430,30 @@ const initializeDatabase = async () => {
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS proveedor_id TEXT;
     ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_name TEXT;
     ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_category TEXT;
+
+    CREATE TABLE IF NOT EXISTS business_members (
+      tenant_phone TEXT NOT NULL,
+      member_phone TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (tenant_phone, member_phone)
+    );
+
+    CREATE TABLE IF NOT EXISTS business_invites (
+      id TEXT PRIMARY KEY,
+      tenant_phone TEXT NOT NULL,
+      invited_phone TEXT NOT NULL,
+      invited_by TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_business_members_member_phone ON business_members (member_phone);
+    CREATE INDEX IF NOT EXISTS idx_business_members_tenant_phone ON business_members (tenant_phone);
+    CREATE INDEX IF NOT EXISTS idx_business_invites_invited_phone ON business_invites (invited_phone);
+    CREATE INDEX IF NOT EXISTS idx_business_invites_tenant_phone ON business_invites (tenant_phone);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_business_invites_pending_phone ON business_invites (invited_phone) WHERE status = 'pending';
 
     CREATE INDEX IF NOT EXISTS idx_transactions_timestamp ON transactions (timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_products_owner_phone ON products (owner_phone);
@@ -1954,6 +1990,47 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
   });
 };
 
+const createInviteId = () => `inv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+const expireStaleInvites = async (executor = null) => {
+  if (!hasDatabaseConfig()) {
+    const now = Date.now();
+    for (const [id, invite] of memoryInvites.entries()) {
+      if (invite.status === 'pending' && new Date(invite.expiresAt).getTime() < now) {
+        memoryInvites.set(id, { ...invite, status: 'expired' });
+      }
+    }
+    return;
+  }
+
+  if (!executor) {
+    await ensureReady();
+  }
+
+  const run = executor ?? getPool();
+  await run.query(
+    `UPDATE business_invites SET status = 'expired' WHERE status = 'pending' AND expires_at < NOW()`,
+  );
+};
+
+export const resolveTenant = async (phoneNumber) => {
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+
+  if (!normalizedPhoneNumber) {
+    return DEFAULT_OWNER_PHONE;
+  }
+
+  if (!hasDatabaseConfig()) {
+    return memoryMembers.get(normalizedPhoneNumber)?.tenantPhone ?? normalizedPhoneNumber;
+  }
+
+  await ensureReady();
+  const row = await queryRow('SELECT tenant_phone FROM business_members WHERE member_phone = $1', [
+    normalizedPhoneNumber,
+  ]);
+  return row?.tenant_phone ?? normalizedPhoneNumber;
+};
+
 export const saveMetaEvent = async (event) => {
   await ensureReady();
 
@@ -1963,6 +2040,13 @@ export const saveMetaEvent = async (event) => {
   }
 
   const normalizedFrom = normalizePhone(event.fromNumber);
+  let tenantPhone = normalizePhone(event.ownerPhone);
+  if (!tenantPhone && normalizedFrom) {
+    tenantPhone = await resolveTenant(normalizedFrom);
+  }
+  if (!tenantPhone) {
+    tenantPhone = DEFAULT_OWNER_PHONE;
+  }
 
   const result = await getPool().query(
     `
@@ -1974,7 +2058,7 @@ export const saveMetaEvent = async (event) => {
       event.id,
       event.at,
       normalizedFrom || null,
-      normalizedFrom || DEFAULT_OWNER_PHONE,
+      tenantPhone,
       event.body ?? null,
       normalizeInteger(event.numMedia, 0),
       event.kind ?? null,
@@ -2027,18 +2111,30 @@ export const markMetaEventProcessed = async (eventId, updates) => {
   );
 };
 
-export const getMetaEvents = async (limit = 50, fromNumber = null) => {
+export const getMetaEvents = async (limit = 50, ownerPhone = null, options = {}) => {
   await ensureReady();
   const safeLimit = Math.max(1, Math.min(normalizeInteger(limit, 50), 500));
-  const fromPhoneVariants = fromNumber ? getOwnerPhoneVariants(fromNumber) : null;
+  const senderPhone = options?.senderPhone ?? null;
 
-  const rows = fromPhoneVariants
-    ? await queryRows(
-        'SELECT * FROM meta_events WHERE from_number = ANY($1) OR owner_phone = ANY($1) ORDER BY at DESC LIMIT $2',
-        [fromPhoneVariants, safeLimit],
-      )
-    : await queryRows('SELECT * FROM meta_events ORDER BY at DESC LIMIT $1', [safeLimit]);
+  if (senderPhone) {
+    const senderVariants = getOwnerPhoneVariants(senderPhone);
+    const rows = await queryRows(
+      'SELECT * FROM meta_events WHERE from_number = ANY($1) ORDER BY at DESC LIMIT $2',
+      [senderVariants, safeLimit],
+    );
+    return rows.map(rowToMetaEvent);
+  }
 
+  if (ownerPhone) {
+    const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
+    const rows = await queryRows(
+      'SELECT * FROM meta_events WHERE owner_phone = ANY($1) ORDER BY at DESC LIMIT $2',
+      [ownerPhoneVariants, safeLimit],
+    );
+    return rows.map(rowToMetaEvent);
+  }
+
+  const rows = await queryRows('SELECT * FROM meta_events ORDER BY at DESC LIMIT $1', [safeLimit]);
   return rows.map(rowToMetaEvent);
 };
 
@@ -2149,16 +2245,92 @@ const VALID_BUSINESS_CATEGORIES = new Set([
 
 const memoryBusinessProfiles = new Map();
 
-const toAuthUserProfile = (phoneNumber, businessName = null, businessCategory = null) => ({
+const toAuthUserProfile = ({
   phoneNumber,
-  businessName: typeof businessName === 'string' && businessName.trim() ? businessName.trim() : null,
-  businessCategory:
+  tenantPhone = null,
+  role = 'owner',
+  businessName = null,
+  businessCategory = null,
+  pendingInvite = null,
+  hasOwnBusiness = false,
+}) => {
+  const normalizedCategory =
     typeof businessCategory === 'string' && VALID_BUSINESS_CATEGORIES.has(businessCategory)
       ? businessCategory
-      : null,
-  needsOnboarding:
-    !(typeof businessCategory === 'string' && VALID_BUSINESS_CATEGORIES.has(businessCategory)),
-});
+      : null;
+  const normalizedBusinessName =
+    typeof businessName === 'string' && businessName.trim() ? businessName.trim() : null;
+
+  return {
+    phoneNumber,
+    tenantPhone: tenantPhone || phoneNumber,
+    role: role === 'member' ? 'member' : 'owner',
+    businessName: normalizedBusinessName,
+    businessCategory: normalizedCategory,
+    needsOnboarding: !normalizedCategory,
+    pendingInvite: pendingInvite ?? null,
+    hasOwnBusiness: Boolean(hasOwnBusiness),
+  };
+};
+
+const rowToPendingInvite = (row, businessName, hasOwnBusiness) => {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    tenantPhone: row.tenant_phone,
+    businessName: typeof businessName === 'string' && businessName.trim() ? businessName.trim() : null,
+    invitedByPhone: row.invited_by,
+    expiresAt: row.expires_at instanceof Date ? row.expires_at.toISOString() : String(row.expires_at),
+    hasOwnBusiness: Boolean(hasOwnBusiness),
+  };
+};
+
+const loadPendingInviteForPhone = async (phoneNumber) => {
+  await expireStaleInvites();
+
+  if (!hasDatabaseConfig()) {
+    const invite = [...memoryInvites.values()].find(
+      (item) => item.invitedPhone === phoneNumber && item.status === 'pending',
+    );
+    if (!invite) {
+      return null;
+    }
+
+    const ownerProfile = memoryBusinessProfiles.get(invite.tenantPhone);
+    return {
+      id: invite.id,
+      tenantPhone: invite.tenantPhone,
+      businessName: ownerProfile?.businessName ?? null,
+      invitedByPhone: invite.invitedBy,
+      expiresAt: invite.expiresAt,
+    };
+  }
+
+  const row = await queryRow(
+    `
+      SELECT id, tenant_phone, invited_phone, invited_by, status, expires_at, created_at
+      FROM business_invites
+      WHERE invited_phone = $1 AND status = 'pending'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [phoneNumber],
+  );
+
+  if (!row) {
+    return null;
+  }
+
+  const ownerRow = await queryRow(
+    'SELECT business_name FROM auth_users WHERE phone_number = $1',
+    [row.tenant_phone],
+  );
+
+  return rowToPendingInvite(row, ownerRow?.business_name ?? null, false);
+};
 
 export const upsertAuthUser = async (phoneNumber) => {
   const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
@@ -2198,23 +2370,61 @@ export const getAuthUserProfile = async (phoneNumber) => {
     throw new Error('Número de teléfono inválido');
   }
 
+  const tenantPhone = await resolveTenant(normalizedPhoneNumber);
+  const role = tenantPhone === normalizedPhoneNumber ? 'owner' : 'member';
+
   if (!hasDatabaseConfig()) {
-    const memoryProfile = memoryBusinessProfiles.get(normalizedPhoneNumber) ?? {
+    const tenantProfile = memoryBusinessProfiles.get(tenantPhone) ?? {
       businessName: null,
       businessCategory: null,
     };
-    return toAuthUserProfile(normalizedPhoneNumber, memoryProfile.businessName, memoryProfile.businessCategory);
+    const ownProfile = memoryBusinessProfiles.get(normalizedPhoneNumber) ?? {
+      businessName: null,
+      businessCategory: null,
+    };
+    const hasOwnBusiness = VALID_BUSINESS_CATEGORIES.has(ownProfile.businessCategory);
+    const pendingInvite = await loadPendingInviteForPhone(normalizedPhoneNumber);
+    if (pendingInvite) {
+      pendingInvite.hasOwnBusiness = hasOwnBusiness;
+    }
+
+    return toAuthUserProfile({
+      phoneNumber: normalizedPhoneNumber,
+      tenantPhone,
+      role,
+      businessName: tenantProfile.businessName,
+      businessCategory: tenantProfile.businessCategory,
+      pendingInvite,
+      hasOwnBusiness,
+    });
   }
 
   await ensureReady();
   await upsertAuthUser(normalizedPhoneNumber);
 
-  const row = await queryRow(
+  const tenantRow = await queryRow(
     'SELECT phone_number, business_name, business_category FROM auth_users WHERE phone_number = $1',
+    [tenantPhone],
+  );
+  const ownRow = await queryRow(
+    'SELECT business_name, business_category FROM auth_users WHERE phone_number = $1',
     [normalizedPhoneNumber],
   );
+  const hasOwnBusiness = VALID_BUSINESS_CATEGORIES.has(ownRow?.business_category);
+  const pendingInvite = await loadPendingInviteForPhone(normalizedPhoneNumber);
+  if (pendingInvite) {
+    pendingInvite.hasOwnBusiness = hasOwnBusiness;
+  }
 
-  return toAuthUserProfile(normalizedPhoneNumber, row?.business_name ?? null, row?.business_category ?? null);
+  return toAuthUserProfile({
+    phoneNumber: normalizedPhoneNumber,
+    tenantPhone,
+    role,
+    businessName: tenantRow?.business_name ?? null,
+    businessCategory: tenantRow?.business_category ?? null,
+    pendingInvite,
+    hasOwnBusiness,
+  });
 };
 
 export const saveBusinessProfile = async (phoneNumber, { businessName, businessCategory }) => {
@@ -2234,12 +2444,17 @@ export const saveBusinessProfile = async (phoneNumber, { businessName, businessC
     throw new Error('Categoría de negocio inválida');
   }
 
+  const tenantPhone = await resolveTenant(normalizedPhoneNumber);
+  if (tenantPhone !== normalizedPhoneNumber) {
+    throw new TeamError('Solo el dueño puede cambiar el nombre y el rubro del negocio.');
+  }
+
   if (!hasDatabaseConfig()) {
     memoryBusinessProfiles.set(normalizedPhoneNumber, {
       businessName: normalizedBusinessName,
       businessCategory: normalizedBusinessCategory,
     });
-    return toAuthUserProfile(normalizedPhoneNumber, normalizedBusinessName, normalizedBusinessCategory);
+    return getAuthUserProfile(normalizedPhoneNumber);
   }
 
   await ensureReady();
@@ -2255,7 +2470,461 @@ export const saveBusinessProfile = async (phoneNumber, { businessName, businessC
     [normalizedBusinessName, normalizedBusinessCategory, normalizedPhoneNumber],
   );
 
-  return toAuthUserProfile(normalizedPhoneNumber, normalizedBusinessName, normalizedBusinessCategory);
+  return getAuthUserProfile(normalizedPhoneNumber);
+};
+
+const assertOwner = async (phoneNumber) => {
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+  const tenantPhone = await resolveTenant(normalizedPhoneNumber);
+
+  if (tenantPhone !== normalizedPhoneNumber) {
+    throw new TeamError('Solo el dueño puede gestionar el equipo.');
+  }
+
+  return normalizedPhoneNumber;
+};
+
+const findPendingInviteByPhone = async (invitedPhone, executor = null) => {
+  if (!hasDatabaseConfig()) {
+    return [...memoryInvites.values()].find(
+      (item) => item.invitedPhone === invitedPhone && item.status === 'pending',
+    ) ?? null;
+  }
+
+  return queryRow(
+    `
+      SELECT id, tenant_phone, invited_phone, invited_by, status, expires_at, created_at
+      FROM business_invites
+      WHERE invited_phone = $1 AND status = 'pending'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+    [invitedPhone],
+    executor,
+  );
+};
+
+export const createBusinessInvite = async (ownerPhone, invitedPhoneInput) => {
+  const ownerPhoneNumber = await assertOwner(ownerPhone);
+  const invitedPhone = normalizeAuthPhoneNumber(invitedPhoneInput);
+
+  if (!invitedPhone) {
+    throw new TeamError('Ingresá un número de celular válido.');
+  }
+
+  if (invitedPhone === ownerPhoneNumber) {
+    throw new TeamError('No podés invitarte a vos mismo.');
+  }
+
+  await expireStaleInvites();
+
+  if (!hasDatabaseConfig()) {
+    if (memoryMembers.get(invitedPhone)?.tenantPhone === ownerPhoneNumber) {
+      throw new TeamError('Ese número ya forma parte del equipo.');
+    }
+
+    const existing = [...memoryInvites.values()].find(
+      (item) => item.invitedPhone === invitedPhone && item.status === 'pending',
+    );
+
+    if (existing && existing.tenantPhone !== ownerPhoneNumber) {
+      throw new TeamError('Ese número ya tiene una invitación pendiente de otro negocio.');
+    }
+
+    const expiresAt = new Date(Date.now() + BUSINESS_INVITE_TTL_MS).toISOString();
+
+    if (existing) {
+      const updated = { ...existing, invitedBy: ownerPhoneNumber, expiresAt };
+      memoryInvites.set(existing.id, updated);
+      return { invite: updated, resent: true };
+    }
+
+    const invite = {
+      id: createInviteId(),
+      tenantPhone: ownerPhoneNumber,
+      invitedPhone,
+      invitedBy: ownerPhoneNumber,
+      status: 'pending',
+      expiresAt,
+      createdAt: new Date().toISOString(),
+    };
+    memoryInvites.set(invite.id, invite);
+    return { invite, resent: false };
+  }
+
+  await ensureReady();
+
+  const existingMember = await queryRow(
+    'SELECT member_phone FROM business_members WHERE tenant_phone = $1 AND member_phone = $2',
+    [ownerPhoneNumber, invitedPhone],
+  );
+  if (existingMember) {
+    throw new TeamError('Ese número ya forma parte del equipo.');
+  }
+
+  const existingPending = await findPendingInviteByPhone(invitedPhone);
+  if (existingPending && existingPending.tenant_phone !== ownerPhoneNumber) {
+    throw new TeamError('Ese número ya tiene una invitación pendiente de otro negocio.');
+  }
+
+  const expiresAt = new Date(Date.now() + BUSINESS_INVITE_TTL_MS).toISOString();
+
+  if (existingPending) {
+    await getPool().query(
+      `
+        UPDATE business_invites
+        SET invited_by = $1,
+            expires_at = $2
+        WHERE id = $3
+      `,
+      [ownerPhoneNumber, expiresAt, existingPending.id],
+    );
+
+    return {
+      invite: {
+        id: existingPending.id,
+        tenantPhone: existingPending.tenant_phone,
+        invitedPhone: existingPending.invited_phone,
+        invitedBy: ownerPhoneNumber,
+        status: 'pending',
+        expiresAt,
+        createdAt: existingPending.created_at,
+      },
+      resent: true,
+    };
+  }
+
+  const inviteId = createInviteId();
+  await getPool().query(
+    `
+      INSERT INTO business_invites (id, tenant_phone, invited_phone, invited_by, status, expires_at)
+      VALUES ($1, $2, $3, $4, 'pending', $5)
+    `,
+    [inviteId, ownerPhoneNumber, invitedPhone, ownerPhoneNumber, expiresAt],
+  );
+
+  return {
+    invite: {
+      id: inviteId,
+      tenantPhone: ownerPhoneNumber,
+      invitedPhone,
+      invitedBy: ownerPhoneNumber,
+      status: 'pending',
+      expiresAt,
+      createdAt: new Date().toISOString(),
+    },
+    resent: false,
+  };
+};
+
+export const cancelBusinessInvite = async (ownerPhone, inviteId) => {
+  const ownerPhoneNumber = await assertOwner(ownerPhone);
+  const id = String(inviteId ?? '').trim();
+
+  if (!id) {
+    throw new TeamError('Invitación inválida.');
+  }
+
+  if (!hasDatabaseConfig()) {
+    const invite = memoryInvites.get(id);
+    if (!invite || invite.tenantPhone !== ownerPhoneNumber || invite.status !== 'pending') {
+      throw new TeamError('No encontramos esa invitación.', 404);
+    }
+    memoryInvites.set(id, { ...invite, status: 'cancelled' });
+    return { ok: true };
+  }
+
+  await ensureReady();
+  const result = await getPool().query(
+    `
+      UPDATE business_invites
+      SET status = 'cancelled'
+      WHERE id = $1 AND tenant_phone = $2 AND status = 'pending'
+      RETURNING id
+    `,
+    [id, ownerPhoneNumber],
+  );
+
+  if (!result.rowCount) {
+    throw new TeamError('No encontramos esa invitación.', 404);
+  }
+
+  return { ok: true };
+};
+
+export const acceptBusinessInvite = async (phoneNumber, inviteId) => {
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+  const id = String(inviteId ?? '').trim();
+
+  if (!normalizedPhoneNumber || !id) {
+    throw new TeamError('Invitación inválida.');
+  }
+
+  await expireStaleInvites();
+
+  if (!hasDatabaseConfig()) {
+    const invite = memoryInvites.get(id);
+    if (!invite || invite.invitedPhone !== normalizedPhoneNumber) {
+      throw new TeamError('No encontramos esa invitación.', 404);
+    }
+    if (invite.status !== 'pending') {
+      throw new TeamError('Esa invitación ya no está disponible.');
+    }
+    if (new Date(invite.expiresAt).getTime() < Date.now()) {
+      memoryInvites.set(id, { ...invite, status: 'expired' });
+      throw new TeamError('Esa invitación venció.');
+    }
+
+    memoryMembers.delete(normalizedPhoneNumber);
+    memoryMembers.set(normalizedPhoneNumber, {
+      tenantPhone: invite.tenantPhone,
+      role: 'member',
+      createdAt: new Date().toISOString(),
+    });
+    memoryInvites.set(id, { ...invite, status: 'accepted' });
+    return getAuthUserProfile(normalizedPhoneNumber);
+  }
+
+  await ensureReady();
+
+  return withClient(async (client) => {
+    await expireStaleInvites(client);
+
+    const invite = await queryRow(
+      'SELECT * FROM business_invites WHERE id = $1',
+      [id],
+      client,
+    );
+
+    if (!invite || invite.invited_phone !== normalizedPhoneNumber) {
+      throw new TeamError('No encontramos esa invitación.', 404);
+    }
+    if (invite.status !== 'pending') {
+      throw new TeamError('Esa invitación ya no está disponible.');
+    }
+    if (new Date(invite.expires_at).getTime() < Date.now()) {
+      await client.query(`UPDATE business_invites SET status = 'expired' WHERE id = $1`, [id]);
+      throw new TeamError('Esa invitación venció.');
+    }
+
+    await client.query('DELETE FROM business_members WHERE member_phone = $1', [normalizedPhoneNumber]);
+    await client.query(
+      `
+        INSERT INTO business_members (tenant_phone, member_phone, role)
+        VALUES ($1, $2, 'member')
+        ON CONFLICT (tenant_phone, member_phone) DO NOTHING
+      `,
+      [invite.tenant_phone, normalizedPhoneNumber],
+    );
+    await client.query(`UPDATE business_invites SET status = 'accepted' WHERE id = $1`, [id]);
+  }).then(() => getAuthUserProfile(normalizedPhoneNumber));
+};
+
+export const declineBusinessInvite = async (phoneNumber, inviteId) => {
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+  const id = String(inviteId ?? '').trim();
+
+  if (!normalizedPhoneNumber || !id) {
+    throw new TeamError('Invitación inválida.');
+  }
+
+  if (!hasDatabaseConfig()) {
+    const invite = memoryInvites.get(id);
+    if (!invite || invite.invitedPhone !== normalizedPhoneNumber || invite.status !== 'pending') {
+      throw new TeamError('No encontramos esa invitación.', 404);
+    }
+    memoryInvites.set(id, { ...invite, status: 'declined' });
+    return getAuthUserProfile(normalizedPhoneNumber);
+  }
+
+  await ensureReady();
+  const result = await getPool().query(
+    `
+      UPDATE business_invites
+      SET status = 'declined'
+      WHERE id = $1 AND invited_phone = $2 AND status = 'pending'
+      RETURNING id
+    `,
+    [id, normalizedPhoneNumber],
+  );
+
+  if (!result.rowCount) {
+    throw new TeamError('No encontramos esa invitación.', 404);
+  }
+
+  return getAuthUserProfile(normalizedPhoneNumber);
+};
+
+export const leaveBusinessTeam = async (phoneNumber) => {
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+
+  if (!normalizedPhoneNumber) {
+    throw new TeamError('Número de teléfono inválido.');
+  }
+
+  const tenantPhone = await resolveTenant(normalizedPhoneNumber);
+  if (tenantPhone === normalizedPhoneNumber) {
+    throw new TeamError('El dueño no puede salir de su propio negocio.');
+  }
+
+  if (!hasDatabaseConfig()) {
+    memoryMembers.delete(normalizedPhoneNumber);
+    return getAuthUserProfile(normalizedPhoneNumber);
+  }
+
+  await ensureReady();
+  const result = await getPool().query('DELETE FROM business_members WHERE member_phone = $1 RETURNING member_phone', [
+    normalizedPhoneNumber,
+  ]);
+
+  if (!result.rowCount) {
+    throw new TeamError('No pertenecés a un equipo.');
+  }
+
+  return getAuthUserProfile(normalizedPhoneNumber);
+};
+
+export const removeBusinessMember = async (ownerPhone, memberPhoneInput) => {
+  const ownerPhoneNumber = await assertOwner(ownerPhone);
+  const memberPhone = normalizeAuthPhoneNumber(memberPhoneInput);
+
+  if (!memberPhone) {
+    throw new TeamError('Número de teléfono inválido.');
+  }
+
+  if (memberPhone === ownerPhoneNumber) {
+    throw new TeamError('No podés sacarte a vos mismo del equipo.');
+  }
+
+  if (!hasDatabaseConfig()) {
+    const membership = memoryMembers.get(memberPhone);
+    if (!membership || membership.tenantPhone !== ownerPhoneNumber) {
+      throw new TeamError('Ese número no forma parte del equipo.', 404);
+    }
+    memoryMembers.delete(memberPhone);
+    return { ok: true };
+  }
+
+  await ensureReady();
+  const result = await getPool().query(
+    `
+      DELETE FROM business_members
+      WHERE tenant_phone = $1 AND member_phone = $2
+      RETURNING member_phone
+    `,
+    [ownerPhoneNumber, memberPhone],
+  );
+
+  if (!result.rowCount) {
+    throw new TeamError('Ese número no forma parte del equipo.', 404);
+  }
+
+  return { ok: true };
+};
+
+export const getBusinessTeam = async (phoneNumber) => {
+  const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
+
+  if (!normalizedPhoneNumber) {
+    throw new TeamError('Número de teléfono inválido.');
+  }
+
+  const profile = await getAuthUserProfile(normalizedPhoneNumber);
+  const tenantPhone = profile.tenantPhone;
+  const isOwner = profile.role === 'owner';
+
+  if (!hasDatabaseConfig()) {
+    const members = [
+      {
+        phoneNumber: tenantPhone,
+        role: 'owner',
+        createdAt: null,
+      },
+      ...[...memoryMembers.entries()]
+        .filter(([, membership]) => membership.tenantPhone === tenantPhone)
+        .map(([memberPhone, membership]) => ({
+          phoneNumber: memberPhone,
+          role: membership.role,
+          createdAt: membership.createdAt,
+        })),
+    ];
+
+    const invites = isOwner
+      ? [...memoryInvites.values()]
+          .filter((invite) => invite.tenantPhone === tenantPhone && invite.status === 'pending')
+          .map((invite) => ({
+            id: invite.id,
+            phoneNumber: invite.invitedPhone,
+            createdAt: invite.createdAt,
+            expiresAt: invite.expiresAt,
+          }))
+      : [];
+
+    return {
+      role: profile.role,
+      tenantPhone,
+      businessName: profile.businessName,
+      members,
+      invites,
+    };
+  }
+
+  await ensureReady();
+  await expireStaleInvites();
+
+  const ownerRow = await queryRow(
+    'SELECT phone_number, created_at FROM auth_users WHERE phone_number = $1',
+    [tenantPhone],
+  );
+  const memberRows = await queryRows(
+    `
+      SELECT member_phone, role, created_at
+      FROM business_members
+      WHERE tenant_phone = $1
+      ORDER BY created_at ASC
+    `,
+    [tenantPhone],
+  );
+
+  const members = [
+    {
+      phoneNumber: tenantPhone,
+      role: 'owner',
+      createdAt: ownerRow?.created_at instanceof Date ? ownerRow.created_at.toISOString() : ownerRow?.created_at ?? null,
+    },
+    ...memberRows.map((row) => ({
+      phoneNumber: row.member_phone,
+      role: row.role === 'owner' ? 'owner' : 'member',
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    })),
+  ];
+
+  let invites = [];
+  if (isOwner) {
+    const inviteRows = await queryRows(
+      `
+        SELECT id, invited_phone, created_at, expires_at
+        FROM business_invites
+        WHERE tenant_phone = $1 AND status = 'pending'
+        ORDER BY created_at DESC
+      `,
+      [tenantPhone],
+    );
+    invites = inviteRows.map((row) => ({
+      id: row.id,
+      phoneNumber: row.invited_phone,
+      createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+      expiresAt: row.expires_at instanceof Date ? row.expires_at.toISOString() : row.expires_at,
+    }));
+  }
+
+  return {
+    role: profile.role,
+    tenantPhone,
+    businessName: profile.businessName,
+    members,
+    invites,
+  };
 };
 
 export const verifyAuthOtpChallenge = async ({ phoneNumber, otpCode, challengeId = null }) => {

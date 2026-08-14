@@ -5,6 +5,7 @@ import { AppStoreProvider } from './store/AppStore';
 import { AuthProvider, useAuth } from './store/AuthStore';
 import { LoginPanel } from './components/auth/LoginPanel';
 import { BusinessSetupPanel } from './components/onboarding/BusinessSetupPanel';
+import { AcceptInvitePanel } from './components/onboarding/AcceptInvitePanel';
 import { ThemeProvider } from './hooks/useTheme';
 import { StockyLogo } from './components/brand/StockyLogo';
 
@@ -56,12 +57,16 @@ function AppGate() {
     return <LoginPanel />;
   }
 
+  if (session.pendingInvite) {
+    return <AcceptInvitePanel />;
+  }
+
   if (session.needsOnboarding) {
     return <BusinessSetupPanel />;
   }
 
   return (
-    <AppStoreProvider>
+    <AppStoreProvider key={session.tenantPhone}>
       <MetaSyncBridge />
       <Shell />
     </AppStoreProvider>
