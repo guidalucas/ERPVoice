@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { getBusinessCategoryPreset } from './businessCategories.js';
 import {
-  createAuthOtpChallenge,
   createProductRecord,
   createClientRecord,
   createProveedorRecord,
@@ -15,7 +14,6 @@ import {
   applyActionsToDatabase,
   answerStockQuery,
   findMetaEventById,
-  revokeAuthOtpChallenge,
   getAuthUserProfile,
   getStateSnapshot,
   getMetaEvents,
@@ -25,7 +23,6 @@ import {
   saveBusinessProfile,
   saveMetaEvent,
   upsertAuthUser,
-  verifyAuthOtpChallenge,
   hasDatabaseConfig,
   updateProductRecord,
   updateClientRecord,
@@ -42,6 +39,15 @@ import {
   getBusinessTeam,
 } from './postgresDatabase.js';
 import { extractBearerToken, issueJwt, normalizePhone, verifyJwt } from './auth.js';
+import {
+  authenticateWaLoginFromWebhook,
+  buildWhatsAppLoginUrl,
+  claimWaLoginSession,
+  createWaLoginSession,
+  getWhatsAppLoginNumber,
+  isWaLoginCreateRateLimited,
+  parseWaLoginToken,
+} from './waLogin.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -57,8 +63,6 @@ const allowedOrigins = new Set([
 const metaVerifyToken = process.env.META_VERIFY_TOKEN || 'erpvoice_token_secreto';
 const authEnabled = true;
 const DEV_LOGIN_PHONE = normalizePhone(process.env.AUTH_DEV_PHONE || '5491100000000') || '5491100000000';
-const memoryOtpChallenges = new Map();
-
 const isAuthDevBypassEnabled = () => {
   const flag = String(process.env.AUTH_DEV_BYPASS ?? '').trim().toLowerCase();
 
@@ -74,70 +78,65 @@ const isAuthDevBypassEnabled = () => {
   return process.env.NODE_ENV !== 'production' && process.env.VERCEL !== '1';
 };
 
-const createMemoryOtpCode = () => String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
-
-const createMemoryChallenge = (phoneNumber) => {
-  const challengeId = `dev-otp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const otpCode = createMemoryOtpCode();
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-  memoryOtpChallenges.set(challengeId, {
-    phoneNumber,
-    otpCode,
-    expiresAt,
-  });
-
-  return {
-    challengeId,
-    phoneNumber,
-    otpCode,
-    expiresAt,
-    expiresInSeconds: 600,
-  };
-};
-
-const verifyMemoryChallenge = ({ phoneNumber, otpCode, challengeId }) => {
-  const challenge = memoryOtpChallenges.get(challengeId);
-
-  if (!challenge || challenge.phoneNumber !== phoneNumber) {
-    return { ok: false, reason: 'challenge_not_found' };
-  }
-
-  if (new Date(challenge.expiresAt).getTime() < Date.now()) {
-    memoryOtpChallenges.delete(challengeId);
-    return { ok: false, reason: 'challenge_expired' };
-  }
-
-  if (challenge.otpCode !== String(otpCode ?? '').trim()) {
-    return { ok: false, reason: 'invalid_code' };
-  }
-
-  memoryOtpChallenges.delete(challengeId);
-  return { ok: true, phoneNumber };
-};
-
 const createEventId = () => `meta-event-${Math.random().toString(36).slice(2, 10)}`;
 
-const describeOtpSendFailure = (replyResult) => {
-  const reason = replyResult?.reason;
-
-  if (reason === 'missing_credentials_or_recipient') {
-    return 'Faltan credenciales de Meta o el destinatario no es válido.';
+const waLoginReplyText = (result) => {
+  if (result?.ok && (result.reason === 'authenticated' || result.reason === 'already_authenticated')) {
+    return 'Listo ✅ Ya podés volver al panel. Te vamos a dejar entrar ahora.';
   }
 
-  if (reason === 'auth_error') {
-    return 'Meta rechazó el token de acceso. Revisá META_ACCESS_TOKEN.';
+  if (result?.reason === 'expired') {
+    return 'Ese código venció. Volvé al panel y generá uno nuevo.';
   }
 
-  if (reason === 'recipient_not_allowed') {
-    return 'Meta no permite enviarle el mensaje a ese número. Agregalo como tester o usá un número habilitado.';
+  if (result?.reason === 'already_used') {
+    return 'Ese código ya se usó. Si no entraste, generá uno nuevo en el panel.';
   }
 
-  if (reason === 'recipient_unreachable') {
-    return 'No se pudo resolver un formato válido del número de destino.';
+  return 'No encontramos un inicio de sesión con ese código. Abrí el panel, tocá Iniciar sesión y mandá el mensaje nuevo.';
+};
+
+const handleIncomingWaLogin = async (body) => {
+  if (!body || body.object !== 'whatsapp_business_account') {
+    return false;
   }
 
-  return 'No se pudo enviar el código por WhatsApp.';
+  const entry = Array.isArray(body.entry) ? body.entry[0] : null;
+  const changes = entry?.changes?.[0]?.value;
+  const message = changes?.messages?.[0];
+
+  if (!message || message.type !== 'text') {
+    return false;
+  }
+
+  const textBody = typeof message.text?.body === 'string' ? message.text.body : '';
+  const loginToken = parseWaLoginToken(textBody);
+
+  if (!loginToken) {
+    return false;
+  }
+
+  const fromNumber = typeof message.from === 'string' ? message.from : '';
+  const result = await authenticateWaLoginFromWebhook(loginToken, fromNumber);
+  const replyText = waLoginReplyText(result);
+
+  console.log('[auth:wa-login] webhook', {
+    token: loginToken,
+    from: fromNumber,
+    ok: result?.ok,
+    reason: result?.reason,
+  });
+
+  try {
+    const replyResult = await sendMetaReply({ to: fromNumber, text: replyText });
+    if (!replyResult?.sent) {
+      console.warn('[auth:wa-login] reply not sent:', replyResult);
+    }
+  } catch (error) {
+    console.error('[auth:wa-login] reply failed:', error);
+  }
+
+  return true;
 };
 
 const getRequestIp = (req) => {
@@ -225,63 +224,70 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'meta-webhook', port });
 });
 
-app.post('/api/auth/request-code', async (req, res) => {
+app.post('/api/auth/wa-login', async (req, res) => {
   try {
-    const phoneNumber = normalizePhone(req.body?.phoneNumber);
-
-    if (!phoneNumber) {
-      res.status(400).json({ error: 'Ingresá un número de celular válido' });
+    if (isWaLoginCreateRateLimited(getRequestIp(req))) {
+      res.status(429).json({ error: 'Demasiados intentos. Esperá un minuto y volvé a probar.' });
       return;
     }
 
-    const devBypass = isAuthDevBypassEnabled();
-    const useMemoryAuth = devBypass && !hasDatabaseConfig();
+    const whatsappNumber = await getWhatsAppLoginNumber();
 
-    const challenge = useMemoryAuth
-      ? createMemoryChallenge(phoneNumber)
-      : await createAuthOtpChallenge(phoneNumber);
-
-    if (devBypass) {
-      console.log(`[auth:dev] OTP para ${challenge.phoneNumber}: ${challenge.otpCode}`);
-      res.json({
-        challengeId: challenge.challengeId,
-        phoneNumber: challenge.phoneNumber,
-        expiresAt: challenge.expiresAt,
-        expiresInSeconds: challenge.expiresInSeconds,
-        devOtpCode: challenge.otpCode,
-        devMode: true,
+    if (!whatsappNumber) {
+      res.status(503).json({
+        error: 'Falta configurar el número de WhatsApp de Stocky (META_WHATSAPP_NUMBER).',
       });
       return;
     }
 
-    const replyResult = await sendMetaReply({
-      to: challenge.phoneNumber,
-      text: `Tu código de acceso al panel es: ${challenge.otpCode}. Vence en 10 minutos.`,
-    });
-
-    if (!replyResult?.sent) {
-      await revokeAuthOtpChallenge(challenge.challengeId);
-      const statusByReason = {
-        missing_credentials_or_recipient: 400,
-        auth_error: 502,
-        recipient_not_allowed: 403,
-        recipient_unreachable: 502,
-      };
-
-      res.status(statusByReason[replyResult?.reason] ?? 500).json({
-        error: describeOtpSendFailure(replyResult),
-        reason: replyResult?.reason ?? 'unknown',
-        metaError: replyResult?.metaError ?? null,
-        recipientsTried: replyResult?.recipientsTried ?? [],
-      });
-      return;
-    }
+    const challenge = await createWaLoginSession();
+    const whatsappUrl = buildWhatsAppLoginUrl(whatsappNumber, challenge.loginToken);
 
     res.json({
-      challengeId: challenge.challengeId,
-      phoneNumber: challenge.phoneNumber,
+      loginToken: challenge.loginToken,
+      sessionSecret: challenge.sessionSecret,
       expiresAt: challenge.expiresAt,
       expiresInSeconds: challenge.expiresInSeconds,
+      whatsappNumber,
+      whatsappUrl,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.post('/api/auth/wa-login/poll', async (req, res) => {
+  try {
+    const loginToken = typeof req.body?.loginToken === 'string' ? req.body.loginToken : '';
+    const sessionSecret = typeof req.body?.sessionSecret === 'string' ? req.body.sessionSecret : '';
+    const claim = await claimWaLoginSession(loginToken, sessionSecret);
+
+    if (!claim.ok) {
+      if (claim.reason === 'invalid_secret') {
+        res.status(403).json({ error: 'No pudimos validar esta sesión', reason: claim.reason });
+        return;
+      }
+
+      if (claim.reason === 'missing_fields') {
+        res.status(400).json({ error: 'Faltan datos de la sesión', reason: claim.reason });
+        return;
+      }
+
+      res.json({ status: claim.reason === 'used' ? 'used' : claim.reason === 'expired' ? 'expired' : 'not_found' });
+      return;
+    }
+
+    if (claim.status === 'pending') {
+      res.json({ status: 'pending' });
+      return;
+    }
+
+    const token = issueJwt({ phoneNumber: claim.phoneNumber });
+    res.json({
+      status: 'authenticated',
+      token,
+      tokenType: 'Bearer',
+      phoneNumber: claim.phoneNumber,
     });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -322,55 +328,6 @@ app.get('/api/auth/dev-status', (_req, res) => {
     defaultPhone: DEV_LOGIN_PHONE,
     databaseConfigured: hasDatabaseConfig(),
   });
-});
-
-app.post('/api/auth/verify-code', async (req, res) => {
-  try {
-    const phoneNumber = normalizePhone(req.body?.phoneNumber);
-    const otpCode = String(req.body?.otpCode ?? '').trim();
-    const challengeId = typeof req.body?.challengeId === 'string' ? req.body.challengeId.trim() : null;
-
-    let verification;
-
-    if (challengeId && memoryOtpChallenges.has(challengeId)) {
-      verification = verifyMemoryChallenge({ phoneNumber, otpCode, challengeId });
-    } else {
-      verification = await verifyAuthOtpChallenge({
-        phoneNumber,
-        otpCode,
-        challengeId,
-      });
-    }
-
-    if (!verification.ok) {
-      const statusByReason = {
-        missing_fields: 400,
-        challenge_not_found: 404,
-        challenge_used: 400,
-        challenge_expired: 400,
-        invalid_code: 401,
-        too_many_attempts: 429,
-      };
-
-      res.status(statusByReason[verification.reason] ?? 400).json({ error: 'No pudimos validar el código', reason: verification.reason });
-      return;
-    }
-
-    // El verify de Postgres ya hace upsert; el challenge en memoria no.
-    if (challengeId?.startsWith('dev-otp-') && hasDatabaseConfig()) {
-      await upsertAuthUser(verification.phoneNumber);
-    }
-
-    const token = issueJwt({ phoneNumber: verification.phoneNumber });
-
-    res.json({
-      token,
-      tokenType: 'Bearer',
-      phoneNumber: verification.phoneNumber,
-    });
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
 });
 
 app.get('/api/auth/me', authenticateRequest, async (req, res) => {
@@ -875,10 +832,19 @@ app.post('/api/voice/parse', authenticateRequest, async (req, res) => {
 const handleMetaWebhook = async (req, res) => {
   res.sendStatus(200);
   const fastRepliedMessageIds = new Set();
+  const body = req.body ?? {};
+
+  try {
+    const handledLogin = await handleIncomingWaLogin(body);
+    if (handledLogin) {
+      return;
+    }
+  } catch (error) {
+    console.error('[auth:wa-login] webhook handler failed:', error);
+  }
 
   // Enviar ACK rápido para mensajes de texto para que el usuario reciba respuesta inmediata
   try {
-    const body = req.body ?? {};
     if (body.object === 'whatsapp_business_account') {
       const entry = Array.isArray(body.entry) ? body.entry[0] : null;
       const changes = entry?.changes?.[0]?.value;

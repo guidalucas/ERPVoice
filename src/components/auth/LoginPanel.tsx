@@ -1,49 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchDevAuthStatus } from '../../services/authService';
+import {
+  createWhatsAppLogin,
+  fetchDevAuthStatus,
+  pollWhatsAppLogin,
+  type WhatsAppLoginChallenge,
+} from '../../services/authService';
 import { useAuth } from '../../store/AuthStore';
 import { StockyLogo } from '../brand/StockyLogo';
 import { ThemeToggle } from '../dashboard/ThemeToggle';
 
-type Step = 'phone' | 'code';
-
-const OTP_LENGTH = 6;
-
-/** Quita 54 / 549 del valor canónico para mostrar junto al prefijo visual +54. */
-function toLocalPhoneInput(value: string): string {
-  const digits = value.replace(/\D/g, '');
-
-  if (digits.startsWith('549') && digits.length >= 12) {
-    return digits.slice(3);
-  }
-
-  if (digits.startsWith('54') && digits.length >= 12) {
-    return digits.slice(2);
-  }
-
-  return digits;
-}
-
-/** Formatea el canónico (549…) para mensajes legibles. */
-function formatPhoneForMessage(canonical: string): string {
-  const digits = canonical.replace(/\D/g, '');
-
-  if (digits.length === 13 && digits.startsWith('549')) {
-    const local = digits.slice(3);
-
-    if (local.startsWith('11')) {
-      return `+54 9 11 ${local.slice(2, 6)}-${local.slice(6)}`;
-    }
-
-    return `+54 9 ${local.slice(0, 3)} ${local.slice(3, 6)}-${local.slice(6)}`;
-  }
-
-  if (digits.length === 12 && digits.startsWith('54')) {
-    const local = digits.slice(2);
-    return `+54 ${local.slice(0, 3)} ${local.slice(3, 6)}-${local.slice(6)}`;
-  }
-
-  return digits ? `+${digits}` : '';
-}
+const POLL_INTERVAL_MS = 1500;
 
 function CheckIcon() {
   return (
@@ -83,8 +49,16 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
+function WhatsAppIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-current">
+      <path d="M12.04 2C6.58 2 2.15 6.43 2.15 11.89c0 1.76.46 3.48 1.34 5L2 22l5.27-1.38c1.46.8 3.1 1.22 4.77 1.22h.01c5.46 0 9.89-4.43 9.89-9.89C21.94 6.43 17.5 2 12.04 2Zm5.76 14.04c-.24.67-1.18 1.23-1.93 1.4-.51.11-1.18.2-3.44-.74-2.89-1.2-4.76-4.14-4.9-4.33-.14-.2-1.15-1.53-1.15-2.92 0-1.39.73-2.07 1-2.36.24-.26.64-.38 1.02-.38.12 0 .23 0 .33.01.29.01.44.03.63.49.24.56.82 2.01.89 2.16.07.15.12.32.02.51-.1.2-.15.32-.3.5-.14.17-.3.38-.43.51-.14.14-.29.29-.12.56.16.27.73 1.2 1.56 1.95 1.08.96 1.95 1.26 2.26 1.41.3.14.47.12.65-.07.18-.2.75-.87.95-1.17.2-.3.4-.25.67-.15.27.1 1.71.8 2.01.95.3.15.5.22.57.34.07.12.07.7-.17 1.37Z" />
+    </svg>
+  );
+}
+
 const trustBullets = [
-  { icon: CheckIcon, text: 'Sin contraseñas: entrás con un código por WhatsApp' },
+  { icon: CheckIcon, text: 'Sin contraseñas: entrás mandando un mensaje a Stocky' },
   { icon: MicIcon, text: 'Cargás stock hablando, como se lo contarías a un empleado' },
   { icon: ShieldIcon, text: 'Tus datos y los de tus clientes, protegidos' },
 ];
@@ -162,23 +136,26 @@ function VoiceFlowMock() {
   );
 }
 
+function remainingLabel(expiresAt: string) {
+  const remainingMs = new Date(expiresAt).getTime() - Date.now();
+  const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
 export function LoginPanel() {
-  const { requestLoginCode, verifyLoginCode, loginWithDevBypass } = useAuth();
-  const [step, setStep] = useState<Step>('phone');
-  /** Lo que ve el usuario junto a +54 (sin código de país). */
-  const [phoneInput, setPhoneInput] = useState('');
-  /** Valor canónico para la API (ej. 5493454954407). */
-  const [canonicalPhone, setCanonicalPhone] = useState('');
-  const [otpDigits, setOtpDigits] = useState<string[]>(Array(OTP_LENGTH).fill(''));
-  const [challengeId, setChallengeId] = useState('');
+  const { completeWhatsAppLogin, loginWithDevBypass } = useAuth();
+  const [challenge, setChallenge] = useState<WhatsAppLoginChallenge | null>(null);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [now, setNow] = useState(Date.now());
   const [devLoginEnabled, setDevLoginEnabled] = useState(false);
   const [devDefaultPhone, setDevDefaultPhone] = useState('5491100000000');
+  const [devPhoneInput, setDevPhoneInput] = useState('');
   const [devPanelOpen, setDevPanelOpen] = useState(false);
-  const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
-
-  const otpCode = otpDigits.join('');
+  const completingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,62 +184,77 @@ export function LoginPanel() {
   }, []);
 
   useEffect(() => {
-    if (step === 'code') {
-      otpRefs.current[0]?.focus();
+    if (!challenge) {
+      return;
     }
-  }, [step]);
 
-  const resetOtp = () => setOtpDigits(Array(OTP_LENGTH).fill(''));
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [challenge]);
 
-  const handlePhoneInputChange = (raw: string) => {
-    setPhoneInput(toLocalPhoneInput(raw));
-    setCanonicalPhone('');
-  };
+  useEffect(() => {
+    if (!challenge || completingRef.current) {
+      return;
+    }
 
-  const handleRequestCode = async () => {
-    setIsSubmitting(true);
-    setStatusText(null);
+    let cancelled = false;
 
-    try {
-      const digits = phoneInput.replace(/\D/g, '');
-
-      if (!digits) {
-        setStatusText('Ingresá un número de celular válido.');
+    const tick = async () => {
+      if (completingRef.current || cancelled) {
         return;
       }
 
-      const response = await requestLoginCode(digits);
-      setChallengeId(response.challengeId);
-      setCanonicalPhone(response.phoneNumber);
-      setPhoneInput(toLocalPhoneInput(response.phoneNumber));
-      setStep('code');
-      resetOtp();
+      try {
+        const result = await pollWhatsAppLogin({
+          loginToken: challenge.loginToken,
+          sessionSecret: challenge.sessionSecret,
+        });
 
-      if (response.devOtpCode) {
-        setOtpDigits(response.devOtpCode.padEnd(OTP_LENGTH, '').slice(0, OTP_LENGTH).split(''));
-        setStatusText(`Para probar en tu PC, usá este código: ${response.devOtpCode}`);
-      } else {
-        setStatusText('Listo. Te mandamos un código por WhatsApp.');
+        if (cancelled || completingRef.current) {
+          return;
+        }
+
+        if (result.status === 'authenticated') {
+          completingRef.current = true;
+          setIsCompleting(true);
+          await completeWhatsAppLogin({
+            token: result.token,
+            phoneNumber: result.phoneNumber,
+          });
+          return;
+        }
+
+        if (result.status === 'expired' || result.status === 'not_found' || result.status === 'used') {
+          setChallenge(null);
+          setStatusText('El código venció o ya se usó. Generá uno nuevo para entrar.');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setStatusText(error instanceof Error ? error.message : 'No pudimos comprobar el acceso. Reintentando…');
+        }
       }
-    } catch (error) {
-      setStatusText(error instanceof Error ? error.message : 'No pudimos enviar el código. Probá de nuevo.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    };
 
-  const handleVerifyCode = async () => {
+    void tick();
+    const timer = window.setInterval(() => void tick(), POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [challenge, completeWhatsAppLogin]);
+
+  const handleStartWhatsAppLogin = async () => {
     setIsSubmitting(true);
     setStatusText(null);
 
     try {
-      await verifyLoginCode({
-        phoneNumber: canonicalPhone || phoneInput,
-        otpCode,
-        challengeId,
-      });
+      const nextChallenge = await createWhatsAppLogin();
+      completingRef.current = false;
+      setIsCompleting(false);
+      setChallenge(nextChallenge);
     } catch (error) {
-      setStatusText(error instanceof Error ? error.message : 'El código no es válido. Revisalo e intentá otra vez.');
+      setStatusText(error instanceof Error ? error.message : 'No pudimos armar el acceso. Probá de nuevo.');
     } finally {
       setIsSubmitting(false);
     }
@@ -273,7 +265,7 @@ export function LoginPanel() {
     setStatusText(null);
 
     try {
-      await loginWithDevBypass(phoneInput.trim() || undefined);
+      await loginWithDevBypass(devPhoneInput.trim() || undefined);
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : 'No pudimos entrar. Probá de nuevo.');
     } finally {
@@ -281,51 +273,8 @@ export function LoginPanel() {
     }
   };
 
-  const handleOtpChange = (index: number, rawValue: string) => {
-    const digits = rawValue.replace(/\D/g, '');
-
-    if (!digits) {
-      setOtpDigits((prev) => {
-        const next = [...prev];
-        next[index] = '';
-        return next;
-      });
-      return;
-    }
-
-    if (digits.length > 1) {
-      setOtpDigits((prev) => {
-        const next = [...prev];
-        for (let offset = 0; offset < digits.length && index + offset < OTP_LENGTH; offset += 1) {
-          next[index + offset] = digits[offset]!;
-        }
-        return next;
-      });
-      const lastFilled = Math.min(index + digits.length, OTP_LENGTH) - 1;
-      otpRefs.current[Math.min(lastFilled + 1, OTP_LENGTH - 1)]?.focus();
-      return;
-    }
-
-    setOtpDigits((prev) => {
-      const next = [...prev];
-      next[index] = digits;
-      return next;
-    });
-
-    if (index < OTP_LENGTH - 1) {
-      otpRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (index: number, event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Backspace' && !otpDigits[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const isOtpComplete = otpDigits.every((digit) => digit !== '');
-
-  const phoneMessageLabel = formatPhoneForMessage(canonicalPhone) || phoneInput || 'tu número';
+  const isWaiting = Boolean(challenge);
+  const expiresSoon = challenge ? new Date(challenge.expiresAt).getTime() - now <= 0 : false;
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-mesh-soft-light px-4 py-8 text-[color:var(--text)] dark:bg-mesh-soft">
@@ -384,65 +333,32 @@ export function LoginPanel() {
 
         <section className="w-full max-w-md lg:w-[46%]">
           <div className="erp-shell relative animate-fade-in-up p-6 sm:p-8">
-            <div className="mb-6 flex items-center gap-2">
-              <div className="login-step-track">
-                <div className="login-step-fill" style={{ width: step === 'phone' ? '50%' : '100%' }} />
-              </div>
-              <span className="shrink-0 text-xs type-subtitle text-[color:var(--muted)]">
-                Paso {step === 'phone' ? '1' : '2'} de 2
-              </span>
-            </div>
-
             <h2 className="type-title text-2xl text-[color:var(--text)]">
-              {step === 'phone' ? '¿Cuál es tu WhatsApp?' : 'Ingresá el código'}
+              {isWaiting ? 'Mandá el mensaje y volvé acá' : 'Entrá con WhatsApp'}
             </h2>
             <p className="mt-2 text-sm text-[color:var(--muted)]">
-              {step === 'phone'
-                ? 'Usá el mismo número con el que manejás el negocio.'
-                : `Te mandamos ${OTP_LENGTH} dígitos por WhatsApp al ${phoneMessageLabel}.`}
+              {isWaiting
+                ? 'WhatsApp se abre con el mensaje listo. Solo tenés que tocar Enviar. El panel te deja entrar solo.'
+                : 'No hace falta escribir tu número. Tocá el botón, mandá el mensaje y te abrimos el panel.'}
             </p>
 
             <div className="mt-6 space-y-4">
-              <label className="block space-y-2 text-sm type-subtitle text-[color:var(--text)]">
-                Número de celular
+              {isWaiting && challenge && (
                 <div
-                  className="flex items-center gap-2 rounded-2xl border px-3 transition focus-within:border-[color:var(--accent)]"
-                  style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}
+                  className="rounded-2xl border px-4 py-4"
+                  style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
                 >
-                  <span className="shrink-0 text-sm type-subtitle text-[color:var(--muted)]">+54</span>
-                  <span className="h-6 w-px shrink-0" style={{ background: 'var(--border)' }} />
-                  <input
-                    value={phoneInput}
-                    onChange={(event) => handlePhoneInputChange(event.target.value)}
-                    placeholder="11 2345-6789"
-                    className="h-12 w-full min-w-0 bg-transparent text-[15px] type-body-strong text-[color:var(--text)] outline-none placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    disabled={step === 'code'}
-                  />
-                </div>
-              </label>
-
-              {step === 'code' && (
-                <div className="space-y-2">
-                  <p className="text-sm type-subtitle text-[color:var(--text)]">Código de WhatsApp</p>
-                  <div className="flex justify-between gap-2">
-                    {otpDigits.map((digit, index) => (
-                      <input
-                        key={index}
-                        ref={(element) => {
-                          otpRefs.current[index] = element;
-                        }}
-                        value={digit}
-                        onChange={(event) => handleOtpChange(index, event.target.value)}
-                        onKeyDown={(event) => handleOtpKeyDown(index, event)}
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        maxLength={OTP_LENGTH}
-                        className="otp-box"
-                      />
-                    ))}
-                  </div>
+                  <p className="text-xs type-subtitle uppercase tracking-[0.18em] text-[color:var(--muted)]">
+                    Mensaje a enviar
+                  </p>
+                  <p className="mt-2 font-mono text-lg tracking-[0.18em] text-[color:var(--text)]">
+                    LOGIN {challenge.loginToken}
+                  </p>
+                  <p className="mt-2 text-xs text-[color:var(--muted)]">
+                    {expiresSoon
+                      ? 'Este código ya venció.'
+                      : `Vence en ${remainingLabel(challenge.expiresAt)}. Si WhatsApp no se abrió, usá el botón de abajo.`}
+                  </p>
                 </div>
               )}
 
@@ -455,41 +371,44 @@ export function LoginPanel() {
                 </p>
               )}
 
-              <div className="flex flex-wrap gap-3">
-                {step === 'phone' ? (
+              {isWaiting && challenge && !expiresSoon ? (
+                <div className="flex flex-col gap-3">
+                  <a
+                    href={challenge.whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="erp-button-primary inline-flex min-h-12 w-full items-center justify-center gap-2"
+                  >
+                    <WhatsAppIcon />
+                    Abrir WhatsApp y enviar
+                  </a>
+                  <p className="text-center text-sm text-[color:var(--muted)]">
+                    {isCompleting ? 'Entrando al panel…' : 'Esperando que mandes el mensaje…'}
+                  </p>
                   <button
                     type="button"
-                    className="erp-button-primary min-h-12 w-full"
-                    onClick={() => void handleRequestCode()}
-                    disabled={isSubmitting}
+                    className="erp-button-secondary min-h-12"
+                    onClick={() => {
+                      setChallenge(null);
+                      completingRef.current = false;
+                      setIsCompleting(false);
+                      setStatusText(null);
+                    }}
                   >
-                    {isSubmitting ? 'Enviando…' : 'Enviar código por WhatsApp'}
+                    Generar otro código
                   </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="erp-button-primary min-h-12 flex-1 sm:flex-none"
-                      onClick={() => void handleVerifyCode()}
-                      disabled={isSubmitting || !isOtpComplete}
-                    >
-                      {isSubmitting ? 'Entrando…' : 'Entrar al panel'}
-                    </button>
-                    <button
-                      type="button"
-                      className="erp-button-secondary min-h-12"
-                      onClick={() => {
-                        setStep('phone');
-                        resetOtp();
-                        setChallengeId('');
-                        setStatusText(null);
-                      }}
-                    >
-                      Cambiar número
-                    </button>
-                  </>
-                )}
-              </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="erp-button-primary inline-flex min-h-12 w-full items-center justify-center gap-2"
+                  onClick={() => void handleStartWhatsAppLogin()}
+                  disabled={isSubmitting}
+                >
+                  <WhatsAppIcon />
+                  {isSubmitting ? 'Preparando…' : expiresSoon ? 'Generar un código nuevo' : 'Iniciar sesión con WhatsApp'}
+                </button>
+              )}
 
               {devLoginEnabled && (
                 <div className="rounded-2xl border border-dashed border-[color:var(--accent-border)] bg-[color:var(--accent-soft)]">
@@ -499,22 +418,27 @@ export function LoginPanel() {
                     onClick={() => setDevPanelOpen((open) => !open)}
                     aria-expanded={devPanelOpen}
                   >
-                    <span className="erp-accent-text text-sm font-semibold">
-                      Modo prueba (solo en tu PC)
-                    </span>
+                    <span className="erp-accent-text text-sm font-semibold">Modo prueba (solo en tu PC)</span>
                     <span className="erp-accent-text">
                       <ChevronIcon open={devPanelOpen} />
                     </span>
                   </button>
                   {devPanelOpen && (
-                    <div className="px-4 pb-4">
+                    <div className="space-y-3 px-4 pb-4">
                       <p className="text-xs leading-5 text-[color:var(--muted)]">
-                        Podés entrar sin WhatsApp usando el número de prueba {devDefaultPhone}, o el que escribiste
-                        arriba.
+                        Podés entrar sin WhatsApp usando el número de prueba {devDefaultPhone}, o uno propio.
                       </p>
+                      <input
+                        value={devPhoneInput}
+                        onChange={(event) => setDevPhoneInput(event.target.value)}
+                        placeholder={devDefaultPhone}
+                        className="h-11 w-full rounded-2xl border px-3 text-sm type-body-strong text-[color:var(--text)] outline-none"
+                        style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}
+                        inputMode="tel"
+                      />
                       <button
                         type="button"
-                        className="erp-button-secondary mt-3 text-sm"
+                        className="erp-button-secondary text-sm"
                         onClick={() => void handleDevLogin()}
                         disabled={isSubmitting}
                       >
@@ -526,7 +450,7 @@ export function LoginPanel() {
               )}
 
               <p className="text-xs leading-5 text-[color:var(--muted)]">
-                El código vence en unos minutos. Si no te llega, revisá que el número esté bien o pedí uno nuevo.
+                El mensaje tiene que salir del WhatsApp con el que manejás el negocio. El código vence en unos minutos.
               </p>
             </div>
           </div>
