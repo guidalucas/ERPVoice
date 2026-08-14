@@ -21,11 +21,24 @@ export type DevLoginResponse = VerifyLoginCodeResponse & {
   devMode?: boolean;
 };
 
+export type PendingInvite = {
+  id: string;
+  tenantPhone: string;
+  businessName: string | null;
+  invitedByPhone: string;
+  expiresAt: string;
+  hasOwnBusiness: boolean;
+};
+
 export type AuthUserProfile = {
   phoneNumber: string;
+  tenantPhone: string;
+  role: 'owner' | 'member';
   businessName: string | null;
   businessCategory: BusinessCategoryId | null;
   needsOnboarding: boolean;
+  pendingInvite: PendingInvite | null;
+  hasOwnBusiness: boolean;
 };
 
 export type SaveBusinessProfilePayload = {
