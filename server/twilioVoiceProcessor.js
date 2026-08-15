@@ -646,6 +646,52 @@ const parseVoiceTextWithModel = async (text) => {
   }
 };
 
+const uniqueActionNames = (items, field) => {
+  const names = [];
+  for (const item of items) {
+    const name = typeof item[field] === 'string' ? item[field].trim() : '';
+    if (name && !names.some((entry) => entry.toLowerCase() === name.toLowerCase())) {
+      names.push(name);
+    }
+  }
+  return names;
+};
+
+const formatOrderHeader = (items) => {
+  const clients = uniqueActionNames(items, 'clientName');
+  const proveedores = uniqueActionNames(items, 'proveedorName');
+  if (clients.length === 1 && proveedores.length === 1) {
+    return `Pedido de ${clients[0]} · proveedor ${proveedores[0]}`;
+  }
+  if (clients.length === 1) {
+    return `Pedido de ${clients[0]}`;
+  }
+  if (proveedores.length === 1) {
+    return `Pedido al proveedor ${proveedores[0]}`;
+  }
+  if (clients.length > 1) {
+    return `Pedidos (${clients.join(', ')})`;
+  }
+  if (proveedores.length > 1) {
+    return `Pedidos a proveedores (${proveedores.join(', ')})`;
+  }
+  return 'Pedido';
+};
+
+const formatOrderItem = (action, { includeProveedor = false } = {}) => {
+  const qty = action.qty && action.qty > 0 ? action.qty : 1;
+  const sizeLabel = action.size ? ` talle ${action.size}` : '';
+  const proveedorLabel =
+    includeProveedor && action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
+  return `${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
+};
+
+const formatOrderGroup = (items) => {
+  const includeProveedor = uniqueActionNames(items, 'proveedorName').length > 1;
+  const lines = items.map((item) => `• ${formatOrderItem(item, { includeProveedor })}`);
+  return `${formatOrderHeader(items)}:\n${lines.join('\n')}`;
+};
+
 const formatAction = (action) => {
   if (action.type === 'add_stock') {
     return `+${action.qty} stock de ${action.productName}`;
@@ -664,16 +710,52 @@ const formatAction = (action) => {
   }
 
   if (action.type === 'client_order') {
-    const qty = action.qty && action.qty > 0 ? action.qty : 1;
-    const sizeLabel = action.size ? ` talle ${action.size}` : '';
-    const proveedorLabel = action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
-    if (action.clientName?.trim()) {
-      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
-    }
-    return `Pedido: ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
+    return formatOrderItem(action);
   }
 
   return `+$${action.amount.toLocaleString('es-AR')} en cuenta de ${action.clientName}`;
+};
+
+const formatActionsSummary = (actions) => {
+  const parts = [];
+  let orderBuffer = [];
+
+  const flushOrders = () => {
+    if (!orderBuffer.length) {
+      return;
+    }
+
+    const groups = new Map();
+    for (const action of orderBuffer) {
+      const clientName = typeof action.clientName === 'string' ? action.clientName.trim() : '';
+      const proveedorName = typeof action.proveedorName === 'string' ? action.proveedorName.trim() : '';
+      const key = clientName
+        ? `client:${clientName.toLowerCase()}`
+        : proveedorName
+          ? `proveedor:${proveedorName.toLowerCase()}`
+          : 'pedido';
+      const current = groups.get(key) ?? { items: [] };
+      current.items.push(action);
+      groups.set(key, current);
+    }
+
+    for (const group of groups.values()) {
+      parts.push(formatOrderGroup(group.items));
+    }
+    orderBuffer = [];
+  };
+
+  for (const action of actions) {
+    if (action.type === 'client_order') {
+      orderBuffer.push(action);
+      continue;
+    }
+    flushOrders();
+    parts.push(formatAction(action));
+  }
+  flushOrders();
+
+  return parts.join('\n\n');
 };
 
 const buildReplyText = ({ transcript, parsed }) => {
@@ -683,11 +765,11 @@ const buildReplyText = ({ transcript, parsed }) => {
       : 'Recibí tu mensaje, pero no pude detectar una acción clara.';
   }
 
-  const actionSummary = parsed.actions.map(formatAction).join(' | ');
+  const actionSummary = formatActionsSummary(parsed.actions);
 
   return transcript
-    ? `Recibí tu audio. Detecté: ${actionSummary}. Texto: ${transcript}`
-    : `Recibí tu mensaje. Detecté: ${actionSummary}.`;
+    ? `Recibí tu audio. Detecté:\n${actionSummary}\n\nTexto: ${transcript}`
+    : `Recibí tu mensaje. Detecté:\n${actionSummary}`;
 };
 
 export const processTwilioWebhook = async (body) => {

@@ -679,9 +679,7 @@ export class VoiceParserService {
         qty,
       });
       suggested.push(
-        normalizedClient
-          ? `${normalizedClient} pidió ${qty} ${productDescriptor.productName}${normalizedProveedor ? ` · proveedor ${normalizedProveedor}` : ''}`
-          : `pedido ${qty} ${productDescriptor.productName}${normalizedProveedor ? ` · proveedor ${normalizedProveedor}` : ''}`,
+        `${qty} ${productDescriptor.productName}`,
       );
     };
 

@@ -157,35 +157,115 @@ export const useChatBot = () => {
       return [];
     }
 
-    return state.pendingProposal.actions.map((action, index) => {
+    const uniqueNames = (items: Extract<ParsedActionUnion, { type: 'client_order' }>[], field: 'clientName' | 'proveedorName') => {
+      const names: string[] = [];
+      for (const item of items) {
+        const name = item[field]?.trim() || '';
+        if (name && !names.some((entry) => entry.toLowerCase() === name.toLowerCase())) {
+          names.push(name);
+        }
+      }
+      return names;
+    };
+
+    const formatOrderHeader = (items: Extract<ParsedActionUnion, { type: 'client_order' }>[]) => {
+      const clients = uniqueNames(items, 'clientName');
+      const proveedores = uniqueNames(items, 'proveedorName');
+      if (clients.length === 1 && proveedores.length === 1) {
+        return `Pedido de ${clients[0]} · proveedor ${proveedores[0]}`;
+      }
+      if (clients.length === 1) {
+        return `Pedido de ${clients[0]}`;
+      }
+      if (proveedores.length === 1) {
+        return `Pedido al proveedor ${proveedores[0]}`;
+      }
+      return 'Pedido';
+    };
+
+    const formatOrderItem = (
+      action: Extract<ParsedActionUnion, { type: 'client_order' }>,
+      includeProveedor: boolean,
+    ) => {
+      const qty = action.qty && action.qty > 0 ? action.qty : 1;
+      const sizeLabel =
+        preset.useVariants && action.size && preset.variantLabel
+          ? ` ${preset.variantLabel.toLowerCase()} ${action.size}`
+          : '';
+      const proveedorLabel =
+        includeProveedor && action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
+      return `${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
+    };
+
+    const lines: string[] = [];
+    let orderBuffer: Extract<ParsedActionUnion, { type: 'client_order' }>[] = [];
+    let otherIndex = 0;
+
+    const flushOrders = () => {
+      if (!orderBuffer.length) {
+        return;
+      }
+
+      const groups = new Map<string, { items: typeof orderBuffer }>();
+      for (const action of orderBuffer) {
+        const clientName = action.clientName?.trim() || '';
+        const proveedorName = action.proveedorName?.trim() || '';
+        const key = clientName
+          ? `client:${clientName.toLowerCase()}`
+          : proveedorName
+            ? `proveedor:${proveedorName.toLowerCase()}`
+            : 'pedido';
+        const current = groups.get(key) ?? { items: [] };
+        current.items.push(action);
+        groups.set(key, current);
+      }
+
+      for (const group of groups.values()) {
+        const includeProveedor = uniqueNames(group.items, 'proveedorName').length > 1;
+        lines.push(formatOrderHeader(group.items));
+        for (const item of group.items) {
+          lines.push(`• ${formatOrderItem(item, includeProveedor)}`);
+        }
+      }
+      orderBuffer = [];
+    };
+
+    const nextOtherIndex = () => {
+      otherIndex += 1;
+      return otherIndex;
+    };
+
+    for (const action of state.pendingProposal.actions) {
+      if (action.type === 'client_order') {
+        orderBuffer.push(action);
+        continue;
+      }
+
+      flushOrders();
+
       if (action.type === 'add_stock') {
-        return `${index + 1}. add_stock -> ${formatProductMeta(action, preset.useVariants)} (+${action.qty})`;
+        lines.push(`${nextOtherIndex()}. add_stock -> ${formatProductMeta(action, preset.useVariants)} (+${action.qty})`);
+        continue;
       }
 
       if (action.type === 'reserve_stock') {
-        return `${index + 1}. reserve_stock -> ${formatProductMeta(action, preset.useVariants)} (-${action.qty})`;
+        lines.push(`${nextOtherIndex()}. reserve_stock -> ${formatProductMeta(action, preset.useVariants)} (-${action.qty})`);
+        continue;
       }
 
       if (action.type === 'sell') {
-        return `${index + 1}. sell -> ${formatProductMeta(action, preset.useVariants)} (-${action.qty})`;
+        lines.push(`${nextOtherIndex()}. sell -> ${formatProductMeta(action, preset.useVariants)} (-${action.qty})`);
+        continue;
       }
 
       if (action.type === 'payment_received') {
-        return `${index + 1}. payment_received -> ${action.clientName} (-$${action.amount.toLocaleString('es-AR')})`;
-      }
-
-      if (action.type === 'client_order') {
-        const qty = action.qty && action.qty > 0 ? action.qty : 1;
-        const sizeLabel =
-          preset.useVariants && action.size && preset.variantLabel
-            ? ` ${preset.variantLabel.toLowerCase()} ${action.size}`
-            : '';
-        const proveedorLabel = action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
-        return `${index + 1}. client_order -> ${action.clientName?.trim() ? `${action.clientName} pidió ` : ''}${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
+        lines.push(`${nextOtherIndex()}. payment_received -> ${action.clientName} (-$${action.amount.toLocaleString('es-AR')})`);
+        continue;
       }
 
       if (action.type === 'query_stock') {
-        return `${index + 1}. query_stock -> ${formatProductMeta(action, preset.useVariants)}`;
+        lines.push(`${nextOtherIndex()}. query_stock -> ${formatProductMeta(action, preset.useVariants)}`);
+        continue;
       }
 
       if (action.type === 'update_product') {
@@ -196,7 +276,8 @@ export const useChatBot = () => {
         if (Number.isFinite(action.stockAvailable ?? NaN)) {
           parts.push(`stock ${action.stockAvailable}`);
         }
-        return `${index + 1}. update_product -> ${action.productName}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+        lines.push(`${nextOtherIndex()}. update_product -> ${action.productName}${parts.length ? ` (${parts.join(', ')})` : ''}`);
+        continue;
       }
 
       if (action.type === 'update_pedido') {
@@ -210,20 +291,25 @@ export const useChatBot = () => {
         if (action.estado) {
           parts.push(action.estado);
         }
-        return `${index + 1}. update_pedido -> ${action.productName}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+        lines.push(`${nextOtherIndex()}. update_pedido -> ${action.productName}${parts.length ? ` (${parts.join(', ')})` : ''}`);
+        continue;
       }
 
       if (action.type === 'delete_pedido') {
-        return `${index + 1}. delete_pedido -> ${action.productName}`;
+        lines.push(`${nextOtherIndex()}. delete_pedido -> ${action.productName}`);
+        continue;
       }
 
       if (action.type === 'delete_product') {
-        return `${index + 1}. delete_product -> ${action.productName}`;
+        lines.push(`${nextOtherIndex()}. delete_product -> ${action.productName}`);
+        continue;
       }
 
-      // add_debt
-      return `${index + 1}. add_debt -> ${action.clientName} (+$${action.amount.toLocaleString('es-AR')})`;
-    });
+      lines.push(`${nextOtherIndex()}. add_debt -> ${action.clientName} (+$${action.amount.toLocaleString('es-AR')})`);
+    }
+
+    flushOrders();
+    return lines;
   }, [state.pendingProposal, preset.useVariants, preset.variantLabel]);
 
   const processText = async (inputText: string) => {

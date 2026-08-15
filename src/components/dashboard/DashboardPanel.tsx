@@ -170,8 +170,7 @@ const groupTransactions = (transactions: Transaction[]): ActivityGroup[] => {
       last &&
       last.sourceText === transaction.sourceText &&
       Math.abs(new Date(last.timestamp).getTime() - ts) <= 5000 &&
-      last.kind === 'ingreso' &&
-      kind === 'ingreso';
+      ((last.kind === 'ingreso' && kind === 'ingreso') || (last.kind === 'pedido' && kind === 'pedido'));
 
     if (canMergeWithLast) {
       last.items.push(transaction);
@@ -188,6 +187,77 @@ const groupTransactions = (transactions: Transaction[]): ActivityGroup[] => {
   }
 
   return groups;
+};
+
+const uniqueTrimmedNames = (values: Array<string | undefined | null>): string[] => {
+  const names: string[] = [];
+  for (const value of values) {
+    const name = value?.trim();
+    if (name && !names.some((entry) => entry.toLowerCase() === name.toLowerCase())) {
+      names.push(name);
+    }
+  }
+  return names;
+};
+
+const pedidoPartyNames = (items: Transaction[]) => {
+  const clients: string[] = [];
+  const proveedores: string[] = [];
+
+  for (const item of items) {
+    for (const action of item.actions) {
+      if (action.type !== 'client_order') {
+        continue;
+      }
+      clients.push(action.clientName ?? '');
+      proveedores.push(action.proveedorName ?? '');
+    }
+  }
+
+  return {
+    clients: uniqueTrimmedNames(clients),
+    proveedores: uniqueTrimmedNames(proveedores),
+  };
+};
+
+const pedidoGroupHeader = (items: Transaction[]): string => {
+  const { clients, proveedores } = pedidoPartyNames(items);
+  if (clients.length === 1 && proveedores.length === 1) {
+    return `Pedido de ${clients[0]} · proveedor ${proveedores[0]}`;
+  }
+  if (clients.length === 1) {
+    return `Pedido de ${clients[0]}`;
+  }
+  if (proveedores.length === 1) {
+    return `Pedido al proveedor ${proveedores[0]}`;
+  }
+  if (clients.length > 1) {
+    return `Pedidos (${clients.join(', ')})`;
+  }
+  if (proveedores.length > 1) {
+    return `Pedidos a proveedores (${proveedores.join(', ')})`;
+  }
+  return 'Pedido';
+};
+
+const activityGroupTitle = (group: ActivityGroup): string => {
+  if (group.items.length > 1 && group.kind === 'ingreso') {
+    return `Carga por voz — ${group.items.length} items`;
+  }
+
+  if (group.kind === 'pedido') {
+    const count = group.items.length;
+    const productWord = count === 1 ? 'producto' : 'productos';
+    const header = pedidoGroupHeader(group.items);
+
+    if (count === 1) {
+      return `${header}: ${group.items[0]?.summary ?? productWord}`;
+    }
+
+    return `${header} — ${count} ${productWord}`;
+  }
+
+  return group.items[0]?.summary ?? group.sourceText;
 };
 
 const matchesActivityFilter = (transaction: Transaction, filter: ActivityFilter): boolean => {
@@ -262,10 +332,7 @@ function ActivityFeed({ transactions, showFilters = true }: { transactions: Tran
           {visibleGroups.map((group) => {
             const isExpanded = Boolean(expandedIds[group.id]);
             const meta = kindMeta[group.kind];
-            const title =
-              group.items.length > 1 && group.kind === 'ingreso'
-                ? `Carga por voz — ${group.items.length} items`
-                : group.items[0]?.summary ?? group.sourceText;
+            const title = activityGroupTitle(group);
 
             return (
               <div key={group.id} className="rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
@@ -287,18 +354,18 @@ function ActivityFeed({ transactions, showFilters = true }: { transactions: Tran
                       <p className="mt-1.5 line-clamp-2 text-sm text-[color:var(--muted)]">“{group.sourceText}”</p>
                     )}
                   </div>
-                  {group.items.length > 1 && (
+                  {group.items.length > 1 && group.kind !== 'pedido' && (
                     <span className="erp-toggle-link shrink-0 text-xs">{isExpanded ? 'Ocultar' : 'Ver'}</span>
                   )}
                 </button>
-                {(isExpanded || group.items.length === 1) && group.items.length > 1 && (
-                  <div className="space-y-2 border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+                {group.items.length > 1 && (isExpanded || group.kind === 'pedido') && (
+                  <ul className="space-y-2 border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
                     {group.items.map((item) => (
-                      <p key={item.id} className="text-sm text-[color:var(--muted)]">
+                      <li key={item.id} className="text-sm text-[color:var(--muted)]">
                         {item.summary}
-                      </p>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
               </div>
             );
