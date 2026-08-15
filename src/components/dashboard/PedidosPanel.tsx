@@ -41,6 +41,7 @@ export function PedidosPanel() {
     updatePedidoRecord,
   } = useInventory();
   const [estadoFilter, setEstadoFilter] = useState<PedidoEstado | 'todos'>('pendiente');
+  const [groupBy, setGroupBy] = useState<'cliente' | 'proveedor' | 'producto'>('cliente');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [clienteId, setClienteId] = useState('');
@@ -73,7 +74,7 @@ export function PedidosPanel() {
     [pedidos, estadoFilter],
   );
 
-  const groups = useMemo(() => {
+  const productGroups = useMemo(() => {
     const map = new Map<
       string,
       {
@@ -99,6 +100,61 @@ export function PedidosPanel() {
       (a, b) => a.producto.localeCompare(b.producto, 'es') || a.talle.localeCompare(b.talle, 'es'),
     );
   }, [filtered, preset.useVariants]);
+
+  const clientGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        key: string;
+        clienteId: string;
+        clienteName: string;
+        pedidos: typeof filtered;
+        totalQty: number;
+      }
+    >();
+
+    for (const pedido of filtered) {
+      const clienteId = pedido.clienteId || 'sin-cliente';
+      const clienteName = clientsById[pedido.clienteId]?.name ?? 'Cliente';
+      const current = map.get(clienteId) ?? { key: clienteId, clienteId, clienteName, pedidos: [], totalQty: 0 };
+      current.pedidos.push(pedido);
+      current.totalQty += pedido.qty;
+      map.set(clienteId, current);
+    }
+
+    return [...map.values()].sort((a, b) => a.clienteName.localeCompare(b.clienteName, 'es'));
+  }, [filtered, clientsById]);
+
+  const proveedorGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        key: string;
+        proveedorName: string;
+        pedidos: typeof filtered;
+        totalQty: number;
+      }
+    >();
+
+    for (const pedido of filtered) {
+      const proveedorId = pedido.proveedorId || 'sin-proveedor';
+      const proveedorName = pedido.proveedorId ? proveedoresById[pedido.proveedorId]?.name ?? 'Proveedor' : 'Sin proveedor';
+      const current = map.get(proveedorId) ?? { key: proveedorId, proveedorName, pedidos: [], totalQty: 0 };
+      current.pedidos.push(pedido);
+      current.totalQty += pedido.qty;
+      map.set(proveedorId, current);
+    }
+
+    return [...map.values()].sort((a, b) => {
+      if (a.key === 'sin-proveedor') {
+        return 1;
+      }
+      if (b.key === 'sin-proveedor') {
+        return -1;
+      }
+      return a.proveedorName.localeCompare(b.proveedorName, 'es');
+    });
+  }, [filtered, proveedoresById]);
 
   const changeEstado = async (pedidoId: string, estado: PedidoEstado) => {
     setUpdatingId(pedidoId);
@@ -198,9 +254,13 @@ export function PedidosPanel() {
         <div>
           <h3 className="type-title text-xl text-[color:var(--text)]">Pedidos para proveedor</h3>
           <p className="mt-1 text-sm text-[color:var(--muted)]">
-            {preset.useVariants && preset.variantLabel
-              ? `Agrupados por producto y ${preset.variantLabel.toLowerCase()}. Marcar como conseguido suma stock; revertirlo lo resta.`
-              : 'Agrupados por producto. Marcar como conseguido suma stock; revertirlo lo resta.'}
+            {groupBy === 'cliente'
+              ? 'Agrupados por cliente, con el listado de productos. Marcar como conseguido suma stock; revertirlo lo resta.'
+              : groupBy === 'proveedor'
+                ? 'Agrupados por proveedor, con el listado de productos. Marcar como conseguido suma stock; revertirlo lo resta.'
+                : preset.useVariants && preset.variantLabel
+                  ? `Agrupados por producto y ${preset.variantLabel.toLowerCase()}. Marcar como conseguido suma stock; revertirlo lo resta.`
+                  : 'Agrupados por producto. Marcar como conseguido suma stock; revertirlo lo resta.'}
           </p>
         </div>
         <button type="button" className="erp-button-primary min-h-11" onClick={() => setFormOpen((open) => !open)}>
@@ -315,21 +375,44 @@ export function PedidosPanel() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {(['pendiente', 'conseguido', 'descartado', 'todos'] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setEstadoFilter(value)}
-            className={`min-h-10 rounded-full px-3 py-1.5 text-xs font-semibold transition ${filterActiveClass(value)}`}
-            style={estadoFilter === value ? undefined : { background: 'var(--overlay-soft)' }}
-          >
-            {value === 'todos' ? 'Todos' : estadoLabel[value]}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {(['pendiente', 'conseguido', 'descartado', 'todos'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setEstadoFilter(value)}
+              className={`min-h-10 rounded-full px-3 py-1.5 text-xs font-semibold transition ${filterActiveClass(value)}`}
+              style={estadoFilter === value ? undefined : { background: 'var(--overlay-soft)' }}
+            >
+              {value === 'todos' ? 'Todos' : estadoLabel[value]}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {([
+            { id: 'cliente', label: 'Por cliente' },
+            { id: 'proveedor', label: 'Por proveedor' },
+            { id: 'producto', label: 'Por producto' },
+          ] as const).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setGroupBy(option.id)}
+              className={`min-h-10 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                groupBy === option.id
+                  ? 'bg-sky-500 text-white'
+                  : 'text-[color:var(--muted)] hover:bg-slate-900/5 dark:hover:bg-white/10'
+              }`}
+              style={groupBy === option.id ? undefined : { background: 'var(--overlay-soft)' }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {groups.length === 0 ? (
+      {filtered.length === 0 ? (
         <EmptyState
           title="Sin pedidos"
           description="Cargá un pedido manual o anotá por voz algo como “Juan me pidió 2 unidades de este producto”."
@@ -338,72 +421,192 @@ export function PedidosPanel() {
         />
       ) : (
         <div className="space-y-3">
-          {groups.map((group) => {
-            const names = group.pedidos
-              .map((pedido) => clientsById[pedido.clienteId]?.name ?? 'Cliente')
-              .filter((name, index, arr) => arr.indexOf(name) === index);
-            const proveedorNames = group.pedidos
-              .map((pedido) => (pedido.proveedorId ? proveedoresById[pedido.proveedorId]?.name : null))
-              .filter((name): name is string => Boolean(name))
-              .filter((name, index, arr) => arr.indexOf(name) === index);
+          {groupBy === 'cliente'
+            ? clientGroups.map((group) => {
+                const proveedorNames = group.pedidos
+                  .map((pedido) => (pedido.proveedorId ? proveedoresById[pedido.proveedorId]?.name : null))
+                  .filter((name): name is string => Boolean(name))
+                  .filter((name, index, arr) => arr.indexOf(name) === index);
 
-            return (
-              <div key={group.key} className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="type-title text-lg text-[color:var(--text)]">
-                      {group.producto}
-                      {preset.useVariants && group.talle ? (
-                        <span className="type-subtitle ml-2 text-base text-[color:var(--muted)]">— {group.talle}</span>
-                      ) : null}
-                    </p>
-                    <p className="mt-1 text-sm text-[color:var(--muted)]">
-                      {group.totalQty} pedido{group.totalQty === 1 ? '' : 's'} ({names.join(', ')})
-                      {proveedorNames.length > 0 ? ` · proveedor: ${proveedorNames.join(', ')}` : ''}
-                    </p>
+                return (
+                  <div key={group.key} className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
+                    <div>
+                      <p className="type-title text-lg text-[color:var(--text)]">{group.clienteName}</p>
+                      <p className="mt-1 text-sm text-[color:var(--muted)]">
+                        {group.pedidos.length} producto{group.pedidos.length === 1 ? '' : 's'} · {group.totalQty} unidad
+                        {group.totalQty === 1 ? '' : 'es'}
+                        {proveedorNames.length > 0 ? ` · proveedor: ${proveedorNames.join(', ')}` : ''}
+                      </p>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      {group.pedidos.map((pedido) => (
+                        <div
+                          key={pedido.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2.5"
+                          style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}
+                        >
+                          <div>
+                            <p className="text-sm type-subtitle text-[color:var(--text)]">
+                              {pedido.producto}
+                              {preset.useVariants && pedido.talle ? (
+                                <span className="text-[color:var(--muted)]"> — {pedido.talle}</span>
+                              ) : null}
+                            </p>
+                            <p className="text-xs text-[color:var(--muted)]">
+                              x{pedido.qty} · {new Date(pedido.fechaPedido).toLocaleString('es-AR')}
+                              {pedido.proveedorId ? ` · ${proveedoresById[pedido.proveedorId]?.name ?? 'Proveedor'}` : ''}
+                              {pedido.notas ? ` · ${pedido.notas}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold ${estadoClass[pedido.estado]}`}>
+                              {estadoLabel[pedido.estado]}
+                            </span>
+                            {(['pendiente', 'conseguido', 'descartado'] as PedidoEstado[])
+                              .filter((estado) => estado !== pedido.estado)
+                              .map((estado) => (
+                                <button
+                                  key={estado}
+                                  type="button"
+                                  disabled={updatingId === pedido.id}
+                                  onClick={() => void changeEstado(pedido.id, estado)}
+                                  className="min-h-10 rounded-full border px-3 py-1.5 text-[11px] font-semibold text-[color:var(--muted)] transition hover:bg-slate-900/5 disabled:opacity-50 dark:hover:bg-white/10"
+                                  style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
+                                >
+                                  {estadoLabel[estado]}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                );
+              })
+            : groupBy === 'proveedor'
+              ? proveedorGroups.map((group) => {
+                  const clientNames = group.pedidos
+                    .map((pedido) => clientsById[pedido.clienteId]?.name ?? 'Cliente')
+                    .filter((name, index, arr) => arr.indexOf(name) === index);
 
-                <div className="mt-4 space-y-2">
-                  {group.pedidos.map((pedido) => (
-                    <div
-                      key={pedido.id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2.5"
-                      style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}
-                    >
+                  return (
+                    <div key={group.key} className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
                       <div>
-                        <p className="text-sm type-subtitle text-[color:var(--text)]">{clientsById[pedido.clienteId]?.name ?? 'Cliente'}</p>
-                        <p className="text-xs text-[color:var(--muted)]">
-                          x{pedido.qty} · {new Date(pedido.fechaPedido).toLocaleString('es-AR')}
-                          {pedido.proveedorId ? ` · ${proveedoresById[pedido.proveedorId]?.name ?? 'Proveedor'}` : ''}
-                          {pedido.notas ? ` · ${pedido.notas}` : ''}
+                        <p className="type-title text-lg text-[color:var(--text)]">{group.proveedorName}</p>
+                        <p className="mt-1 text-sm text-[color:var(--muted)]">
+                          {group.pedidos.length} producto{group.pedidos.length === 1 ? '' : 's'} · {group.totalQty} unidad
+                          {group.totalQty === 1 ? '' : 'es'}
+                          {clientNames.length > 0 ? ` · ${clientNames.join(', ')}` : ''}
                         </p>
                       </div>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold ${estadoClass[pedido.estado]}`}>
-                          {estadoLabel[pedido.estado]}
-                        </span>
-                        {(['pendiente', 'conseguido', 'descartado'] as PedidoEstado[])
-                          .filter((estado) => estado !== pedido.estado)
-                          .map((estado) => (
-                            <button
-                              key={estado}
-                              type="button"
-                              disabled={updatingId === pedido.id}
-                              onClick={() => void changeEstado(pedido.id, estado)}
-                              className="min-h-10 rounded-full border px-3 py-1.5 text-[11px] font-semibold text-[color:var(--muted)] transition hover:bg-slate-900/5 disabled:opacity-50 dark:hover:bg-white/10"
-                              style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
-                            >
-                              {estadoLabel[estado]}
-                            </button>
-                          ))}
+                      <div className="mt-4 space-y-2">
+                        {group.pedidos.map((pedido) => (
+                          <div
+                            key={pedido.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2.5"
+                            style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}
+                          >
+                            <div>
+                              <p className="text-sm type-subtitle text-[color:var(--text)]">
+                                {pedido.producto}
+                                {preset.useVariants && pedido.talle ? (
+                                  <span className="text-[color:var(--muted)]"> — {pedido.talle}</span>
+                                ) : null}
+                              </p>
+                              <p className="text-xs text-[color:var(--muted)]">
+                                x{pedido.qty} · {clientsById[pedido.clienteId]?.name ?? 'Cliente'} ·{' '}
+                                {new Date(pedido.fechaPedido).toLocaleString('es-AR')}
+                                {pedido.notas ? ` · ${pedido.notas}` : ''}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold ${estadoClass[pedido.estado]}`}>
+                                {estadoLabel[pedido.estado]}
+                              </span>
+                              {(['pendiente', 'conseguido', 'descartado'] as PedidoEstado[])
+                                .filter((estado) => estado !== pedido.estado)
+                                .map((estado) => (
+                                  <button
+                                    key={estado}
+                                    type="button"
+                                    disabled={updatingId === pedido.id}
+                                    onClick={() => void changeEstado(pedido.id, estado)}
+                                    className="min-h-10 rounded-full border px-3 py-1.5 text-[11px] font-semibold text-[color:var(--muted)] transition hover:bg-slate-900/5 disabled:opacity-50 dark:hover:bg-white/10"
+                                    style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
+                                  >
+                                    {estadoLabel[estado]}
+                                  </button>
+                                ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+                  );
+                })
+            : productGroups.map((group) => {
+                const names = group.pedidos
+                  .map((pedido) => clientsById[pedido.clienteId]?.name ?? 'Cliente')
+                  .filter((name, index, arr) => arr.indexOf(name) === index);
+                const proveedorNames = group.pedidos
+                  .map((pedido) => (pedido.proveedorId ? proveedoresById[pedido.proveedorId]?.name : null))
+                  .filter((name): name is string => Boolean(name))
+                  .filter((name, index, arr) => arr.indexOf(name) === index);
+
+                return (
+                  <div key={group.key} className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
+                    <div>
+                      <p className="type-title text-lg text-[color:var(--text)]">
+                        {group.producto}
+                        {preset.useVariants && group.talle ? (
+                          <span className="type-subtitle ml-2 text-base text-[color:var(--muted)]">— {group.talle}</span>
+                        ) : null}
+                      </p>
+                      <p className="mt-1 text-sm text-[color:var(--muted)]">
+                        {group.totalQty} pedido{group.totalQty === 1 ? '' : 's'} ({names.join(', ')})
+                        {proveedorNames.length > 0 ? ` · proveedor: ${proveedorNames.join(', ')}` : ''}
+                      </p>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      {group.pedidos.map((pedido) => (
+                        <div
+                          key={pedido.id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2.5"
+                          style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}
+                        >
+                          <div>
+                            <p className="text-sm type-subtitle text-[color:var(--text)]">{clientsById[pedido.clienteId]?.name ?? 'Cliente'}</p>
+                            <p className="text-xs text-[color:var(--muted)]">
+                              x{pedido.qty} · {new Date(pedido.fechaPedido).toLocaleString('es-AR')}
+                              {pedido.proveedorId ? ` · ${proveedoresById[pedido.proveedorId]?.name ?? 'Proveedor'}` : ''}
+                              {pedido.notas ? ` · ${pedido.notas}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold ${estadoClass[pedido.estado]}`}>
+                              {estadoLabel[pedido.estado]}
+                            </span>
+                            {(['pendiente', 'conseguido', 'descartado'] as PedidoEstado[])
+                              .filter((estado) => estado !== pedido.estado)
+                              .map((estado) => (
+                                <button
+                                  key={estado}
+                                  type="button"
+                                  disabled={updatingId === pedido.id}
+                                  onClick={() => void changeEstado(pedido.id, estado)}
+                                  className="min-h-10 rounded-full border px-3 py-1.5 text-[11px] font-semibold text-[color:var(--muted)] transition hover:bg-slate-900/5 disabled:opacity-50 dark:hover:bg-white/10"
+                                  style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
+                                >
+                                  {estadoLabel[estado]}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
         </div>
       )}
     </article>

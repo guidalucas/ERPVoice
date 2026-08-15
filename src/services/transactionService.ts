@@ -243,11 +243,7 @@ const summarizeAction = (action: ParsedAction) => {
   if (action.type === 'client_order') {
     const qty = action.qty && action.qty > 0 ? action.qty : 1;
     const sizeLabel = action.size ? ` talle ${action.size}` : '';
-    const proveedorLabel = action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
-    if (action.clientName?.trim()) {
-      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
-    }
-    return `Pedido: ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
+    return `${qty} ${action.productName}${sizeLabel}`;
   }
 
   if (action.type === 'update_product') {

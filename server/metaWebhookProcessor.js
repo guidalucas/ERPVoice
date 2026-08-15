@@ -1221,6 +1221,94 @@ const parseVoiceTextWithModel = async (
   }
 };
 
+const uniqueActionNames = (items, field) => {
+  const names = [];
+  for (const item of items) {
+    const name = typeof item[field] === 'string' ? item[field].trim() : '';
+    if (name && !names.some((entry) => entry.toLowerCase() === name.toLowerCase())) {
+      names.push(name);
+    }
+  }
+  return names;
+};
+
+const formatOrderHeader = (items) => {
+  const clients = uniqueActionNames(items, 'clientName');
+  const proveedores = uniqueActionNames(items, 'proveedorName');
+  if (clients.length === 1 && proveedores.length === 1) {
+    return `Pedido de ${clients[0]} · proveedor ${proveedores[0]}`;
+  }
+  if (clients.length === 1) {
+    return `Pedido de ${clients[0]}`;
+  }
+  if (proveedores.length === 1) {
+    return `Pedido al proveedor ${proveedores[0]}`;
+  }
+  if (clients.length > 1) {
+    return `Pedidos (${clients.join(', ')})`;
+  }
+  if (proveedores.length > 1) {
+    return `Pedidos a proveedores (${proveedores.join(', ')})`;
+  }
+  return 'Pedido';
+};
+
+const formatOrderItem = (action, preset = getBusinessCategoryPreset('general'), { includeProveedor = false } = {}) => {
+  const qty = action.qty && action.qty > 0 ? action.qty : 1;
+  const sizeLabel = action.size ? ` ${formatVariantRef(preset, action.size)}` : '';
+  const proveedorLabel =
+    includeProveedor && action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
+  return `${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
+};
+
+const formatOrderGroup = (items, preset) => {
+  const includeProveedor = uniqueActionNames(items, 'proveedorName').length > 1;
+  const lines = items.map((item) => `• ${formatOrderItem(item, preset, { includeProveedor })}`);
+  return `${formatOrderHeader(items)}:\n${lines.join('\n')}`;
+};
+
+const formatActionsSummary = (actions, preset) => {
+  const parts = [];
+  let orderBuffer = [];
+
+  const flushOrders = () => {
+    if (!orderBuffer.length) {
+      return;
+    }
+
+    const groups = new Map();
+    for (const action of orderBuffer) {
+      const clientName = typeof action.clientName === 'string' ? action.clientName.trim() : '';
+      const proveedorName = typeof action.proveedorName === 'string' ? action.proveedorName.trim() : '';
+      const key = clientName
+        ? `client:${clientName.toLowerCase()}`
+        : proveedorName
+          ? `proveedor:${proveedorName.toLowerCase()}`
+          : 'pedido';
+      const current = groups.get(key) ?? { items: [] };
+      current.items.push(action);
+      groups.set(key, current);
+    }
+
+    for (const group of groups.values()) {
+      parts.push(formatOrderGroup(group.items, preset));
+    }
+    orderBuffer = [];
+  };
+
+  for (const action of actions) {
+    if (action.type === 'client_order') {
+      orderBuffer.push(action);
+      continue;
+    }
+    flushOrders();
+    parts.push(formatAction(action, preset));
+  }
+  flushOrders();
+
+  return parts.join('\n\n');
+};
+
 const formatAction = (action, preset = getBusinessCategoryPreset('general')) => {
   if (action.type === 'add_stock') {
     return `+${action.qty} stock de ${action.productName}`;
@@ -1239,13 +1327,7 @@ const formatAction = (action, preset = getBusinessCategoryPreset('general')) => 
   }
 
   if (action.type === 'client_order') {
-    const qty = action.qty && action.qty > 0 ? action.qty : 1;
-    const sizeLabel = action.size ? ` ${formatVariantRef(preset, action.size)}` : '';
-    const proveedorLabel = action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
-    if (action.clientName?.trim()) {
-      return `Pedido: ${action.clientName} pidió ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
-    }
-    return `Pedido: ${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
+    return formatOrderItem(action, preset);
   }
 
   if (action.type === 'query_stock') {
@@ -1298,10 +1380,10 @@ const buildReplyText = ({ transcript, parsed, preset }) => {
       : 'No pude detectar una acción clara. Probá de nuevo con más detalle.';
   }
 
-  const actionSummary = parsed.actions.map((action) => formatAction(action, resolvedPreset)).join('\n• ');
-  const prefix = transcript ? `Listo (audio). Texto: ${transcript}\n` : 'Listo.\n';
+  const actionSummary = formatActionsSummary(parsed.actions, resolvedPreset);
+  const prefix = transcript ? `Listo (audio). Texto: ${transcript}\n\n` : 'Listo.\n\n';
 
-  return `${prefix}• ${actionSummary}`;
+  return `${prefix}${actionSummary}`;
 };
 
 const extractMetaMessages = (body) => {
