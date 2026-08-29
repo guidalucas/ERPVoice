@@ -89,7 +89,7 @@ function IconButton({
       type="button"
       aria-label={label}
       onClick={onClick}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition ${
+      className={`inline-flex h-11 w-11 items-center justify-center rounded-full border transition ${
         danger
           ? 'border-rose-500/20 bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 hover:text-rose-700 dark:text-rose-300 dark:hover:text-rose-200'
           : 'border-[color:var(--border)] bg-[color:var(--overlay-soft)] text-[color:var(--text)] hover:bg-slate-900/5 hover:text-[color:var(--text)] dark:hover:bg-white/10'
@@ -414,34 +414,28 @@ export function ProductsAbmPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-3">
-        <article className="erp-card min-h-[144px] rounded-[1.35rem] p-5">
-          <p className="text-[15px] type-body-strong text-[color:var(--muted)]">Stock Disponible</p>
-          <div className="mt-10">
-            <p className="type-metric-strong text-[2rem] text-[color:var(--text)]">{stockSummary.totalAvailable}</p>
-            <p className="text-sm text-[color:var(--muted)]">unidades listas para venta</p>
-          </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-12">
+        <article className="kpi-card kpi-card-hero sm:col-span-2 xl:col-span-6">
+          <p className="text-sm type-subtitle text-[color:var(--muted)]">Valor total</p>
+          <p className="mt-6 type-metric-strong text-[2.15rem] leading-none erp-brand-gradient-text">
+            {formatCurrency(stockSummary.totalValue)}
+          </p>
+          <p className="mt-2 text-sm text-[color:var(--muted)]">Inventario valorizado</p>
         </article>
-
-        <article className="erp-card min-h-[144px] rounded-[1.35rem] p-5">
-          <p className="text-[15px] type-body-strong text-[color:var(--muted)]">Stock Reservado</p>
-          <div className="mt-10">
-            <p className="type-metric-strong text-[2rem] text-[color:var(--text)]">{stockSummary.totalReserved}</p>
-            <p className="text-sm text-[color:var(--muted)]">unidades apartadas</p>
-          </div>
+        <article className="kpi-card xl:col-span-3">
+          <p className="text-sm type-subtitle text-[color:var(--muted)]">Disponible</p>
+          <p className="mt-6 type-metric-strong text-[2rem] leading-none text-[color:var(--text)]">{stockSummary.totalAvailable}</p>
+          <p className="mt-2 text-sm text-[color:var(--muted)]">Listas para venta</p>
         </article>
-
-        <article className="erp-card min-h-[144px] rounded-[1.35rem] p-5">
-          <p className="text-[15px] type-body-strong text-[color:var(--muted)]">Valor Total</p>
-          <div className="mt-10">
-            <p className="type-metric-strong text-[2rem] text-[color:var(--text)]">{formatCurrency(stockSummary.totalValue)}</p>
-            <p className="text-sm text-[color:var(--muted)]">inventario valorizado</p>
-          </div>
+        <article className="kpi-card xl:col-span-3">
+          <p className="text-sm type-subtitle text-[color:var(--muted)]">Reservado</p>
+          <p className="mt-6 type-metric-strong text-[2rem] leading-none text-[color:var(--text)]">{stockSummary.totalReserved}</p>
+          <p className="mt-2 text-sm text-[color:var(--muted)]">Unidades apartadas</p>
         </article>
       </div>
 
       <article className="erp-panel">
-        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--border)] pb-4">
+        <div className="flex flex-col gap-3 border-b border-[color:var(--border)] pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h3 className="type-title text-xl text-[color:var(--text)]">Inventario</h3>
             <p className="mt-1 text-sm text-[color:var(--muted)]">
@@ -450,41 +444,37 @@ export function ProductsAbmPanel({
                 : 'Lista plana por producto. Usá el lápiz para editar stock, precio y datos del producto.'}
             </p>
           </div>
-          <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex min-h-11 items-center gap-2">
-            <span aria-hidden>+</span>
-            Nuevo Producto
+          <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2 self-start">
+            Nuevo producto
           </button>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-end gap-3">
-          <label className="min-w-[12rem] flex-1 space-y-1.5 text-sm type-subtitle text-[color:var(--muted)]">
-            Buscar modelo
+        <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-end">
+          <label className="min-w-0 flex-1 space-y-1.5 text-sm type-subtitle text-[color:var(--muted)]">
+            Buscar
             <input
-              className="erp-input min-h-11"
+              className="erp-input"
               type="search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Ej: river, argentina, boca…"
+              placeholder={`Nombre, ${preset.productModelLabel.toLowerCase()} o ${preset.productTypeLabel.toLowerCase()}…`}
               autoComplete="off"
             />
           </label>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
-                !onlyLowStock ? 'bg-[color:var(--accent)] text-white' : 'text-[color:var(--muted)]'
-              }`}
-              style={onlyLowStock ? { background: 'var(--overlay-soft)' } : undefined}
+              className="activity-filter-chip"
+              aria-pressed={!onlyLowStock}
               onClick={() => onStockFilterChange?.('all')}
             >
               Todos
             </button>
             <button
               type="button"
-              className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
-                onlyLowStock ? 'bg-amber-400 text-slate-950' : 'text-[color:var(--muted)]'
-              }`}
-              style={!onlyLowStock ? { background: 'var(--overlay-soft)' } : undefined}
+              className={`activity-filter-chip ${onlyLowStock ? '!bg-none !text-[#0b0b10]' : ''}`}
+              aria-pressed={onlyLowStock}
+              style={onlyLowStock ? { background: 'var(--warning)', borderColor: 'transparent', color: '#0b0b10' } : undefined}
               onClick={() => onStockFilterChange?.('low-stock')}
             >
               Stock bajo
@@ -502,20 +492,32 @@ export function ProductsAbmPanel({
                 const sizeCount = group.products.length;
 
                 return (
-                  <div key={group.key} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)]">
+                  <div
+                    key={group.key}
+                    className={`inventory-row ${
+                      group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? 'inventory-row-low' : ''
+                    }`}
+                  >
                     <button
                       type="button"
-                      className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-left"
+                      className="flex w-full flex-col gap-3 text-left sm:flex-row sm:items-center sm:justify-between"
                       onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !current[group.key] }))}
                     >
-                      <div>
-                        <p className="type-title text-lg text-[color:var(--text)]">{group.displayName}</p>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="type-title text-lg text-[color:var(--text)]">{group.displayName}</p>
+                          {group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) && (
+                            <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-[#0b0b10]" style={{ background: 'var(--warning)' }}>
+                              Stock bajo
+                            </span>
+                          )}
+                        </div>
                         <p className="mt-1 text-sm text-[color:var(--muted)]">
-                          {sizeCount} {sizeCount === 1 ? (preset.variantLabel?.toLowerCase() ?? 'variante') : variantLabelPlural} —{' '}
+                          {sizeCount} {sizeCount === 1 ? (preset.variantLabel?.toLowerCase() ?? 'variante') : variantLabelPlural}
+                          {' · '}
                           {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
                           {totalReserved > 0 ? ` · ${totalReserved} reservada${totalReserved === 1 ? '' : 's'}` : ''}
                           {samePrice && group.products[0] ? ` · ${formatCurrency(group.products[0].price)}` : ''}
-                          {group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? ' · stock bajo' : ''}
                         </p>
                       </div>
                       <span className="erp-toggle-link text-xs">
@@ -524,7 +526,7 @@ export function ProductsAbmPanel({
                     </button>
 
                     {isExpanded && (
-                      <div className="space-y-3 border-t border-[color:var(--border)] px-4 py-3">
+                      <div className="space-y-3 border-t border-[color:var(--border)] pt-3">
                         <div className="flex flex-wrap gap-2">
                           {group.products.map((product) => {
                             const low = product.stockAvailable <= LOW_STOCK_THRESHOLD;
@@ -573,19 +575,20 @@ export function ProductsAbmPanel({
                 const meta = [product.productType, product.productModel].filter(Boolean).join(' · ');
 
                 return (
-                  <div
-                    key={product.id}
-                    className={`rounded-2xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-3 ${
-                      low ? 'border-amber-400/30 bg-amber-400/10' : ''
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div key={product.id} className={`inventory-row ${low ? 'inventory-row-low' : ''}`}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <p className="type-title text-lg text-[color:var(--text)]">{product.name}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="type-title text-lg text-[color:var(--text)]">{product.name}</p>
+                          {low && (
+                            <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-[#0b0b10]" style={{ background: 'var(--warning)' }}>
+                              Stock bajo
+                            </span>
+                          )}
+                        </div>
                         <p className="mt-1 text-sm text-[color:var(--muted)]">
                           {meta || 'Sin categoría'}
                           {product.stockReserved > 0 ? ` · ${product.stockReserved} reservada${product.stockReserved === 1 ? '' : 's'}` : ''}
-                          {low ? ' · stock bajo' : ''}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">

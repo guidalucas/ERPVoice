@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { ChartBar, ClipboardText, House, List, Package, Users, Warehouse, Waveform } from '@phosphor-icons/react';
 import type { DashboardSection } from './dashboardTypes';
 
 type NavItem = {
@@ -7,89 +8,26 @@ type NavItem = {
   icon: ReactNode;
 };
 
+const iconProps = { size: 20, weight: 'regular' as const };
+
 const navItems: NavItem[] = [
-  {
-    id: 'inicio',
-    label: 'Inicio',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
-        <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z" />
-      </svg>
-    ),
-  },
-  {
-    id: 'productos',
-    label: 'Inventario',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
-        <path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z" />
-        <path d="M12 21v-8" />
-      </svg>
-    ),
-  },
-  {
-    id: 'pedidos',
-    label: 'Pedidos',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
-        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-        <path d="M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v0Z" />
-        <path d="M9 12h6" />
-        <path d="M9 16h4" />
-      </svg>
-    ),
-  },
-  {
-    id: 'ventas',
-    label: 'Ventas',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
-        <path d="M4 19h16" />
-        <path d="M7 16V9" />
-        <path d="M12 16V5" />
-        <path d="M17 16v-7" />
-      </svg>
-    ),
-  },
-  {
-    id: 'clientes',
-    label: 'Clientes',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M20 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-      </svg>
-    ),
-  },
-  {
-    id: 'proveedores',
-    label: 'Proveedores',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
-        <path d="M3 21h18" />
-        <path d="M5 21V8l7-4 7 4v13" />
-        <path d="M9 21v-6h6v6" />
-      </svg>
-    ),
-  },
-  {
-    id: 'actividad',
-    label: 'Actividad',
-    icon: (
-      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
-        <path d="M12 8v4l3 2" />
-        <circle cx="12" cy="12" r="9" />
-      </svg>
-    ),
-  },
+  { id: 'inicio', label: 'Inicio', icon: <House {...iconProps} /> },
+  { id: 'productos', label: 'Inventario', icon: <Package {...iconProps} /> },
+  { id: 'pedidos', label: 'Pedidos', icon: <ClipboardText {...iconProps} /> },
+  { id: 'ventas', label: 'Ventas', icon: <ChartBar {...iconProps} /> },
+  { id: 'clientes', label: 'Clientes', icon: <Users {...iconProps} /> },
+  { id: 'proveedores', label: 'Proveedores', icon: <Warehouse {...iconProps} /> },
+  { id: 'actividad', label: 'Actividad', icon: <Waveform {...iconProps} /> },
 ];
+
+const PRIMARY_SECTIONS: DashboardSection[] = ['inicio', 'productos', 'pedidos', 'actividad'];
+const MORE_SECTIONS: DashboardSection[] = ['ventas', 'clientes', 'proveedores'];
 
 type DashboardNavProps = {
   activeSection: DashboardSection;
   onSectionChange: (section: DashboardSection) => void;
   variant: 'sidebar' | 'bottom';
+  onLogout?: () => void;
 };
 
 function NavButton({
@@ -101,26 +39,26 @@ function NavButton({
   item: NavItem;
   isActive: boolean;
   onClick: () => void;
-  variant: 'sidebar' | 'bottom';
+  variant: 'sidebar' | 'bottom' | 'sheet';
 }) {
-  const baseClass = variant === 'sidebar' ? 'dashboard-nav-item w-full relative' : 'dashboard-bottom-nav-item flex-1 min-w-0 relative';
-  const activeClass = isActive
-    ? 'border-transparent bg-[color:var(--card-hover)] text-[color:var(--text)]'
-    : 'border-transparent text-[color:var(--muted)] hover:bg-[color:var(--card-hover)] hover:text-[color:var(--text)]';
+  const baseClass =
+    variant === 'sidebar'
+      ? 'dashboard-nav-item w-full'
+      : variant === 'sheet'
+        ? 'dashboard-nav-item w-full'
+        : 'dashboard-bottom-nav-item';
+  const idleClass = isActive ? '' : 'text-[color:var(--muted)] hover:bg-[color:var(--card-hover)] hover:text-[color:var(--text)]';
   const iconClass = isActive ? 'text-[color:var(--accent)]' : '';
 
   return (
     <button
       type="button"
       aria-current={isActive ? 'page' : undefined}
-      className={`${baseClass} ${activeClass}`}
+      className={`${baseClass} ${idleClass}`}
       onClick={onClick}
     >
       {isActive && variant === 'sidebar' && (
-        <span
-          aria-hidden="true"
-          className="absolute left-0.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[color:var(--accent)]"
-        />
+        <span aria-hidden="true" className="erp-brand-gradient absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full" />
       )}
       <span className={`shrink-0 ${iconClass}`}>{item.icon}</span>
       <span className={variant === 'bottom' ? 'truncate text-[11px] font-semibold' : 'font-semibold'}>{item.label}</span>
@@ -128,21 +66,96 @@ function NavButton({
   );
 }
 
-export function DashboardNav({ activeSection, onSectionChange, variant }: DashboardNavProps) {
-  const containerClass = variant === 'sidebar' ? 'dashboard-nav' : 'dashboard-bottom-nav';
+export function DashboardNav({ activeSection, onSectionChange, variant, onLogout }: DashboardNavProps) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const itemsById = Object.fromEntries(navItems.map((item) => [item.id, item])) as Record<DashboardSection, NavItem>;
+
+  if (variant === 'sidebar') {
+    return (
+      <nav className="dashboard-nav" aria-label="Navegación del panel">
+        {navItems.map((item) => (
+          <NavButton
+            key={item.id}
+            item={item}
+            isActive={activeSection === item.id}
+            onClick={() => onSectionChange(item.id)}
+            variant="sidebar"
+          />
+        ))}
+      </nav>
+    );
+  }
+
+  const moreActive = MORE_SECTIONS.includes(activeSection);
 
   return (
-    <nav className={containerClass} aria-label="Navegación del panel">
-      {navItems.map((item) => (
-        <NavButton
-          key={item.id}
-          item={item}
-          isActive={activeSection === item.id}
-          onClick={() => onSectionChange(item.id)}
-          variant={variant}
-        />
-      ))}
-    </nav>
+    <>
+      {moreOpen && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+            aria-label="Cerrar menú"
+            onClick={() => setMoreOpen(false)}
+          />
+          <div className="dashboard-more-sheet" role="menu" aria-label="Más secciones">
+            {MORE_SECTIONS.map((id) => (
+              <NavButton
+                key={id}
+                item={itemsById[id]}
+                isActive={activeSection === id}
+                onClick={() => {
+                  onSectionChange(id);
+                  setMoreOpen(false);
+                }}
+                variant="sheet"
+              />
+            ))}
+            {onLogout && (
+              <button
+                type="button"
+                className="dashboard-nav-item w-full text-[color:var(--muted)] hover:bg-[color:var(--card-hover)] hover:text-[color:var(--text)]"
+                onClick={() => {
+                  setMoreOpen(false);
+                  onLogout();
+                }}
+              >
+                Salir
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
+      <nav className="dashboard-bottom-nav" aria-label="Navegación del panel">
+        {PRIMARY_SECTIONS.map((id) => (
+          <NavButton
+            key={id}
+            item={itemsById[id]}
+            isActive={activeSection === id}
+            onClick={() => {
+              setMoreOpen(false);
+              onSectionChange(id);
+            }}
+            variant="bottom"
+          />
+        ))}
+        <button
+          type="button"
+          aria-expanded={moreOpen}
+          aria-current={moreActive ? 'page' : undefined}
+          className={`dashboard-bottom-nav-item ${
+            moreActive || moreOpen ? '' : 'text-[color:var(--muted)] hover:bg-[color:var(--card-hover)] hover:text-[color:var(--text)]'
+          }`}
+          onClick={() => setMoreOpen((open) => !open)}
+        >
+          <span className={`shrink-0 ${moreActive || moreOpen ? 'text-[color:var(--accent)]' : ''}`} aria-hidden="true">
+            <List size={20} weight="regular" />
+          </span>
+          <span className="truncate text-[11px] font-semibold">Más</span>
+        </button>
+      </nav>
+    </>
   );
 }
 

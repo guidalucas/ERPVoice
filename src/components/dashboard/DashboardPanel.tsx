@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
+import { ChartBar, ClipboardText, Package, Warning } from '@phosphor-icons/react';
 import { useInventory } from '../../hooks/useInventory';
 import { useAuth } from '../../store/AuthStore';
 import type { ParsedActionUnion, Transaction } from '../../domain/types';
@@ -14,6 +15,7 @@ import { ProveedoresPanel } from './ProveedoresPanel';
 import { EmptyState } from './EmptyState';
 import { StockMovementModal, type StockMovementMode } from './StockMovementModal';
 import { VentasPanel } from './VentasPanel';
+import { VoiceQuote } from '../ui/VoiceQuote';
 
 const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
 
@@ -24,83 +26,59 @@ type SummaryCardProps = {
   value: string;
   subtitle: string;
   icon: ReactNode;
-  accentClassName?: string;
+  variant?: 'default' | 'hero' | 'alert';
+  className?: string;
   onClick?: () => void;
 };
 
-function SummaryCard({ title, value, subtitle, icon, accentClassName, onClick }: SummaryCardProps) {
+function SummaryCard({ title, value, subtitle, icon, variant = 'default', className = '', onClick }: SummaryCardProps) {
+  const valueClass =
+    variant === 'hero'
+      ? 'type-metric-strong text-[2.35rem] leading-none sm:text-[2.75rem] erp-brand-gradient-text'
+      : variant === 'alert'
+        ? 'type-metric-strong text-[2.15rem] leading-none text-[color:var(--warning)]'
+        : 'type-metric-strong text-[2rem] leading-none text-[color:var(--text)]';
+
   const content = (
-    <div className="flex h-full flex-col justify-between gap-4">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[15px] type-body-strong text-[color:var(--muted)]">{title}</p>
-        <div
-          className={`flex h-9 w-9 items-center justify-center rounded-xl border text-[color:var(--muted)] ${accentClassName ?? ''}`}
-          style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
-        >
-          {icon}
-        </div>
-      </div>
-      <div className="space-y-1">
-        <p className={`type-metric-strong text-[2rem] ${accentClassName ?? 'text-[color:var(--text)]'}`}>{value}</p>
+    <div className="relative flex h-full flex-col justify-between gap-5">
+      <p className="text-sm type-subtitle text-[color:var(--muted)]">{title}</p>
+      <div className="space-y-2">
+        <p className={valueClass}>{value}</p>
         <p className="text-sm text-[color:var(--muted)]">{subtitle}</p>
       </div>
+      <span className="pointer-events-none absolute right-0 top-0 text-[color:var(--muted)] opacity-50" aria-hidden="true">
+        {icon}
+      </span>
     </div>
   );
 
+  const cardClass = `kpi-card w-full ${variant === 'hero' ? 'kpi-card-hero' : ''} ${variant === 'alert' ? 'kpi-card-alert' : ''} ${className}`;
+
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} className="erp-card min-h-[158px] w-full p-5 text-left transition hover:border-[color:var(--accent-border)]">
+      <button type="button" onClick={onClick} className={cardClass}>
         {content}
       </button>
     );
   }
 
-  return <article className="erp-card min-h-[158px] p-5 transition hover:border-[color:var(--accent-border)]">{content}</article>;
+  return <article className={cardClass}>{content}</article>;
 }
 
 function InventoryIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
-      <path d="M12 3 4 7l8 4 8-4-8-4Z" />
-      <path d="M4 7v10l8 4 8-4V7" />
-      <path d="m12 11 8-4" />
-      <path d="M12 11v10" />
-    </svg>
-  );
+  return <Package size={18} weight="regular" />;
 }
 
 function AlertIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
-      <path d="M10.3 4.3 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z" />
-    </svg>
-  );
+  return <Warning size={18} weight="regular" />;
 }
 
 function SalesIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
-      <path d="M4 19h16" />
-      <path d="M7 16V9" />
-      <path d="M12 16V5" />
-      <path d="M17 16v-7" />
-    </svg>
-  );
+  return <ChartBar size={18} weight="regular" />;
 }
 
 function OrdersIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
-      <path d="M8 6h13" />
-      <path d="M8 12h13" />
-      <path d="M8 18h13" />
-      <path d="M3 6h.01" />
-      <path d="M3 12h.01" />
-      <path d="M3 18h.01" />
-    </svg>
-  );
+  return <ClipboardText size={18} weight="regular" />;
 }
 
 type ActivityKind = 'ingreso' | 'venta' | 'pedido' | 'mixto';
@@ -242,7 +220,7 @@ const pedidoGroupHeader = (items: Transaction[]): string => {
 
 const activityGroupTitle = (group: ActivityGroup): string => {
   if (group.items.length > 1 && group.kind === 'ingreso') {
-    return `Carga por voz — ${group.items.length} items`;
+    return `Carga por voz · ${group.items.length} items`;
   }
 
   if (group.kind === 'pedido') {
@@ -254,7 +232,7 @@ const activityGroupTitle = (group: ActivityGroup): string => {
       return `${header}: ${group.items[0]?.summary ?? productWord}`;
     }
 
-    return `${header} — ${count} ${productWord}`;
+    return `${header} · ${count} ${productWord}`;
   }
 
   return group.items[0]?.summary ?? group.sourceText;
@@ -335,10 +313,10 @@ function ActivityFeed({ transactions, showFilters = true }: { transactions: Tran
             const title = activityGroupTitle(group);
 
             return (
-              <div key={group.id} className="rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
+              <div key={group.id} className="inventory-row">
                 <button
                   type="button"
-                  className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
+                  className="flex w-full items-start justify-between gap-3 text-left"
                   onClick={() => setExpandedIds((current) => ({ ...current, [group.id]: !current[group.id] }))}
                 >
                   <div className="min-w-0 flex-1">
@@ -350,16 +328,14 @@ function ActivityFeed({ transactions, showFilters = true }: { transactions: Tran
                       <p className="text-sm type-subtitle text-[color:var(--text)]">{title}</p>
                     </div>
                     <p className="mt-1 text-xs text-[color:var(--muted)]">{new Date(group.timestamp).toLocaleString('es-AR')}</p>
-                    {group.sourceText && (
-                      <p className="mt-1.5 line-clamp-2 text-sm text-[color:var(--muted)]">“{group.sourceText}”</p>
-                    )}
+                    {group.sourceText && <VoiceQuote text={group.sourceText} />}
                   </div>
                   {group.items.length > 1 && group.kind !== 'pedido' && (
-                    <span className="erp-toggle-link shrink-0 text-xs">{isExpanded ? 'Ocultar' : 'Ver'}</span>
+                    <span className="erp-toggle-link shrink-0 text-sm">{isExpanded ? 'Ocultar' : 'Ver'}</span>
                   )}
                 </button>
                 {group.items.length > 1 && (isExpanded || group.kind === 'pedido') && (
-                  <ul className="space-y-2 border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+                  <ul className="space-y-2 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
                     {group.items.map((item) => (
                       <li key={item.id} className="text-sm text-[color:var(--muted)]">
                         {item.summary}
@@ -451,21 +427,33 @@ export function DashboardPanel() {
       onLogout={logout}
     >
       {activeSection === 'inicio' && (
-        <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-12">
             <SummaryCard
               title="Valor inventario"
               value={formatCurrency(inventoryValue)}
-              subtitle={`${totalUnits} unidades totales`}
+              subtitle={`${totalUnits} unidades en stock`}
               icon={<InventoryIcon />}
+              variant="hero"
+              className="sm:col-span-2 xl:col-span-5"
             />
             <SummaryCard
               title="Stock bajo / agotado"
               value={String(lowStockProducts.length)}
               subtitle={lowStockProducts.length ? `≤ ${LOW_STOCK_THRESHOLD} u. disponibles` : 'Todo en orden'}
               icon={<AlertIcon />}
-              accentClassName={lowStockProducts.length ? 'text-amber-600 dark:text-amber-300' : undefined}
+              variant={lowStockProducts.length ? 'alert' : 'default'}
+              className="xl:col-span-4"
               onClick={openLowStockProducts}
+            />
+            <SummaryCard
+              title="Pedidos pendientes"
+              value={String(pendingPedidos)}
+              subtitle={pendingPedidos ? 'Para armar y marcar' : 'Nada en cola'}
+              icon={<OrdersIcon />}
+              variant={pendingPedidos ? 'alert' : 'default'}
+              className="xl:col-span-3"
+              onClick={() => handleSectionChange('pedidos')}
             />
             <SummaryCard
               title="Ventas del período"
@@ -476,25 +464,17 @@ export function DashboardPanel() {
                   : `Unidades · últimos ${SALES_PERIOD_DAYS} días`
               }
               icon={<SalesIcon />}
+              className="xl:col-span-4"
               onClick={() => handleSectionChange('ventas')}
             />
-            <SummaryCard
-              title="Pedidos pendientes"
-              value={String(pendingPedidos)}
-              subtitle={pendingPedidos ? 'Abrir módulo de pedidos' : 'Sin pedidos en cola'}
-              icon={<OrdersIcon />}
-              accentClassName={pendingPedidos ? 'text-amber-600 dark:text-amber-300' : undefined}
-              onClick={() => handleSectionChange('pedidos')}
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button type="button" className="erp-button-primary min-h-11" onClick={() => setMovementMode('ingreso')}>
-              + Registrar ingreso
-            </button>
-            <button type="button" className="erp-button-danger min-h-11" onClick={() => setMovementMode('venta')}>
-              − Registrar venta
-            </button>
+            <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2 xl:col-span-8">
+              <button type="button" className="erp-button-primary min-h-14 text-base" onClick={() => setMovementMode('ingreso')}>
+                Registrar ingreso
+              </button>
+              <button type="button" className="erp-button-danger min-h-14 text-base" onClick={() => setMovementMode('venta')}>
+                Registrar venta
+              </button>
+            </div>
           </div>
 
           <article className="erp-panel">

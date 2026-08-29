@@ -36,7 +36,7 @@ export function StockyLogo({ size = 'md', className = '', withWordmark = false, 
     <div className="flex items-center gap-3">
       {mark}
       <div className="min-w-0">
-        <p className="type-brand erp-brand-gradient-text text-sm tracking-tight">Stocky</p>
+        <p className="type-brand erp-brand-gradient-text text-lg tracking-tight">Stocky</p>
         {subtitle ? <p className="type-subtitle truncate text-xs text-[color:var(--muted)]">{subtitle}</p> : null}
       </div>
     </div>

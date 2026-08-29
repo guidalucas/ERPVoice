@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { StockyLogo } from '../brand/StockyLogo';
+import { WaveformMark } from '../brand/WaveformMark';
 import { DashboardNav, sectionTitles } from './DashboardNav';
 import type { DashboardSection } from './dashboardTypes';
 import { ThemeToggle } from './ThemeToggle';
@@ -33,6 +34,16 @@ function accountInitials(businessName: string | null | undefined, phoneNumber: s
   return 'U';
 }
 
+const sectionCopy: Record<DashboardSection, string> = {
+  inicio: 'Lo accionable primero. El resto, a un toque.',
+  productos: 'Stock, precios y movimientos por modelo.',
+  pedidos: 'Qué te pidieron, agrupado para armar el pedido.',
+  ventas: 'Historial de ventas y stock descontado.',
+  clientes: 'Quién te pide y qué queda pendiente.',
+  proveedores: 'A quién le pedís mercadería.',
+  actividad: 'Cargas por voz y mensajes recientes.',
+};
+
 export function DashboardShell({
   activeSection,
   onSectionChange,
@@ -48,32 +59,34 @@ export function DashboardShell({
 
   return (
     <div className="dashboard-layout">
-      <aside className="dashboard-sidebar hidden lg:flex">
-        <div className="flex items-center gap-3 px-2 pb-6">
+      <aside className="dashboard-sidebar">
+        <div className="px-2 pb-6">
           <StockyLogo size="md" withWordmark subtitle={displayBusinessName} />
+          <div className="mt-3 px-1">
+            <WaveformMark bars={7} />
+          </div>
         </div>
 
         <DashboardNav activeSection={activeSection} onSectionChange={onSectionChange} variant="sidebar" />
 
         <div className="mt-auto space-y-3 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
           {(businessName || phoneNumber) && (
-            <div className="rounded-2xl border px-3 py-2.5" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
+            <div className="rounded-[0.875rem] px-3 py-3" style={{ background: 'var(--overlay-soft)' }}>
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent-soft)] text-xs type-subtitle text-[color:var(--accent)]">
+                <div className="erp-brand-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.75rem] text-xs font-bold text-white">
                   {accountInitials(businessName, phoneNumber)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--muted)]">Cuenta</p>
-                  <p className="mt-0.5 truncate text-sm type-subtitle text-[color:var(--text)]">
+                  <p className="truncate text-sm type-subtitle text-[color:var(--text)]">
                     {businessName?.trim() || 'Sin nombre'}
                   </p>
-                  <p className="mt-0.5 truncate text-[11px] text-[color:var(--muted)]">{roleLabel}</p>
+                  <p className="mt-0.5 truncate text-[12px] text-[color:var(--muted)]">{roleLabel}</p>
                   {phoneNumber && (
-                    <p className="mt-0.5 truncate text-xs text-[color:var(--muted)]">{formatPhoneDisplay(phoneNumber)}</p>
+                    <p className="mt-0.5 truncate text-[12px] text-[color:var(--muted)]">{formatPhoneDisplay(phoneNumber)}</p>
                   )}
                 </div>
               </div>
-              <button type="button" className="erp-button-secondary mt-2 w-full text-sm" onClick={onOpenTeam}>
+              <button type="button" className="erp-button-secondary mt-3 w-full text-sm" onClick={onOpenTeam}>
                 Equipo
               </button>
             </div>
@@ -87,47 +100,39 @@ export function DashboardShell({
         </div>
       </aside>
 
-      <div className="dashboard-main min-w-0 flex-1">
+      <div className="dashboard-main">
         <header className="mb-4 flex items-center justify-between gap-3 lg:hidden">
           <div className="flex min-w-0 items-center gap-3">
             <StockyLogo size="sm" />
             <div className="min-w-0">
-              <p className="erp-brand-gradient-text truncate text-[10px] uppercase tracking-[0.35em]">
-                {displayBusinessName}
-              </p>
+              <p className="truncate text-[12px] text-[color:var(--muted)]">{displayBusinessName}</p>
               <h2 className="type-title text-xl text-[color:var(--text)]">{sectionTitles[activeSection]}</h2>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" className="erp-button-secondary min-h-11 shrink-0 px-3 py-2 text-sm" onClick={onOpenTeam}>
+            <button type="button" className="erp-button-secondary min-h-11 shrink-0 px-3 text-sm" onClick={onOpenTeam}>
               Equipo
             </button>
             <ThemeToggle />
-            <button type="button" className="erp-button-secondary min-h-11 shrink-0 px-3 py-2 text-sm" onClick={onLogout}>
-              Salir
-            </button>
           </div>
         </header>
 
-        <header className="mb-5 hidden items-start justify-between gap-3 lg:flex">
-          <div>
-            <h2 className="type-title text-2xl text-[color:var(--text)]">{sectionTitles[activeSection]}</h2>
-            <p className="mt-1 text-sm text-[color:var(--muted)]">
-              {activeSection === 'inicio' && 'Resumen de stock y actividad reciente'}
-              {activeSection === 'productos' && 'Stock, precios y movimientos por modelo'}
-              {activeSection === 'pedidos' && 'Qué te pidieron, agrupado para armar el pedido al proveedor'}
-              {activeSection === 'ventas' && 'Historial detallado de ventas y stock descontado'}
-              {activeSection === 'clientes' && 'Clientes y sus pedidos'}
-              {activeSection === 'proveedores' && 'Proveedores a los que pedís mercadería'}
-              {activeSection === 'actividad' && 'Cargas por voz y mensajes recientes'}
-            </p>
-          </div>
+        <header className="mb-6 hidden lg:block">
+          <h2 className="type-title text-[2rem] leading-none text-[color:var(--text)]">{sectionTitles[activeSection]}</h2>
+          <p className="mt-2 max-w-2xl text-sm text-[color:var(--muted)]">{sectionCopy[activeSection]}</p>
         </header>
 
-        {children}
+        <div key={activeSection} className="animate-fade-in-up">
+          {children}
+        </div>
       </div>
 
-      <DashboardNav activeSection={activeSection} onSectionChange={onSectionChange} variant="bottom" />
+      <DashboardNav
+        activeSection={activeSection}
+        onSectionChange={onSectionChange}
+        variant="bottom"
+        onLogout={onLogout}
+      />
     </div>
   );
 }

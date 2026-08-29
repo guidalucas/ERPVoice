@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { requestJson, toUserFacingError } from '../../services/apiClient';
+import { VoiceQuote } from '../ui/VoiceQuote';
 
 type MetaEvent = {
   at: string;
@@ -102,11 +103,7 @@ export function MetaMessagesPanel() {
                   <span className="type-subtitle text-[color:var(--text)]">Texto usado:</span> {event.sourceText}
                 </p>
               )}
-              {event.transcript && (
-                <p>
-                  <span className="type-subtitle text-[color:var(--text)]">Transcripción:</span> {event.transcript}
-                </p>
-              )}
+              {event.transcript && <VoiceQuote text={event.transcript} clamp={false} />}
               {event.replyText && (
                 <p className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-3 py-2 text-[color:var(--muted)]">
                   <span className="type-subtitle text-[color:var(--text)]">Respuesta:</span> {event.replyText}

@@ -26,7 +26,7 @@ export function applyThemeClass(theme: Theme) {
   root.classList.toggle('dark', theme === 'dark');
   root.classList.toggle('light', theme === 'light');
   root.style.colorScheme = theme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#050B1A' : '#f4f7fc');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#07070b' : '#eef4f7');
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

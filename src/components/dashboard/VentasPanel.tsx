@@ -3,6 +3,7 @@ import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset
 import { useInventory } from '../../hooks/useInventory';
 import type { ParsedActionSell, Product, Transaction } from '../../domain/types';
 import { EmptyState } from './EmptyState';
+import { VoiceQuote } from '../ui/VoiceQuote';
 
 type PeriodFilter = 'hoy' | '7d' | '30d' | 'todo';
 
@@ -159,6 +160,34 @@ export function VentasPanel() {
     return { units, amount };
   }, [filteredSales]);
 
+  const trend = useMemo(() => {
+    const dayCount = period === 'hoy' ? 1 : period === '7d' ? 7 : 14;
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (dayCount - 1));
+
+    const buckets = Array.from({ length: dayCount }, (_, index) => {
+      const day = new Date(start);
+      day.setDate(start.getDate() + index);
+      return {
+        key: day.toISOString().slice(0, 10),
+        label: day.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }),
+        units: 0,
+      };
+    });
+    const byKey = Object.fromEntries(buckets.map((bucket) => [bucket.key, bucket]));
+
+    for (const sale of filteredSales) {
+      const key = new Date(sale.timestamp).toISOString().slice(0, 10);
+      if (byKey[key]) {
+        byKey[key].units += sale.qty;
+      }
+    }
+
+    const max = Math.max(1, ...buckets.map((bucket) => bucket.units));
+    return { buckets, max };
+  }, [filteredSales, period]);
+
   return (
     <article className="erp-panel space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -170,38 +199,52 @@ export function VentasPanel() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
-          <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--muted)]">Unidades</p>
-          <p className="mt-2 type-metric-strong text-2xl text-[color:var(--text)]">{totals.units}</p>
+      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="kpi-card">
+          <p className="text-sm type-subtitle text-[color:var(--muted)]">Unidades</p>
+          <p className="mt-5 type-metric-strong text-[2rem] leading-none text-[color:var(--text)]">{totals.units}</p>
         </div>
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
-          <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--muted)]">Total facturado</p>
-          <p className="mt-2 type-metric-strong text-2xl text-[color:var(--text)]">
+        <div className="kpi-card kpi-card-hero">
+          <p className="text-sm type-subtitle text-[color:var(--muted)]">Total facturado</p>
+          <p className="mt-5 type-metric-strong text-[2rem] leading-none erp-brand-gradient-text">
             {totals.amount > 0 ? formatCurrency(totals.amount) : '—'}
+          </p>
+        </div>
+        <div className="kpi-card">
+          <p className="text-sm type-subtitle text-[color:var(--muted)]">Tendencia</p>
+          <div className="mt-4 flex h-16 items-end gap-1" role="img" aria-label="Unidades vendidas por día">
+            {trend.buckets.map((bucket) => (
+              <div
+                key={bucket.key}
+                className="flex h-full min-w-0 flex-1 items-end rounded-sm"
+                style={{ background: 'var(--overlay-soft)' }}
+                title={`${bucket.label}: ${bucket.units}`}
+              >
+                <div
+                  className="w-full rounded-sm erp-brand-gradient"
+                  style={{ height: bucket.units > 0 ? `${Math.max(22, (bucket.units / trend.max) * 100)}%` : '2px' }}
+                />
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-[color:var(--muted)]">
+            {period === 'hoy' ? 'Hoy' : period === '7d' ? 'Últimos 7 días' : 'Últimos 14 días'}
           </p>
         </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {PERIOD_OPTIONS.map((option) => {
-          const isActive = period === option.id;
-          return (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => setPeriod(option.id)}
-              className={`min-h-10 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                isActive
-                  ? 'bg-rose-500 text-white'
-                  : 'text-[color:var(--muted)] hover:bg-slate-900/5 dark:hover:bg-white/10'
-              }`}
-              style={isActive ? undefined : { background: 'var(--overlay-soft)' }}
-            >
-              {option.label}
-            </button>
-          );
-        })}
+        {PERIOD_OPTIONS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => setPeriod(option.id)}
+            className="activity-filter-chip"
+            aria-pressed={period === option.id}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
 
       {filteredSales.length === 0 ? (
@@ -209,19 +252,15 @@ export function VentasPanel() {
           title="Sin ventas"
           description={
             period === 'todo'
-              ? 'Todavía no hay ventas registradas. Decí “vendí una camiseta…” o usá − Registrar venta.'
+              ? 'Todavía no hay ventas registradas. Decí “vendí un producto…” o usá Registrar venta.'
               : 'No hay ventas en este período. Probá ampliar el filtro.'
           }
         />
       ) : (
         <div className="space-y-3">
           {filteredSales.map((sale) => (
-            <div
-              key={sale.id}
-              className="rounded-2xl border px-4 py-3"
-              style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <div key={sale.id} className="inventory-row">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-200">
@@ -237,9 +276,7 @@ export function VentasPanel() {
                   <p className="mt-1 text-xs text-[color:var(--muted)]">
                     {new Date(sale.timestamp).toLocaleString('es-AR')}
                   </p>
-                  {sale.sourceText ? (
-                    <p className="mt-1.5 line-clamp-2 text-sm text-[color:var(--muted)]">“{sale.sourceText}”</p>
-                  ) : null}
+                  {sale.sourceText ? <VoiceQuote text={sale.sourceText} /> : null}
                 </div>
                 <div className="text-right">
                   <p className="type-subtitle text-sm text-[color:var(--text)]">
