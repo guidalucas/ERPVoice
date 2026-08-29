@@ -49,16 +49,14 @@ export function AcceptInvitePanel() {
   };
 
   return (
-    <main className="min-h-screen bg-mesh-soft-light px-4 py-8 text-[color:var(--text)] dark:bg-mesh-soft">
-      <section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-3xl items-center justify-center">
-        <div className="erp-shell w-full p-6">
-          <div className="rounded-[1.5rem] border p-6" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+    <main className="min-h-[100dvh] px-4 py-8 text-[color:var(--text)]">
+      <section className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-3xl items-center justify-center">
+        <div className="erp-panel w-full p-6 sm:p-8">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
                 <StockyLogo size="lg" />
                 <div>
-                  <p className="erp-brand-gradient-text text-xs uppercase tracking-[0.35em]">Stocky Equipo</p>
-                  <h1 className="mt-1 type-title text-2xl text-[color:var(--text)]">Te invitaron a {businessName}</h1>
+                  <h1 className="type-title text-2xl text-[color:var(--text)]">Te invitaron a {businessName}</h1>
                 </div>
               </div>
               <ThemeToggle />
@@ -104,7 +102,6 @@ export function AcceptInvitePanel() {
                 Salir
               </button>
             </div>
-          </div>
         </div>
       </section>
     </main>

@@ -105,7 +105,7 @@ export function ClientesPanel() {
               const isEditing = editingId === client.id;
 
               return (
-                <div key={client.id} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)]">
+                <div key={client.id} className="inventory-row p-0">
                   <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                     <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setExpandedId(isExpanded ? null : client.id)}>
                       <p className="type-subtitle text-[color:var(--text)]">{client.name}</p>

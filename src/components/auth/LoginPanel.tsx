@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { CaretDown, Check, Microphone, ShieldCheck, WhatsappLogo } from '@phosphor-icons/react';
 import {
   createWhatsAppLogin,
   fetchDevAuthStatus,
@@ -7,64 +8,33 @@ import {
 } from '../../services/authService';
 import { useAuth } from '../../store/AuthStore';
 import { StockyLogo } from '../brand/StockyLogo';
+import { WaveformMark } from '../brand/WaveformMark';
 import { ThemeToggle } from '../dashboard/ThemeToggle';
 
 const POLL_INTERVAL_MS = 1500;
 
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[2.4]">
-      <path d="m5 13 4 4L19 7" />
-    </svg>
-  );
-}
-
-function MicIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[2.4]">
-      <path d="M12 14a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v4a3 3 0 0 0 3 3Z" />
-      <path d="M17 11a5 5 0 0 1-10 0" />
-      <path d="M12 17v4" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[2.4]">
-      <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" />
-    </svg>
-  );
-}
-
-function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className={`h-4 w-4 fill-none stroke-current stroke-[2.2] transition-transform ${open ? 'rotate-180' : ''}`}
-    >
-      <path d="m6 9 6 6 6-6" />
-    </svg>
-  );
-}
-
-function WhatsAppIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 fill-current">
-      <path d="M12.04 2C6.58 2 2.15 6.43 2.15 11.89c0 1.76.46 3.48 1.34 5L2 22l5.27-1.38c1.46.8 3.1 1.22 4.77 1.22h.01c5.46 0 9.89-4.43 9.89-9.89C21.94 6.43 17.5 2 12.04 2Zm5.76 14.04c-.24.67-1.18 1.23-1.93 1.4-.51.11-1.18.2-3.44-.74-2.89-1.2-4.76-4.14-4.9-4.33-.14-.2-1.15-1.53-1.15-2.92 0-1.39.73-2.07 1-2.36.24-.26.64-.38 1.02-.38.12 0 .23 0 .33.01.29.01.44.03.63.49.24.56.82 2.01.89 2.16.07.15.12.32.02.51-.1.2-.15.32-.3.5-.14.17-.3.38-.43.51-.14.14-.29.29-.12.56.16.27.73 1.2 1.56 1.95 1.08.96 1.95 1.26 2.26 1.41.3.14.47.12.65-.07.18-.2.75-.87.95-1.17.2-.3.4-.25.67-.15.27.1 1.71.8 2.01.95.3.15.5.22.57.34.07.12.07.7-.17 1.37Z" />
-    </svg>
-  );
-}
-
-const trustBullets = [
-  { icon: CheckIcon, text: 'Sin contraseñas: entrás mandando un mensaje a Stocky' },
-  { icon: MicIcon, text: 'Cargás stock hablando, como se lo contarías a un empleado' },
-  { icon: ShieldIcon, text: 'Tus datos y los de tus clientes, protegidos' },
+const pillars = [
+  { icon: Microphone, title: 'Comandos de voz', text: 'Hablás, Stocky lo carga.' },
+  { icon: WhatsappLogo, title: 'WhatsApp', text: 'Desde el celular, sin otra app.' },
+  { icon: ShieldCheck, title: 'Vos decidís', text: 'Entiende el audio. El control es tuyo.' },
 ];
 
+function PillarList({ className }: { className: string }) {
+  return (
+    <ul className={className}>
+      {pillars.map(({ icon: Icon, title, text }) => (
+        <li key={title} className="rounded-[0.875rem] border px-3.5 py-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+          <Icon size={20} weight="regular" className="text-[color:var(--accent)]" aria-hidden="true" />
+          <p className="mt-2 text-sm type-subtitle text-[color:var(--text)]">{title}</p>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--muted)]">{text}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function VoiceFlowMock() {
-  const [phase, setPhase] = useState(0);
+  const [phase, setPhase] = useState(1);
 
   useEffect(() => {
     const timings = [700, 1500, 1400, 2800];
@@ -76,10 +46,10 @@ function VoiceFlowMock() {
   }, [phase]);
 
   return (
-    <div className="relative mx-auto w-full max-w-[19rem] overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0b1424] shadow-2xl shadow-emerald-950/30">
+    <div className="relative mx-auto w-full max-w-[20rem] overflow-hidden rounded-[1.5rem] border border-[color:var(--border)] bg-[color:var(--surface)]">
       <div className="flex items-center gap-2.5 bg-[#12a65a] px-4 py-3 text-white">
-        <div className="overflow-hidden rounded-full ring-2 ring-white/20">
-          <StockyLogo size="sm" className="rounded-full" />
+        <div className="overflow-hidden rounded-[0.75rem] ring-2 ring-white/20">
+          <StockyLogo size="sm" className="rounded-[0.75rem]" />
         </div>
         <div>
           <p className="type-brand text-sm leading-tight">Stocky</p>
@@ -87,26 +57,18 @@ function VoiceFlowMock() {
         </div>
       </div>
 
-      <div className="flex min-h-[210px] flex-col gap-2.5 px-3 py-4">
+      <div className="flex min-h-[214px] flex-col gap-2.5 px-3 py-4" style={{ background: 'var(--surface-elevated)' }}>
         <div
           className={`flex justify-end transition-all duration-500 ${
             phase >= 1 ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
           }`}
         >
-          <div className="flex items-center gap-2 rounded-2xl rounded-tr-sm bg-sky-500 px-3 py-2.5 text-white">
+          <div className="erp-brand-gradient flex items-center gap-2 rounded-2xl rounded-tr-sm px-3 py-2.5 text-white">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/15">
-              <MicIcon />
+              <Microphone size={14} weight="bold" />
             </span>
-            <span className="flex items-end gap-[3px] text-sky-100">
-              {[6, 11, 8, 14, 7, 10, 5].map((height, index) => (
-                <span
-                  key={index}
-                  className="waveform-bar"
-                  style={{ height: `${height}px`, animationDelay: `${index * 90}ms` }}
-                />
-              ))}
-            </span>
-            <span className="text-xs font-medium text-sky-100/90">0:07</span>
+            <WaveformMark className="text-white" bars={7} />
+            <span className="text-xs font-medium text-white/90">0:07</span>
           </div>
         </div>
 
@@ -115,7 +77,7 @@ function VoiceFlowMock() {
             phase === 2 ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
           } ${phase >= 3 ? 'hidden' : ''}`}
         >
-          <div className="flex items-center gap-1.5 rounded-2xl rounded-tl-sm bg-[#172337] px-3.5 py-3">
+          <div className="flex items-center gap-1.5 rounded-2xl rounded-tl-sm border px-3.5 py-3" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
             <span className="typing-dot" />
             <span className="typing-dot" style={{ animationDelay: '150ms' }} />
             <span className="typing-dot" style={{ animationDelay: '300ms' }} />
@@ -127,8 +89,8 @@ function VoiceFlowMock() {
             phase >= 3 ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
           }`}
         >
-          <div className="max-w-[13.5rem] rounded-2xl rounded-tl-sm bg-[#172337] px-3.5 py-2.5 text-[13px] leading-relaxed text-slate-100">
-            Listo ✅ Sumé <b className="text-emerald-400">12 pares</b> de Zapatilla Running talle 42 al stock.
+          <div className="max-w-[14rem] rounded-2xl rounded-tl-sm border px-3.5 py-2.5 text-[13px] leading-relaxed text-[color:var(--text)]" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+            Listo. Sumé <b className="erp-brand-gradient-text">12 pares</b> de zapatilla running, número 42.
           </div>
         </div>
       </div>
@@ -277,81 +239,54 @@ export function LoginPanel() {
   const expiresSoon = challenge ? new Date(challenge.expiresAt).getTime() - now <= 0 : false;
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-mesh-soft-light px-4 py-8 text-[color:var(--text)] dark:bg-mesh-soft">
+    <main className="relative min-h-[100dvh] overflow-hidden px-4 py-5 text-[color:var(--text)] sm:px-6 sm:py-6">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="login-orb -left-24 top-0 h-72 w-72 bg-[#1677FF]/20" />
-        <div
-          className="login-orb right-[-5rem] top-1/4 h-80 w-80 bg-[#5B8CFF]/15"
-          style={{ animationDelay: '4s' }}
-        />
-        <div
-          className="login-orb bottom-[-4rem] left-1/3 h-72 w-72 bg-[#8BB4FF]/10"
-          style={{ animationDelay: '8s' }}
-        />
+        <div className="login-orb -left-24 top-0 h-72 w-72 bg-[color:var(--accent)]/25" />
+        <div className="login-orb right-[-5rem] top-1/4 h-80 w-80 bg-[color:var(--accent-2)]/20" style={{ animationDelay: '4s' }} />
+        <div className="login-orb bottom-[-4rem] left-1/3 h-64 w-64 bg-[color:var(--accent)]/10" style={{ animationDelay: '8s' }} />
       </div>
 
-      <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
+      <header className="relative z-20 mx-auto flex max-w-6xl items-center justify-between">
+        <StockyLogo size="md" withWordmark subtitle="Inteligente. Rápido. Simple." />
         <ThemeToggle />
-      </div>
+      </header>
 
-      <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] max-w-6xl flex-col items-center justify-center gap-10 py-4 lg:flex-row lg:items-center lg:gap-14">
-        <section className="flex w-full max-w-xl flex-col justify-center gap-6 lg:w-[54%]">
-          <StockyLogo size="md" withWordmark subtitle="Tu stock, por voz" />
+      <div className="relative mx-auto grid min-h-[calc(100dvh-5.5rem)] max-w-6xl items-center gap-10 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
+        <section className="flex flex-col justify-center">
+          <p className="mb-3 inline-flex items-center gap-2 text-sm type-subtitle text-[color:var(--muted)]">
+            <WaveformMark bars={4} />
+            Stocky entiende, vos decidís
+          </p>
+          <h1 className="type-title max-w-xl text-[2.15rem] leading-[1.05] text-[color:var(--text)] sm:text-5xl">
+            Tu inventario, tan fácil como <span className="erp-brand-gradient-text">hablar</span>.
+          </h1>
+          <p className="mt-4 max-w-md text-base leading-7 text-[color:var(--muted)]">
+            Mandás un audio o un mensaje por WhatsApp. Stocky entiende, carga el stock y te deja el panel al día.
+          </p>
 
-          <div>
-            <h1 className="type-title text-3xl leading-[1.1] tracking-tight text-[color:var(--text)] sm:text-4xl">
-              Actualizá tu stock hablando por WhatsApp
-            </h1>
-            <p className="mt-4 max-w-md text-sm leading-6 text-[color:var(--muted)]">
-              Sin apps para instalar ni planillas. Le mandás un audio o un mensaje a Stocky y él entiende, carga y avisa
-              solo.
-            </p>
-          </div>
+          <PillarList className="mt-8 hidden gap-3 sm:grid sm:grid-cols-3" />
 
-          <div className="flex flex-wrap gap-2">
-            {trustBullets.map(({ icon: Icon, text }) => (
-              <span
-                key={text}
-                className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs type-body-strong text-[color:var(--muted)]"
-                style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
-              >
-                <span className="erp-accent-text">
-                  <Icon />
-                </span>
-                {text}
-              </span>
-            ))}
-          </div>
-
-          <div className="hidden lg:block">
-            <p className="mb-3 text-xs type-subtitle uppercase tracking-[0.24em] text-[color:var(--muted)]">
-              Así se ve en WhatsApp
-            </p>
+          <div className="mt-8 hidden lg:block">
             <VoiceFlowMock />
           </div>
         </section>
 
-        <section className="w-full max-w-md lg:w-[46%]">
-          <div className="erp-shell relative animate-fade-in-up p-6 sm:p-8">
+        <section className="w-full">
+          <div className="erp-panel animate-fade-in-up p-5 sm:p-7">
             <h2 className="type-title text-2xl text-[color:var(--text)]">
-              {isWaiting ? 'Mandá el mensaje y volvé acá' : 'Entrá con WhatsApp'}
+              {isWaiting ? 'Mandá el mensaje y volvé' : 'Entrá con WhatsApp'}
             </h2>
-            <p className="mt-2 text-sm text-[color:var(--muted)]">
+            <p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">
               {isWaiting
-                ? 'WhatsApp se abre con el mensaje listo. Solo tenés que tocar Enviar. El panel te deja entrar solo.'
-                : 'No hace falta escribir tu número. Tocá el botón, mandá el mensaje y te abrimos el panel.'}
+                ? 'WhatsApp se abre con el mensaje listo. Tocá Enviar. El panel te deja pasar solo.'
+                : 'Sin contraseña ni número para tipear. Tocá, mandá el mensaje y abrimos tu panel.'}
             </p>
 
             <div className="mt-6 space-y-4">
               {isWaiting && challenge && (
-                <div
-                  className="rounded-2xl border px-4 py-4"
-                  style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
-                >
-                  <p className="text-xs type-subtitle uppercase tracking-[0.18em] text-[color:var(--muted)]">
-                    Mensaje a enviar
-                  </p>
-                  <p className="mt-2 font-mono text-lg tracking-[0.18em] text-[color:var(--text)]">
+                <div className="rounded-[0.875rem] border px-4 py-4" style={{ borderColor: 'var(--accent-border)', background: 'var(--accent-soft)' }}>
+                  <p className="text-xs type-subtitle text-[color:var(--muted)]">Mensaje a enviar</p>
+                  <p className="mt-2 font-mono text-lg tracking-[0.16em] text-[color:var(--text)]">
                     LOGIN {challenge.loginToken}
                   </p>
                   <p className="mt-2 text-xs text-[color:var(--muted)]">
@@ -363,10 +298,7 @@ export function LoginPanel() {
               )}
 
               {statusText && (
-                <p
-                  className="rounded-2xl border px-4 py-3 text-sm text-[color:var(--text)]"
-                  style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
-                >
+                <p className="rounded-[0.875rem] border px-4 py-3 text-sm text-[color:var(--text)]" style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}>
                   {statusText}
                 </p>
               )}
@@ -379,10 +311,11 @@ export function LoginPanel() {
                     rel="noopener noreferrer"
                     className="erp-button-primary inline-flex min-h-12 w-full items-center justify-center gap-2"
                   >
-                    <WhatsAppIcon />
+                    <WhatsappLogo size={20} weight="fill" aria-hidden="true" />
                     Abrir WhatsApp y enviar
                   </a>
-                  <p className="text-center text-sm text-[color:var(--muted)]">
+                  <p className="inline-flex items-center justify-center gap-2 text-sm text-[color:var(--muted)]">
+                    <WaveformMark bars={4} />
                     {isCompleting ? 'Entrando al panel…' : 'Esperando que mandes el mensaje…'}
                   </p>
                   <button
@@ -405,23 +338,21 @@ export function LoginPanel() {
                   onClick={() => void handleStartWhatsAppLogin()}
                   disabled={isSubmitting}
                 >
-                  <WhatsAppIcon />
+                  <WhatsappLogo size={20} weight="fill" aria-hidden="true" />
                   {isSubmitting ? 'Preparando…' : expiresSoon ? 'Generar un código nuevo' : 'Iniciar sesión con WhatsApp'}
                 </button>
               )}
 
               {devLoginEnabled && (
-                <div className="rounded-2xl border border-dashed border-[color:var(--accent-border)] bg-[color:var(--accent-soft)]">
+                <div className="rounded-[0.875rem] border border-dashed border-[color:var(--accent-border)] bg-[color:var(--accent-soft)]">
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+                    className="flex min-h-11 w-full items-center justify-between gap-2 px-4 py-3 text-left"
                     onClick={() => setDevPanelOpen((open) => !open)}
                     aria-expanded={devPanelOpen}
                   >
                     <span className="erp-accent-text text-sm font-semibold">Modo prueba (solo en tu PC)</span>
-                    <span className="erp-accent-text">
-                      <ChevronIcon open={devPanelOpen} />
-                    </span>
+                    <CaretDown size={16} className={`erp-accent-text transition-transform ${devPanelOpen ? 'rotate-180' : ''}`} />
                   </button>
                   {devPanelOpen && (
                     <div className="space-y-3 px-4 pb-4">
@@ -432,16 +363,10 @@ export function LoginPanel() {
                         value={devPhoneInput}
                         onChange={(event) => setDevPhoneInput(event.target.value)}
                         placeholder={devDefaultPhone}
-                        className="h-11 w-full rounded-2xl border px-3 text-sm type-body-strong text-[color:var(--text)] outline-none"
-                        style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}
+                        className="erp-input"
                         inputMode="tel"
                       />
-                      <button
-                        type="button"
-                        className="erp-button-secondary text-sm"
-                        onClick={() => void handleDevLogin()}
-                        disabled={isSubmitting}
-                      >
+                      <button type="button" className="erp-button-secondary text-sm" onClick={() => void handleDevLogin()} disabled={isSubmitting}>
                         {isSubmitting ? 'Entrando…' : 'Entrar sin WhatsApp'}
                       </button>
                     </div>
@@ -449,10 +374,17 @@ export function LoginPanel() {
                 </div>
               )}
 
-              <p className="text-xs leading-5 text-[color:var(--muted)]">
+              <p className="flex items-start gap-2 text-xs leading-5 text-[color:var(--muted)]">
+                <Check size={14} className="mt-0.5 shrink-0 text-[color:var(--accent)]" aria-hidden="true" />
                 El mensaje tiene que salir del WhatsApp con el que manejás el negocio. El código vence en unos minutos.
               </p>
             </div>
+          </div>
+
+          <PillarList className="mt-6 grid gap-3 sm:hidden" />
+
+          <div className="mt-6 lg:hidden">
+            <VoiceFlowMock />
           </div>
         </section>
       </div>

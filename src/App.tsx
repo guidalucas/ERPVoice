@@ -8,21 +8,13 @@ import { BusinessSetupPanel } from './components/onboarding/BusinessSetupPanel';
 import { AcceptInvitePanel } from './components/onboarding/AcceptInvitePanel';
 import { ThemeProvider } from './hooks/useTheme';
 import { StockyLogo } from './components/brand/StockyLogo';
+import { WaveformMark } from './components/brand/WaveformMark';
 
 function Shell() {
   return (
-    <main className="min-h-screen bg-mesh-soft-light text-[color:var(--text)] dark:bg-mesh-soft">
-      <div className="mx-auto min-h-screen max-w-[1600px] px-4 py-4 lg:px-6 lg:py-6">
-        <div className="erp-shell relative p-4 lg:p-6">
-          <div className="relative">
-            <DashboardPanel />
-          </div>
-        </div>
-
-        <div className="relative mt-4">
-          <WhatsAppSimulator />
-        </div>
-      </div>
+    <main className="min-h-[100dvh] text-[color:var(--text)]">
+      <DashboardPanel />
+      <WhatsAppSimulator />
     </main>
   );
 }
@@ -42,10 +34,12 @@ function AppGate() {
 
   if (isBootstrapping) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-mesh-soft-light px-4 text-[color:var(--text)] dark:bg-mesh-soft">
+      <main className="flex min-h-[100dvh] items-center justify-center px-4 text-[color:var(--text)]">
         <div className="erp-card flex max-w-md flex-col items-center text-center">
           <StockyLogo size="lg" />
-          <p className="erp-brand-gradient-text mt-4 text-xs uppercase tracking-[0.35em]">Stocky</p>
+          <p className="mt-4">
+            <WaveformMark bars={7} />
+          </p>
           <h1 className="mt-3 type-title text-2xl text-[color:var(--text)]">Abriendo tu sesión</h1>
           <p className="mt-2 text-sm text-[color:var(--muted)]">Un momento, estamos preparando tu panel…</p>
         </div>
