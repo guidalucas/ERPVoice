@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { StockyLogo } from '../brand/StockyLogo';
-import { WaveformMark } from '../brand/WaveformMark';
 import { DashboardNav, sectionTitles } from './DashboardNav';
 import type { DashboardSection } from './dashboardTypes';
 import { ThemeToggle } from './ThemeToggle';
@@ -62,9 +61,6 @@ export function DashboardShell({
       <aside className="dashboard-sidebar">
         <div className="px-2 pb-6">
           <StockyLogo size="md" withWordmark subtitle={displayBusinessName} />
-          <div className="mt-3 px-1">
-            <WaveformMark bars={7} />
-          </div>
         </div>
 
         <DashboardNav activeSection={activeSection} onSectionChange={onSectionChange} variant="sidebar" />
