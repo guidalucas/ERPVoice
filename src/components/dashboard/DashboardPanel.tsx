@@ -435,7 +435,7 @@ export function DashboardPanel() {
               subtitle={`${totalUnits} unidades en stock`}
               icon={<InventoryIcon />}
               variant="hero"
-              className="sm:col-span-2 xl:col-span-5"
+              className="sm:col-span-2 xl:col-span-6"
             />
             <SummaryCard
               title="Stock bajo / agotado"
@@ -443,7 +443,7 @@ export function DashboardPanel() {
               subtitle={lowStockProducts.length ? `≤ ${LOW_STOCK_THRESHOLD} u. disponibles` : 'Todo en orden'}
               icon={<AlertIcon />}
               variant={lowStockProducts.length ? 'alert' : 'default'}
-              className="xl:col-span-4"
+              className="xl:col-span-6"
               onClick={openLowStockProducts}
             />
             <SummaryCard
@@ -452,7 +452,7 @@ export function DashboardPanel() {
               subtitle={pendingPedidos ? 'Para armar y marcar' : 'Nada en cola'}
               icon={<OrdersIcon />}
               variant={pendingPedidos ? 'alert' : 'default'}
-              className="xl:col-span-3"
+              className="xl:col-span-6"
               onClick={() => handleSectionChange('pedidos')}
             />
             <SummaryCard
@@ -464,17 +464,17 @@ export function DashboardPanel() {
                   : `Unidades · últimos ${SALES_PERIOD_DAYS} días`
               }
               icon={<SalesIcon />}
-              className="xl:col-span-4"
+              className="xl:col-span-6"
               onClick={() => handleSectionChange('ventas')}
             />
-            <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2 xl:col-span-8">
-              <button type="button" className="erp-button-primary min-h-14 text-base" onClick={() => setMovementMode('ingreso')}>
-                Registrar ingreso
-              </button>
-              <button type="button" className="erp-button-danger min-h-14 text-base" onClick={() => setMovementMode('venta')}>
-                Registrar venta
-              </button>
-            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="erp-button-primary" onClick={() => setMovementMode('ingreso')}>
+              Registrar ingreso
+            </button>
+            <button type="button" className="erp-button-danger" onClick={() => setMovementMode('venta')}>
+              Registrar venta
+            </button>
           </div>
 
           <article className="erp-panel">
