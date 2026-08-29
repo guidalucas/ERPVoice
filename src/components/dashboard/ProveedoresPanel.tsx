@@ -23,6 +23,7 @@ export function ProveedoresPanel() {
   const [editName, setEditName] = useState('');
   const [editNotas, setEditNotas] = useState('');
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
 
   const pedidosByProveedor = useMemo(() => {
     const map: Record<string, typeof pedidos> = {};
@@ -45,6 +46,7 @@ export function ProveedoresPanel() {
       await createProveedorRecord({ name: name.trim(), notas: notas.trim() || null });
       setName('');
       setNotas('');
+      setFormOpen(false);
     } finally {
       setSaving(false);
     }
@@ -90,23 +92,30 @@ export function ProveedoresPanel() {
   return (
     <div className="space-y-4">
       <article className="erp-panel">
-        <h3 className="type-title text-xl text-[color:var(--text)]">Nuevo proveedor</h3>
-        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-          <input className="erp-input min-h-11" placeholder="Nombre" value={name} onChange={(event) => setName(event.target.value)} />
-          <input className="erp-input min-h-11" placeholder="Notas (opcional)" value={notas} onChange={(event) => setNotas(event.target.value)} />
-          <button type="button" className="erp-button-primary min-h-11" disabled={saving || !name.trim()} onClick={() => void handleCreate()}>
-            Agregar
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h3 className="type-title text-xl text-[color:var(--text)]">Proveedores</h3>
+          <button type="button" className="erp-button-primary min-h-11" onClick={() => setFormOpen((open) => !open)}>
+            {formOpen ? 'Cerrar' : 'Nuevo proveedor'}
           </button>
         </div>
-      </article>
 
-      <article className="erp-panel">
-        <h3 className="type-title text-xl text-[color:var(--text)]">Proveedores</h3>
+        {formOpen && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <input className="erp-input min-h-11" placeholder="Nombre" value={name} onChange={(event) => setName(event.target.value)} />
+            <input className="erp-input min-h-11" placeholder="Notas (opcional)" value={notas} onChange={(event) => setNotas(event.target.value)} />
+            <button type="button" className="erp-button-primary min-h-11" disabled={saving || !name.trim()} onClick={() => void handleCreate()}>
+              Agregar
+            </button>
+          </div>
+        )}
+
         {proveedores.length === 0 ? (
           <div className="mt-4">
             <EmptyState
               title="Sin proveedores"
               description="Agregalos acá o mencioná el nombre al cargar un pedido (ej. “pedido del proveedor Acme”)."
+              actionLabel={formOpen ? undefined : 'Nuevo proveedor'}
+              onAction={formOpen ? undefined : () => setFormOpen(true)}
             />
           </div>
         ) : (

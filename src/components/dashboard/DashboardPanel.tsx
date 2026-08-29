@@ -8,7 +8,6 @@ import { ClientesPanel } from './ClientesPanel';
 import { DashboardShell } from './DashboardShell';
 import { EquipoPanel } from './EquipoPanel';
 import { LOW_STOCK_THRESHOLD, type DashboardSection } from './dashboardTypes';
-import { MetaMessagesPanel } from './MetaMessagesPanel';
 import { PedidosPanel } from './PedidosPanel';
 import { ProductsAbmPanel } from './ProductsAbmPanel';
 import { ProveedoresPanel } from './ProveedoresPanel';
@@ -32,15 +31,16 @@ type SummaryCardProps = {
 };
 
 function SummaryCard({ title, value, subtitle, icon, variant = 'default', className = '', onClick }: SummaryCardProps) {
+  const dense = className.includes('kpi-card-compact');
   const valueClass =
     variant === 'hero'
       ? 'type-metric-strong text-[2.35rem] leading-none sm:text-[2.75rem] erp-brand-gradient-text'
       : variant === 'alert'
-        ? 'type-metric-strong text-[2.15rem] leading-none text-[color:var(--warning)]'
-        : 'type-metric-strong text-[2rem] leading-none text-[color:var(--text)]';
+        ? `type-metric-strong leading-none text-[color:var(--warning)] ${dense ? 'text-[1.75rem]' : 'text-[2.15rem]'}`
+        : `type-metric-strong leading-none text-[color:var(--text)] ${dense ? 'text-[1.65rem]' : 'text-[2rem]'}`;
 
   const content = (
-    <div className="relative flex h-full flex-col justify-between gap-5">
+    <div className={`relative flex h-full flex-col justify-between ${dense ? 'gap-3' : 'gap-5'}`}>
       <p className="text-sm type-subtitle text-[color:var(--muted)]">{title}</p>
       <div className="space-y-2">
         <p className={valueClass}>{value}</p>
@@ -264,7 +264,15 @@ const matchesActivityFilter = (transaction: Transaction, filter: ActivityFilter)
   return true;
 };
 
-function ActivityFeed({ transactions, showFilters = true }: { transactions: Transaction[]; showFilters?: boolean }) {
+function ActivityFeed({
+  transactions,
+  showFilters = true,
+  limit,
+}: {
+  transactions: Transaction[];
+  showFilters?: boolean;
+  limit?: number;
+}) {
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [filter, setFilter] = useState<ActivityFilter>('all');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -275,8 +283,9 @@ function ActivityFeed({ transactions, showFilters = true }: { transactions: Tran
   );
 
   const groups = useMemo(() => groupTransactions(filteredTransactions), [filteredTransactions]);
-  const visibleGroups = groups.slice(0, visibleCount);
-  const hasMore = groups.length > visibleCount;
+  const pageSize = limit ?? visibleCount;
+  const visibleGroups = groups.slice(0, pageSize);
+  const hasMore = limit == null && groups.length > visibleCount;
 
   if (transactions.length === 0) {
     return <EmptyState title="Sin actividad" description="Las cargas por voz, ventas y pedidos aparecen acá." />;
@@ -391,10 +400,12 @@ export function DashboardPanel() {
   const [activeSection, setActiveSection] = useState<DashboardSection>('inicio');
   const [productsStockFilter, setProductsStockFilter] = useState<'all' | 'low-stock'>('all');
   const [movementMode, setMovementMode] = useState<StockMovementMode | null>(null);
+  const [openPedidoForm, setOpenPedidoForm] = useState(false);
   const { session, logout } = useAuth();
   const [teamOpen, setTeamOpen] = useState(false);
 
   const totalUnits = products.reduce((total, product) => total + product.stockAvailable + product.stockReserved, 0);
+  const reservedUnits = products.reduce((total, product) => total + product.stockReserved, 0);
   const inventoryValue = products.reduce((total, product) => total + (product.stockAvailable + product.stockReserved) * product.price, 0);
   const lowStockProducts = products.filter((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD);
   const pendingPedidos = pedidos.filter((pedido) => pedido.estado === 'pendiente').length;
@@ -409,12 +420,24 @@ export function DashboardPanel() {
     if (section !== 'productos') {
       setProductsStockFilter('all');
     }
+    if (section !== 'pedidos') {
+      setOpenPedidoForm(false);
+    }
   };
 
   const openLowStockProducts = () => {
     setProductsStockFilter('low-stock');
     setActiveSection('productos');
   };
+
+  const openNewPedido = () => {
+    setOpenPedidoForm(true);
+    setActiveSection('pedidos');
+  };
+
+  const inventorySubtitle = reservedUnits > 0
+    ? `${totalUnits} u. · ${reservedUnits} reservada${reservedUnits === 1 ? '' : 's'}`
+    : `${totalUnits} unidades en stock`;
 
   return (
     <DashboardShell
@@ -428,22 +451,14 @@ export function DashboardPanel() {
     >
       {activeSection === 'inicio' && (
         <div className="space-y-5">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-12">
+          <div className="grid grid-cols-2 gap-3">
             <SummaryCard
-              title="Valor inventario"
-              value={formatCurrency(inventoryValue)}
-              subtitle={`${totalUnits} unidades en stock`}
-              icon={<InventoryIcon />}
-              variant="hero"
-              className="sm:col-span-2 xl:col-span-6"
-            />
-            <SummaryCard
-              title="Stock bajo / agotado"
+              title="Stock bajo"
               value={String(lowStockProducts.length)}
               subtitle={lowStockProducts.length ? `≤ ${LOW_STOCK_THRESHOLD} u. disponibles` : 'Todo en orden'}
               icon={<AlertIcon />}
               variant={lowStockProducts.length ? 'alert' : 'default'}
-              className="xl:col-span-6"
+              className="kpi-card-compact"
               onClick={openLowStockProducts}
             />
             <SummaryCard
@@ -452,19 +467,27 @@ export function DashboardPanel() {
               subtitle={pendingPedidos ? 'Para armar y marcar' : 'Nada en cola'}
               icon={<OrdersIcon />}
               variant={pendingPedidos ? 'alert' : 'default'}
-              className="xl:col-span-6"
+              className="kpi-card-compact"
               onClick={() => handleSectionChange('pedidos')}
             />
             <SummaryCard
-              title="Ventas del período"
-              value={String(salesPeriod.units)}
+              title="Valor inventario"
+              value={formatCurrency(inventoryValue)}
+              subtitle={inventorySubtitle}
+              icon={<InventoryIcon />}
+              className="kpi-card-compact"
+              onClick={() => handleSectionChange('productos')}
+            />
+            <SummaryCard
+              title="Ventas de la semana"
+              value={salesPeriod.amount > 0 ? formatCurrency(salesPeriod.amount) : '—'}
               subtitle={
-                salesPeriod.amount > 0
-                  ? `${formatCurrency(salesPeriod.amount)} · últimos ${SALES_PERIOD_DAYS} días`
-                  : `Unidades · últimos ${SALES_PERIOD_DAYS} días`
+                salesPeriod.units > 0
+                  ? `${salesPeriod.units} u. · últimos ${SALES_PERIOD_DAYS} días`
+                  : `Sin ventas · últimos ${SALES_PERIOD_DAYS} días`
               }
               icon={<SalesIcon />}
-              className="xl:col-span-6"
+              className="kpi-card-compact"
               onClick={() => handleSectionChange('ventas')}
             />
           </div>
@@ -475,11 +498,14 @@ export function DashboardPanel() {
             <button type="button" className="erp-button-danger" onClick={() => setMovementMode('venta')}>
               Registrar venta
             </button>
+            <button type="button" className="erp-button-secondary" onClick={openNewPedido}>
+              Registrar pedido
+            </button>
           </div>
 
           <article className="erp-panel">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h3 className="type-title text-lg text-[color:var(--text)]">Actividad reciente</h3>
+              <h3 className="type-title text-lg text-[color:var(--text)]">Lo último</h3>
               <button
                 type="button"
                 className="erp-accent-text inline-flex min-h-11 items-center rounded-full px-3 text-sm font-semibold"
@@ -488,7 +514,7 @@ export function DashboardPanel() {
                 Ver todo
               </button>
             </div>
-            <ActivityFeed transactions={transactions} />
+            <ActivityFeed transactions={transactions} showFilters={false} limit={3} />
           </article>
         </div>
       )}
@@ -496,19 +522,16 @@ export function DashboardPanel() {
       {activeSection === 'productos' && (
         <ProductsAbmPanel stockFilter={productsStockFilter} onStockFilterChange={setProductsStockFilter} />
       )}
-      {activeSection === 'pedidos' && <PedidosPanel />}
+      {activeSection === 'pedidos' && <PedidosPanel startWithForm={openPedidoForm} />}
       {activeSection === 'ventas' && <VentasPanel />}
       {activeSection === 'clientes' && <ClientesPanel />}
       {activeSection === 'proveedores' && <ProveedoresPanel />}
 
       {activeSection === 'actividad' && (
-        <div className="space-y-4">
-          <article className="erp-panel">
-            <h3 className="mb-4 type-title text-lg text-[color:var(--text)]">Movimientos</h3>
-            <ActivityFeed transactions={transactions} />
-          </article>
-          <MetaMessagesPanel />
-        </div>
+        <article className="erp-panel">
+          <h3 className="mb-4 type-title text-lg text-[color:var(--text)]">Movimientos</h3>
+          <ActivityFeed transactions={transactions} />
+        </article>
       )}
 
       {movementMode && (

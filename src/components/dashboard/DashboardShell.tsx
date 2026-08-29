@@ -34,13 +34,13 @@ function accountInitials(businessName: string | null | undefined, phoneNumber: s
 }
 
 const sectionCopy: Record<DashboardSection, string> = {
-  inicio: 'Lo accionable primero. El resto, a un toque.',
+  inicio: 'Alertas, una acción y lo último que pasó.',
   productos: 'Stock, precios y movimientos por modelo.',
   pedidos: 'Qué te pidieron, agrupado para armar el pedido.',
   ventas: 'Historial de ventas y stock descontado.',
-  clientes: 'Quién te pide y qué queda pendiente.',
+  clientes: 'Quién te pide, qué debe y qué queda pendiente.',
   proveedores: 'A quién le pedís mercadería.',
-  actividad: 'Cargas por voz y mensajes recientes.',
+  actividad: 'Cargas por voz y movimientos recientes.',
 };
 
 export function DashboardShell({

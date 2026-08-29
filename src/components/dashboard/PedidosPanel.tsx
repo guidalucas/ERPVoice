@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
 import type { PedidoEstado } from '../../domain/types';
@@ -50,7 +50,11 @@ const productOptionLabel = (
   return meta || product.name;
 };
 
-export function PedidosPanel() {
+type PedidosPanelProps = {
+  startWithForm?: boolean;
+};
+
+export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
   const preset = useBusinessCategoryPreset();
   const {
     pedidos,
@@ -65,7 +69,7 @@ export function PedidosPanel() {
   const [estadoFilter, setEstadoFilter] = useState<PedidoEstado | 'todos'>('pendiente');
   const [groupBy, setGroupBy] = useState<'cliente' | 'proveedor' | 'producto'>('cliente');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(startWithForm);
   const [clienteId, setClienteId] = useState('');
   const [newClientName, setNewClientName] = useState('');
   const [proveedorId, setProveedorId] = useState('');
@@ -74,6 +78,12 @@ export function PedidosPanel() {
   const [qtyText, setQtyText] = useState('1');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (startWithForm) {
+      setFormOpen(true);
+    }
+  }, [startWithForm]);
 
   const clientsById = useMemo(() => Object.fromEntries(clients.map((client) => [client.id, client])), [clients]);
   const proveedoresById = useMemo(

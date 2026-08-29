@@ -200,15 +200,15 @@ export function VentasPanel() {
       </div>
 
       <div className="grid gap-3 lg:grid-cols-3">
-        <div className="kpi-card">
-          <p className="text-sm type-subtitle text-[color:var(--muted)]">Unidades</p>
-          <p className="mt-5 type-metric-strong text-[2rem] leading-none text-[color:var(--text)]">{totals.units}</p>
-        </div>
         <div className="kpi-card kpi-card-hero">
           <p className="text-sm type-subtitle text-[color:var(--muted)]">Total facturado</p>
           <p className="mt-5 type-metric-strong text-[2rem] leading-none erp-brand-gradient-text">
             {totals.amount > 0 ? formatCurrency(totals.amount) : '—'}
           </p>
+        </div>
+        <div className="kpi-card">
+          <p className="text-sm type-subtitle text-[color:var(--muted)]">Unidades</p>
+          <p className="mt-5 type-metric-strong text-[2rem] leading-none text-[color:var(--text)]">{totals.units}</p>
         </div>
         <div className="kpi-card">
           <p className="text-sm type-subtitle text-[color:var(--muted)]">Tendencia</p>
