@@ -169,6 +169,40 @@ const main = async () => {
 
       CREATE INDEX IF NOT EXISTS idx_auth_wa_expires_at ON auth_wa_challenges (expires_at);
       CREATE INDEX IF NOT EXISTS idx_auth_wa_status ON auth_wa_challenges (status);
+
+      DO $$
+      DECLARE
+        tbl text;
+      BEGIN
+        FOREACH tbl IN ARRAY ARRAY[
+          'products',
+          'clients',
+          'proveedores',
+          'pedidos',
+          'transactions',
+          'meta_events',
+          'auth_users',
+          'auth_otp_challenges',
+          'auth_wa_challenges',
+          'business_members',
+          'business_invites'
+        ]
+        LOOP
+          IF to_regclass(format('public.%I', tbl)) IS NULL THEN
+            CONTINUE;
+          END IF;
+
+          EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', tbl);
+
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+            EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon', tbl);
+          END IF;
+
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+            EXECUTE format('REVOKE ALL ON TABLE public.%I FROM authenticated', tbl);
+          END IF;
+        END LOOP;
+      END $$;
     `);
 
     await client.query("UPDATE products SET owner_phone = '__default__' WHERE owner_phone IS NULL");
