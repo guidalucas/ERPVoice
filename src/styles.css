@@ -407,6 +407,11 @@ html.light ::selection {
       var(--surface);
   }
 
+  .kpi-card-compact {
+    min-height: 6.75rem;
+    padding: 1rem 1.15rem;
+  }
+
   .inventory-row {
     @apply border px-4 py-3.5 transition;
     border-radius: var(--radius-row);

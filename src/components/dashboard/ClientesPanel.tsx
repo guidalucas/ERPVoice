@@ -16,6 +16,10 @@ export function ClientesPanel() {
   const [editName, setEditName] = useState('');
   const [editNotas, setEditNotas] = useState('');
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+
+  const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
+  const outstandingDebt = clients.reduce((total, client) => total + (Number.isFinite(client.debt) ? client.debt : 0), 0);
 
   const pedidosByClient = useMemo(() => {
     const map: Record<string, typeof pedidos> = {};
@@ -35,6 +39,7 @@ export function ClientesPanel() {
       await createClientRecord({ name: name.trim(), notas: notas.trim() || null });
       setName('');
       setNotas('');
+      setFormOpen(false);
     } finally {
       setSaving(false);
     }
@@ -80,21 +85,36 @@ export function ClientesPanel() {
   return (
     <div className="space-y-4">
       <article className="erp-panel">
-        <h3 className="type-title text-xl text-[color:var(--text)]">Nuevo cliente</h3>
-        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-          <input className="erp-input min-h-11" placeholder="Nombre" value={name} onChange={(event) => setName(event.target.value)} />
-          <input className="erp-input min-h-11" placeholder="Notas (opcional)" value={notas} onChange={(event) => setNotas(event.target.value)} />
-          <button type="button" className="erp-button-primary min-h-11" disabled={saving || !name.trim()} onClick={() => void handleCreate()}>
-            Agregar
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="type-title text-xl text-[color:var(--text)]">Clientes</h3>
+            {outstandingDebt > 0 && (
+              <p className="mt-1 text-sm text-[color:var(--warning)]">Deuda total {formatCurrency(outstandingDebt)}</p>
+            )}
+          </div>
+          <button type="button" className="erp-button-primary min-h-11" onClick={() => setFormOpen((open) => !open)}>
+            {formOpen ? 'Cerrar' : 'Nuevo cliente'}
           </button>
         </div>
-      </article>
 
-      <article className="erp-panel">
-        <h3 className="type-title text-xl text-[color:var(--text)]">Clientes</h3>
+        {formOpen && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <input className="erp-input min-h-11" placeholder="Nombre" value={name} onChange={(event) => setName(event.target.value)} />
+            <input className="erp-input min-h-11" placeholder="Notas (opcional)" value={notas} onChange={(event) => setNotas(event.target.value)} />
+            <button type="button" className="erp-button-primary min-h-11" disabled={saving || !name.trim()} onClick={() => void handleCreate()}>
+              Agregar
+            </button>
+          </div>
+        )}
+
         {clients.length === 0 ? (
           <div className="mt-4">
-            <EmptyState title="Sin clientes" description="Se crean solos cuando registrás un pedido por voz, o podés agregarlos acá." />
+            <EmptyState
+              title="Sin clientes"
+              description="Se crean solos cuando registrás un pedido por voz, o podés agregarlos acá."
+              actionLabel={formOpen ? undefined : 'Nuevo cliente'}
+              onAction={formOpen ? undefined : () => setFormOpen(true)}
+            />
           </div>
         ) : (
           <div className="mt-4 space-y-3">
@@ -103,12 +123,20 @@ export function ClientesPanel() {
               const pendientes = clientPedidos.filter((pedido) => pedido.estado === 'pendiente').length;
               const isExpanded = expandedId === client.id;
               const isEditing = editingId === client.id;
+              const debt = Number.isFinite(client.debt) ? client.debt : 0;
 
               return (
                 <div key={client.id} className="inventory-row p-0">
                   <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                     <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setExpandedId(isExpanded ? null : client.id)}>
-                      <p className="type-subtitle text-[color:var(--text)]">{client.name}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="type-subtitle text-[color:var(--text)]">{client.name}</p>
+                        {debt > 0 && (
+                          <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-[color:var(--warning)]" style={{ background: 'var(--warning-soft)' }}>
+                            Debe {formatCurrency(debt)}
+                          </span>
+                        )}
+                      </div>
                       <p className="mt-0.5 text-xs text-[color:var(--muted)]">
                         {clientPedidos.length} pedido{clientPedidos.length === 1 ? '' : 's'}
                         {pendientes > 0 ? ` · ${pendientes} pendiente${pendientes === 1 ? '' : 's'}` : ''}
