@@ -1752,7 +1752,7 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     const computedDebtAmount = lastSellAction ? calculateSaleDebt(nextProducts, lastSellAction) : null;
 
     actions.forEach((action, index) => {
-      if (action.type === 'query_stock') {
+      if (action.type === 'query_stock' || action.type === 'query_pedidos') {
         return;
       }
 

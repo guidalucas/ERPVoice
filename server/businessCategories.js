@@ -9,6 +9,7 @@ export const BUSINESS_CATEGORIES = [
     promptExamples: [
       '"3 camisetas de boca titular, talle M" -> productType: "Camiseta", productModel: "Boca Titular", size: "M", productName: "Camiseta Boca Titular M"',
       '"¿Cuántas camisetas de Boca me quedan y qué talles tengo?" -> query_stock sin size',
+      '"¿Cuáles son los pedidos pendientes?" -> query_pedidos estado pendiente',
       '"ingresaron buzos de boca retro en talle XXL" -> add_stock con size "XXL"',
       '"Juan me pidió una camiseta de Boca titular talle M" -> client_order con size "M"',
       '"la camiseta de boca titular vale 70000" -> update_product con price (sin size = todos los talles)',
@@ -41,6 +42,7 @@ export const BUSINESS_CATEGORIES = [
     promptExamples: [
       '"10 canillas bronce medida 1/2" -> productType: "Canilla", productModel: "Bronce", size: "1/2", productName: "Canilla Bronce 1/2"',
       '"qué medidas tengo de prolongador" -> query_stock sin size',
+      '"¿Cuáles son los pedidos pendientes?" -> query_pedidos',
       '"ingresaron tornillos hexagonales medida 8mm" -> add_stock con size "8mm"',
       '"pedido: canilla bronce" -> client_order',
       '"la canilla bronce vale 4500" -> update_product',
@@ -89,6 +91,7 @@ export const BUSINESS_CATEGORIES = [
     promptExamples: [
       '"ingresaron 10 unidades de producto X" -> add_stock',
       '"cuánto stock tengo de producto Y" -> query_stock',
+      '"¿Cuáles son los pedidos que tengo pendiente?" -> query_pedidos',
       '"pedido: producto Z cantidad 3" -> client_order',
       '"el producto X vale 2000" -> update_product',
     ],
@@ -179,6 +182,7 @@ Contexto del rubro del negocio:
 ${variantLine}
 - Si la frase incluye tipo, modelo y variante, separá productType, productModel y size.
 - En query_stock NO pongas size salvo que el usuario pida una variante puntual: la consulta debe listar todas las variantes disponibles.
+- Si pregunta por pedidos pendientes / qué le pidieron / lista de pedidos, usá query_pedidos (no client_order).
 - update_product sin size aplica a TODAS las variantes del modelo. Solo incluí size si nombró una variante puntual.
 ${examples}
 `.trim();

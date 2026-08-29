@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ParsedVoicePayload, ParsedActionUnion } from '../domain/types';
+import { answerPedidosQuery } from '../domain/pedidoQuery';
 import { answerStockQuery } from '../domain/stockQuery';
 import { useBusinessCategoryPreset } from './useBusinessCategoryPreset';
 import { voiceModelService } from '../services/voiceModelService';
@@ -268,6 +269,17 @@ export const useChatBot = () => {
         continue;
       }
 
+      if (action.type === 'query_pedidos') {
+        const estado = action.estado && action.estado !== 'todos' ? action.estado : 'pendientes';
+        const scope = action.clientName
+          ? ` de ${action.clientName}`
+          : action.proveedorName
+            ? ` del proveedor ${action.proveedorName}`
+            : '';
+        lines.push(`${nextOtherIndex()}. query_pedidos -> ${estado}${scope}`);
+        continue;
+      }
+
       if (action.type === 'update_product') {
         const parts = [];
         if (Number.isFinite(action.price) && (action.price ?? 0) > 0) {
@@ -360,13 +372,21 @@ export const useChatBot = () => {
       return;
     }
 
-    const queryActions = enrichedParsed.actions.filter((action) => action.type === 'query_stock');
-    const mutationActions = enrichedParsed.actions.filter((action) => action.type !== 'query_stock');
+    const isReadOnlyAction = (action: ParsedActionUnion) =>
+      action.type === 'query_stock' || action.type === 'query_pedidos';
+    const queryActions = enrichedParsed.actions.filter(isReadOnlyAction);
+    const mutationActions = enrichedParsed.actions.filter((action) => !isReadOnlyAction(action));
 
     if (queryActions.length) {
       const answerText = queryActions
-        .map((action) =>
-          answerStockQuery(
+        .map((action) => {
+          if (action.type === 'query_pedidos') {
+            return answerPedidosQuery(state.pedidos, state.clients, state.proveedores, action, {
+              variantLabel: preset.variantLabel,
+            });
+          }
+
+          return answerStockQuery(
             state.products,
             {
               productName: action.productName,
@@ -375,8 +395,8 @@ export const useChatBot = () => {
               size: action.size,
             },
             { variantLabel: preset.variantLabel },
-          ),
-        )
+          );
+        })
         .join('\n\n');
       addChatMessage(createChatMessage('bot', answerText));
     }

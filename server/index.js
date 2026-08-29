@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { getBusinessCategoryPreset } from './businessCategories.js';
+import { answerPedidosQuery } from './pedidoQuery.js';
 import {
   createProductRecord,
   createClientRecord,
@@ -781,7 +782,9 @@ app.post('/api/state/apply', authenticateRequest, async (req, res) => {
     const clientPhone = tenantPhoneOf(req);
     const sourceText = typeof req.body?.sourceText === 'string' ? req.body.sourceText : '';
     const actions = Array.isArray(req.body?.actions) ? req.body.actions : [];
-    const mutationActions = actions.filter((action) => action?.type !== 'query_stock');
+    const mutationActions = actions.filter(
+      (action) => action?.type !== 'query_stock' && action?.type !== 'query_pedidos',
+    );
     const snapshot = await applyActionsToDatabase(mutationActions, sourceText, clientPhone);
     res.json(snapshot);
   } catch (error) {
@@ -928,15 +931,23 @@ const handleMetaWebhook = async (req, res) => {
       };
 
       const allActions = result.parsed?.actions ?? [];
-      const queryActions = allActions.filter((action) => action.type === 'query_stock');
-      const mutationActions = allActions.filter((action) => action.type !== 'query_stock');
+      const isReadOnlyAction = (action) => action.type === 'query_stock' || action.type === 'query_pedidos';
+      const queryActions = allActions.filter(isReadOnlyAction);
+      const mutationActions = allActions.filter((action) => !isReadOnlyAction(action));
       const categoryPreset = getBusinessCategoryPreset(result.businessCategory);
 
       let overrideReplyText = null;
       if (queryActions.length) {
         const snapshot = await getStateSnapshot(tenantPhone || result.fromNumber);
         overrideReplyText = queryActions
-          .map((action) => answerStockQuery(snapshot.products, action, { variantLabel: categoryPreset.variantLabel }))
+          .map((action) => {
+            if (action.type === 'query_pedidos') {
+              return answerPedidosQuery(snapshot.pedidos, snapshot.clients, snapshot.proveedores, action, {
+                variantLabel: categoryPreset.variantLabel,
+              });
+            }
+            return answerStockQuery(snapshot.products, action, { variantLabel: categoryPreset.variantLabel });
+          })
           .join('\n\n');
       }
 

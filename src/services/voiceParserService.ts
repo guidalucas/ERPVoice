@@ -129,6 +129,137 @@ const tryParseQueryStockAction = (fragment: string): ParsedActionUnion | null =>
   return null;
 };
 
+const QUERY_PEDIDOS_STOPWORDS = new Set([
+  'el',
+  'la',
+  'los',
+  'las',
+  'un',
+  'una',
+  'de',
+  'del',
+  'al',
+  'que',
+  'me',
+  'te',
+  'se',
+  'tengo',
+  'tiene',
+  'tienen',
+  'hay',
+  'son',
+  'esta',
+  'estan',
+  'pendiente',
+  'pendientes',
+  'conseguido',
+  'conseguidos',
+  'descartado',
+  'descartados',
+  'pedido',
+  'pedidos',
+  'cuales',
+  'cual',
+  'cuantos',
+  'cuantas',
+  'cuanto',
+  'lista',
+  'listado',
+  'todos',
+  'todas',
+  'mostrar',
+  'mostrame',
+  'decime',
+  'dime',
+  'cliente',
+  'clientes',
+  'proveedor',
+  'proveedores',
+  'mis',
+  'tus',
+  'sus',
+  'por',
+  'para',
+  'con',
+  'sin',
+  'registrados',
+]);
+
+const tryParseQueryPedidosAction = (fragment: string): ParsedActionUnion | null => {
+  const cleaned = String(fragment ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[¿?¡!.,;:]+$/g, '')
+    .trim();
+
+  if (!cleaned) {
+    return null;
+  }
+
+  if (
+    /\b(?:actualiza|cambia|modifica|borra|elimina|sac[aá]|quita|marc[aá]|descart[aá]|cancel[aá]|consegu[ií])\b/i.test(
+      cleaned,
+    )
+  ) {
+    return null;
+  }
+
+  if (
+    /^(?:pedido\s*:|tengo que (?:hacer un )?pedido\b|tengo que (?:pedir|encargar)\b|necesito (?:pedir|encargar)\b|hay que (?:pedir|encargar)\b)/i.test(
+      cleaned,
+    )
+  ) {
+    return null;
+  }
+
+  const looksLikeQuery =
+    /(?:cu[aá]les?\s+son|qu[eé]\s+(?:pedidos?|me\s+pidieron)|cu[aá]ntos?\s+pedidos?|lista(?:do)?\s+de\s+pedidos?|mostr[aá](?:me)?\s+(?:los\s+)?pedidos?|decime\s+(?:los\s+)?pedidos?|pedidos?\s+(?:que\s+)?(?:tengo|pendientes?)|pedidos?\s+pendientes?|tengo\s+pedidos?|qu[eé]\s+me\s+(?:pidieron|encargaron)|qu[eé]\s+tengo\s+(?:pendiente|que\s+conseguir))/i.test(
+      cleaned,
+    ) || /^(?:pedidos?(?:\s+pendientes?)?)$/i.test(cleaned);
+
+  if (!looksLikeQuery) {
+    return null;
+  }
+
+  let estado: 'pendiente' | 'conseguido' | 'descartado' | 'todos' = 'pendiente';
+  if (/\bconseguidos?\b/i.test(cleaned)) {
+    estado = 'conseguido';
+  } else if (/\bdescartados?\b/i.test(cleaned)) {
+    estado = 'descartado';
+  } else if (/\btodos?\s+(?:los\s+)?pedidos?\b/i.test(cleaned) && !/\bpendiente/i.test(cleaned)) {
+    estado = 'todos';
+  }
+
+  let clientName: string | undefined;
+  const clientMatch =
+    cleaned.match(/\b(?:del\s+cliente|tiene)\s+([a-záéíóúñü\s]+?)(?:\s+(?:pendiente|conseguido|descartado)s?)?$/iu) ||
+    cleaned.match(/\bpedidos?\s+de\s+([a-záéíóúñü]+(?:\s+[a-záéíóúñü]+)?)/iu);
+
+  if (clientMatch?.[1]) {
+    const raw = clientMatch[1].trim().replace(/\s+(?:pendiente|conseguido|descartado)s?$/i, '');
+    const tokens = raw.split(/\s+/).filter((token) => !QUERY_PEDIDOS_STOPWORDS.has(normalizeText(token)));
+    if (tokens.length && !/^(?:proveedor|producto)/i.test(tokens[0] ?? '')) {
+      clientName = tokens.map((token) => titleCase(token)).join(' ');
+    }
+  }
+
+  let proveedorName: string | undefined;
+  const proveedorMatch = cleaned.match(/\b(?:del\s+proveedor|al\s+proveedor|proveedor)\s+([a-záéíóúñü0-9\s]+)/iu);
+  if (proveedorMatch?.[1]) {
+    const raw = proveedorMatch[1].trim().replace(/\s+(?:pendiente|conseguido|descartado)s?$/i, '');
+    if (raw && !QUERY_PEDIDOS_STOPWORDS.has(normalizeText(raw))) {
+      proveedorName = titleCase(raw);
+    }
+  }
+
+  return {
+    type: 'query_pedidos',
+    estado,
+    ...(clientName ? { clientName } : {}),
+    ...(proveedorName ? { proveedorName } : {}),
+  };
+};
+
 const extractFirstNumber = (value: string) => {
   const match = value.match(/\b(\d+)\b/);
   return match ? Number(match[1]) : null;
@@ -270,6 +401,12 @@ const splitCompoundText = (value: string) =>
 
 const extractMultipleActionsFromText = (text: string): ParsedActionUnion[] => {
   const normalized = normalizeText(text);
+  const fullLine = normalized.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+  const queryPedidosAction = tryParseQueryPedidosAction(fullLine);
+  if (queryPedidosAction) {
+    return [queryPedidosAction];
+  }
+
   const fragments = splitCompoundText(normalized);
   const actions: ParsedActionUnion[] = [];
   let lastProductName: string | undefined;
@@ -430,14 +567,15 @@ const buildPayload = (
   actions: ParsedActionUnion[],
   options: Partial<Pick<ParsedVoicePayload, 'confidence' | 'requiresConfirmation' | 'missingFields' | 'suggestedPhrases' | 'intent'>> = {},
 ): ParsedVoicePayload => {
-  const allQueryStock = actions.length > 0 && actions.every((action) => action.type === 'query_stock');
+  const allReadOnly =
+    actions.length > 0 && actions.every((action) => action.type === 'query_stock' || action.type === 'query_pedidos');
 
   return {
     schemaVersion: 1,
     sourceText,
     intent: options.intent ?? inferIntent(actions),
     confidence: options.confidence ?? (actions.length > 1 ? 0.92 : 0.83),
-    requiresConfirmation: options.requiresConfirmation ?? (actions.length > 0 && !allQueryStock),
+    requiresConfirmation: options.requiresConfirmation ?? (actions.length > 0 && !allReadOnly),
     actions,
     missingFields: options.missingFields,
     suggestedPhrases: options.suggestedPhrases,
@@ -551,6 +689,23 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
     };
   }
 
+  if (value.type === 'query_pedidos') {
+    const estadoRaw = typeof value.estado === 'string' ? value.estado.trim().toLowerCase() : 'pendiente';
+    const estado =
+      estadoRaw === 'pendiente' || estadoRaw === 'conseguido' || estadoRaw === 'descartado' || estadoRaw === 'todos'
+        ? estadoRaw
+        : 'pendiente';
+    return {
+      type: 'query_pedidos',
+      estado,
+      ...(typeof value.clientName === 'string' && value.clientName.trim() ? { clientName: value.clientName.trim() } : {}),
+      ...(typeof value.proveedorName === 'string' && value.proveedorName.trim()
+        ? { proveedorName: value.proveedorName.trim() }
+        : {}),
+      ...(typeof value.productName === 'string' && value.productName.trim() ? { productName: value.productName.trim() } : {}),
+    };
+  }
+
   if (value.type === 'update_product' && typeof value.productName === 'string' && value.productName.trim()) {
     const priceValue = Number.isFinite(Number(value.price)) ? Number(value.price) : amount;
     const stockValue = Number(value.stockAvailable);
@@ -601,7 +756,15 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
 export class VoiceParserService {
   parse(text: string): ParsedVoicePayload {
     const normalized = normalizeText(text);
-    const queryStockAction = tryParseQueryStockAction(normalized.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim());
+    const fullLine = normalized.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+    const queryPedidosAction = tryParseQueryPedidosAction(fullLine);
+    if (queryPedidosAction) {
+      return buildPayload(text, [queryPedidosAction], {
+        intent: 'query_pedidos',
+        requiresConfirmation: false,
+      });
+    }
+    const queryStockAction = tryParseQueryStockAction(fullLine);
     if (queryStockAction) {
       return buildPayload(text, [queryStockAction], {
         intent: 'query_stock',
