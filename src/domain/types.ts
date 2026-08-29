@@ -46,6 +46,7 @@ export type VoiceIntent =
   | 'payment_received'
   | 'client_order'
   | 'query_stock'
+  | 'query_pedidos'
   | 'update_product'
   | 'update_pedido'
   | 'delete_pedido'
@@ -105,6 +106,13 @@ export type ParsedAction =
       productType?: string;
       productModel?: string;
       size?: string;
+    }
+  | {
+      type: 'query_pedidos';
+      estado?: PedidoEstado | 'todos';
+      clientName?: string;
+      proveedorName?: string;
+      productName?: string;
     }
   | {
       type: 'update_product';

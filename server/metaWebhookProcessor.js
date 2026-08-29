@@ -59,7 +59,7 @@ Convertí la frase del usuario en un JSON válido con esta estructura exacta:
 {
   "schemaVersion": 1,
   "sourceText": string,
-  "intent": "add_stock" | "reserve_stock" | "sell" | "add_debt" | "payment_received" | "client_order" | "query_stock" | "update_product" | "update_pedido" | "delete_pedido" | "delete_product" | "mixed" | "unknown",
+  "intent": "add_stock" | "reserve_stock" | "sell" | "add_debt" | "payment_received" | "client_order" | "query_stock" | "query_pedidos" | "update_product" | "update_pedido" | "delete_pedido" | "delete_product" | "mixed" | "unknown",
   "confidence": number,
   "requiresConfirmation": boolean,
   "actions": [
@@ -70,6 +70,7 @@ Convertí la frase del usuario en un JSON válido con esta estructura exacta:
     { "type": "payment_received", "clientName": string, "amount": number },
     { "type": "client_order", "clientName"?: string, "proveedorName"?: string, "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty"?: number },
     { "type": "query_stock", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string },
+    { "type": "query_pedidos", "estado"?: "pendiente" | "conseguido" | "descartado" | "todos", "clientName"?: string, "proveedorName"?: string, "productName"?: string },
     { "type": "update_product", "productName": string, "productType"?: string, "productModel"?: string, "size"?: string, "price"?: number, "stockAvailable"?: number },
     { "type": "update_pedido", "productName": string, "qty"?: number, "size"?: string, "estado"?: "pendiente" | "conseguido" | "descartado", "clientName"?: string },
     { "type": "delete_pedido", "productName": string, "clientName"?: string },
@@ -103,6 +104,11 @@ Reglas generales:
 - Diferenciá claramente: "compré / compraron / entraron / llegaron / ingreso / ingresaron / recibí" = add_stock; "me pidió / pidió / quiere / encargó / pedido: / tengo que pedir" = client_order.
 - Si el usuario pregunta cuánto stock queda, qué variantes hay, o consulta inventario (sin indicar que compró/vendió/pidió nada), usá query_stock. NO mutes stock. requiresConfirmation debe ser false.
 - query_stock requiere productName. Si menciona tipo y modelo, separá productType y productModel.
+- Si el usuario pregunta qué pedidos tiene, cuáles están pendientes, qué le pidieron, o pide la lista de pedidos, usá query_pedidos. NO crees ni actualices pedidos. requiresConfirmation debe ser false.
+- query_pedidos: estado default "pendiente". Si pregunta por conseguidos, descartados o todos, usá ese estado. clientName, proveedorName y productName son opcionales.
+- Diferenciá: "Juan me pidió una camiseta" (con producto) = client_order. "cuáles son los pedidos pendientes" / "qué pedidos tengo" / "qué me pidieron" = query_pedidos.
+- Ejemplo: "Cuáles son los pedidos que tengo pendiente?" -> [{"type":"query_pedidos","estado":"pendiente"}].
+- Ejemplo: "Pedidos pendientes de Juan" -> [{"type":"query_pedidos","estado":"pendiente","clientName":"Juan"}].
 - Si no hay cantidad explícita en un ingreso/compra, usá qty 1.
 - Si una frase tiene dos movimientos, devolvé dos objetos en actions.
 - Ejemplo genérico: "compre 20 unidades de X, les deje 3 al gimnasio" -> [{"type":"add_stock","productName":"X","qty":20},{"type":"reserve_stock","productName":"X","qty":3,"clientName":"gimnasio"}].
@@ -404,15 +410,17 @@ const inferIntent = (actions) => {
   return uniqueTypes.size > 1 ? 'mixed' : actions[0].type;
 };
 
+const isReadOnlyAction = (action) => action?.type === 'query_stock' || action?.type === 'query_pedidos';
+
 const buildPayload = (sourceText, actions, options = {}) => {
-  const allQueryStock = actions.length > 0 && actions.every((action) => action.type === 'query_stock');
+  const allReadOnly = actions.length > 0 && actions.every(isReadOnlyAction);
 
   return {
     schemaVersion: 1,
     sourceText,
     intent: options.intent ?? inferIntent(actions),
     confidence: options.confidence ?? (actions.length > 1 ? 0.92 : 0.83),
-    requiresConfirmation: options.requiresConfirmation ?? (actions.length > 0 && !allQueryStock),
+    requiresConfirmation: options.requiresConfirmation ?? (actions.length > 0 && !allReadOnly),
     actions,
     missingFields: options.missingFields,
     suggestedPhrases: options.suggestedPhrases,
@@ -541,6 +549,18 @@ const parseAction = (value) => {
       productType,
       productModel,
       size,
+    };
+  }
+
+  if (value.type === 'query_pedidos') {
+    const estadoRaw = typeof value.estado === 'string' ? value.estado.trim().toLowerCase() : 'pendiente';
+    const estado = ['pendiente', 'conseguido', 'descartado', 'todos'].includes(estadoRaw) ? estadoRaw : 'pendiente';
+    return {
+      type: 'query_pedidos',
+      estado,
+      ...(typeof value.clientName === 'string' && value.clientName.trim() ? { clientName: value.clientName.trim() } : {}),
+      ...(typeof value.proveedorName === 'string' && value.proveedorName.trim() ? { proveedorName: value.proveedorName.trim() } : {}),
+      ...(typeof value.productName === 'string' && value.productName.trim() ? { productName: value.productName.trim() } : {}),
     };
   }
 
@@ -674,6 +694,137 @@ const tryParseQueryStockAction = (fragment) => {
   return null;
 };
 
+const QUERY_PEDIDOS_STOPWORDS = new Set([
+  'el',
+  'la',
+  'los',
+  'las',
+  'un',
+  'una',
+  'de',
+  'del',
+  'al',
+  'que',
+  'me',
+  'te',
+  'se',
+  'tengo',
+  'tiene',
+  'tienen',
+  'hay',
+  'son',
+  'esta',
+  'estan',
+  'pendiente',
+  'pendientes',
+  'conseguido',
+  'conseguidos',
+  'descartado',
+  'descartados',
+  'pedido',
+  'pedidos',
+  'cuales',
+  'cual',
+  'cuantos',
+  'cuantas',
+  'cuanto',
+  'lista',
+  'listado',
+  'todos',
+  'todas',
+  'mostrar',
+  'mostrame',
+  'decime',
+  'dime',
+  'cliente',
+  'clientes',
+  'proveedor',
+  'proveedores',
+  'mis',
+  'tus',
+  'sus',
+  'por',
+  'para',
+  'con',
+  'sin',
+  'registrados',
+]);
+
+const tryParseQueryPedidosAction = (fragment) => {
+  const cleaned = String(fragment ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[¿?¡!.,;:]+$/g, '')
+    .trim();
+
+  if (!cleaned) {
+    return null;
+  }
+
+  if (
+    /\b(?:actualiza|cambia|modifica|borra|elimina|sac[aá]|quita|marc[aá]|descart[aá]|cancel[aá]|consegu[ií])\b/i.test(
+      cleaned,
+    )
+  ) {
+    return null;
+  }
+
+  if (
+    /^(?:pedido\s*:|tengo que (?:hacer un )?pedido\b|tengo que (?:pedir|encargar)\b|necesito (?:pedir|encargar)\b|hay que (?:pedir|encargar)\b)/i.test(
+      cleaned,
+    )
+  ) {
+    return null;
+  }
+
+  const looksLikeQuery =
+    /(?:cu[aá]les?\s+son|qu[eé]\s+(?:pedidos?|me\s+pidieron)|cu[aá]ntos?\s+pedidos?|lista(?:do)?\s+de\s+pedidos?|mostr[aá](?:me)?\s+(?:los\s+)?pedidos?|decime\s+(?:los\s+)?pedidos?|pedidos?\s+(?:que\s+)?(?:tengo|pendientes?)|pedidos?\s+pendientes?|tengo\s+pedidos?|qu[eé]\s+me\s+(?:pidieron|encargaron)|qu[eé]\s+tengo\s+(?:pendiente|que\s+conseguir))/i.test(
+      cleaned,
+    ) || /^(?:pedidos?(?:\s+pendientes?)?)$/i.test(cleaned);
+
+  if (!looksLikeQuery) {
+    return null;
+  }
+
+  let estado = 'pendiente';
+  if (/\bconseguidos?\b/i.test(cleaned)) {
+    estado = 'conseguido';
+  } else if (/\bdescartados?\b/i.test(cleaned)) {
+    estado = 'descartado';
+  } else if (/\btodos?\s+(?:los\s+)?pedidos?\b/i.test(cleaned) && !/\bpendiente/i.test(cleaned)) {
+    estado = 'todos';
+  }
+
+  let clientName;
+  const clientMatch =
+    cleaned.match(/\b(?:del\s+cliente|tiene)\s+([a-záéíóúñü\s]+?)(?:\s+(?:pendiente|conseguido|descartado)s?)?$/iu) ||
+    cleaned.match(/\bpedidos?\s+de\s+([a-záéíóúñü]+(?:\s+[a-záéíóúñü]+)?)/iu);
+
+  if (clientMatch?.[1]) {
+    const raw = clientMatch[1].trim().replace(/\s+(?:pendiente|conseguido|descartado)s?$/i, '');
+    const tokens = raw.split(/\s+/).filter((token) => !QUERY_PEDIDOS_STOPWORDS.has(normalizeText(token)));
+    if (tokens.length && !/^(?:proveedor|producto)/i.test(tokens[0])) {
+      clientName = tokens.map((token) => titleCase(token)).join(' ');
+    }
+  }
+
+  let proveedorName;
+  const proveedorMatch = cleaned.match(/\b(?:del\s+proveedor|al\s+proveedor|proveedor)\s+([a-záéíóúñü0-9\s]+)/iu);
+  if (proveedorMatch?.[1]) {
+    const raw = proveedorMatch[1].trim().replace(/\s+(?:pendiente|conseguido|descartado)s?$/i, '');
+    if (raw && !QUERY_PEDIDOS_STOPWORDS.has(normalizeText(raw))) {
+      proveedorName = titleCase(raw);
+    }
+  }
+
+  return {
+    type: 'query_pedidos',
+    estado,
+    ...(clientName ? { clientName } : {}),
+    ...(proveedorName ? { proveedorName } : {}),
+  };
+};
+
 const tryParseMutationAction = (fragment) => {
   const updatePriceMatch = fragment.match(
     /^(?:(?:la|el|las|los)\s+)?(.+?)\s+(?:vale|cuesta|sale|precio(?:\s+(?:es|actual))?\s*(?:es|de|=|:)?)\s*\$?\s*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]+)?)\s*$/u,
@@ -773,6 +924,10 @@ const extractMultipleActionsFromText = (text) => {
 
   // Texto completo (conserva comas) para updates del tipo "actualiza el pedido de X, la cantidad son 5"
   const fullLine = normalized.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+  const queryPedidosAction = tryParseQueryPedidosAction(fullLine);
+  if (queryPedidosAction) {
+    return [queryPedidosAction];
+  }
   const queryStockAction = tryParseQueryStockAction(fullLine);
   if (queryStockAction) {
     return [queryStockAction];
@@ -1332,6 +1487,16 @@ const formatAction = (action, preset = getBusinessCategoryPreset('general')) => 
 
   if (action.type === 'query_stock') {
     return `Consulta stock de ${action.productName}`;
+  }
+
+  if (action.type === 'query_pedidos') {
+    const estado = action.estado && action.estado !== 'todos' ? action.estado : 'pendientes';
+    const scope = action.clientName
+      ? ` de ${action.clientName}`
+      : action.proveedorName
+        ? ` del proveedor ${action.proveedorName}`
+        : '';
+    return `Consulta pedidos ${estado}${scope}`;
   }
 
   if (action.type === 'update_product') {
