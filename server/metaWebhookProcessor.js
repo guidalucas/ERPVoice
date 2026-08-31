@@ -6,15 +6,16 @@ import {
   formatVariantRef,
   getBusinessCategoryPreset,
 } from './businessCategories.js';
+import { formatCatalogPromptSection, groundActionsAgainstCatalog, hasProductMatchHold } from './voiceCatalogContext.js';
 
 const DEFAULT_MODEL_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
-const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+const DEFAULT_MODEL = 'openai/gpt-oss-20b';
 const DEFAULT_TRANSCRIPTION_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
 const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-large-v3-turbo';
 const DEFAULT_META_GRAPH_API_VERSION = 'v21.0';
 const MAX_CONVERSATION_TURNS = 4;
 const MAX_CONTEXT_REPLY_CHARS = 450;
-const MAX_MODEL_OUTPUT_TOKENS = 8192;
+const MAX_MODEL_OUTPUT_TOKENS = 2048;
 
 const truncateText = (value, maxChars) => {
   const text = String(value ?? '').trim();
@@ -92,10 +93,16 @@ const looksLikeInventoryCatalog = (text) => {
     return false;
   }
 
+  if (
+    /\b(?:elimina(?:r)?(?:l[ao]s?)?|borra(?:r)?(?:l[ao]s?)?|no existe|esta de mas)\b/.test(normalized)
+  ) {
+    return false;
+  }
+
   const productHits = (normalized.match(/\b(?:camiseta|camisetas|buzo|buzos|short|shorts|la de|las de)\b/g) || []).length;
   const teamHits = (
     normalized.match(
-      /\b(?:river|boca|independiente|racing|argentina|chelsea|genoa|inter|psg|paris|saint germain)\b/g,
+      /\b(?:river|boca|independiente|racing|argentina|velez|chelsea|genoa|inter|psg|paris|saint germain|madrid)\b/g,
     ) || []
   ).length;
   const priceMentions = (normalized.match(/\b(?:vale|valen|cuesta|cuestan|sale|salen|precio)\b/g) || []).length;
@@ -104,6 +111,25 @@ const looksLikeInventoryCatalog = (text) => {
   const distinctItems = Math.max(productHits, teamHits, priceMentions);
 
   return distinctItems >= 3 && (hasPrice || hasSize);
+};
+
+const looksLikeDeleteProducts = (text) => {
+  const normalized = normalizeText(String(text ?? ''))
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) {
+    return false;
+  }
+
+  if (/\bpedido\b/.test(normalized) && /\b(?:elimina|borra|saca|quita)\b/.test(normalized)) {
+    return false;
+  }
+
+  return (
+    /\b(?:elimina(?:r)?(?:l[ao]s?)?|borra(?:r)?(?:l[ao]s?)?|sac[aá](?:l[ao]s?)?|quita(?:r)?(?:l[ao]s?)?)\b/.test(
+      normalized,
+    ) || /\b(?:no existe|esta de mas)\b/.test(normalized)
+  );
 };
 
 const findLastCatalogUserText = (conversationTurns = []) => {
@@ -137,15 +163,41 @@ const buildOperationHint = (text, conversationTurns = []) => {
       ? `\nListado a cargar (extraé CADA producto, no lo resumas):\n${previous}`
       : '\nSi el contexto tiene un listado de productos, extraé CADA uno.';
 
-    return `El mensaje actual pide CARGAR AL STOCK lo dictado antes. Devolvé un add_stock por cada producto. qty 1 si no hay cantidad. "vale/cuesta/sale" es el price del ingreso, NO update_product. Atributos globales (talle, versión jugador, precio) aplican a todos. Convertí "65 mil" a 65000. NO devuelvas actions vacío.${listado}`;
+    return `El mensaje actual pide CARGAR AL STOCK lo dictado antes. Devolvé un add_stock por cada producto del listado. qty 1 si no hay cantidad. "vale/cuesta/sale" es el price del ingreso, NO update_product. Atributos globales (variante, versión, precio) aplican a todos. Convertí "N mil" a N*1000. Un ítem = una acción. NO devuelvas actions vacío.${listado}`;
+  }
+
+  if (looksLikeDeleteProducts(text)) {
+    return 'El usuario pide ELIMINAR productos del inventario (delete_product), NO pedidos. "eliminarla", "borrala", "no existe", "está de más", "la de X", "la que se llama X" son delete_product. Resolvé cada uno contra el inventario. Si un modelo tiene varias variantes y no dijo cuál, NO borres: missingFields ["productMatch"] y suggestedPhrases con cada SKU. NO uses unknown ni actions vacío.';
   }
 
   if (looksLikeInventoryCatalog(text)) {
-    return 'Esto es un LISTADO DE INGRESO de mercadería nueva (add_stock), no una actualización de precios. Aunque el usuario diga "vale / cuesta / sale", usá add_stock con ese price. Un add_stock por cada producto/modelo distinto. qty 1 si no hay cantidad. Atributos globales ("todo talle S", "todas versión jugador", "todo sale 65 mil") aplican a TODOS los ítems. Convertí "65 mil" a 65000. Incluí versión (jugador/fan) y equipación (titular/suplente/tercera) en productModel. NO uses update_product. NO uses intent unknown ni actions vacío.';
+    return 'Esto es un LISTADO DE INGRESO (add_stock), no una actualización de precios. Un add_stock por cada producto distinto. Nunca concatenes varios ítems en un productName. qty 1 si no hay cantidad. Atributos globales ("todo talle/número X", "todas versión Y", "todo vale N") aplican a TODOS. Si corrige el atributo al final, usá el último. Convertí "N mil" a N*1000. Copiá el estilo de nombres del inventario. NO uses update_product ni actions vacío.';
   }
 
   return '';
 };
+
+const looksLikeCoordinatedStockOps = (text) => {
+  const normalized = normalizeText(text);
+  const hasSell = /\b(?:vendi|vendio|vendiste|vendieron)\b/.test(normalized);
+  const hasAdd = /\b(?:compre|compra|llegaron|llegó|llegó|entraron|recibi|recibieron|ingreso|ingresaron|carg[aeá]|agreg[aeá])\b/.test(
+    normalized,
+  );
+  return hasSell && hasAdd;
+};
+
+const MUTATING_ACTION_TYPES = new Set([
+  'add_stock',
+  'sell',
+  'delete_product',
+  'update_product',
+  'reserve_stock',
+  'add_debt',
+  'payment_received',
+  'client_order',
+  'update_pedido',
+  'delete_pedido',
+]);
 
 const coerceCatalogActions = (actions, { forceAddStock = false } = {}) => {
   if (!forceAddStock || !Array.isArray(actions) || !actions.length) {
@@ -169,9 +221,9 @@ const coerceCatalogActions = (actions, { forceAddStock = false } = {}) => {
   });
 };
 
-const buildPrompt = (text, preset, conversationTurns = [], operationHint = '') => `
-Sos un analista de operaciones para Stocky, un sistema de stock y pedidos (de clientes o propios al proveedor) para un negocio.
-Convertí la frase del usuario en un JSON válido con esta estructura exacta:
+const buildPrompt = (text, preset, conversationTurns = [], operationHint = '', catalog = null) => `
+Sos un analista de operaciones para Stocky, un ERP de stock y pedidos.
+Convertí la frase del usuario en JSON con esta estructura:
 {
   "schemaVersion": 1,
   "sourceText": string,
@@ -198,46 +250,25 @@ Convertí la frase del usuario en un JSON válido con esta estructura exacta:
 
 ${buildCategoryPromptContext(preset)}
 
+${formatCatalogPromptSection(catalog, text)}
+
 ${formatConversationContext(conversationTurns)}
 ${operationHint ? `\nInstrucción extra de operación:\n${operationHint}\n` : ''}
-Reglas generales:
-- Respondé solo JSON, sin markdown ni texto extra.
-- Si faltan datos críticos, llená missingFields.
-- Si detectás múltiples acciones, intent debe ser "mixed".
-- sourceText debe ser el texto original del mensaje actual (no el del contexto).
-- confidence debe estar entre 0 y 1.
-- Nunca devuelvas acciones con qty 0.
-- Si el texto indica que un cliente te pagó dinero, usá payment_received y no add_debt.
-- Si el texto dice que un cliente te tiene que pagar por productos o que todavía no te los pagó, usá sell y también add_debt con clientName, productName, qty y amount 0 si todavía no podés calcularlo.
-- Si ya tenés productName y qty, no pidas precio unitario: devolvé la venta y dejá amount en 0 para que el ERP lo calcule.
-- Si la frase menciona precio unitario, completá price en add_stock o sell con ese valor numérico.
-- Si la frase dice "para X" en una reserva, separá X como clientName y dejá solo el producto en productName.
-- Usá client_order para pedidos: si un cliente te pidió algo ("Juan me pidió…") O si vos tenés que pedir/encargar al proveedor ("pedido: …", "tengo que pedir …", lista bajo "pedido:"). NO uses reserve_stock ni sell. Un pedido NO mueve stock.
-- client_order requiere productName. clientName es OPCIONAL: si no hay cliente, omitilo o usá "". qty default 1.
-- Si mencionás el proveedor ("pedido del proveedor Acme", "encargar a Distribuidora X"), incluí proveedorName.
-- Si el texto es una lista (una línea por producto) bajo "pedido:", creá un client_order por cada ítem.
-- Si dice "cantidad N" al final, usá ese N como qty.
-- Diferenciá claramente: "compré / compraron / entraron / llegaron / ingreso / ingresaron / recibí / carga / cargá / cargar / agregá / es lo nuevo que ingresó" = add_stock; "me pidió / pidió / quiere / encargó / pedido: / tengo que pedir" = client_order.
-- Si el usuario pregunta cuánto stock queda, qué variantes hay, o consulta inventario (sin indicar que compró/vendió/pidió nada), usá query_stock. NO mutes stock. requiresConfirmation debe ser false.
-- query_stock requiere productName. Si menciona tipo y modelo, separá productType y productModel.
-- Si el usuario pregunta qué pedidos tiene, cuáles están pendientes, qué le pidieron, o pide la lista de pedidos, usá query_pedidos. NO crees ni actualices pedidos. requiresConfirmation debe ser false.
-- query_pedidos: estado default "pendiente". Si pregunta por conseguidos, descartados o todos, usá ese estado. clientName, proveedorName y productName son opcionales.
-- Diferenciá: "Juan me pidió una camiseta" (con producto) = client_order. "cuáles son los pedidos pendientes" / "qué pedidos tengo" / "qué me pidieron" = query_pedidos.
-- Ejemplo: "Cuáles son los pedidos que tengo pendiente?" -> [{"type":"query_pedidos","estado":"pendiente"}].
-- Ejemplo: "Pedidos pendientes de Juan" -> [{"type":"query_pedidos","estado":"pendiente","clientName":"Juan"}].
-- Si no hay cantidad explícita en un ingreso/compra, usá qty 1. Nunca omitas qty en add_stock.
-- Si una frase tiene dos movimientos, devolvé dos objetos en actions.
-- Ejemplo genérico: "compre 20 unidades de X, les deje 3 al gimnasio" -> [{"type":"add_stock","productName":"X","qty":20},{"type":"reserve_stock","productName":"X","qty":3,"clientName":"gimnasio"}].
-- Ejemplo genérico: "Pedido: producto A cantidad 3" -> [{"type":"client_order","productName":"Producto A","qty":3}].
-- Ejemplo genérico: "pedido: prolongador\\ncanilla bronce" -> [{"type":"client_order","productName":"Prolongador","qty":1},{"type":"client_order","productName":"Canilla bronce","qty":1}].
-- "vale / cuesta / precio / sale" = update_product SOLO si es un cambio de precio de un producto ya cargado, en una frase corta (ej. "la camiseta de Boca titular vale 70000").
-- Si el usuario dicta un LISTADO de mercadería (varios productos, talles, versiones, precios) es add_stock, aunque use "vale 65 mil". Un add_stock por cada producto. NO uses update_product.
-- "65 mil" / "65 mil pesos" = price 65000. Convertí "N mil" a N*1000.
-- Versión (jugador/fan) y equipación (titular/suplente/tercera/año) van en productModel, no en size.
-- Si actualiza un pedido existente (cantidad, variante/size o estado), usá update_pedido.
-- "el pedido de X ya está conseguido / marcá como conseguido" -> update_pedido con estado "conseguido". "descartá el pedido" -> estado "descartado".
-- "borrá / eliminá el pedido de X" -> delete_pedido. "borrá el producto X" -> delete_product.
-- update_product y update_pedido NO crean registros nuevos: solo modifican existentes.
+Reglas:
+- Solo JSON, sin markdown.
+- sourceText = mensaje actual. confidence 0..1. Nunca qty 0.
+- Un producto distinto = una acción. NUNCA concatenes varios ítems en un productName.
+- Atributos globales ("todo en talle/número X", "todas versión Y", "todo vale N") aplican a todos los ítems. Si corrige al final, usá el último valor.
+- "N mil" = N*1000. Price solo es plata, nunca gramos/ml/kg.
+- Ingreso / carga / compré / entraron / recibí = add_stock. En un listado, "vale/cuesta" es price del ingreso, NO update_product. qty 1 si no hay cantidad.
+- "eliminá / borrala / no existe / está de más / la de X / la que se llama X" = delete_product. Si hay inventario, usá el nombre exacto. Si el modelo tiene varias variantes y no dijo cuál, NO borres: missingFields ["productMatch"] y suggestedPhrases con cada SKU candidato.
+- "borrá el pedido de X" = delete_pedido. "conseguido/descartado" sobre un pedido = update_pedido.
+- Consulta de stock = query_stock (sin mutar). Consulta de pedidos = query_pedidos. Preguntas como "¿qué me pidió Juan?", "¿qué pedidos hay pendientes?", "mostrame los pedidos de María" son query_pedidos, NUNCA client_order.
+- client_order es SOLO cuando el usuario ANOTA un pedido nuevo: "Juan me pidió una camiseta", "anotame que María quiere un mate".
+- Pago recibido = payment_received. Reserva "para X" = reserve_stock + clientName.
+- update_product / update_pedido solo modifican existentes.
+- Si el mensaje tiene DOS operaciones distintas unidas con "y" / "además" / "pero" (ej: "vendí una de Boca y me llegaron 5 de River"), devolvé UN action por cláusula, types distintos, intent "mixed". No te quedes con la última ni fusiones las cláusulas.
+- Si no hay match claro contra el inventario (varios SKUs posibles y el usuario no dijo la variante), missingFields: ["productMatch"] y suggestedPhrases con candidatos. Aplica a delete_product, sell, add_stock y client_order. No ejecutes.
 
 Texto del usuario (mensaje actual):
 ${text}
@@ -303,7 +334,7 @@ const parseProductDescriptor = (value) => {
   const sizeMatch = normalized.match(new RegExp(`(?:,\\s*|\\s+)(?:${VARIANT_KEYWORD_ALT})\\s+([a-z0-9\\/]+)\\b`, 'i'));
   const size = sizeMatch ? String(sizeMatch[1]).toUpperCase() : undefined;
   const withoutSize = normalized.replace(new RegExp(`(?:,\\s*|\\s+)(?:${VARIANT_KEYWORD_ALT})\\s+[a-z0-9\\/]+\\b`, 'i'), '').trim();
-  const descriptorParts = withoutSize.split(/\s+de\s+/i);
+  const descriptorParts = withoutSize.split(/\s+del?\s+/i);
   const rawProductType = descriptorParts[0] ?? withoutSize;
   const rawProductModel = descriptorParts.slice(1).join(' de ') || undefined;
 
@@ -316,6 +347,86 @@ const parseProductDescriptor = (value) => {
     size,
     productName: composeProductName({ productType, productModel, size, fallback: value }),
   };
+};
+
+const extractDeleteProductActions = (text) => {
+  const cleaned = String(text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!looksLikeDeleteProducts(cleaned)) {
+    return [];
+  }
+
+  const normalized = normalizeText(cleaned);
+  const defaultType = /\bcamisetas?\b/.test(normalized)
+    ? 'Camiseta'
+    : /\bbuzos?\b/.test(normalized)
+      ? 'Buzo'
+      : /\bshorts?\b/.test(normalized)
+        ? 'Short'
+        : '';
+
+  const actions = [];
+  const seen = new Set();
+
+  const pushName = (raw) => {
+    let value = normalizeText(String(raw ?? ''))
+      .replace(/\b(?:no existe|esta de mas|elimina(?:r)?(?:l[ao]s?)?|borra(?:r)?(?:l[ao]s?)?|esa|ese|eso|tambien)\b/g, ' ')
+      .replace(/[.,;:]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    value = value.replace(/^(?:la|el|las|los|de|del)\s+/, '').trim();
+    value = value.replace(/\s+(?:la|el|las|los|de|del)$/, '').trim();
+    value = value.replace(/\ben version (jugador|fan)\b/g, 'versión $1');
+    if (value.length < 3 || /^(?:esa|ese|eso|la|el|las|los|un|una|de|del|tambien|mas)$/.test(value)) {
+      return;
+    }
+    if (/^(?:par de camisetas?|camisetas? de mas|de mas)$/.test(value)) {
+      return;
+    }
+
+    const titled = titleCase(value);
+    const alreadyTyped = /^(?:camiseta|buzo|short)\b/i.test(titled);
+    const prefixed = defaultType && !alreadyTyped ? `${defaultType} ${titled}` : titled;
+    const productDescriptor = parseProductDescriptor(prefixed);
+    const productName = productDescriptor.productName || prefixed;
+    const key = normalizeText(productName);
+    if (!productName || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    actions.push({
+      type: 'delete_product',
+      productName,
+      productType: productDescriptor.productType,
+      productModel: productDescriptor.productModel,
+      size: productDescriptor.size,
+    });
+  };
+
+  for (const match of normalized.matchAll(
+    /\bla de(?:l)?\s+(.+?)(?=\s+(?:no existe|esta de mas|elimin|borra|saca|quita)|,|$)/g,
+  )) {
+    pushName(match[1]);
+  }
+
+  for (const match of normalized.matchAll(
+    /\b(?:la|el) que se llama\s+(.+?)(?=\s+(?:tambien\s+)?(?:esta de mas|elimin|borra|no existe)|,|$)/g,
+  )) {
+    pushName(match[1]);
+  }
+
+  for (const match of normalized.matchAll(
+    /\b(?:elimina(?:r)?|borra(?:r)?|saca|quita(?:r)?)\s+(?:el\s+)?(?:producto\s+)?(?!pedido\b)(.+?)(?=\s+y\s+|,|$)/g,
+  )) {
+    const raw = String(match[1] ?? '').trim();
+    if (/^(?:la|lo|las|los|esa|ese|eso)$/i.test(raw)) {
+      continue;
+    }
+    pushName(raw);
+  }
+
+  return actions;
 };
 
 const parseQtyAndProductText = (value) => {
@@ -553,6 +664,25 @@ const buildPayload = (sourceText, actions, options = {}) => {
     actions,
     missingFields: options.missingFields,
     suggestedPhrases: options.suggestedPhrases,
+  };
+};
+
+const withCatalogGrounding = (payload, catalog) => {
+  if (!payload?.actions?.length) {
+    return payload;
+  }
+
+  const grounded = groundActionsAgainstCatalog(payload.actions, catalog);
+  const missingFields = [...new Set([...(payload.missingFields || []), ...(grounded.missingFields || [])])];
+  const suggestedPhrases = grounded.suggestedPhrases?.length ? grounded.suggestedPhrases : payload.suggestedPhrases;
+
+  return {
+    ...payload,
+    actions: grounded.actions,
+    intent: inferIntent(grounded.actions) || payload.intent,
+    requiresConfirmation: Boolean(payload.requiresConfirmation || grounded.requiresConfirmation),
+    missingFields: missingFields.length ? missingFields : undefined,
+    suggestedPhrases,
   };
 };
 
@@ -884,6 +1014,7 @@ const tryParseQueryPedidosAction = (fragment) => {
   const cleaned = String(fragment ?? '')
     .replace(/\s+/g, ' ')
     .trim()
+    .replace(/^[¿?¡!]+/, '')
     .replace(/[¿?¡!.,;:]+$/g, '')
     .trim();
 
@@ -908,7 +1039,7 @@ const tryParseQueryPedidosAction = (fragment) => {
   }
 
   const looksLikeQuery =
-    /(?:cu[aá]les?\s+son|qu[eé]\s+(?:pedidos?|me\s+pidieron)|cu[aá]ntos?\s+pedidos?|lista(?:do)?\s+de\s+pedidos?|mostr[aá](?:me)?\s+(?:los\s+)?pedidos?|decime\s+(?:los\s+)?pedidos?|pedidos?\s+(?:que\s+)?(?:tengo|pendientes?)|pedidos?\s+pendientes?|tengo\s+pedidos?|qu[eé]\s+me\s+(?:pidieron|encargaron)|qu[eé]\s+tengo\s+(?:pendiente|que\s+conseguir))/i.test(
+    /(?:cu[aá]les?\s+son|qu[eé]\s+(?:pedidos?|me\s+pidi[oó]|me\s+pidieron|pidio|pidi[oó]|pidieron)|cu[aá]ntos?\s+pedidos?|lista(?:do)?\s+de\s+pedidos?|mostr[aá](?:me)?\s+(?:los\s+)?pedidos?|decime\s+(?:los\s+)?pedidos?|pedidos?\s+(?:que\s+)?(?:tengo|pendientes?)|pedidos?\s+pendientes?|tengo\s+pedidos?|qu[eé]\s+me\s+(?:pidio|pidi[oó]|pidieron|encargo|encarg[oó]|encargaron)|qu[eé]\s+tengo\s+(?:pendiente|que\s+conseguir)|qu[eé]\s+(?:le\s+)?(?:pidio|pidi[oó]|pidieron)\s+)/i.test(
       cleaned,
     ) || /^(?:pedidos?(?:\s+pendientes?)?)$/i.test(cleaned);
 
@@ -927,6 +1058,8 @@ const tryParseQueryPedidosAction = (fragment) => {
 
   let clientName;
   const clientMatch =
+    cleaned.match(/\b(?:qu[eé]|cual(?:es)?)\s+me\s+(?:pidio|pidi[oó]|pidieron|encargo|encarg[oó]|encargaron)\s+([a-záéíóúñü]+(?:\s+[a-záéíóúñü]+)?)/iu) ||
+    cleaned.match(/\b(?:qu[eé]|cual(?:es)?)\s+(?:le\s+)?(?:pidio|pidi[oó]|pidieron)\s+([a-záéíóúñü]+(?:\s+[a-záéíóúñü]+)?)/iu) ||
     cleaned.match(/\b(?:del\s+cliente|tiene)\s+([a-záéíóúñü\s]+?)(?:\s+(?:pendiente|conseguido|descartado)s?)?$/iu) ||
     cleaned.match(/\bpedidos?\s+de\s+([a-záéíóúñü]+(?:\s+[a-záéíóúñü]+)?)/iu);
 
@@ -1023,11 +1156,14 @@ const tryParseMutationAction = (fragment) => {
   }
 
   const deleteProductMatch = fragment.match(
-    /^(?:borra(?:r)?|elimin[aá](?:r)?|sac[aá]|quita(?:r)?)\s+(?:el\s+)?producto\s+(.+)$/u,
+    /^(?:borra(?:r)?(?:l[ao]s?)?|elimin[aá](?:r)?(?:l[ao]s?)?|sac[aá](?:l[ao]s?)?|quita(?:r)?(?:l[ao]s?)?)\s+(?:el\s+)?(?:producto\s+)?(.+)$/u,
   );
   if (deleteProductMatch) {
-    const productText = deleteProductMatch[1].trim();
-    if (productText) {
+    const productText = deleteProductMatch[1]
+      .trim()
+      .replace(/^(?:esa|ese|eso|esta|este)\s+/i, '')
+      .trim();
+    if (productText && !/^(?:esa|ese|eso|la|lo|las|los|el)$/i.test(productText) && !/\bpedido\b/i.test(productText)) {
       return { type: 'delete_product', productName: productText };
     }
   }
@@ -1061,6 +1197,11 @@ const extractMultipleActionsFromText = (text) => {
   const queryStockAction = tryParseQueryStockAction(fullLine);
   if (queryStockAction) {
     return [queryStockAction];
+  }
+
+  const deleteActions = extractDeleteProductActions(text);
+  if (deleteActions.length) {
+    return deleteActions;
   }
 
   pushAction(tryParseMutationAction(fullLine));
@@ -1108,7 +1249,7 @@ const extractMultipleActionsFromText = (text) => {
     const orderMatch = fragment.match(/^(.+?)\s+(?:me\s+)?(?:pidio|pidió|pide|quiere|encargo|encargó|encargaron)\s+(.+)$/u);
     if (orderMatch) {
       const clientName = orderMatch[1].trim();
-      if (!/^(?:pedido|pedidos)$/i.test(clientName)) {
+      if (!/^(?:pedido|pedidos|qu[eé]|cual(?:es)?|cu[aá]nt[oa]s?)$/i.test(clientName)) {
         const parsed = parseQtyAndProductText(orderMatch[2].trim());
         if (clientName && parsed) {
           const action = buildClientOrderAction(parsed.productText, parsed.qty, clientName);
@@ -1196,24 +1337,28 @@ const extractMultipleActionsFromText = (text) => {
       continue;
     }
 
-    const sellMatch = fragment.match(/\b(?:vend(?:i|í)o|vendiste|vendieron|vendi)\s+(\d+)\s+(.+)$/u);
+    const sellMatch = fragment.match(/\b(?:vend(?:i|í)o|vendiste|vendieron|vend[ií])\s+(?:(\d+)\s+)?(.+)$/u);
     if (sellMatch) {
       inPedidoList = false;
-      const qty = Number(sellMatch[1]);
+      const qty = sellMatch[1] ? Number(sellMatch[1]) : parseQuantity(sellMatch[2]) ?? 1;
       if (qty > 0) {
-        const rawProductText = sellMatch[2].trim();
+        const rawProductText = sellMatch[2]
+          .replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '')
+          .trim();
         const price = parsePrice(rawProductText) ?? parsePrice(fragment);
         const cleanedProductText = rawProductText.replace(/\s*(?:valen?|vale|a|por|precio)\s*\$?\s*[0-9]+(?:[.,][0-9]{3})*\s*$/i, '').trim();
         const productDescriptor = parseProductDescriptor(cleanedProductText);
-        actions.push({
-          type: 'sell',
-          productName: productDescriptor.productName,
-          productType: productDescriptor.productType,
-          productModel: productDescriptor.productModel,
-          size: productDescriptor.size,
-          qty,
-          price: price ?? undefined,
-        });
+        if (productDescriptor.productName) {
+          actions.push({
+            type: 'sell',
+            productName: productDescriptor.productName,
+            productType: productDescriptor.productType,
+            productModel: productDescriptor.productModel,
+            size: productDescriptor.size,
+            qty,
+            price: price ?? undefined,
+          });
+        }
       }
     }
   }
@@ -1300,6 +1445,125 @@ const tryResolveQueryStockFollowUp = (text, conversationTurns = []) => {
   );
 };
 
+const GARMENT_TYPES_ALT = 'camisetas?|buzos?|shorts?|remeras?|pantalones?|camperas?';
+
+const extractGlobalCatalogAttrs = (text) => {
+  const normalized = normalizeText(text);
+  const todoSizeMatches = [
+    ...normalized.matchAll(
+      /\b(?:todo(?:\s+esto)?|todas?|todo lo que(?:\s+\w+){0,12})\s+(?:esta(?:n)?\s+)?(?:en\s+)?talle\s+([a-z0-9\/]+)/gi,
+    ),
+  ];
+  const lastTodoSize = todoSizeMatches.length
+    ? String(todoSizeMatches[todoSizeMatches.length - 1][1]).toUpperCase()
+    : undefined;
+  const firstSize = normalized.match(/\btalle\s+([a-z0-9\/]+)/i);
+  const globalSize = lastTodoSize || (firstSize ? String(firstSize[1]).toUpperCase() : undefined);
+
+  let globalVersion;
+  if (/\bversion jugador\b/.test(normalized)) {
+    globalVersion = 'versión jugador';
+  } else if (/\bversion fan\b/.test(normalized)) {
+    globalVersion = 'versión fan';
+  }
+
+  return { globalSize, globalVersion, globalPrice: parsePrice(text) };
+};
+
+const findCatalogChunks = (text) => {
+  const source = String(text ?? '');
+  const pattern = new RegExp(
+    `(?:(?:\\b(?:una|un|unas|unos)\\s+)?(?:${GARMENT_TYPES_ALT})\\s+(?:de(?:l)?|titular|suplente|tercera)\\b|\\bla de(?:l)?\\s+(?!mas\\b))`,
+    'gi',
+  );
+  const matches = [...source.matchAll(pattern)];
+  if (!matches.length) {
+    return [];
+  }
+
+  return matches.map((match, index) => {
+    const start = match.index ?? 0;
+    const end = index + 1 < matches.length ? matches[index + 1].index : source.length;
+    return source.slice(start, end).trim();
+  });
+};
+
+const stripCatalogNoise = (chunk) =>
+  String(chunk ?? '')
+    .replace(
+      /\s*(?:,\s*)?(?:vale|valen|cuesta|cuestan|sale|salen|precio)\s*\$?\s*[0-9]+(?:[.,][0-9]{3})*(?:\s*mil)?\s*(?:pesos|euros?)?\.?/gi,
+      '',
+    )
+    .replace(/\b[0-9]+(?:[.,][0-9]{3})+\s*(?:pesos|euros?)\.?/gi, '')
+    .replace(/\b[0-9]+\s*mil(?:\s*pesos)?\.?/gi, '')
+    .replace(/\btodas?\s+son\s+en\s+versi[oó]n\s+(?:jugador|fan)\b/gi, '')
+    .replace(/\btoda(?:s)?\s+en\s+versi[oó]n\s+(?:jugador|fan)\b/gi, '')
+    .replace(/\btodo(?:s|as)?(?:\s+esto)?\s+en\s+talle\s+[a-z0-9\/]+\b.*$/gi, '')
+    .replace(/\b(?:y\s+)?todo(?:s|as)?(?:\s+esto)?\s+vale\b.*$/gi, '')
+    .replace(/\btodo lo que te (?:dije|mencione|voy a mencionar).*$/i, '')
+    .replace(/\b(?:pesos|euros?)\b/gi, '')
+    .replace(/\btambi[eé]n\b/gi, ' ')
+    .replace(/\by\s*$/i, '')
+    .replace(/[.,;]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const splitGarmentName = (productText, globalVersion) => {
+  const cleaned = String(productText ?? '')
+    .replace(/[.,;]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const garmentMatch = cleaned.match(new RegExp(`^(${GARMENT_TYPES_ALT})\\s+(?:del?\\s+)?(.+)$`, 'i'));
+  let productType;
+  let productModel;
+  if (garmentMatch) {
+    productType = singularizeProductType(garmentMatch[1]);
+    productModel = titleCase(String(garmentMatch[2]).replace(/^del?\s+/i, ''));
+    const kitLead = productModel.match(/^(Titular|Suplente|Tercera)\s+(?:De|Del)\s+(.+)$/i);
+    if (kitLead) {
+      const rest = kitLead[2].trim();
+      const yearMatch = rest.match(/^(.+?)\s+(\d{4}(?:\s+\d{4})?)$/);
+      const team = (yearMatch ? yearMatch[1] : rest).trim();
+      const years = yearMatch ? yearMatch[2] : '';
+      productModel = [titleCase(team), titleCase(kitLead[1]), years].filter(Boolean).join(' ');
+    }
+  } else {
+    const descriptor = parseProductDescriptor(cleaned);
+    productType = descriptor.productType || 'Camiseta';
+    productModel = descriptor.productModel;
+  }
+
+  const versionAlready = /\bversi[oó]n\s+(?:jugador|fan)\b/i.test(`${productType} ${productModel || ''}`);
+  if (globalVersion && !versionAlready) {
+    productModel = [productModel, globalVersion].filter(Boolean).join(' ');
+  }
+
+  return { productType, productModel };
+};
+
+const actionLooksMashed = (action) => {
+  if (action?.type !== 'add_stock') {
+    return false;
+  }
+  const name = normalizeText(action.productName || '');
+  const garmentHits = (name.match(/\b(?:camiseta|buzo|short|remera)\b/g) || []).length;
+  return garmentHits >= 2 || name.length > 80;
+};
+
+const shouldPreferCatalogActions = (catalogActions, modelActions) => {
+  if (!Array.isArray(catalogActions) || !catalogActions.length) {
+    return false;
+  }
+  if (!Array.isArray(modelActions) || !modelActions.length) {
+    return true;
+  }
+  const mashedCount = modelActions.filter(actionLooksMashed).length;
+  if (mashedCount > 0 && catalogActions.length > modelActions.length - mashedCount) {
+    return true;
+  }
+  return catalogActions.length >= modelActions.length + 2;
+};
+
 const extractCatalogActionsFromText = (text) => {
   const cleaned = String(text ?? '')
     .replace(/\s+/g, ' ')
@@ -1308,59 +1572,38 @@ const extractCatalogActionsFromText = (text) => {
     return [];
   }
 
-  const globalSizeMatch = normalizeText(cleaned).match(/\btalle\s+([a-z0-9\/]+)/i);
-  const globalSize = globalSizeMatch ? String(globalSizeMatch[1]).toUpperCase() : undefined;
-  const globalPrice = parsePrice(cleaned);
-  const chunks = cleaned
-    .split(/\b(?:una\s+camiseta\s+de|camisetas?\s+de|la\s+de(?:l)?|las\s+de)\s+/i)
-    .map((part) => part.trim())
-    .filter((part, index) => index > 0 && part.length >= 3);
-
+  const { globalSize, globalVersion, globalPrice } = extractGlobalCatalogAttrs(cleaned);
+  const chunks = findCatalogChunks(cleaned);
   const actions = [];
   const seen = new Set();
 
   for (const rawChunk of chunks) {
-    let chunk = rawChunk.replace(/\btodo lo que te (?:dije|mencione).*$/i, '').trim();
-    if (!chunk || chunk.length < 3) {
-      continue;
-    }
-
-    const localPrice = parsePrice(chunk);
-    let productText = chunk
-      .replace(
-        /\s*(?:,\s*)?(?:vale|valen|cuesta|cuestan|sale|salen|precio)\s*\$?\s*[0-9]+(?:[.,][0-9]{3})*(?:\s*mil)?\s*(?:pesos)?\.?/gi,
-        '',
-      )
-      .replace(/\b[0-9]+(?:[.,][0-9]{3})+\s*pesos\.?/gi, '')
-      .replace(/\b[0-9]+\s*mil(?:\s*pesos)?\.?/gi, '')
-      .replace(/\btodas?\s+son\s+en\s+versi[oó]n\s+jugador\b/gi, '')
-      .replace(/\btoda(?:s)?\s+en\s+versi[oó]n\s+jugador\b/gi, '')
-      .replace(/\btodo(?:s)?\s+en\s+talle\s+[a-z0-9\/]+\b/gi, '')
-      .replace(/\btambi[eé]n\b/gi, ' ')
-      .replace(/[.,;]+$/g, '')
-      .replace(/\s+/g, ' ')
+    let productText = stripCatalogNoise(rawChunk);
+    productText = productText
+      .replace(/^las?\s+de(?:l)?\s+/i, '')
+      .replace(/\s+en$/i, '')
       .trim();
-
     if (!productText || productText.length < 3) {
       continue;
     }
 
+    const localPrice = parsePrice(rawChunk);
     const sizeMatch = normalizeText(productText).match(new RegExp(`(?:${VARIANT_KEYWORD_ALT})\\s+([a-z0-9\\/]+)`, 'i'));
     const size = sizeMatch ? String(sizeMatch[1]).toUpperCase() : globalSize;
     const withoutSize = productText
       .replace(new RegExp(`(?:,\\s*|\\s+)(?:${VARIANT_KEYWORD_ALT})\\s+[a-z0-9\\/]+\\b`, 'i'), '')
       .replace(/[.,;]+/g, ' ')
       .replace(/\s+/g, ' ')
-      .replace(/\s+en$/i, '')
-      .replace(/^la\s+/i, '')
       .trim();
-    const prefixed = /^(?:camiseta|buzo|short)\b/i.test(withoutSize) ? withoutSize : `Camiseta ${withoutSize}`;
-    const productDescriptor = parseProductDescriptor(prefixed);
+    const prefixed = /^(?:camiseta|buzo|short|remera)\b/i.test(withoutSize)
+      ? withoutSize
+      : `Camiseta ${withoutSize}`;
+    const { productType, productModel } = splitGarmentName(prefixed, globalVersion);
     const productName = composeProductName({
-      productType: productDescriptor.productType || 'Camiseta',
-      productModel: productDescriptor.productModel,
+      productType: productType || 'Camiseta',
+      productModel,
       size,
-      fallback: productDescriptor.productName,
+      fallback: prefixed,
     });
 
     const key = productName.toLowerCase();
@@ -1372,8 +1615,8 @@ const extractCatalogActionsFromText = (text) => {
     actions.push({
       type: 'add_stock',
       productName,
-      productType: productDescriptor.productType || 'Camiseta',
-      productModel: productDescriptor.productModel,
+      productType: productType || 'Camiseta',
+      productModel,
       size,
       qty: 1,
       price: localPrice ?? globalPrice ?? undefined,
@@ -1383,10 +1626,17 @@ const extractCatalogActionsFromText = (text) => {
   return actions;
 };
 
-const parseLocalText = (text, conversationTurns = []) => {
+const parseLocalText = (text, conversationTurns = [], catalog = null) => {
+  const finish = (payload) => withCatalogGrounding(payload, catalog);
+
   const followUp = tryResolveQueryStockFollowUp(text, conversationTurns);
   if (followUp) {
-    return followUp;
+    return finish(followUp);
+  }
+
+  const deleteActions = extractDeleteProductActions(text);
+  if (deleteActions.length) {
+    return finish(buildPayload(text, deleteActions));
   }
 
   if (looksLikeLoadPreviousCommand(text)) {
@@ -1395,7 +1645,7 @@ const parseLocalText = (text, conversationTurns = []) => {
       const catalogActions = extractCatalogActionsFromText(previous);
       if (catalogActions.length) {
         applyPriceFromText(catalogActions, previous);
-        return buildPayload(text, catalogActions, { intent: 'add_stock' });
+        return finish(buildPayload(text, catalogActions, { intent: 'add_stock' }));
       }
     }
   }
@@ -1403,7 +1653,7 @@ const parseLocalText = (text, conversationTurns = []) => {
   const catalogActions = extractCatalogActionsFromText(text);
   if (catalogActions.length) {
     applyPriceFromText(catalogActions, text);
-    return buildPayload(text, catalogActions, { intent: 'add_stock' });
+    return finish(buildPayload(text, catalogActions, { intent: 'add_stock' }));
   }
 
   const actions = extractMultipleActionsFromText(text);
@@ -1412,7 +1662,7 @@ const parseLocalText = (text, conversationTurns = []) => {
   }
 
   applyPriceFromText(actions, text);
-  return buildPayload(text, actions);
+  return finish(buildPayload(text, actions));
 };
 
 /**
@@ -1544,14 +1794,17 @@ const parseVoiceTextWithModel = async (
   text,
   preset = getBusinessCategoryPreset('general'),
   conversationTurns = [],
+  catalog = null,
 ) => {
   const { apiKey, model, modelEndpoint } = readEnv();
   const operationHint = buildOperationHint(text, conversationTurns);
-  const forceAddStock = Boolean(operationHint);
+  const forceAddStock = looksLikeLoadPreviousCommand(text) || looksLikeInventoryCatalog(text);
   const previousCatalog = looksLikeLoadPreviousCommand(text) ? findLastCatalogUserText(conversationTurns) : '';
+  const finish = (payload) => withCatalogGrounding(payload, catalog);
 
   if (!apiKey) {
-    return parseLocalText(text, conversationTurns);
+    console.warn('[MetaWebhook] parseVoiceText falling back to local parser: missing VITE_VOICE_MODEL_API_KEY');
+    return parseLocalText(text, conversationTurns, catalog);
   }
 
   const requestBody = {
@@ -1566,7 +1819,7 @@ const parseVoiceTextWithModel = async (
       },
       {
         role: 'user',
-        content: buildPrompt(text, preset, conversationTurns, operationHint),
+        content: buildPrompt(text, preset, conversationTurns, operationHint, catalog),
       },
     ],
   };
@@ -1580,7 +1833,7 @@ const parseVoiceTextWithModel = async (
     body: JSON.stringify(requestBody),
   });
 
-  if (!response.ok) {
+  if (!response.ok && response.status !== 429 && response.status !== 413) {
     delete requestBody.response_format;
     response = await fetch(modelEndpoint, {
       method: 'POST',
@@ -1592,15 +1845,34 @@ const parseVoiceTextWithModel = async (
     });
   }
 
+  const retryableStatus = (status) => status === 429 || status === 413;
+  for (let attempt = 1; attempt <= 3 && response && !response.ok && retryableStatus(response.status); attempt += 1) {
+    const retryAfter = Number(response.headers.get('retry-after'));
+    const hinted = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2000 * attempt;
+    const waitMs = Math.min(8000, hinted);
+    console.warn('[MetaWebhook] model HTTP', response.status, `— retry ${attempt}/3 in ${waitMs}ms (no se cae al parser local todavía)`);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    response = await fetch(modelEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+  }
+
   if (!response.ok) {
-    return parseLocalText(text, conversationTurns);
+    console.warn('[MetaWebhook] parseVoiceText falling back to local parser: model HTTP', response.status);
+    return parseLocalText(text, conversationTurns, catalog);
   }
 
   const data = await response.json();
   const content = extractContent(data);
 
   if (!content) {
-    return parseLocalText(text, conversationTurns);
+    console.warn('[MetaWebhook] parseVoiceText falling back to local parser: empty model content');
+    return parseLocalText(text, conversationTurns, catalog);
   }
 
   try {
@@ -1621,34 +1893,94 @@ const parseVoiceTextWithModel = async (
       applyPriceFromText(normalizedActions, previousCatalog);
     }
 
+    const localDeletes = extractDeleteProductActions(text);
+    if (localDeletes.length && !normalizedActions.some((action) => action.type === 'delete_product')) {
+      return finish(buildPayload(text, localDeletes));
+    }
+
+    const queryPedidosOverride = tryParseQueryPedidosAction(text);
+    if (queryPedidosOverride) {
+      const hasMutation = normalizedActions.some((action) => MUTATING_ACTION_TYPES.has(action.type));
+      const hasQueryPedidos = normalizedActions.some((action) => action.type === 'query_pedidos');
+      if (hasMutation || !hasQueryPedidos) {
+        return finish(buildPayload(text, [queryPedidosOverride], { intent: 'query_pedidos', requiresConfirmation: false }));
+      }
+    }
+
+    if (looksLikeCoordinatedStockOps(text)) {
+      const localActions = extractMultipleActionsFromText(text);
+      const types = new Set(normalizedActions.map((action) => action.type));
+      for (const action of localActions) {
+        if ((action.type === 'sell' || action.type === 'add_stock') && !types.has(action.type)) {
+          normalizedActions.push(action);
+          types.add(action.type);
+        }
+      }
+    }
+
+    const catalogSource = previousCatalog || text;
+    const catalogActions = extractCatalogActionsFromText(catalogSource);
+    if (forceAddStock && shouldPreferCatalogActions(catalogActions, normalizedActions)) {
+      applyPriceFromText(catalogActions, catalogSource);
+      return finish(buildPayload(text, catalogActions, { intent: 'add_stock' }));
+    }
+
     if (!normalizedActions.length) {
+      const holdFields = Array.isArray(parsed.missingFields)
+        ? parsed.missingFields.filter((value) => typeof value === 'string')
+        : [];
+      const holdPhrases = Array.isArray(parsed.suggestedPhrases)
+        ? parsed.suggestedPhrases.filter((value) => typeof value === 'string')
+        : [];
+      if (holdFields.includes('productMatch') || (parsed.requiresConfirmation && holdPhrases.length)) {
+        return {
+          schemaVersion: 1,
+          sourceText: text,
+          intent: typeof parsed.intent === 'string' ? parsed.intent : 'unknown',
+          confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
+          requiresConfirmation: true,
+          actions: [],
+          missingFields: holdFields.includes('productMatch') ? holdFields : [...holdFields, 'productMatch'],
+          suggestedPhrases: holdPhrases.length ? holdPhrases : undefined,
+        };
+      }
       console.warn('[MetaWebhook] model returned no valid actions', {
         preview: String(text).slice(0, 160),
         contentPreview: String(content).slice(0, 400),
       });
-      const catalogSource = previousCatalog || text;
-      const catalogActions = coerceCatalogActions(extractCatalogActionsFromText(catalogSource), { forceAddStock: true });
-      if (catalogActions.length) {
-        applyPriceFromText(catalogActions, catalogSource);
-        return buildPayload(text, catalogActions, { intent: 'add_stock' });
+      const emptyCatalogSource = previousCatalog || text;
+      const emptyCatalogActions = coerceCatalogActions(extractCatalogActionsFromText(emptyCatalogSource), {
+        forceAddStock: true,
+      });
+      if (emptyCatalogActions.length) {
+        applyPriceFromText(emptyCatalogActions, emptyCatalogSource);
+        return finish(buildPayload(text, emptyCatalogActions, { intent: 'add_stock' }));
       }
-      return parseLocalText(text, conversationTurns);
+      console.warn('[MetaWebhook] parseVoiceText falling back to local parser: model returned no valid actions');
+      return parseLocalText(text, conversationTurns, catalog);
     }
 
-    return buildPayload(sourceText, normalizedActions, {
-      intent: forceAddStock ? 'add_stock' : typeof parsed.intent === 'string' ? parsed.intent : undefined,
-      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : undefined,
-      requiresConfirmation: typeof parsed.requiresConfirmation === 'boolean' ? parsed.requiresConfirmation : undefined,
-      missingFields: Array.isArray(parsed.missingFields) ? parsed.missingFields.filter((value) => typeof value === 'string') : undefined,
-      suggestedPhrases: Array.isArray(parsed.suggestedPhrases) ? parsed.suggestedPhrases.filter((value) => typeof value === 'string') : undefined,
-    });
+    return finish(
+      buildPayload(sourceText, normalizedActions, {
+        intent: forceAddStock ? 'add_stock' : typeof parsed.intent === 'string' ? parsed.intent : undefined,
+        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : undefined,
+        requiresConfirmation:
+          typeof parsed.requiresConfirmation === 'boolean' ? parsed.requiresConfirmation : undefined,
+        missingFields: Array.isArray(parsed.missingFields)
+          ? parsed.missingFields.filter((value) => typeof value === 'string')
+          : undefined,
+        suggestedPhrases: Array.isArray(parsed.suggestedPhrases)
+          ? parsed.suggestedPhrases.filter((value) => typeof value === 'string')
+          : undefined,
+      }),
+    );
   } catch (error) {
-    console.warn('[MetaWebhook] failed to parse model JSON', {
+    console.warn('[MetaWebhook] parseVoiceText falling back to local parser: failed to parse model JSON', {
       preview: String(text).slice(0, 160),
       contentPreview: String(content).slice(0, 400),
       error: error instanceof Error ? error.message : error,
     });
-    return parseLocalText(text, conversationTurns);
+    return parseLocalText(text, conversationTurns, catalog);
   }
 };
 
@@ -1821,6 +2153,12 @@ const buildReplyText = ({ transcript, parsed, preset }) => {
       : 'No pude detectar una acción clara. Probá de nuevo con más detalle.';
   }
 
+  if (hasProductMatchHold(parsed)) {
+    const options = (parsed.suggestedPhrases || []).join('\n');
+    const prefix = transcript ? `Texto: ${transcript}\n\n` : '';
+    return `${prefix}No apliqué cambios: hay más de un producto posible.\n${options || 'Decime el nombre exacto.'}`;
+  }
+
   const actionSummary = formatActionsSummary(parsed.actions, resolvedPreset);
   const prefix = transcript ? `Listo (audio). Texto: ${transcript}\n\n` : 'Listo.\n\n';
 
@@ -1860,10 +2198,11 @@ const processMetaMessage = async (
   metaMessage,
   preset = getBusinessCategoryPreset('general'),
   conversationTurns = [],
+  catalog = null,
 ) => {
   if (metaMessage.messageType === 'audio' && metaMessage.audioId) {
     const transcript = await transcribeMetaAudioId(metaMessage.audioId);
-    const parsed = await parseVoiceTextWithModel(transcript, preset, conversationTurns);
+    const parsed = await parseVoiceTextWithModel(transcript, preset, conversationTurns, catalog);
 
     return {
       ...metaMessage,
@@ -1877,7 +2216,7 @@ const processMetaMessage = async (
   }
 
   if (metaMessage.textBody) {
-    const parsed = await parseVoiceTextWithModel(metaMessage.textBody, preset, conversationTurns);
+    const parsed = await parseVoiceTextWithModel(metaMessage.textBody, preset, conversationTurns, catalog);
 
     return {
       ...metaMessage,
@@ -1901,7 +2240,10 @@ const processMetaMessage = async (
   };
 };
 
-export const processMetaWebhook = async (body, { resolveBusinessCategory, resolveConversationHistory } = {}) => {
+export const processMetaWebhook = async (
+  body,
+  { resolveBusinessCategory, resolveConversationHistory, resolveCatalog } = {},
+) => {
   if (!body || body.object !== 'whatsapp_business_account') {
     return [];
   }
@@ -1928,8 +2270,17 @@ export const processMetaWebhook = async (body, { resolveBusinessCategory, resolv
       }
     }
 
+    let catalog = null;
+    if (typeof resolveCatalog === 'function' && message.fromNumber) {
+      try {
+        catalog = (await resolveCatalog(message.fromNumber)) ?? null;
+      } catch (error) {
+        console.warn('[MetaWebhook] failed to resolve catalog:', error instanceof Error ? error.message : error);
+      }
+    }
+
     const preset = getBusinessCategoryPreset(categoryId);
-    results.push(await processMetaMessage(message, preset, conversationTurns));
+    results.push(await processMetaMessage(message, preset, conversationTurns, catalog));
   }
 
   return results;
@@ -2003,6 +2354,8 @@ export const sendMetaReply = async ({ to, text }) => {
 
 export const buildMetaVerificationResponse = (challenge) => String(challenge ?? '');
 
+export { parseLocalText };
+
 export const parseVoiceText = async (text, options = {}) => {
   const trimmed = String(text ?? '').trim();
   if (!trimmed) {
@@ -2011,5 +2364,6 @@ export const parseVoiceText = async (text, options = {}) => {
 
   const preset = getBusinessCategoryPreset(options.businessCategory);
   const conversationTurns = Array.isArray(options.conversationTurns) ? options.conversationTurns : [];
-  return parseVoiceTextWithModel(trimmed, preset, conversationTurns);
+  const catalog = options.catalog ?? null;
+  return parseVoiceTextWithModel(trimmed, preset, conversationTurns, catalog);
 };

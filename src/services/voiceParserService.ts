@@ -66,6 +66,75 @@ const parseProductDescriptor = (value: string) => {
   };
 };
 
+const extractDeleteProductActions = (text: string): ParsedActionUnion[] => {
+  const cleaned = String(text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const normalized = normalizeText(cleaned);
+  if (!normalized) {
+    return [];
+  }
+
+  if (/\bpedido\b/.test(normalized) && /\b(?:elimina|borra|saca|quita)\b/.test(normalized)) {
+    return [];
+  }
+
+  const looksLikeDelete =
+    /\b(?:elimina(?:r)?(?:l[ao]s?)?|borra(?:r)?(?:l[ao]s?)?|sac[aá](?:l[ao]s?)?|quita(?:r)?(?:l[ao]s?)?)\b/.test(
+      normalized,
+    ) || /\b(?:no existe|esta de mas)\b/.test(normalized);
+  if (!looksLikeDelete) {
+    return [];
+  }
+
+  const defaultType = /\bcamisetas?\b/.test(normalized)
+    ? 'Camiseta'
+    : /\bbuzos?\b/.test(normalized)
+      ? 'Buzo'
+      : '';
+
+  const actions: ParsedActionUnion[] = [];
+  const seen = new Set<string>();
+
+  const pushName = (raw: string) => {
+    let value = normalizeText(String(raw ?? ''))
+      .replace(/\b(?:no existe|esta de mas|elimina(?:r)?(?:l[ao]s?)?|borra(?:r)?(?:l[ao]s?)?|esa|ese|eso|tambien)\b/g, ' ')
+      .replace(/[.,;:]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    value = value.replace(/^(?:la|el|las|los|de|del)\s+/, '').trim();
+    if (value.length < 3) {
+      return;
+    }
+
+    const titled = titleCase(value);
+    const alreadyTyped = /^(?:camiseta|buzo|short)\b/i.test(titled);
+    const prefixed = defaultType && !alreadyTyped ? `${defaultType} ${titled}` : titled;
+    const productDescriptor = parseProductDescriptor(prefixed);
+    const productName = productDescriptor.productName || prefixed;
+    const key = normalizeText(productName);
+    if (!productName || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    actions.push({ type: 'delete_product', productName });
+  };
+
+  for (const match of normalized.matchAll(
+    /\bla de(?:l)?\s+(.+?)(?=\s+(?:no existe|esta de mas|elimin|borra|saca|quita)|,|$)/g,
+  )) {
+    pushName(match[1] ?? '');
+  }
+
+  for (const match of normalized.matchAll(
+    /\b(?:la|el) que se llama\s+(.+?)(?=\s+(?:tambien\s+)?(?:esta de mas|elimin|borra|no existe)|,|$)/g,
+  )) {
+    pushName(match[1] ?? '');
+  }
+
+  return actions;
+};
+
 const tryParseQueryStockAction = (fragment: string): ParsedActionUnion | null => {
   const cleaned = String(fragment ?? '')
     .replace(/\s+/g, ' ')
@@ -189,6 +258,7 @@ const tryParseQueryPedidosAction = (fragment: string): ParsedActionUnion | null 
   const cleaned = String(fragment ?? '')
     .replace(/\s+/g, ' ')
     .trim()
+    .replace(/^[¿?¡!]+/, '')
     .replace(/[¿?¡!.,;:]+$/g, '')
     .trim();
 
@@ -213,7 +283,7 @@ const tryParseQueryPedidosAction = (fragment: string): ParsedActionUnion | null 
   }
 
   const looksLikeQuery =
-    /(?:cu[aá]les?\s+son|qu[eé]\s+(?:pedidos?|me\s+pidieron)|cu[aá]ntos?\s+pedidos?|lista(?:do)?\s+de\s+pedidos?|mostr[aá](?:me)?\s+(?:los\s+)?pedidos?|decime\s+(?:los\s+)?pedidos?|pedidos?\s+(?:que\s+)?(?:tengo|pendientes?)|pedidos?\s+pendientes?|tengo\s+pedidos?|qu[eé]\s+me\s+(?:pidieron|encargaron)|qu[eé]\s+tengo\s+(?:pendiente|que\s+conseguir))/i.test(
+    /(?:cu[aá]les?\s+son|qu[eé]\s+(?:pedidos?|me\s+pidi[oó]|me\s+pidieron|pidio|pidi[oó]|pidieron)|cu[aá]ntos?\s+pedidos?|lista(?:do)?\s+de\s+pedidos?|mostr[aá](?:me)?\s+(?:los\s+)?pedidos?|decime\s+(?:los\s+)?pedidos?|pedidos?\s+(?:que\s+)?(?:tengo|pendientes?)|pedidos?\s+pendientes?|tengo\s+pedidos?|qu[eé]\s+me\s+(?:pidio|pidi[oó]|pidieron|encargo|encarg[oó]|encargaron)|qu[eé]\s+tengo\s+(?:pendiente|que\s+conseguir)|qu[eé]\s+(?:le\s+)?(?:pidio|pidi[oó]|pidieron)\s+)/i.test(
       cleaned,
     ) || /^(?:pedidos?(?:\s+pendientes?)?)$/i.test(cleaned);
 
@@ -232,6 +302,8 @@ const tryParseQueryPedidosAction = (fragment: string): ParsedActionUnion | null 
 
   let clientName: string | undefined;
   const clientMatch =
+    cleaned.match(/\b(?:qu[eé]|cual(?:es)?)\s+me\s+(?:pidio|pidi[oó]|pidieron|encargo|encarg[oó]|encargaron)\s+([a-záéíóúñü]+(?:\s+[a-záéíóúñü]+)?)/iu) ||
+    cleaned.match(/\b(?:qu[eé]|cual(?:es)?)\s+(?:le\s+)?(?:pidio|pidi[oó]|pidieron)\s+([a-záéíóúñü]+(?:\s+[a-záéíóúñü]+)?)/iu) ||
     cleaned.match(/\b(?:del\s+cliente|tiene)\s+([a-záéíóúñü\s]+?)(?:\s+(?:pendiente|conseguido|descartado)s?)?$/iu) ||
     cleaned.match(/\bpedidos?\s+de\s+([a-záéíóúñü]+(?:\s+[a-záéíóúñü]+)?)/iu);
 
@@ -417,6 +489,11 @@ const extractMultipleActionsFromText = (text: string): ParsedActionUnion[] => {
     return [queryPedidosAction];
   }
 
+  const deleteActions = extractDeleteProductActions(text);
+  if (deleteActions.length) {
+    return deleteActions;
+  }
+
   const fragments = splitCompoundText(normalized);
   const actions: ParsedActionUnion[] = [];
   let lastProductName: string | undefined;
@@ -468,7 +545,7 @@ const extractMultipleActionsFromText = (text: string): ParsedActionUnion[] => {
       const productText = rest.replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '').trim();
       const productDescriptor = parseProductDescriptor(productText);
 
-      if (clientName && productDescriptor.productName) {
+      if (clientName && productDescriptor.productName && !/^(?:pedido|pedidos|qu[eé]|cual(?:es)?|cu[aá]nt[oa]s?)$/i.test(clientName)) {
         actions.push({
           type: 'client_order',
           clientName,
@@ -535,14 +612,14 @@ const extractMultipleActionsFromText = (text: string): ParsedActionUnion[] => {
       continue;
     }
 
-    const sellMatch = fragment.match(/\b(?:vend(?:i|í)o|vendiste|vendieron|vendi)\s+(\d+)\s+(.+)$/u);
+    const sellMatch = fragment.match(/\b(?:vend(?:i|í)o|vendiste|vendieron|vendi)\s+(?:(\d+)\s+)?(.+)$/u);
     if (sellMatch) {
-      const qty = Number(sellMatch[1]);
+      const qty = sellMatch[1] ? Number(sellMatch[1]) : parseQuantity(sellMatch[2]!) ?? 1;
       if (qty <= 0) {
         continue;
       }
 
-      const productDescriptor = parseProductDescriptor(sellMatch[2].trim());
+      const productDescriptor = parseProductDescriptor(sellMatch[2]!.replace(/^(?:una?|unos?|unas?|\d+)\s+/i, '').trim());
       actions.push({
         type: 'sell',
         productName: productDescriptor.productName,
@@ -783,6 +860,11 @@ export class VoiceParserService {
       });
     }
 
+    const deleteActions = extractDeleteProductActions(text);
+    if (deleteActions.length) {
+      return buildPayload(text, deleteActions);
+    }
+
     // Generic patterns: operation + cantidad + producto
     const patterns: { regex: RegExp; type: ParsedAction['type'] | 'sell' | 'payment_received' }[] = [
       {
@@ -790,7 +872,7 @@ export class VoiceParserService {
           /\b(?:compre|compré|compra(?:r|ste|ron)?|adquiri|adquiri|entraron|entran|llegaron|recibi|recibieron|recibí|ingreso|ingrese|ingresaron)\s+(?:(\d+)\s+)?(.+)$/u,
         type: 'add_stock',
       },
-      { regex: /\b(?:vend(?:i|í)o|vendiste|vendieron|vendi)\s+(\d+)\s+(.+)$/u, type: 'sell' },
+      { regex: /\b(?:vend(?:i|í)o|vendiste|vendieron|vendi)\s+(?:(\d+)\s+)?(.+)$/u, type: 'sell' },
       { regex: /\b(?:reserve|reservé|reservaron|le deje|deje|dejó)\s+(\d+)\s+(.+)$/u, type: 'reserve_stock' },
     ];
 
@@ -885,7 +967,7 @@ export class VoiceParserService {
       const orderMatch = fragment.match(/^(.+?)\s+(?:me\s+)?(?:pidio|pidió|pide|quiere|encargo|encargó|encargaron)\s+(.+)$/u);
       if (orderMatch) {
         const clientName = orderMatch[1]!.trim();
-        if (!/^(?:pedido|pedidos)$/i.test(clientName)) {
+        if (!/^(?:pedido|pedidos|qu[eé]|cual(?:es)?|cu[aá]nt[oa]s?)$/i.test(clientName)) {
           const parsed = parseQtyAndProductText(orderMatch[2]!.trim());
           if (clientName && parsed) {
             pushPedido(parsed.productText, parsed.qty, clientName);

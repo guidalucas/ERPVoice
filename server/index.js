@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { getBusinessCategoryPreset } from './businessCategories.js';
+import { hasProductMatchHold } from './voiceCatalogContext.js';
 import { answerPedidosQuery } from './pedidoQuery.js';
 import {
   createProductRecord,
@@ -802,7 +803,9 @@ app.post('/api/voice/parse', authenticateRequest, async (req, res) => {
     }
 
     const phoneNumber = String(req.auth?.phoneNumber ?? '').trim();
+    const clientPhone = tenantPhoneOf(req);
     let businessCategory = null;
+    let catalog = null;
     if (phoneNumber) {
       try {
         const profile = await getAuthUserProfile(phoneNumber);
@@ -812,7 +815,15 @@ app.post('/api/voice/parse', authenticateRequest, async (req, res) => {
       }
     }
 
-    const parsed = await parseVoiceText(text, { businessCategory });
+    if (clientPhone) {
+      try {
+        catalog = await getStateSnapshot(clientPhone);
+      } catch (error) {
+        console.warn('[voice/parse] failed to load catalog:', error instanceof Error ? error.message : error);
+      }
+    }
+
+    const parsed = await parseVoiceText(text, { businessCategory, catalog });
 
     if (!parsed) {
       res.json({
@@ -902,6 +913,15 @@ const handleMetaWebhook = async (req, res) => {
           return [];
         }
       },
+      resolveCatalog: async (fromNumber) => {
+        try {
+          const tenantPhone = await resolveTenant(fromNumber);
+          return getStateSnapshot(tenantPhone || fromNumber);
+        } catch (error) {
+          console.warn('[MetaWebhook] catalog lookup failed:', error instanceof Error ? error.message : error);
+          return null;
+        }
+      },
     });
 
     for (const result of results) {
@@ -951,7 +971,7 @@ const handleMetaWebhook = async (req, res) => {
           .join('\n\n');
       }
 
-      if (mutationActions.length) {
+      if (mutationActions.length && !hasProductMatchHold(result.parsed)) {
         await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber);
       }
 
