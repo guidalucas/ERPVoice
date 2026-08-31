@@ -332,7 +332,7 @@ const parseNumericValue = (value: string) => {
 const parsePrice = (value: string) => {
   const normalized = String(value ?? '').toLowerCase();
   const moneyMatch = normalized.match(
-    /(?:valen?|vale|cuestan|cuesta|sale|precio|a|por)\s*\$?\s*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]+)?)\s*(?:c\/u|c\.u\.|pesos|\$)?/i,
+    /(?:valen?|vale|cuestan|cuesta|salen?|precio|\ba\b|\bpor\b)\s*\$?\s*([0-9]+(?:[.,][0-9]{3})*(?:[.,][0-9]+)?)\s*(mil)?\s*(?:c\/u|c\.u\.|pesos|\$)?/i,
   );
 
   if (!moneyMatch || moneyMatch.index === undefined) {
@@ -352,7 +352,17 @@ const parsePrice = (value: string) => {
     }
   }
 
-  return parseNumericValue(moneyMatch[1]);
+  const amount = parseNumericValue(moneyMatch[1]);
+  if (amount === null || !Number.isFinite(amount)) {
+    return null;
+  }
+
+  const resolved = moneyMatch[2] ? amount * 1000 : amount;
+  if (resolved >= 1900 && resolved <= 2100 && !/vale|precio|cuesta|sale|\$|pesos|c\/u/i.test(fullMatch)) {
+    return null;
+  }
+
+  return resolved;
 };
 
 const applyPriceFromText = (actions: ParsedActionUnion[], text: string) => {
@@ -589,27 +599,28 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
     return null;
   }
 
-  const qty = typeof value.qty === 'number' ? value.qty : Number(value.qty);
-  const amount = typeof value.amount === 'number' ? value.amount : Number(value.amount);
+    const qty = typeof value.qty === 'number' ? value.qty : Number(value.qty);
+    const amount = typeof value.amount === 'number' ? value.amount : Number(value.amount);
 
-  if (value.type === 'add_stock' || value.type === 'reserve_stock' || value.type === 'sell') {
-    const productType = typeof value.productType === 'string' ? value.productType : undefined;
-    const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
-    const size = typeof value.size === 'string' ? value.size : undefined;
-    const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
-    const price = typeof value.price === 'number' ? value.price : Number(value.price);
+    if (value.type === 'add_stock' || value.type === 'reserve_stock' || value.type === 'sell') {
+      const productType = typeof value.productType === 'string' ? value.productType : undefined;
+      const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
+      const size = typeof value.size === 'string' ? value.size : undefined;
+      const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
+      const price = typeof value.price === 'number' ? value.price : Number(value.price);
+      const resolvedQty = Number.isFinite(qty) && qty > 0 ? qty : value.type === 'add_stock' ? 1 : NaN;
 
-    if (!productName || Number.isNaN(qty) || qty <= 0) {
-      return null;
-    }
+      if (!productName || Number.isNaN(resolvedQty) || resolvedQty <= 0) {
+        return null;
+      }
 
-    return {
-      type: value.type,
-      productName,
-      productType,
-      productModel,
-      size,
-      qty,
+      return {
+        type: value.type,
+        productName,
+        productType,
+        productModel,
+        size,
+        qty: resolvedQty,
       price: Number.isFinite(price) && price > 0 ? price : undefined,
       clientName: typeof value.clientName === 'string' ? value.clientName : undefined,
     };
