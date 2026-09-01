@@ -324,6 +324,8 @@ const singularizeProductType = (value) => {
   return titleCase(trimmed);
 };
 
+const GARMENT_TYPES_ALT = 'camisetas?|buzos?|shorts?|remeras?|pantalones?|camperas?';
+
 const composeProductName = ({ productType, productModel, size, fallback }) => {
   const values = [productType, productModel, size]
     .map((value) => String(value ?? '').trim())
@@ -341,9 +343,11 @@ const parseProductDescriptor = (value) => {
   const sizeMatch = normalized.match(new RegExp(`(?:,\\s*|\\s+)(?:${VARIANT_KEYWORD_ALT})\\s+([a-z0-9\\/]+)\\b`, 'i'));
   const size = sizeMatch ? String(sizeMatch[1]).toUpperCase() : undefined;
   const withoutSize = normalized.replace(new RegExp(`(?:,\\s*|\\s+)(?:${VARIANT_KEYWORD_ALT})\\s+[a-z0-9\\/]+\\b`, 'i'), '').trim();
-  const descriptorParts = withoutSize.split(/\s+del?\s+/i);
-  const rawProductType = descriptorParts[0] ?? withoutSize;
-  const rawProductModel = descriptorParts.slice(1).join(' de ') || undefined;
+  const garmentMatch = withoutSize.match(new RegExp(`^(${GARMENT_TYPES_ALT})\\s+(?:de(?:l)?\\s+)?(.+)$`, 'i'));
+  const rawProductType = garmentMatch ? garmentMatch[1] : (withoutSize.split(/\s+del?\s+/i)[0] ?? withoutSize);
+  const rawProductModel = garmentMatch
+    ? garmentMatch[2]
+    : withoutSize.split(/\s+del?\s+/i).slice(1).join(' de ') || undefined;
 
   const productType = rawProductType ? singularizeProductType(rawProductType) : undefined;
   const productModel = rawProductModel ? titleCase(rawProductModel) : undefined;
@@ -963,10 +967,24 @@ const tryParseListAllStockQuery = (fragment) => {
   };
 };
 
+const cleanQueryProductText = (value) =>
+  String(value ?? '')
+    .replace(/^(?:de\s+)/i, '')
+    .replace(/^(?:stock\s+(?:de\s+)?)/i, '')
+    .replace(/^(?:las?|los?|el|la)\s+/i, '')
+    .replace(new RegExp(`\\s+y\\s+(?:qu[eé]\\s+)?(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?$`, 'iu'), '')
+    .replace(/\s+(?:me\s+)?(?:quedan|queda|tengo|tenes|hay)(?:\s+(?:disponible|disponibles))?$/iu, '')
+    .replace(/\s+(?:disponible|disponibles)$/iu, '')
+    .replace(/\s+en\s+stock$/iu, '')
+    .replace(new RegExp(`\\ben\\s+(?:${VARIANT_KEYWORD_ALT})\\b`, 'gi'), 'talle')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const tryParseQueryStockAction = (fragment) => {
   const cleaned = String(fragment ?? '')
     .replace(/\s+/g, ' ')
     .trim()
+    .replace(/^[¿?¡!]+/, '')
     .replace(/[¿?¡!.,;:]+$/g, '')
     .trim();
 
@@ -982,6 +1000,10 @@ const tryParseQueryStockAction = (fragment) => {
   const patterns = [
     new RegExp(
       `^(?:cuant[oa]s?|cu[aá]nto)\\s+(?:stock\\s+(?:me\\s+)?(?:queda|tengo|hay)\\s+de\\s+)?(.+?)(?:\\s+(?:me\\s+)?(?:quedan|queda|tengo|hay))?(?:\\s+y\\s+(?:qu[eé]\\s+)?(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?)?$`,
+      'iu',
+    ),
+    new RegExp(
+      `^(?:mostrame|mostrar|mostra|listame|listar|lista(?:me)?|decime|dame|(?:quiero\\s+)?ver)\\s+(?:las?|los?|el|la)?\\s*(.+)$`,
       'iu',
     ),
     new RegExp(`^(?:qu[eé]\\s+(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?\\s+(?:de\\s+)?)(.+)$`, 'iu'),
@@ -1000,20 +1022,17 @@ const tryParseQueryStockAction = (fragment) => {
       continue;
     }
 
-    let productText = match[1]
-      .replace(/^(?:de\s+)/i, '')
-      .replace(/^(?:stock\s+(?:de\s+)?)/i, '')
-      .replace(new RegExp(`\\s+y\\s+(?:qu[eé]\\s+)?(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?$`, 'iu'), '')
-      .replace(/\s+(?:me\s+)?(?:quedan|queda|tengo|hay)$/iu, '')
-      .replace(new RegExp(`\\ben\\s+(?:${VARIANT_KEYWORD_ALT})\\b`, 'gi'), 'talle')
-      .trim();
+    const productText = cleanQueryProductText(match[1]);
 
     if (!productText || productText.length < 2) {
       continue;
     }
 
-    // Avoid treating mutation phrases as stock queries
-    if (/\b(?:compre|compr[eé]|vend[ií]|reserve|reserv[eé]|pidio|pidi[oó]|pedido|ingreso|ingresaron)\b/i.test(productText)) {
+    if (
+      /\b(?:compre|compr[eé]|vend[ií]|reserve|reserv[eé]|pidio|pidi[oó]|pedido|pedidos|ingreso|ingresaron|ventas?|clientes?)\b/i.test(
+        productText,
+      )
+    ) {
       continue;
     }
 
@@ -1027,7 +1046,6 @@ const tryParseQueryStockAction = (fragment) => {
       productName: composeProductName({
         productType: productDescriptor.productType,
         productModel: productDescriptor.productModel,
-        // Omit size so the query can list all available sizes
         fallback: productDescriptor.productName,
       }),
       productType: productDescriptor.productType,
@@ -1536,8 +1554,6 @@ const tryResolveQueryStockFollowUp = (text, conversationTurns = []) => {
   );
 };
 
-const GARMENT_TYPES_ALT = 'camisetas?|buzos?|shorts?|remeras?|pantalones?|camperas?';
-
 const extractGlobalCatalogAttrs = (text) => {
   const normalized = normalizeText(text);
   const todoSizeMatches = [
@@ -1729,6 +1745,16 @@ const parseLocalText = (text, conversationTurns = [], catalog = null) => {
     return finish(buildPayload(text, [listAll], { intent: 'query_stock' }));
   }
 
+  const localQueryPedidos = tryParseQueryPedidosAction(text);
+  if (localQueryPedidos) {
+    return finish(buildPayload(text, [localQueryPedidos], { intent: 'query_pedidos', requiresConfirmation: false }));
+  }
+
+  const localQueryStock = tryParseQueryStockAction(text);
+  if (localQueryStock) {
+    return finish(buildPayload(text, [localQueryStock], { intent: 'query_stock', requiresConfirmation: false }));
+  }
+
   const followUp = tryResolveQueryStockFollowUp(text, conversationTurns);
   if (followUp) {
     return finish(followUp);
@@ -1912,6 +1938,16 @@ const parseVoiceTextWithModel = async (
     return finish(buildPayload(text, [listAll], { intent: 'query_stock' }));
   }
 
+  const localQueryPedidos = tryParseQueryPedidosAction(text);
+  if (localQueryPedidos) {
+    return finish(buildPayload(text, [localQueryPedidos], { intent: 'query_pedidos', requiresConfirmation: false }));
+  }
+
+  const localQueryStock = tryParseQueryStockAction(text);
+  if (localQueryStock) {
+    return finish(buildPayload(text, [localQueryStock], { intent: 'query_stock', requiresConfirmation: false }));
+  }
+
   if (!apiKey) {
     console.warn('[MetaWebhook] parseVoiceText falling back to local parser: missing VITE_VOICE_MODEL_API_KEY');
     return parseLocalText(text, conversationTurns, catalog);
@@ -2026,6 +2062,20 @@ const parseVoiceTextWithModel = async (
       const hasQueryPedidos = normalizedActions.some((action) => action.type === 'query_pedidos');
       if (hasMutation || !hasQueryPedidos) {
         return finish(buildPayload(text, [queryPedidosOverride], { intent: 'query_pedidos', requiresConfirmation: false }));
+      }
+    }
+
+    const queryStockOverride = tryParseQueryStockAction(text);
+    if (queryStockOverride) {
+      const hasMutation = normalizedActions.some((action) => MUTATING_ACTION_TYPES.has(action.type));
+      const llmPinnedSku = normalizedActions.some(
+        (action) =>
+          action.type === 'query_stock' &&
+          /^\d{2,4}$/.test(normalizeText(String(action.productModel ?? '')).replace(/\s+/g, '')) &&
+          !/\d{2,4}/.test(normalizeText(text)),
+      );
+      if (!hasMutation && (llmPinnedSku || !normalizedActions.some((action) => action.type === 'query_stock'))) {
+        return finish(buildPayload(text, [queryStockOverride], { intent: 'query_stock', requiresConfirmation: false }));
       }
     }
 

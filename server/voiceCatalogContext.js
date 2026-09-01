@@ -135,13 +135,12 @@ const catalogTokensFromText = (text, products) =>
   );
 
 const sharedField = (products, key) => {
-  const values = [
-    ...new Set(
-      products
-        .map((product) => normalizeText(String(product?.[key] ?? '').trim()))
-        .filter(Boolean),
-    ),
-  ];
+  const normalized = products.map((product) => normalizeText(String(product?.[key] ?? '').trim()));
+  const filled = normalized.filter(Boolean);
+  if (!filled.length || filled.length !== products.length) {
+    return null;
+  }
+  const values = [...new Set(filled)];
   if (values.length !== 1) {
     return null;
   }
@@ -357,13 +356,39 @@ const pickFamilyProductType = (matching, action) => {
   return fromCatalog || compactProductType(action.productType) || undefined;
 };
 
+const isYearToken = (value) => /^\d{2,4}$/.test(normalizeText(String(value ?? '')).replace(/\s+/g, ''));
+
+const familyQueryStockAction = (action, matching, familyTokens) => {
+  const sharedType = pickFamilyProductType(matching, action);
+  const sharedModel = sharedField(matching, 'productModel');
+  const usableSharedModel = sharedModel && !isYearToken(sharedModel) ? sharedModel : null;
+  const genericModel = usableSharedModel || titleCase(familyTokens.join(' ')) || action.productModel;
+  const next = {
+    ...action,
+    productName: [sharedType, genericModel].filter(Boolean).join(' ') || action.productName,
+    productType: sharedType || compactProductType(action.productType) || action.productType,
+    productModel: genericModel,
+  };
+  if (!action.size) {
+    delete next.size;
+  }
+  return { actions: [next], ambiguous: false };
+};
+
 const groundQueryStockAction = (action, products, sourceText) => {
+  const userRaw = tokenizeQueryText(sourceText || '');
   const fromUser = catalogTokensFromText(sourceText || '', products);
   const fromAction = catalogTokensFromText(
     [action.productName, action.productType, action.productModel].filter(Boolean).join(' '),
     products,
   );
-  const familyTokens = fromUser.length ? fromUser : fromAction;
+  const withoutHallucinatedYears = (tokens) =>
+    tokens.filter((token) => !isYearToken(token) || userRaw.includes(token));
+
+  let familyTokens = withoutHallucinatedYears(fromUser.length ? fromUser : fromAction);
+  if (!familyTokens.length && fromUser.length) {
+    familyTokens = fromUser.filter((token) => !isYearToken(token));
+  }
 
   if (familyTokens.length) {
     let matching = products.filter((product) => productHasQueryTokens(product, familyTokens));
@@ -375,28 +400,20 @@ const groundQueryStockAction = (action, products, sourceText) => {
       }
     }
 
+    if (matching.length > 1) {
+      return familyQueryStockAction(action, matching, familyTokens);
+    }
+
     if (matching.length === 1) {
+      const userAskedSpecificSku = familyTokens.some((token) => isYearToken(token)) || Boolean(action.size);
+      if (!userAskedSpecificSku) {
+        return familyQueryStockAction(action, matching, familyTokens);
+      }
       const canonical = cloneActionWithProduct(action, matching[0]);
       if (!action.size) {
         delete canonical.size;
       }
       return { actions: [canonical], ambiguous: false };
-    }
-
-    if (matching.length > 1) {
-      const sharedType = pickFamilyProductType(matching, action);
-      const sharedModel = sharedField(matching, 'productModel');
-      const genericModel = sharedModel || titleCase(familyTokens.join(' '));
-      const next = {
-        ...action,
-        productName: [sharedType, genericModel].filter(Boolean).join(' '),
-        productType: sharedType || action.productType,
-        productModel: genericModel,
-      };
-      if (!action.size) {
-        delete next.size;
-      }
-      return { actions: [next], ambiguous: false };
     }
   }
 
@@ -409,7 +426,21 @@ const groundQueryStockAction = (action, products, sourceText) => {
   const best = ranked[0];
   const close = ranked.filter((entry) => entry.score >= Math.max(16, best.score - 8));
   if (close.length > 1) {
+    if (fromUser.length) {
+      return familyQueryStockAction(
+        action,
+        close.map((entry) => entry.product),
+        fromUser,
+      );
+    }
     return { actions: [action], ambiguous: false };
+  }
+
+  if (fromUser.length && !fromUser.some((token) => isYearToken(token)) && !action.size) {
+    const userMatches = products.filter((product) => productHasQueryTokens(product, fromUser));
+    if (userMatches.length) {
+      return familyQueryStockAction(action, userMatches, fromUser);
+    }
   }
 
   const canonical = cloneActionWithProduct(action, best.product);

@@ -32,6 +32,8 @@ const singularizeProductType = (value: string) => {
   return titleCase(trimmed);
 };
 
+const GARMENT_TYPE_PREFIX = 'camisetas?|buzos?|shorts?|remeras?|pantalones?|camperas?';
+
 const composeProductName = (parts: { productType?: string; productModel?: string; size?: string; fallback?: string }) => {
   const values = [parts.productType, parts.productModel, parts.size]
     .map((value) => value?.trim())
@@ -51,9 +53,9 @@ const parseProductDescriptor = (value: string) => {
   const withoutSize = normalized
     .replace(new RegExp(`(?:,\\s*|\\s+)(?:${VARIANT_KEYWORD_ALT})\\s+[a-z0-9\\/]+\\b`, 'i'), '')
     .trim();
-  const descriptorParts = withoutSize.split(/\s+de\s+/i);
-  const rawProductType = descriptorParts[0] ?? withoutSize;
-  const rawProductModel = descriptorParts.slice(1).join(' de ') || undefined;
+  const garmentMatch = withoutSize.match(new RegExp(`^(${GARMENT_TYPE_PREFIX})\\s+(?:de(?:l)?\\s+)?(.+)$`, 'i'));
+  const rawProductType = garmentMatch?.[1] ?? withoutSize.split(/\s+de\s+/i)[0] ?? withoutSize;
+  const rawProductModel = garmentMatch?.[2] ?? withoutSize.split(/\s+de\s+/i).slice(1).join(' de ') || undefined;
 
   const productType = rawProductType ? singularizeProductType(rawProductType) : undefined;
   const productModel = rawProductModel ? titleCase(rawProductModel) : undefined;
@@ -195,10 +197,24 @@ const tryParseListAllStockQuery = (fragment: string): ParsedActionUnion | null =
   };
 };
 
+const cleanQueryProductText = (value: string) =>
+  String(value ?? '')
+    .replace(/^(?:de\s+)/i, '')
+    .replace(/^(?:stock\s+(?:de\s+)?)/i, '')
+    .replace(/^(?:las?|los?|el|la)\s+/i, '')
+    .replace(new RegExp(`\\s+y\\s+(?:qu[eé]\\s+)?(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?$`, 'iu'), '')
+    .replace(/\s+(?:me\s+)?(?:quedan|queda|tengo|tenes|hay)(?:\s+(?:disponible|disponibles))?$/iu, '')
+    .replace(/\s+(?:disponible|disponibles)$/iu, '')
+    .replace(/\s+en\s+stock$/iu, '')
+    .replace(new RegExp(`\\ben\\s+(?:${VARIANT_KEYWORD_ALT})\\b`, 'gi'), 'talle')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const tryParseQueryStockAction = (fragment: string): ParsedActionUnion | null => {
   const cleaned = String(fragment ?? '')
     .replace(/\s+/g, ' ')
     .trim()
+    .replace(/^[¿?¡!]+/, '')
     .replace(/[¿?¡!.,;:]+$/g, '')
     .trim();
 
@@ -214,6 +230,10 @@ const tryParseQueryStockAction = (fragment: string): ParsedActionUnion | null =>
   const patterns = [
     new RegExp(
       `^(?:cuant[oa]s?|cu[aá]nto)\\s+(?:stock\\s+(?:me\\s+)?(?:queda|tengo|hay)\\s+de\\s+)?(.+?)(?:\\s+(?:me\\s+)?(?:quedan|queda|tengo|hay))?(?:\\s+y\\s+(?:qu[eé]\\s+)?(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?)?$`,
+      'iu',
+    ),
+    new RegExp(
+      `^(?:mostrame|mostrar|mostra|listame|listar|lista(?:me)?|decime|dame|(?:quiero\\s+)?ver)\\s+(?:las?|los?|el|la)?\\s*(.+)$`,
       'iu',
     ),
     new RegExp(`^(?:qu[eé]\\s+(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?\\s+(?:de\\s+)?)(.+)$`, 'iu'),
@@ -232,19 +252,13 @@ const tryParseQueryStockAction = (fragment: string): ParsedActionUnion | null =>
       continue;
     }
 
-    const productText = match[1]
-      .replace(/^(?:de\s+)/i, '')
-      .replace(/^(?:stock\s+(?:de\s+)?)/i, '')
-      .replace(new RegExp(`\\s+y\\s+(?:qu[eé]\\s+)?(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?$`, 'iu'), '')
-      .replace(/\s+(?:me\s+)?(?:quedan|queda|tengo|hay)$/iu, '')
-      .replace(new RegExp(`\\ben\\s+(?:${VARIANT_KEYWORD_ALT})\\b`, 'gi'), 'talle')
-      .trim();
+    const productText = cleanQueryProductText(match[1]);
 
     if (!productText || productText.length < 2) {
       continue;
     }
 
-    if (/\b(?:compre|compr[eé]|vend[ií]|reserve|reserv[eé]|pidio|pidi[oó]|pedido|ingreso|ingresaron)\b/i.test(productText)) {
+    if (/\b(?:compre|compr[eé]|vend[ií]|reserve|reserv[eé]|pidio|pidi[oó]|pedido|pedidos|ingreso|ingresaron|ventas?|clientes?)\b/i.test(productText)) {
       continue;
     }
 
