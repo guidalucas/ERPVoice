@@ -135,6 +135,66 @@ const extractDeleteProductActions = (text: string): ParsedActionUnion[] => {
   return actions;
 };
 
+const LIST_ALL_STOCK_NAMES = new Set([
+  '*',
+  'all',
+  'todo',
+  'todos',
+  'todas',
+  'inventario',
+  'productos',
+  'stock',
+  'todos los productos',
+  'todas los productos',
+  'todo el stock',
+  'todo el inventario',
+  'el inventario',
+  'el stock',
+  'stock completo',
+  'inventario completo',
+]);
+
+const isListAllStockName = (value: unknown) =>
+  LIST_ALL_STOCK_NAMES.has(normalizeText(String(value ?? '')).replace(/\s+/g, ' ').trim());
+
+const wantsStockGroupedBySize = (text: string) =>
+  /\b(?:agrupad[oa]s?\s+por|por)\s+(?:talle|talla|talles|tallas|numero|numeros|size)s?\b/i.test(
+    normalizeText(text),
+  );
+
+const tryParseListAllStockQuery = (fragment: string): ParsedActionUnion | null => {
+  const n = normalizeText(fragment).replace(/\s+/g, ' ').trim();
+  if (!n) {
+    return null;
+  }
+  if (/\b(?:carga|cargame|compre|vend[ií]|ingreso|elimin|borra|reserv)\b/.test(n)) {
+    return null;
+  }
+  if (/\bpedidos?\b/.test(n) && !/\bproductos?\b/.test(n)) {
+    return null;
+  }
+
+  const asksAll =
+    /^(?:inventario|stock(?:\s+completo)?|todos?\s+los\s+productos?)$/.test(n) ||
+    /\b(?:todo\s+el\s+inventario|inventario\s+completo|todo\s+el\s+stock|stock\s+completo)\b/.test(n) ||
+    /\bque\s+productos?\s+(?:hay|tengo|tenes|tengas)\b/.test(n) ||
+    (
+      /\b(?:mostrame|mostrar|mostra|listame|listar|lista(?:me)?|decime|dame|ver|quiero ver)\b/.test(n) &&
+      /\b(?:todos?|todas|inventario)\b/.test(n) &&
+      /\b(?:productos?|articulos?|items?|inventario|stock|talles?|tallas?)\b/.test(n)
+    );
+
+  if (!asksAll) {
+    return null;
+  }
+
+  return {
+    type: 'query_stock',
+    productName: '*',
+    ...(wantsStockGroupedBySize(n) ? { groupBy: 'size' as const } : {}),
+  };
+};
+
 const tryParseQueryStockAction = (fragment: string): ParsedActionUnion | null => {
   const cleaned = String(fragment ?? '')
     .replace(/\s+/g, ' ')
@@ -144,6 +204,11 @@ const tryParseQueryStockAction = (fragment: string): ParsedActionUnion | null =>
 
   if (!cleaned) {
     return null;
+  }
+
+  const listAll = tryParseListAllStockQuery(cleaned);
+  if (listAll) {
+    return listAll;
   }
 
   const patterns = [
@@ -762,7 +827,9 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
     const productType = typeof value.productType === 'string' ? value.productType : undefined;
     const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
     const size = typeof value.size === 'string' ? value.size : undefined;
-    const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
+    const rawName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
+    const productName = isListAllStockName(rawName) ? '*' : rawName;
+    const groupBy = value.groupBy === 'size' ? 'size' : undefined;
 
     if (!productName) {
       return null;
@@ -774,6 +841,7 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
       productType,
       productModel,
       size,
+      ...(groupBy ? { groupBy } : {}),
     };
   }
 

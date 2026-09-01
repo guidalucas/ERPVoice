@@ -79,7 +79,7 @@ export const scoreProductAgainstQuery = (product, query) => {
     return 0;
   }
 
-  if (hay === q || hay.includes(q) || q.includes(hay)) {
+  if (hay === q || hay.includes(q) || (q.length >= 6 && hay.length >= 6 && q.includes(hay))) {
     return 100;
   }
 
@@ -88,7 +88,15 @@ export const scoreProductAgainstQuery = (product, query) => {
     return 0;
   }
 
-  const meaningful = queryTokens.filter((token) => hay.includes(token));
+  const hayTokens = tokenize(hay);
+  const meaningful = queryTokens.filter((token) =>
+    hayTokens.some((part) => {
+      if (part === token) {
+        return true;
+      }
+      return token.length >= 4 && part.length >= 4 && (part.includes(token) || token.includes(part));
+    }),
+  );
   if (!meaningful.length) {
     return 0;
   }
@@ -235,6 +243,7 @@ ${clientLines.length ? `\nClientes: \n${clientLines.join('\n')}` : ''}
 ${pedidoLines.length ? `\nPedidos pendientes:\n${pedidoLines.join('\n')}` : ''}
 Reglas contra este inventario:
 - delete / update / query / venta / reserva / pedido: usá el productName EXACTO de la lista si hay match.
+- Si pide todo el inventario / todos los productos: query_stock con productName "*" y, si agrupó por talle, groupBy "size". No inventes un producto llamado all.
 - "la de X" o un nombre parcial se resuelve contra esta lista, no se inventa.
 - Si hay varios SKUs posibles (mismo modelo en dos talles/números, o dos modelos parecidos) y el usuario NO dijo la variante, NO ejecutes: missingFields ["productMatch"] y suggestedPhrases con cada candidato. Aplica a delete_product, sell, add_stock y client_order.
 - Ingresos nuevos (add_stock de algo que no está): copiá el estilo de nombre del inventario. Un ítem dictado = una acción. Nunca juntes dos productos en un productName.
@@ -303,6 +312,20 @@ export const groundActionsAgainstCatalog = (actions, catalog) => {
   for (const action of actions) {
     if (!action || !MATCH_ACTIONS.has(action.type) || !action.productName) {
       next.push(action);
+      continue;
+    }
+
+    const listAllName = String(action.productName ?? '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (
+      action.type === 'query_stock' &&
+      ['*', 'all', 'todo', 'todos', 'todas', 'inventario', 'productos', 'stock', 'todos los productos', 'todo el stock', 'todo el inventario'].includes(listAllName)
+    ) {
+      next.push({ ...action, productName: '*' });
       continue;
     }
 

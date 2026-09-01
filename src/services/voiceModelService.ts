@@ -28,6 +28,8 @@ export class VoiceModelService {
     const formData = new FormData();
     formData.append('file', audioBlob, 'voice.webm');
     formData.append('model', transcriptionModel ?? DEFAULT_TRANSCRIPTION_MODEL);
+    formData.append('language', 'es');
+    formData.append('prompt', 'Transcripción en español rioplatense. Inventario, camisetas, talles, stock, pedidos.');
 
     console.log('[VoiceModel] Transcribing audio:', {
       endpoint,

@@ -7,6 +7,11 @@ import {
   getBusinessCategoryPreset,
 } from './businessCategories.js';
 import { formatCatalogPromptSection, groundActionsAgainstCatalog, hasProductMatchHold } from './voiceCatalogContext.js';
+import {
+  UNUSABLE_AUDIO_REPLY,
+  appendTranscriptionOptions,
+  looksLikeUnusableTranscript,
+} from './transcriptQuality.js';
 
 const DEFAULT_MODEL_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
@@ -237,7 +242,7 @@ Convertí la frase del usuario en JSON con esta estructura:
     { "type": "add_debt", "clientName": string, "amount": number, "productType"?: string, "productModel"?: string, "size"?: string, "productName"?: string, "qty"?: number },
     { "type": "payment_received", "clientName": string, "amount": number },
     { "type": "client_order", "clientName"?: string, "proveedorName"?: string, "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "qty"?: number },
-    { "type": "query_stock", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string },
+    { "type": "query_stock", "productType"?: string, "productModel"?: string, "size"?: string, "productName": string, "groupBy"?: "size" },
     { "type": "query_pedidos", "estado"?: "pendiente" | "conseguido" | "descartado" | "todos", "clientName"?: string, "proveedorName"?: string, "productName"?: string },
     { "type": "update_product", "productName": string, "productType"?: string, "productModel"?: string, "size"?: string, "price"?: number, "stockAvailable"?: number },
     { "type": "update_pedido", "productName": string, "qty"?: number, "size"?: string, "estado"?: "pendiente" | "conseguido" | "descartado", "clientName"?: string },
@@ -264,6 +269,7 @@ Reglas:
 - "eliminá / borrala / no existe / está de más / la de X / la que se llama X" = delete_product. Si hay inventario, usá el nombre exacto. Si el modelo tiene varias variantes y no dijo cuál, NO borres: missingFields ["productMatch"] y suggestedPhrases con cada SKU candidato.
 - "borrá el pedido de X" = delete_pedido. "conseguido/descartado" sobre un pedido = update_pedido.
 - Consulta de stock = query_stock (sin mutar). Consulta de pedidos = query_pedidos. Preguntas como "¿qué me pidió Juan?", "¿qué pedidos hay pendientes?", "mostrame los pedidos de María" son query_pedidos, NUNCA client_order.
+- Si pide todo el inventario / todos los productos / listado completo: query_stock con productName "*". Nunca uses "all" ni un producto inventado. Si pide agrupado por talle/número, groupBy: "size".
 - client_order es SOLO cuando el usuario ANOTA un pedido nuevo: "Juan me pidió una camiseta", "anotame que María quiere un mate".
 - Pago recibido = payment_received. Reserva "para X" = reserve_stock + clientName.
 - update_product / update_pedido solo modifican existentes.
@@ -797,7 +803,9 @@ const parseAction = (value) => {
     const productType = typeof value.productType === 'string' ? value.productType : undefined;
     const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
     const size = typeof value.size === 'string' ? value.size : undefined;
-    const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
+    const rawName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
+    const productName = isListAllStockName(rawName) ? '*' : rawName;
+    const groupBy = value.groupBy === 'size' ? 'size' : undefined;
 
     if (!productName) {
       return null;
@@ -809,6 +817,7 @@ const parseAction = (value) => {
       productType,
       productModel,
       size,
+      ...(groupBy ? { groupBy } : {}),
     };
   }
 
@@ -889,6 +898,66 @@ const parseAction = (value) => {
   return null;
 };
 
+const LIST_ALL_STOCK_NAMES = new Set([
+  '*',
+  'all',
+  'todo',
+  'todos',
+  'todas',
+  'inventario',
+  'productos',
+  'stock',
+  'todos los productos',
+  'todas los productos',
+  'todo el stock',
+  'todo el inventario',
+  'el inventario',
+  'el stock',
+  'stock completo',
+  'inventario completo',
+]);
+
+const isListAllStockName = (value) =>
+  LIST_ALL_STOCK_NAMES.has(normalizeText(String(value ?? '')).replace(/\s+/g, ' ').trim());
+
+const wantsStockGroupedBySize = (text) =>
+  /\b(?:agrupad[oa]s?\s+por|por)\s+(?:talle|talla|talles|tallas|numero|numeros|size)s?\b/i.test(
+    normalizeText(text),
+  );
+
+const tryParseListAllStockQuery = (fragment) => {
+  const n = normalizeText(fragment).replace(/\s+/g, ' ').trim();
+  if (!n) {
+    return null;
+  }
+  if (/\b(?:carga|cargame|compre|vend[ií]|ingreso|elimin|borra|reserv)\b/.test(n)) {
+    return null;
+  }
+  if (/\bpedidos?\b/.test(n) && !/\bproductos?\b/.test(n)) {
+    return null;
+  }
+
+  const asksAll =
+    /^(?:inventario|stock(?:\s+completo)?|todos?\s+los\s+productos?)$/.test(n) ||
+    /\b(?:todo\s+el\s+inventario|inventario\s+completo|todo\s+el\s+stock|stock\s+completo)\b/.test(n) ||
+    /\bque\s+productos?\s+(?:hay|tengo|tenes|tengas)\b/.test(n) ||
+    (
+      /\b(?:mostrame|mostrar|mostra|listame|listar|lista(?:me)?|decime|dame|ver|quiero ver)\b/.test(n) &&
+      /\b(?:todos?|todas|inventario)\b/.test(n) &&
+      /\b(?:productos?|articulos?|items?|inventario|stock|talles?|tallas?)\b/.test(n)
+    );
+
+  if (!asksAll) {
+    return null;
+  }
+
+  return {
+    type: 'query_stock',
+    productName: '*',
+    ...(wantsStockGroupedBySize(n) ? { groupBy: 'size' } : {}),
+  };
+};
+
 const tryParseQueryStockAction = (fragment) => {
   const cleaned = String(fragment ?? '')
     .replace(/\s+/g, ' ')
@@ -898,6 +967,11 @@ const tryParseQueryStockAction = (fragment) => {
 
   if (!cleaned) {
     return null;
+  }
+
+  const listAll = tryParseListAllStockQuery(cleaned);
+  if (listAll) {
+    return listAll;
   }
 
   const patterns = [
@@ -1404,18 +1478,25 @@ const tryResolveQueryStockFollowUp = (text, conversationTurns = []) => {
     return null;
   }
 
-  const followUpMatch = cleaned.match(/^(?:y\s+)?(?:(?:las?|los?|el|la)\s+)?(?:de\s+)?(.+)$/iu);
+  const lastQuery = findLastActionOfType(conversationTurns, 'query_stock');
+  if (!lastQuery?.productName && !lastQuery?.productType) {
+    return null;
+  }
+
+  if (isListAllStockName(lastQuery.productName)) {
+    return null;
+  }
+
+  const followUpMatch =
+    cleaned.match(/^(?:y\s+)(?:(?:las?|los?|el|la)\s+)?(?:de\s+)?(.+)$/iu) ||
+    cleaned.match(/^(?:(?:las?|los?|el|la)\s+de\s+)(.+)$/iu) ||
+    cleaned.match(/^(?:de\s+)(.+)$/iu);
   if (!followUpMatch?.[1]) {
     return null;
   }
 
   const fragment = followUpMatch[1].trim();
-  if (!fragment || fragment.length < 2) {
-    return null;
-  }
-
-  const lastQuery = findLastActionOfType(conversationTurns, 'query_stock');
-  if (!lastQuery?.productName && !lastQuery?.productType) {
+  if (!fragment || fragment.length < 2 || looksLikeUnusableTranscript(fragment)) {
     return null;
   }
 
@@ -1629,6 +1710,15 @@ const extractCatalogActionsFromText = (text) => {
 const parseLocalText = (text, conversationTurns = [], catalog = null) => {
   const finish = (payload) => withCatalogGrounding(payload, catalog);
 
+  if (looksLikeUnusableTranscript(text)) {
+    return null;
+  }
+
+  const listAll = tryParseListAllStockQuery(text);
+  if (listAll) {
+    return finish(buildPayload(text, [listAll], { intent: 'query_stock' }));
+  }
+
   const followUp = tryResolveQueryStockFollowUp(text, conversationTurns);
   if (followUp) {
     return finish(followUp);
@@ -1762,6 +1852,7 @@ const transcribeMetaAudioId = async (audioId) => {
   const formData = new FormData();
   formData.append('file', new Blob([audioBuffer], { type: mediaContentType }), 'meta-media.ogg');
   formData.append('model', transcriptionModel);
+  appendTranscriptionOptions(formData);
 
   const transcriptionResponse = await fetch(transcriptionEndpoint, {
     method: 'POST',
@@ -1801,6 +1892,15 @@ const parseVoiceTextWithModel = async (
   const forceAddStock = looksLikeLoadPreviousCommand(text) || looksLikeInventoryCatalog(text);
   const previousCatalog = looksLikeLoadPreviousCommand(text) ? findLastCatalogUserText(conversationTurns) : '';
   const finish = (payload) => withCatalogGrounding(payload, catalog);
+
+  if (looksLikeUnusableTranscript(text)) {
+    return null;
+  }
+
+  const listAll = tryParseListAllStockQuery(text);
+  if (listAll) {
+    return finish(buildPayload(text, [listAll], { intent: 'query_stock' }));
+  }
 
   if (!apiKey) {
     console.warn('[MetaWebhook] parseVoiceText falling back to local parser: missing VITE_VOICE_MODEL_API_KEY');
@@ -1846,11 +1946,23 @@ const parseVoiceTextWithModel = async (
   }
 
   const retryableStatus = (status) => status === 429 || status === 413;
+  const describeRateLimit = (res) => ({
+    retryAfter: res.headers.get('retry-after'),
+    remainingRequests: res.headers.get('x-ratelimit-remaining-requests'),
+    remainingTokens: res.headers.get('x-ratelimit-remaining-tokens'),
+    resetRequests: res.headers.get('x-ratelimit-reset-requests'),
+    resetTokens: res.headers.get('x-ratelimit-reset-tokens'),
+  });
   for (let attempt = 1; attempt <= 3 && response && !response.ok && retryableStatus(response.status); attempt += 1) {
     const retryAfter = Number(response.headers.get('retry-after'));
     const hinted = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2000 * attempt;
     const waitMs = Math.min(8000, hinted);
-    console.warn('[MetaWebhook] model HTTP', response.status, `— retry ${attempt}/3 in ${waitMs}ms (no se cae al parser local todavía)`);
+    console.warn(
+      '[MetaWebhook] model HTTP',
+      response.status,
+      `— retry ${attempt}/3 in ${waitMs}ms (no se cae al parser local todavía)`,
+      describeRateLimit(response),
+    );
     await new Promise((resolve) => setTimeout(resolve, waitMs));
     response = await fetch(modelEndpoint, {
       method: 'POST',
@@ -1957,6 +2069,9 @@ const parseVoiceTextWithModel = async (
         return finish(buildPayload(text, emptyCatalogActions, { intent: 'add_stock' }));
       }
       console.warn('[MetaWebhook] parseVoiceText falling back to local parser: model returned no valid actions');
+      if (looksLikeUnusableTranscript(text)) {
+        return null;
+      }
       return parseLocalText(text, conversationTurns, catalog);
     }
 
@@ -2094,7 +2209,7 @@ const formatAction = (action, preset = getBusinessCategoryPreset('general')) => 
   }
 
   if (action.type === 'query_stock') {
-    return `Consulta stock de ${action.productName}`;
+    return action.productName === '*' ? 'Consulta de inventario' : `Consulta stock de ${action.productName}`;
   }
 
   if (action.type === 'query_pedidos') {
@@ -2202,6 +2317,19 @@ const processMetaMessage = async (
 ) => {
   if (metaMessage.messageType === 'audio' && metaMessage.audioId) {
     const transcript = await transcribeMetaAudioId(metaMessage.audioId);
+    if (looksLikeUnusableTranscript(transcript)) {
+      console.warn('[MetaWebhook] unusable transcript, asking for a new audio:', String(transcript).slice(0, 160));
+      return {
+        ...metaMessage,
+        kind: 'audio',
+        sourceText: transcript,
+        transcript,
+        parsed: null,
+        businessCategory: preset.id,
+        replyText: UNUSABLE_AUDIO_REPLY,
+      };
+    }
+
     const parsed = await parseVoiceTextWithModel(transcript, preset, conversationTurns, catalog);
 
     return {

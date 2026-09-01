@@ -741,6 +741,60 @@ const includesNormalized = (candidate, query) => {
   return candidateNorm.includes(queryNorm) || queryNorm.includes(candidateNorm);
 };
 
+const LIST_ALL_STOCK_NAMES = new Set([
+  '*',
+  'all',
+  'todo',
+  'todos',
+  'todas',
+  'inventario',
+  'productos',
+  'stock',
+  'todos los productos',
+  'todas los productos',
+  'todo el stock',
+  'todo el inventario',
+  'el inventario',
+  'el stock',
+  'stock completo',
+  'inventario completo',
+]);
+
+const MAX_STOCK_REPLY_CHARS = 3800;
+const SIZE_ORDER = ['xxs', 'xs', 's', 'm', 'l', 'xl', 'xxl', 'xxxl'];
+
+export const isListAllStockQuery = (action) => {
+  if (!action || action.productType || action.productModel) {
+    return false;
+  }
+  const name = normalizeText(String(action.productName ?? '')).replace(/\s+/g, ' ').trim();
+  return LIST_ALL_STOCK_NAMES.has(name);
+};
+
+const truncateStockReply = (text) => {
+  if (String(text ?? '').length <= MAX_STOCK_REPLY_CHARS) {
+    return text;
+  }
+  return `${String(text).slice(0, Math.max(0, MAX_STOCK_REPLY_CHARS - 22)).trim()}\n… (listado recortado)`;
+};
+
+const compareSizes = (left, right) => {
+  const leftSize = normalizeText(left ?? '');
+  const rightSize = normalizeText(right ?? '');
+  const leftIndex = SIZE_ORDER.indexOf(leftSize);
+  const rightIndex = SIZE_ORDER.indexOf(rightSize);
+  if (leftIndex >= 0 && rightIndex >= 0) {
+    return leftIndex - rightIndex;
+  }
+  if (leftIndex >= 0) {
+    return -1;
+  }
+  if (rightIndex >= 0) {
+    return 1;
+  }
+  return String(left ?? '').localeCompare(String(right ?? ''), 'es', { numeric: true });
+};
+
 export const matchProductsForQuery = (products, action) => {
   if (!Array.isArray(products) || !products.length || !action) {
     return [];
@@ -749,6 +803,17 @@ export const matchProductsForQuery = (products, action) => {
   const actionType = normalizeNullableString(action.productType);
   const actionModel = normalizeNullableString(action.productModel);
   const actionName = String(action.productName ?? '').trim();
+
+  if (isListAllStockQuery(action)) {
+    const explicitSize = normalizeNullableString(action.size);
+    if (!explicitSize || explicitSize === '*') {
+      return products.slice();
+    }
+    return products.filter((product) => {
+      const productSize = normalizeNullableString(product.size);
+      return productSize && (productSize === explicitSize || includesNormalized(productSize, explicitSize));
+    });
+  }
 
   if (actionType || actionModel) {
     return products.filter((product) => {
@@ -837,7 +902,8 @@ export const matchProductsForUpdate = (products, action) => {
 };
 
 export const answerStockQuery = (products, action, options = {}) => {
-  const label = String(action?.productName ?? 'producto').trim() || 'producto';
+  const listAll = isListAllStockQuery(action);
+  const label = listAll ? 'inventario' : String(action?.productName ?? 'producto').trim() || 'producto';
   const matches = matchProductsForQuery(products, action);
   const variantWord = typeof options.variantLabel === 'string' && options.variantLabel.trim()
     ? options.variantLabel.trim().toLowerCase()
@@ -845,47 +911,71 @@ export const answerStockQuery = (products, action, options = {}) => {
   const missingVariant = `sin ${variantWord}`;
 
   if (!matches.length) {
-    return `No encontré stock de "${label}" en tu inventario.`;
+    return listAll
+      ? 'No hay productos cargados en tu inventario.'
+      : `No encontré stock de "${label}" en tu inventario.`;
   }
 
   const totalAvailable = matches.reduce((sum, product) => sum + Number(product.stockAvailable ?? 0), 0);
   const totalReserved = matches.reduce((sum, product) => sum + Number(product.stockReserved ?? 0), 0);
+  const reservedLine = totalReserved > 0
+    ? `\nAdemás hay ${totalReserved} unidad${totalReserved === 1 ? '' : 'es'} reservada${totalReserved === 1 ? '' : 's'}.`
+    : '';
+  const productLabel = (product) =>
+    normalizeNullableString(product.productModel)
+    || normalizeNullableString(product.productType)
+    || product.name
+    || 'Producto';
+
+  if (action.groupBy === 'size') {
+    const groups = new Map();
+    for (const product of matches) {
+      const groupKey = normalizeNullableString(product.size) || missingVariant;
+      const existing = groups.get(groupKey) ?? [];
+      existing.push(product);
+      groups.set(groupKey, existing);
+    }
+
+    const lines = [];
+    const sortedKeys = [...groups.keys()].sort((left, right) => {
+      if (left === missingVariant) {
+        return 1;
+      }
+      if (right === missingVariant) {
+        return -1;
+      }
+      return compareSizes(left, right);
+    });
+
+    for (const sizeLabel of sortedKeys) {
+      const groupProducts = (groups.get(sizeLabel) ?? []).slice().sort((left, right) =>
+        productLabel(left).localeCompare(productLabel(right), 'es'),
+      );
+      const items = groupProducts.map((product) => `- ${productLabel(product)}: ${Number(product.stockAvailable ?? 0)}`);
+      const heading = sizeLabel === missingVariant ? sizeLabel : `${titleCase(variantWord)} ${sizeLabel}`;
+      lines.push(`${heading}:\n${items.join('\n')}`);
+    }
+
+    const header = `Inventario por ${variantWord} (${totalAvailable} unidad${totalAvailable === 1 ? '' : 'es'} disponible${totalAvailable === 1 ? '' : 's'}):`;
+    return truncateStockReply(`${header}\n\n${lines.join('\n\n')}${reservedLine}`);
+  }
 
   const groups = new Map();
 
   for (const product of matches) {
-    const groupKey = normalizeNullableString(product.productModel)
-      || normalizeNullableString(product.productType)
-      || product.name
-      || 'Producto';
+    const groupKey = productLabel(product);
     const existing = groups.get(groupKey) ?? [];
     existing.push(product);
     groups.set(groupKey, existing);
   }
 
   const lines = [];
-  const sizeOrder = ['xxs', 'xs', 's', 'm', 'l', 'xl', 'xxl', 'xxxl'];
 
   for (const [groupName, groupProducts] of groups.entries()) {
     const groupTotal = groupProducts.reduce((sum, product) => sum + Number(product.stockAvailable ?? 0), 0);
     const sizeParts = groupProducts
       .slice()
-      .sort((left, right) => {
-        const leftSize = normalizeText(left.size ?? '');
-        const rightSize = normalizeText(right.size ?? '');
-        const leftIndex = sizeOrder.indexOf(leftSize);
-        const rightIndex = sizeOrder.indexOf(rightSize);
-        if (leftIndex >= 0 && rightIndex >= 0) {
-          return leftIndex - rightIndex;
-        }
-        if (leftIndex >= 0) {
-          return -1;
-        }
-        if (rightIndex >= 0) {
-          return 1;
-        }
-        return String(left.size ?? '').localeCompare(String(right.size ?? ''), 'es', { numeric: true });
-      })
+      .sort((left, right) => compareSizes(left.size, right.size))
       .map((product) => {
         const sizeLabel = normalizeNullableString(product.size) || missingVariant;
         return `${sizeLabel}: ${Number(product.stockAvailable ?? 0)}`;
@@ -894,12 +984,11 @@ export const answerStockQuery = (products, action, options = {}) => {
     lines.push(`${groupName}: ${sizeParts.join(', ')} (total ${groupTotal})`);
   }
 
-  const header = `Tenés ${totalAvailable} unidad${totalAvailable === 1 ? '' : 'es'} disponible${totalAvailable === 1 ? '' : 's'} de ${label}:`;
-  const reservedLine = totalReserved > 0
-    ? `\nAdemás hay ${totalReserved} unidad${totalReserved === 1 ? '' : 'es'} reservada${totalReserved === 1 ? '' : 's'}.`
-    : '';
+  const header = listAll
+    ? `Inventario: ${totalAvailable} unidad${totalAvailable === 1 ? '' : 'es'} disponible${totalAvailable === 1 ? '' : 's'}:`
+    : `Tenés ${totalAvailable} unidad${totalAvailable === 1 ? '' : 'es'} disponible${totalAvailable === 1 ? '' : 's'} de ${label}:`;
 
-  return `${header}\n${lines.join('\n')}${reservedLine}`;
+  return truncateStockReply(`${header}\n${lines.join('\n')}${reservedLine}`);
 };
 
 const resolvePedidoFlexible = (pedidos, productName, clientName) => {

@@ -106,6 +106,7 @@ export type ParsedAction =
       productType?: string;
       productModel?: string;
       size?: string;
+      groupBy?: 'size';
     }
   | {
       type: 'query_pedidos';

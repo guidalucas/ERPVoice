@@ -1,3 +1,5 @@
+import { appendTranscriptionOptions } from './transcriptQuality.js';
+
 const DEFAULT_MODEL_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
 const DEFAULT_TRANSCRIPTION_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
@@ -550,6 +552,7 @@ const transcribeAudioUrl = async (audioUrl) => {
   const formData = new FormData();
   formData.append('file', new Blob([audioBuffer], { type: mediaContentType }), 'twilio-media.ogg');
   formData.append('model', transcriptionModel);
+  appendTranscriptionOptions(formData);
 
   const transcriptionResponse = await fetch(transcriptionEndpoint, {
     method: 'POST',
