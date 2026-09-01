@@ -47,6 +47,13 @@ const riverCatalog = {
 
 const namesOf = (products) => products.map((product) => product.name).sort();
 
+const norm = (value) =>
+  String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim();
+
 const fail = (message) => {
   console.error(`FAIL: ${message}`);
   process.exitCode = 1;
@@ -170,6 +177,93 @@ if (titularOnly.length === 2 && titularOnly.every((product) => product.productMo
   pass('un modelo con varios talles sigue agrupando los dos SKUs y no mezcla la suplente');
 } else {
   fail(`talles del mismo modelo: ${namesOf(titularOnly).join(' | ')}`);
+}
+
+const productionCatalog = {
+  products: [
+    {
+      id: 'r1',
+      name: 'Camiseta River 2024 En La Titular 2024',
+      productType: 'Camiseta River 2024 En La Titular',
+      productModel: '2024',
+      size: 'S',
+      stockAvailable: 1,
+      stockReserved: 0,
+    },
+    {
+      id: 'r2',
+      name: 'Camiseta River 2025 Version Jugador',
+      productType: 'Camiseta',
+      productModel: 'River 2025 Version Jugador',
+      size: 'S',
+      stockAvailable: 1,
+      stockReserved: 0,
+    },
+    {
+      id: 'r3',
+      name: 'Camiseta River Titular 2026',
+      productType: 'Camiseta',
+      productModel: 'River Titular 2026',
+      size: 'S',
+      stockAvailable: 1,
+      stockReserved: 0,
+    },
+  ],
+};
+
+const productionLlmAction = {
+  type: 'query_stock',
+  productName: 'Camiseta River 2024 En La Titular 2024',
+  productType: 'Camiseta River 2024 En La Titular',
+  productModel: '2024',
+};
+
+const groundedWithSkuSource = groundActionsAgainstCatalog(
+  [productionLlmAction],
+  productionCatalog,
+  'Camiseta River 2024 En La Titular 2024',
+);
+const skuSourceMatches = matchProductsForQuery(productionCatalog.products, groundedWithSkuSource.actions[0]);
+if (skuSourceMatches.length === 1) {
+  pass('control: si el grounding ve el SKU del modelo, sigue clavando uno (el bug de producción)');
+} else {
+  fail(`control SKU sourceText no reprodujo el bug: ${namesOf(skuSourceMatches).join(' | ')}`);
+}
+
+const groundedWithUserText = groundActionsAgainstCatalog(
+  [productionLlmAction],
+  productionCatalog,
+  'que camisetas de river tengo',
+);
+const userTextMatches = matchProductsForQuery(productionCatalog.products, groundedWithUserText.actions[0]);
+if (
+  userTextMatches.length === 3 &&
+  !/2024 En La Titular 2024$/i.test(String(groundedWithUserText.actions[0].productName)) &&
+  norm(groundedWithUserText.actions[0].productModel) === 'river'
+) {
+  pass(
+    `con el texto original de WhatsApp lista las 3: ${groundedWithUserText.actions[0].productName} / ${groundedWithUserText.actions[0].productModel}`,
+  );
+} else {
+  fail(
+    `texto original no generalizó: ${JSON.stringify(groundedWithUserText.actions[0])} matches=${namesOf(userTextMatches).join(' | ')}`,
+  );
+}
+
+const cuantas = parseLocalText('cuantas camisetas de river tengo', [], productionCatalog);
+const cuantasMatches = cuantas?.actions?.[0] ? matchProductsForQuery(productionCatalog.products, cuantas.actions[0]) : [];
+if (cuantasMatches.length === 3) {
+  pass('parser local: "cuantas camisetas de river tengo" lista las 3');
+} else {
+  fail(`cuantas: ${JSON.stringify(cuantas?.actions?.[0])} matches=${namesOf(cuantasMatches).join(' | ')}`);
+}
+
+const queTengo = parseLocalText('que camisetas de river tengo', [], productionCatalog);
+const queMatches = queTengo?.actions?.[0] ? matchProductsForQuery(productionCatalog.products, queTengo.actions[0]) : [];
+if (queMatches.length === 3) {
+  pass('parser local: "que camisetas de river tengo" lista las 3');
+} else {
+  fail(`que tengo: ${JSON.stringify(queTengo?.actions?.[0])} matches=${namesOf(queMatches).join(' | ')}`);
 }
 
 console.log('\n--- Respuesta ---\n');
