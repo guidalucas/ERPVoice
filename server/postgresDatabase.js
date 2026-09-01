@@ -180,9 +180,11 @@ const parseProductDescriptor = (value) => {
   const sizeMatch = normalized.match(/(?:,\s*|\s+)(?:talle|talles|numero|numeros|nro|num|medida|medidas|variante|variantes)\s+([a-z0-9\/]+)\b/i);
   const size = sizeMatch ? sizeMatch[1].toUpperCase() : undefined;
   const withoutSize = normalized.replace(/(?:,\s*|\s+)(?:talle|talles|numero|numeros|nro|num|medida|medidas|variante|variantes)\s+[a-z0-9\/]+\b/i, '').trim();
-  const descriptorParts = withoutSize.split(/\s+de\s+/i);
-  const rawProductType = descriptorParts[0] ?? withoutSize;
-  const rawProductModel = descriptorParts.slice(1).join(' de ') || undefined;
+  const garmentMatch = withoutSize.match(/^(camisetas?|buzos?|shorts?|remeras?|pantalones?|camperas?)\s+(?:de(?:l)?\s+)?(.+)$/i);
+  const rawProductType = garmentMatch ? garmentMatch[1] : (withoutSize.split(/\s+de\s+/i)[0] ?? withoutSize);
+  const rawProductModel = garmentMatch
+    ? garmentMatch[2]
+    : withoutSize.split(/\s+de\s+/i).slice(1).join(' de ') || undefined;
 
   const productType = rawProductType ? singularizeProductType(rawProductType) : undefined;
   const productModel = rawProductModel ? titleCase(rawProductModel) : undefined;
@@ -1117,21 +1119,40 @@ const createProduct = (name, index, metadata = {}) => ({
   price: Number.isFinite(metadata.price) && metadata.price > 0 ? metadata.price : 0,
 });
 
+const splitBloatedGarmentFields = (action) => {
+  const type = String(action?.productType ?? '').trim();
+  const model = String(action?.productModel ?? '').trim();
+  if (!type || model) {
+    return action;
+  }
+  const descriptor = parseProductDescriptor(type);
+  if (!descriptor.productType || !descriptor.productModel) {
+    return action;
+  }
+  return {
+    ...action,
+    productType: descriptor.productType,
+    productModel: descriptor.productModel,
+    productName: action.productName || descriptor.productName,
+  };
+};
+
 const ensureProduct = (products, action) => {
-  const resolvedProduct = resolveProduct(products, action);
+  const normalizedAction = splitBloatedGarmentFields(action);
+  const resolvedProduct = resolveProduct(products, normalizedAction);
 
   if (resolvedProduct) {
-    if (Number.isFinite(action.price) && action.price > 0 && (!resolvedProduct.price || resolvedProduct.price === 0)) {
-      resolvedProduct.price = action.price;
+    if (Number.isFinite(normalizedAction.price) && normalizedAction.price > 0 && (!resolvedProduct.price || resolvedProduct.price === 0)) {
+      resolvedProduct.price = normalizedAction.price;
     }
     return resolvedProduct;
   }
 
-  const product = createProduct(action.productName, products.length, {
-    productType: action.productType,
-    productModel: action.productModel,
-    size: action.size,
-    price: Number.isFinite(action.price) && action.price > 0 ? action.price : undefined,
+  const product = createProduct(normalizedAction.productName, products.length, {
+    productType: normalizedAction.productType,
+    productModel: normalizedAction.productModel,
+    size: normalizedAction.size,
+    price: Number.isFinite(normalizedAction.price) && normalizedAction.price > 0 ? normalizedAction.price : undefined,
   });
   products.push(product);
   return product;

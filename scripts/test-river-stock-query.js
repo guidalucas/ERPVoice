@@ -266,6 +266,76 @@ if (queMatches.length === 3) {
   fail(`que tengo: ${JSON.stringify(queTengo?.actions?.[0])} matches=${namesOf(queMatches).join(' | ')}`);
 }
 
+const messyCatalog = {
+  products: [
+    {
+      id: 'r1',
+      name: 'Camiseta River 2024 Titular',
+      productType: 'Camiseta River 2024 En La Tit',
+      productModel: '2024',
+      size: 'S',
+      stockAvailable: 1,
+      stockReserved: 0,
+    },
+    {
+      id: 'r2',
+      name: 'Camiseta River 2025 Version Jugador S',
+      productType: 'Camiseta River 2025 Version J',
+      productModel: null,
+      size: 'S',
+      stockAvailable: 1,
+      stockReserved: 0,
+    },
+    {
+      id: 'r3',
+      name: 'Camiseta River Titular 2026',
+      productType: 'Camiseta River Titular 2026',
+      productModel: null,
+      size: 'S',
+      stockAvailable: 1,
+      stockReserved: 0,
+    },
+  ],
+};
+
+const messyLlm = groundActionsAgainstCatalog(
+  [{ type: 'query_stock', productName: 'Camiseta 2024', productType: 'Camiseta', productModel: '2024' }],
+  messyCatalog,
+  'cuantas camisetas de river hay disponible?',
+);
+const messyMatches = matchProductsForQuery(messyCatalog.products, messyLlm.actions[0]);
+if (
+  messyMatches.length === 3 &&
+  norm(messyLlm.actions[0].productModel) === 'river' &&
+  !/2024/.test(String(messyLlm.actions[0].productModel))
+) {
+  pass(`datos sucios (tipo hinchado / modelo vacío): lista las 3 → ${messyLlm.actions[0].productName}`);
+} else {
+  fail(
+    `datos sucios: ${JSON.stringify(messyLlm.actions[0])} matches=${namesOf(messyMatches).join(' | ')}`,
+  );
+}
+
+const disponible = parseLocalText('cuantas camisetas de river hay disponible?', [], messyCatalog);
+const disponibleMatches = disponible?.actions?.[0]
+  ? matchProductsForQuery(messyCatalog.products, disponible.actions[0])
+  : [];
+if (disponibleMatches.length === 3) {
+  pass('parser local: "cuantas camisetas de river hay disponible?" lista las 3');
+} else {
+  fail(`disponible: ${JSON.stringify(disponible?.actions?.[0])} matches=${namesOf(disponibleMatches).join(' | ')}`);
+}
+
+const mostrame = parseLocalText('mostrame las camisetas de river', [], messyCatalog);
+const mostrameMatches = mostrame?.actions?.[0]
+  ? matchProductsForQuery(messyCatalog.products, mostrame.actions[0])
+  : [];
+if (mostrameMatches.length === 3) {
+  pass('parser local: "mostrame las camisetas de river" lista las 3');
+} else {
+  fail(`mostrame: ${JSON.stringify(mostrame?.actions?.[0])} matches=${namesOf(mostrameMatches).join(' | ')}`);
+}
+
 console.log('\n--- Respuesta ---\n');
 console.log(reply);
 

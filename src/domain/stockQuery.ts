@@ -310,9 +310,9 @@ const parseProductDescriptor = (value: string) => {
   const withoutSize = normalized
     .replace(/(?:,\s*|\s+)(?:talle|talles|numero|numeros|nro|num|medida|medidas|variante|variantes)\s+[a-z0-9\/]+\b/i, '')
     .trim();
-  const descriptorParts = withoutSize.split(/\s+de\s+/i);
-  const rawProductType = descriptorParts[0] ?? withoutSize;
-  const rawProductModel = descriptorParts.slice(1).join(' de ') || undefined;
+  const garmentMatch = withoutSize.match(/^(camisetas?|buzos?|shorts?|remeras?|pantalones?|camperas?)\s+(?:de(?:l)?\s+)?(.+)$/i);
+  const rawProductType = garmentMatch?.[1] ?? withoutSize.split(/\s+de\s+/i)[0] ?? withoutSize;
+  const rawProductModel = garmentMatch?.[2] ?? withoutSize.split(/\s+de\s+/i).slice(1).join(' de ') || undefined;
 
   const productType = rawProductType ? singularizeProductType(rawProductType) : undefined;
   const productModel = rawProductModel ? titleCase(rawProductModel) : undefined;
