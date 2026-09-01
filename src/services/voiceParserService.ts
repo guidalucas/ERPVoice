@@ -220,6 +220,7 @@ const tryParseQueryStockAction = (fragment: string): ParsedActionUnion | null =>
     /^(?:tengo\s+stock\s+de\s+)(.+)$/iu,
     /^(?:hay\s+)(.+?)(?:\s+en\s+stock)$/iu,
     /^(?:stock\s+(?:de\s+)?)(.+)$/iu,
+    /^(?:qu[eé]\s+)(.+?)(?:\s+(?:me\s+)?(?:tengo|tenes|hay|quedan?))?$/iu,
     /^(?:no\s+)?tengo\s+m[aá]s\s+(?:stock\s+(?:de\s+)?)?(.+)$/iu,
     /^(?:me\s+)?quedan?\s+(?:m[aá]s\s+)?(?:stock\s+(?:de\s+)?)?(.+)$/iu,
     /^(?:hay\s+m[aá]s\s+)(.+)$/iu,

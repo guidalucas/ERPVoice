@@ -674,12 +674,16 @@ const buildPayload = (sourceText, actions, options = {}) => {
   };
 };
 
-const withCatalogGrounding = (payload, catalog) => {
+const withCatalogGrounding = (payload, catalog, originalText) => {
   if (!payload?.actions?.length) {
     return payload;
   }
 
-  const grounded = groundActionsAgainstCatalog(payload.actions, catalog, payload.sourceText);
+  const grounded = groundActionsAgainstCatalog(
+    payload.actions,
+    catalog,
+    originalText || payload.sourceText,
+  );
   const missingFields = [...new Set([...(payload.missingFields || []), ...(grounded.missingFields || [])])];
   const suggestedPhrases = grounded.suggestedPhrases?.length ? grounded.suggestedPhrases : payload.suggestedPhrases;
 
@@ -984,6 +988,7 @@ const tryParseQueryStockAction = (fragment) => {
     /^(?:tengo\s+stock\s+de\s+)(.+)$/iu,
     /^(?:hay\s+)(.+?)(?:\s+en\s+stock)$/iu,
     /^(?:stock\s+(?:de\s+)?)(.+)$/iu,
+    /^(?:qu[eé]\s+)(.+?)(?:\s+(?:me\s+)?(?:tengo|tenes|hay|quedan?))?$/iu,
     /^(?:no\s+)?tengo\s+m[aá]s\s+(?:stock\s+(?:de\s+)?)?(.+)$/iu,
     /^(?:me\s+)?quedan?\s+(?:m[aá]s\s+)?(?:stock\s+(?:de\s+)?)?(.+)$/iu,
     /^(?:hay\s+m[aá]s\s+)(.+)$/iu,
@@ -1713,7 +1718,7 @@ const extractCatalogActionsFromText = (text) => {
 };
 
 const parseLocalText = (text, conversationTurns = [], catalog = null) => {
-  const finish = (payload) => withCatalogGrounding(payload, catalog);
+  const finish = (payload) => withCatalogGrounding(payload, catalog, text);
 
   if (looksLikeUnusableTranscript(text)) {
     return null;
@@ -1896,7 +1901,7 @@ const parseVoiceTextWithModel = async (
   const operationHint = buildOperationHint(text, conversationTurns);
   const forceAddStock = looksLikeLoadPreviousCommand(text) || looksLikeInventoryCatalog(text);
   const previousCatalog = looksLikeLoadPreviousCommand(text) ? findLastCatalogUserText(conversationTurns) : '';
-  const finish = (payload) => withCatalogGrounding(payload, catalog);
+  const finish = (payload) => withCatalogGrounding(payload, catalog, text);
 
   if (looksLikeUnusableTranscript(text)) {
     return null;
@@ -2081,7 +2086,7 @@ const parseVoiceTextWithModel = async (
     }
 
     return finish(
-      buildPayload(sourceText, normalizedActions, {
+      buildPayload(text, normalizedActions, {
         intent: forceAddStock ? 'add_stock' : typeof parsed.intent === 'string' ? parsed.intent : undefined,
         confidence: typeof parsed.confidence === 'number' ? parsed.confidence : undefined,
         requiresConfirmation:

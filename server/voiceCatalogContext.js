@@ -332,6 +332,31 @@ Reglas contra este inventario:
 `.trim();
 };
 
+const compactProductType = (value) => {
+  const parts = String(value ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) {
+    return null;
+  }
+  if (parts.length > 2) {
+    return parts[0];
+  }
+  return parts.join(' ');
+};
+
+const pickFamilyProductType = (matching, action) => {
+  const shared = compactProductType(sharedField(matching, 'productType'));
+  if (shared) {
+    return shared;
+  }
+  const fromCatalog = matching
+    .map((product) => compactProductType(product.productType))
+    .find(Boolean);
+  return fromCatalog || compactProductType(action.productType) || undefined;
+};
+
 const groundQueryStockAction = (action, products, sourceText) => {
   const fromUser = catalogTokensFromText(sourceText || '', products);
   const fromAction = catalogTokensFromText(
@@ -359,7 +384,7 @@ const groundQueryStockAction = (action, products, sourceText) => {
     }
 
     if (matching.length > 1) {
-      const sharedType = sharedField(matching, 'productType') || action.productType || matching[0].productType;
+      const sharedType = pickFamilyProductType(matching, action);
       const sharedModel = sharedField(matching, 'productModel');
       const genericModel = sharedModel || titleCase(familyTokens.join(' '));
       const next = {
