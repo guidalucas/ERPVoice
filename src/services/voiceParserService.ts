@@ -55,7 +55,7 @@ const parseProductDescriptor = (value: string) => {
     .trim();
   const garmentMatch = withoutSize.match(new RegExp(`^(${GARMENT_TYPE_PREFIX})\\s+(?:de(?:l)?\\s+)?(.+)$`, 'i'));
   const rawProductType = garmentMatch?.[1] ?? withoutSize.split(/\s+de\s+/i)[0] ?? withoutSize;
-  const rawProductModel = garmentMatch?.[2] ?? withoutSize.split(/\s+de\s+/i).slice(1).join(' de ') || undefined;
+  const rawProductModel = garmentMatch?.[2] ?? (withoutSize.split(/\s+de\s+/i).slice(1).join(' de ') || undefined);
 
   const productType = rawProductType ? singularizeProductType(rawProductType) : undefined;
   const productModel = rawProductModel ? titleCase(rawProductModel) : undefined;
