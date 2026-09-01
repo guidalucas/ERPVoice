@@ -27,6 +27,76 @@ const normalizeTextList = (value: string) =>
         ),
     );
 
+const MATCH_STOPWORDS = new Set([
+  'para',
+  'con',
+  'del',
+  'las',
+  'los',
+  'una',
+  'uno',
+  'por',
+  'les',
+  'de',
+  'el',
+  'la',
+  'y',
+  'en',
+  'un',
+  'the',
+  's',
+  'm',
+  'l',
+  'xl',
+  'xxl',
+  'camiseta',
+  'camisetas',
+  'talle',
+  'talles',
+  'version',
+  'producto',
+  'productos',
+]);
+
+const queryTokensFrom = (value: string) =>
+  normalizeText(value)
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z0-9]/g, ''))
+    .filter((token) => token.length > 1 && !MATCH_STOPWORDS.has(token));
+
+const productContainsAllTokens = (product: Product, tokens: string[]) => {
+  if (!tokens.length) {
+    return false;
+  }
+
+  const hay = normalizeText(
+    [product.name, product.productType, product.productModel, product.size].filter(Boolean).join(' '),
+  );
+  const hayTokens = hay
+    .split(/\s+/)
+    .map((token) => token.replace(/[^a-z0-9]/g, ''))
+    .filter(Boolean);
+
+  return tokens.every(
+    (token) =>
+      hay.includes(token) ||
+      hayTokens.some(
+        (part) => part === token || (token.length >= 3 && part.length >= 3 && (part.includes(token) || token.includes(part))),
+      ),
+  );
+};
+
+const filterByExplicitSize = (products: Product[], action: StockQueryAction) => {
+  const explicitSize = normalizeNullableString(action.size);
+  if (!explicitSize || explicitSize === '*') {
+    return products;
+  }
+  return products.filter((product) => {
+    const productSize = normalizeNullableString(product.size);
+    return Boolean(productSize && (productSize === explicitSize || includesNormalized(productSize, explicitSize)));
+  });
+};
+
 const includesNormalized = (candidate: string, query: string) => {
   const candidateNorm = normalizeText(candidate).replace(/\s+/g, ' ').trim();
   const queryNorm = normalizeText(query).replace(/\s+/g, ' ').trim();
@@ -130,39 +200,48 @@ export const matchProductsForQuery = (products: Product[], action: StockQueryAct
   const actionName = String(action.productName ?? '').trim();
 
   if (isListAllStockQuery(action)) {
-    const explicitSize = normalizeNullableString(action.size);
-    if (!explicitSize || explicitSize === '*') {
-      return products.slice();
-    }
-    return products.filter((product) => {
-      const productSize = normalizeNullableString(product.size);
-      return Boolean(productSize && (productSize === explicitSize || includesNormalized(productSize, explicitSize)));
-    });
+    return filterByExplicitSize(products.slice(), action);
   }
 
+  const matchesType = (product: Product) => {
+    const productType = normalizeNullableString(product.productType);
+    const productName = String(product.name ?? '');
+    return (
+      !actionType ||
+      (productType && includesNormalized(productType, actionType)) ||
+      includesNormalized(productName, actionType)
+    );
+  };
+
   if (actionType || actionModel) {
-    return products.filter((product) => {
-      const productType = normalizeNullableString(product.productType);
-      const productModel = normalizeNullableString(product.productModel);
-      const productName = String(product.name ?? '');
-
-      const typeOk =
-        !actionType || (productType && includesNormalized(productType, actionType)) || includesNormalized(productName, actionType);
-
-      if (!typeOk) {
+    const modelTokens = actionModel ? queryTokensFrom(actionModel) : [];
+    const filtered = products.filter((product) => {
+      if (!matchesType(product)) {
         return false;
       }
-
       if (!actionModel) {
         return true;
       }
-
+      if (modelTokens.length) {
+        return productContainsAllTokens(product, modelTokens);
+      }
+      const productModel = normalizeNullableString(product.productModel);
+      const productName = String(product.name ?? '');
       return (productModel && includesNormalized(productModel, actionModel)) || includesNormalized(productName, actionModel);
     });
+    return filterByExplicitSize(filtered, action);
   }
 
   if (!actionName) {
     return [];
+  }
+
+  const nameTokens = queryTokensFrom(actionName);
+  if (nameTokens.length) {
+    const subset = products.filter((product) => productContainsAllTokens(product, nameTokens));
+    if (subset.length) {
+      return filterByExplicitSize(subset, action);
+    }
   }
 
   const actionTokens = normalizeTextList(actionName);
@@ -185,7 +264,10 @@ export const matchProductsForQuery = (products: Product[], action: StockQueryAct
   }
 
   const bestScore = Math.max(...scored.map((entry) => entry.score));
-  return scored.filter((entry) => entry.score === bestScore).map((entry) => entry.product);
+  return filterByExplicitSize(
+    scored.filter((entry) => entry.score === bestScore).map((entry) => entry.product),
+    action,
+  );
 };
 
 const titleCase = (value: string) =>
@@ -301,11 +383,19 @@ export const answerStockQuery = (
     totalReserved > 0
       ? `\nAdemás hay ${totalReserved} unidad${totalReserved === 1 ? '' : 'es'} reservada${totalReserved === 1 ? '' : 's'}.`
       : '';
-  const productLabel = (product: Product) =>
-    normalizeNullableString(product.productModel) ||
-    normalizeNullableString(product.productType) ||
-    product.name ||
-    'Producto';
+  const productLabel = (product: Product) => {
+    const model = normalizeNullableString(product.productModel);
+    if (model && !/^\d{2,4}$/.test(normalizeText(model))) {
+      return model;
+    }
+    const name = String(product.name ?? '').trim();
+    const size = normalizeNullableString(product.size);
+    const withoutSize =
+      size && name.toLowerCase().endsWith(` ${size.toLowerCase()}`)
+        ? name.slice(0, name.length - size.length).trim()
+        : name;
+    return withoutSize || name || model || normalizeNullableString(product.productType) || 'Producto';
+  };
 
   if (action.groupBy === 'size') {
     const groups = new Map<string, Product[]>();

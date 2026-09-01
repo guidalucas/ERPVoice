@@ -131,6 +131,7 @@ Contexto del rubro del negocio:
 ${variantLine}
 - Si la frase incluye tipo, modelo y variante, separá productType, productModel y size.
 - En query_stock NO pongas size salvo que el usuario pida una variante puntual.
+- En query_stock de una familia (equipo, marca, tipo) usá un productModel genérico. No elijas un SKU puntual del inventario.
 - update_product sin size aplica a TODAS las variantes del modelo.
 - Los nombres exactos salen del inventario del negocio cuando esté disponible, no de ejemplos genéricos.
 `.trim();

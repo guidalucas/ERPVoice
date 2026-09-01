@@ -70,6 +70,24 @@ console.log(
   ),
 );
 
+line('QUERY familia River: no clavar un solo SKU');
+const queryFamily = groundActionsAgainstCatalog(
+  [{ type: 'query_stock', productName: 'Camiseta River 2024 Titular', productType: 'Camiseta', productModel: 'River 2024 Titular' }],
+  catalog,
+  'no tengo mas camisetas de river?',
+);
+console.log(
+  JSON.stringify(
+    {
+      productName: queryFamily.actions[0]?.productName,
+      productModel: queryFamily.actions[0]?.productModel,
+      hold: queryFamily.requiresConfirmation,
+    },
+    null,
+    2,
+  ),
+);
+
 line('DELETE ambiguo: solo "River"');
 const ambiguous = groundActionsAgainstCatalog(
   [{ type: 'delete_product', productName: 'Camiseta River' }],
