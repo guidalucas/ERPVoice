@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import type { BusinessCategoryPreset } from '../../domain/businessCategories';
+import { getVariantWord, type BusinessCategoryPreset } from '../../domain/businessCategories';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
 import { LOW_STOCK_THRESHOLD } from './dashboardTypes';
@@ -26,12 +26,125 @@ type ProductRow = {
   price: number;
 };
 
+type InventoryGroupBy = 'model' | 'variant';
+
 type ProductGroup = {
   key: string;
   displayName: string;
+  groupedBy: InventoryGroupBy;
   productType?: string | null;
   productModel?: string | null;
+  variantValue?: string | null;
   products: ProductRow[];
+};
+
+const SIZE_ORDER = ['xxs', 'xs', 's', 'm', 'l', 'xl', 'xxl', 'xxxl'];
+
+const normalizeSearch = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim();
+
+const compareVariantValues = (left: string | null | undefined, right: string | null | undefined) => {
+  const leftSize = normalizeSearch(left ?? '');
+  const rightSize = normalizeSearch(right ?? '');
+  const leftIndex = SIZE_ORDER.indexOf(leftSize);
+  const rightIndex = SIZE_ORDER.indexOf(rightSize);
+  if (leftIndex >= 0 && rightIndex >= 0) {
+    return leftIndex - rightIndex;
+  }
+  if (leftIndex >= 0) {
+    return -1;
+  }
+  if (rightIndex >= 0) {
+    return 1;
+  }
+  return String(left ?? '').localeCompare(String(right ?? ''), 'es', { numeric: true, sensitivity: 'base' });
+};
+
+const productLineName = (product: ProductRow) => {
+  const typePart = product.productType?.trim() ?? '';
+  const modelPart = product.productModel?.trim() ?? '';
+  if (typePart || modelPart) {
+    return [typePart, modelPart].filter(Boolean).join(' ');
+  }
+  return product.name;
+};
+
+const productSearchHaystack = (product: ProductRow) =>
+  [product.name, product.productType, product.productModel, product.size].filter(Boolean).join(' ');
+
+const pluralizeVariantLabel = (label: string | null | undefined) => {
+  const singular = label?.trim().toLowerCase() || 'variante';
+  if (singular === 'número' || singular === 'numero') {
+    return 'números';
+  }
+  return `${singular}s`;
+};
+
+const buildProductGroups = (
+  products: ProductRow[],
+  groupBy: InventoryGroupBy,
+  preset: BusinessCategoryPreset,
+): ProductGroup[] => {
+  const groups: Record<string, ProductGroup> = {};
+  const variantWord = getVariantWord(preset);
+  const variantTitle = preset.variantLabel?.trim() || 'Variante';
+
+  for (const product of products) {
+    if (groupBy === 'variant') {
+      const sizePart = product.size?.trim() ?? '';
+      const key = `variant||${sizePart.toLowerCase() || '__none__'}`;
+      const displayName = sizePart ? `${variantTitle} ${sizePart}` : `Sin ${variantWord}`;
+      groups[key] = groups[key] ?? {
+        key,
+        displayName,
+        groupedBy: 'variant',
+        variantValue: sizePart || null,
+        products: [],
+      };
+      groups[key]!.products.push(product);
+      continue;
+    }
+
+    const typePart = product.productType?.trim() ?? '';
+    const modelPart = product.productModel?.trim() ?? '';
+    const key = typePart || modelPart ? `model||${typePart}||${modelPart}` : `model||name||${product.name}`;
+    const displayName = typePart || modelPart ? [typePart, modelPart].filter(Boolean).join(' ') : product.name;
+    groups[key] = groups[key] ?? {
+      key,
+      displayName,
+      groupedBy: 'model',
+      productType: product.productType,
+      productModel: product.productModel,
+      products: [],
+    };
+    groups[key]!.products.push(product);
+  }
+
+  return Object.values(groups)
+    .map((group) => ({
+      ...group,
+      products: group.products.slice().sort((left, right) => {
+        if (group.groupedBy === 'variant') {
+          return productLineName(left).localeCompare(productLineName(right), 'es', { sensitivity: 'base' });
+        }
+        return compareVariantValues(left.size, right.size);
+      }),
+    }))
+    .sort((left, right) => {
+      if (groupBy === 'variant') {
+        const leftMissing = !left.variantValue;
+        const rightMissing = !right.variantValue;
+        if (leftMissing !== rightMissing) {
+          return leftMissing ? 1 : -1;
+        }
+        return compareVariantValues(left.variantValue, right.variantValue);
+      }
+      return left.displayName.localeCompare(right.displayName, 'es', { sensitivity: 'base' });
+    });
 };
 
 const emptyDraft = (): ProductDraft => ({
@@ -55,13 +168,6 @@ const toDraft = (product: ProductRow): ProductDraft => ({
 });
 
 const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
-
-const normalizeSearch = (value: string) =>
-  value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .trim();
 
 const buildProductName = (draft: ProductDraft) => {
   const explicitName = draft.name.trim();
@@ -215,11 +321,8 @@ export function ProductsAbmPanel({
 }) {
   const { products, createProductRecord, updateProductRecord, deleteProductRecord } = useInventory();
   const preset = useBusinessCategoryPreset();
-  const variantLabelPlural = preset.variantLabel
-    ? preset.variantLabel.toLowerCase() === 'número'
-      ? 'números'
-      : `${preset.variantLabel.toLowerCase()}s`
-    : 'variantes';
+  const variantWord = getVariantWord(preset);
+  const variantLabelPlural = pluralizeVariantLabel(preset.variantLabel);
   const [draft, setDraft] = useState<ProductDraft>(() => emptyDraft());
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -228,6 +331,7 @@ export function ProductsAbmPanel({
   const [deleting, setDeleting] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState('');
+  const [groupBy, setGroupBy] = useState<InventoryGroupBy>('model');
   const onlyLowStock = stockFilter === 'low-stock';
 
   const editingProduct = useMemo(() => products.find((product) => product.id === editingProductId) ?? null, [products, editingProductId]);
@@ -240,36 +344,10 @@ export function ProductsAbmPanel({
     return { totalAvailable, totalReserved, totalValue };
   }, [products]);
 
-  const groupedProducts = useMemo(() => {
-    const groups: Record<string, ProductGroup> = {};
-
-    for (const product of products) {
-      const typePart = product.productType?.trim() ?? '';
-      const modelPart = product.productModel?.trim() ?? '';
-      const key = typePart || modelPart ? `${typePart}||${modelPart}` : product.name;
-      const displayName =
-        typePart || modelPart
-          ? [typePart, modelPart].filter(Boolean).join(' ')
-          : product.name;
-
-      groups[key] = groups[key] ?? {
-        key,
-        displayName,
-        productType: product.productType,
-        productModel: product.productModel,
-        products: [],
-      };
-
-      groups[key]!.products.push(product);
-    }
-
-    return Object.values(groups).map((group) => ({
-      ...group,
-      products: group.products.sort((a, b) =>
-        String(a.size ?? '').localeCompare(String(b.size ?? ''), undefined, { numeric: true, sensitivity: 'base' }),
-      ),
-    }));
-  }, [products]);
+  const groupedProducts = useMemo(
+    () => (preset.useVariants ? buildProductGroups(products, groupBy, preset) : []),
+    [products, groupBy, preset],
+  );
 
   const flatProducts = useMemo(() => {
     const normalizedQuery = normalizeSearch(searchQuery);
@@ -293,14 +371,21 @@ export function ProductsAbmPanel({
     const normalizedQuery = normalizeSearch(searchQuery);
     const bySearch = !normalizedQuery
       ? groupedProducts
-      : groupedProducts.filter((group) => {
-          const haystack = normalizeSearch(
-            [group.displayName, group.productType, group.productModel, ...group.products.map((product) => product.name)]
-              .filter(Boolean)
-              .join(' '),
-          );
-          return haystack.includes(normalizedQuery);
-        });
+      : groupedProducts
+          .map((group) => {
+            const headerHaystack = normalizeSearch(
+              [group.displayName, group.productType, group.productModel, group.variantValue].filter(Boolean).join(' '),
+            );
+            if (headerHaystack.includes(normalizedQuery)) {
+              return group;
+            }
+
+            const matchingProducts = group.products.filter((product) =>
+              normalizeSearch(productSearchHaystack(product)).includes(normalizedQuery),
+            );
+            return { ...group, products: matchingProducts };
+          })
+          .filter((group) => group.products.length > 0);
 
     if (!onlyLowStock) {
       return bySearch;
@@ -440,7 +525,9 @@ export function ProductsAbmPanel({
             <h3 className="type-title text-xl text-[color:var(--text)]">Inventario</h3>
             <p className="mt-1 text-sm text-[color:var(--muted)]">
               {preset.useVariants
-                ? `Agrupados por modelo. Usá el lápiz para editar stock, precio y datos del producto.`
+                ? groupBy === 'variant'
+                  ? `Agrupados por ${variantWord}. Usá el lápiz para editar stock, precio y datos del producto.`
+                  : 'Agrupados por modelo. Usá el lápiz para editar stock, precio y datos del producto.'
                 : 'Lista plana por producto. Usá el lápiz para editar stock, precio y datos del producto.'}
             </p>
           </div>
@@ -449,36 +536,62 @@ export function ProductsAbmPanel({
           </button>
         </div>
 
-        <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-end">
-          <label className="min-w-0 flex-1 space-y-1.5 text-sm type-subtitle text-[color:var(--muted)]">
+        <div className="mt-4 flex flex-col gap-3">
+          <label className="min-w-0 space-y-1.5 text-sm type-subtitle text-[color:var(--muted)]">
             Buscar
             <input
               className="erp-input"
               type="search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={`Nombre, ${preset.productModelLabel.toLowerCase()} o ${preset.productTypeLabel.toLowerCase()}…`}
+              placeholder={
+                preset.useVariants && preset.variantLabel
+                  ? `Nombre, ${preset.productModelLabel.toLowerCase()}, ${preset.productTypeLabel.toLowerCase()} o ${variantWord}…`
+                  : `Nombre, ${preset.productModelLabel.toLowerCase()} o ${preset.productTypeLabel.toLowerCase()}…`
+              }
               autoComplete="off"
             />
           </label>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="activity-filter-chip"
-              aria-pressed={!onlyLowStock}
-              onClick={() => onStockFilterChange?.('all')}
-            >
-              Todos
-            </button>
-            <button
-              type="button"
-              className={`activity-filter-chip ${onlyLowStock ? '!bg-none !text-[#0b0b10]' : ''}`}
-              aria-pressed={onlyLowStock}
-              style={onlyLowStock ? { background: 'var(--warning)', borderColor: 'transparent', color: '#0b0b10' } : undefined}
-              onClick={() => onStockFilterChange?.('low-stock')}
-            >
-              Stock bajo
-            </button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar stock">
+              <button
+                type="button"
+                className="activity-filter-chip"
+                aria-pressed={!onlyLowStock}
+                onClick={() => onStockFilterChange?.('all')}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                className={`activity-filter-chip ${onlyLowStock ? '!bg-none !text-[#0b0b10]' : ''}`}
+                aria-pressed={onlyLowStock}
+                style={onlyLowStock ? { background: 'var(--warning)', borderColor: 'transparent', color: '#0b0b10' } : undefined}
+                onClick={() => onStockFilterChange?.('low-stock')}
+              >
+                Stock bajo
+              </button>
+            </div>
+            {preset.useVariants ? (
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Agrupar inventario">
+                <button
+                  type="button"
+                  className="activity-filter-chip"
+                  aria-pressed={groupBy === 'model'}
+                  onClick={() => setGroupBy('model')}
+                >
+                  Por modelo
+                </button>
+                <button
+                  type="button"
+                  className="activity-filter-chip"
+                  aria-pressed={groupBy === 'variant'}
+                  onClick={() => setGroupBy('variant')}
+                >
+                  Por {variantWord}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -488,8 +601,19 @@ export function ProductsAbmPanel({
                 const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
                 const totalReserved = group.products.reduce((sum, product) => sum + product.stockReserved, 0);
                 const samePrice = group.products.every((product) => product.price === group.products[0]?.price);
+                const itemCount = group.products.length;
+                const groupedByVariant = group.groupedBy === 'variant';
                 const isExpanded = Boolean(expandedGroups[group.key]);
-                const sizeCount = group.products.length;
+                const countLabel = groupedByVariant
+                  ? `${itemCount} ${itemCount === 1 ? 'producto' : 'productos'}`
+                  : `${itemCount} ${itemCount === 1 ? variantWord : variantLabelPlural}`;
+                const toggleLabel = groupedByVariant
+                  ? isExpanded
+                    ? 'Ocultar productos'
+                    : 'Ver productos'
+                  : isExpanded
+                    ? `Ocultar ${variantLabelPlural}`
+                    : `Ver ${variantLabelPlural}`;
 
                 return (
                   <div
@@ -513,7 +637,7 @@ export function ProductsAbmPanel({
                           )}
                         </div>
                         <p className="mt-1 text-sm text-[color:var(--muted)]">
-                          {sizeCount} {sizeCount === 1 ? (preset.variantLabel?.toLowerCase() ?? 'variante') : variantLabelPlural}
+                          {countLabel}
                           {' · '}
                           {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
                           {totalReserved > 0 ? ` · ${totalReserved} reservada${totalReserved === 1 ? '' : 's'}` : ''}
@@ -521,7 +645,7 @@ export function ProductsAbmPanel({
                         </p>
                       </div>
                       <span className="erp-toggle-link text-xs">
-                        {isExpanded ? `Ocultar ${variantLabelPlural}` : `Ver ${variantLabelPlural}`}
+                        {toggleLabel}
                       </span>
                     </button>
 
@@ -534,9 +658,11 @@ export function ProductsAbmPanel({
                             return (
                               <div
                                 key={product.id}
-                                className={`stock-chip ${low ? 'border-amber-400/30 bg-amber-400/10' : ''}`}
+                                className={`stock-chip max-w-full ${low ? 'border-amber-400/30 bg-amber-400/10' : ''}`}
                               >
-                                <span className="type-subtitle text-[color:var(--text)]">{product.size ?? '-'}:</span>
+                                <span className="type-subtitle min-w-0 break-words text-[color:var(--text)]">
+                                  {groupedByVariant ? productLineName(product) : (product.size ?? '-')}:
+                                </span>
                                 <span className="type-subtitle font-semibold text-emerald-700 dark:text-emerald-300">{product.stockAvailable}</span>
                                 {product.stockReserved > 0 && (
                                   <>
