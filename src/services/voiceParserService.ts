@@ -220,6 +220,9 @@ const tryParseQueryStockAction = (fragment: string): ParsedActionUnion | null =>
     /^(?:tengo\s+stock\s+de\s+)(.+)$/iu,
     /^(?:hay\s+)(.+?)(?:\s+en\s+stock)$/iu,
     /^(?:stock\s+(?:de\s+)?)(.+)$/iu,
+    /^(?:no\s+)?tengo\s+m[aá]s\s+(?:stock\s+(?:de\s+)?)?(.+)$/iu,
+    /^(?:me\s+)?quedan?\s+(?:m[aá]s\s+)?(?:stock\s+(?:de\s+)?)?(.+)$/iu,
+    /^(?:hay\s+m[aá]s\s+)(.+)$/iu,
   ];
 
   for (const pattern of patterns) {
@@ -230,6 +233,7 @@ const tryParseQueryStockAction = (fragment: string): ParsedActionUnion | null =>
 
     const productText = match[1]
       .replace(/^(?:de\s+)/i, '')
+      .replace(/^(?:stock\s+(?:de\s+)?)/i, '')
       .replace(new RegExp(`\\s+y\\s+(?:qu[eé]\\s+)?(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?$`, 'iu'), '')
       .replace(/\s+(?:me\s+)?(?:quedan|queda|tengo|hay)$/iu, '')
       .replace(new RegExp(`\\ben\\s+(?:${VARIANT_KEYWORD_ALT})\\b`, 'gi'), 'talle')

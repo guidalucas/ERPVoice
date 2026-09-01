@@ -270,6 +270,7 @@ Reglas:
 - "borrá el pedido de X" = delete_pedido. "conseguido/descartado" sobre un pedido = update_pedido.
 - Consulta de stock = query_stock (sin mutar). Consulta de pedidos = query_pedidos. Preguntas como "¿qué me pidió Juan?", "¿qué pedidos hay pendientes?", "mostrame los pedidos de María" son query_pedidos, NUNCA client_order.
 - Si pide todo el inventario / todos los productos / listado completo: query_stock con productName "*". Nunca uses "all" ni un producto inventado. Si pide agrupado por talle/número, groupBy: "size".
+- Consultas de familia ("¿no tengo más camisetas de River?", "¿cuánto hay de Boca?"): query_stock con productModel genérico ("River", "Boca"). NO elijas un SKU del inventario; el sistema lista todos los matches.
 - client_order es SOLO cuando el usuario ANOTA un pedido nuevo: "Juan me pidió una camiseta", "anotame que María quiere un mate".
 - Pago recibido = payment_received. Reserva "para X" = reserve_stock + clientName.
 - update_product / update_pedido solo modifican existentes.
@@ -678,7 +679,7 @@ const withCatalogGrounding = (payload, catalog) => {
     return payload;
   }
 
-  const grounded = groundActionsAgainstCatalog(payload.actions, catalog);
+  const grounded = groundActionsAgainstCatalog(payload.actions, catalog, payload.sourceText);
   const missingFields = [...new Set([...(payload.missingFields || []), ...(grounded.missingFields || [])])];
   const suggestedPhrases = grounded.suggestedPhrases?.length ? grounded.suggestedPhrases : payload.suggestedPhrases;
 
@@ -983,6 +984,9 @@ const tryParseQueryStockAction = (fragment) => {
     /^(?:tengo\s+stock\s+de\s+)(.+)$/iu,
     /^(?:hay\s+)(.+?)(?:\s+en\s+stock)$/iu,
     /^(?:stock\s+(?:de\s+)?)(.+)$/iu,
+    /^(?:no\s+)?tengo\s+m[aá]s\s+(?:stock\s+(?:de\s+)?)?(.+)$/iu,
+    /^(?:me\s+)?quedan?\s+(?:m[aá]s\s+)?(?:stock\s+(?:de\s+)?)?(.+)$/iu,
+    /^(?:hay\s+m[aá]s\s+)(.+)$/iu,
   ];
 
   for (const pattern of patterns) {
@@ -993,6 +997,7 @@ const tryParseQueryStockAction = (fragment) => {
 
     let productText = match[1]
       .replace(/^(?:de\s+)/i, '')
+      .replace(/^(?:stock\s+(?:de\s+)?)/i, '')
       .replace(new RegExp(`\\s+y\\s+(?:qu[eé]\\s+)?(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?$`, 'iu'), '')
       .replace(/\s+(?:me\s+)?(?:quedan|queda|tengo|hay)$/iu, '')
       .replace(new RegExp(`\\ben\\s+(?:${VARIANT_KEYWORD_ALT})\\b`, 'gi'), 'talle')

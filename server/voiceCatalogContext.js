@@ -43,6 +43,37 @@ const STOPWORDS = new Set([
   'mas',
 ]);
 
+const QUERY_EXTRA_STOPWORDS = new Set([
+  'tengo',
+  'tenes',
+  'tenemos',
+  'tiene',
+  'tenia',
+  'queda',
+  'quedan',
+  'quedo',
+  'hay',
+  'cuanto',
+  'cuanta',
+  'cuantos',
+  'cuantas',
+  'disponible',
+  'disponibles',
+  'unidad',
+  'unidades',
+  'no',
+  'me',
+  'mi',
+  'mis',
+  'te',
+  'vos',
+  'mostrame',
+  'mostrar',
+  'decime',
+  'che',
+  'hola',
+]);
+
 const MATCH_ACTIONS = new Set([
   'delete_product',
   'update_product',
@@ -68,6 +99,55 @@ const tokenize = (value) =>
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter((token) => token.length > 1 && !STOPWORDS.has(token));
+
+const tokenizeQueryText = (value) =>
+  normalizeText(value)
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length > 1 && !STOPWORDS.has(token) && !QUERY_EXTRA_STOPWORDS.has(token));
+
+const titleCase = (value) =>
+  String(value ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(' ');
+
+const tokenMatchesHay = (token, hayTokens) =>
+  hayTokens.some((part) => {
+    if (part === token) {
+      return true;
+    }
+    return token.length >= 3 && part.length >= 3 && (part.includes(token) || token.includes(part));
+  });
+
+const productHasQueryTokens = (product, tokens) => {
+  if (!tokens.length) {
+    return false;
+  }
+  const hayTokens = tokenize(productHaystack(product));
+  return tokens.every((token) => tokenMatchesHay(token, hayTokens));
+};
+
+const catalogTokensFromText = (text, products) =>
+  tokenizeQueryText(text).filter((token) =>
+    products.some((product) => tokenMatchesHay(token, tokenize(productHaystack(product)))),
+  );
+
+const sharedField = (products, key) => {
+  const values = [
+    ...new Set(
+      products
+        .map((product) => normalizeText(String(product?.[key] ?? '').trim()))
+        .filter(Boolean),
+    ),
+  ];
+  if (values.length !== 1) {
+    return null;
+  }
+  const sample = products.find((product) => normalizeText(String(product?.[key] ?? '').trim()) === values[0]);
+  return sample?.[key] || null;
+};
 
 const productHaystack = (product) =>
   normalizeText([product?.name, product?.productType, product?.productModel, product?.size].filter(Boolean).join(' '));
@@ -242,7 +322,9 @@ ${inferNamingStyle(selected.products)}
 ${clientLines.length ? `\nClientes: \n${clientLines.join('\n')}` : ''}
 ${pedidoLines.length ? `\nPedidos pendientes:\n${pedidoLines.join('\n')}` : ''}
 Reglas contra este inventario:
-- delete / update / query / venta / reserva / pedido: usá el productName EXACTO de la lista si hay match.
+- delete / venta / reserva / pedido: usá el productName EXACTO de la lista si hay un match único.
+- query_stock de una familia ("las de River", "camisetas de Boca", "no tengo más de X"): productName GENÉRICO de esa familia (ej. "Camiseta River"). NUNCA elijas un SKU puntual; el sistema lista todos los que matchean.
+- query_stock de un SKU puntual ("River titular 2024 talle S"): ahí sí usá el nombre exacto.
 - Si pide todo el inventario / todos los productos: query_stock con productName "*" y, si agrupó por talle, groupBy "size". No inventes un producto llamado all.
 - "la de X" o un nombre parcial se resuelve contra esta lista, no se inventa.
 - Si hay varios SKUs posibles (mismo modelo en dos talles/números, o dos modelos parecidos) y el usuario NO dijo la variante, NO ejecutes: missingFields ["productMatch"] y suggestedPhrases con cada candidato. Aplica a delete_product, sell, add_stock y client_order.
@@ -250,7 +332,73 @@ Reglas contra este inventario:
 `.trim();
 };
 
-const groundOneAction = (action, products) => {
+const groundQueryStockAction = (action, products, sourceText) => {
+  const fromUser = catalogTokensFromText(sourceText || '', products);
+  const fromAction = catalogTokensFromText(
+    [action.productName, action.productType, action.productModel].filter(Boolean).join(' '),
+    products,
+  );
+  const familyTokens = fromUser.length ? fromUser : fromAction;
+
+  if (familyTokens.length) {
+    let matching = products.filter((product) => productHasQueryTokens(product, familyTokens));
+    if (action.size) {
+      const wanted = normalizeText(action.size);
+      const sized = matching.filter((product) => sizeOf(product) === wanted);
+      if (sized.length) {
+        matching = sized;
+      }
+    }
+
+    if (matching.length === 1) {
+      const canonical = cloneActionWithProduct(action, matching[0]);
+      if (!action.size) {
+        delete canonical.size;
+      }
+      return { actions: [canonical], ambiguous: false };
+    }
+
+    if (matching.length > 1) {
+      const sharedType = sharedField(matching, 'productType') || action.productType || matching[0].productType;
+      const sharedModel = sharedField(matching, 'productModel');
+      const genericModel = sharedModel || titleCase(familyTokens.join(' '));
+      const next = {
+        ...action,
+        productName: [sharedType, genericModel].filter(Boolean).join(' '),
+        productType: sharedType || action.productType,
+        productModel: genericModel,
+      };
+      if (!action.size) {
+        delete next.size;
+      }
+      return { actions: [next], ambiguous: false };
+    }
+  }
+
+  const query = [action.productName, action.productType, action.productModel, action.size].filter(Boolean).join(' ');
+  const ranked = rankProducts(products, query);
+  if (!ranked.length || ranked[0].score < 16) {
+    return { actions: [action], ambiguous: false };
+  }
+
+  const best = ranked[0];
+  const close = ranked.filter((entry) => entry.score >= Math.max(16, best.score - 8));
+  if (close.length > 1) {
+    return { actions: [action], ambiguous: false };
+  }
+
+  const canonical = cloneActionWithProduct(action, best.product);
+  if (!action.size) {
+    delete canonical.size;
+  }
+  return { actions: [canonical], ambiguous: false };
+};
+
+const groundOneAction = (action, products, sourceText) => {
+  if (action.type === 'query_stock') {
+    return groundQueryStockAction(action, products, sourceText);
+  }
+
   const query = [action.productName, action.productType, action.productModel, action.size].filter(Boolean).join(' ');
   const ranked = rankProducts(products, query);
   if (!ranked.length) {
@@ -275,7 +423,10 @@ const groundOneAction = (action, products) => {
     return { actions: [action], ambiguous: false };
   }
 
-  if (action.type === 'query_stock' || action.type === 'update_product') {
+  if (action.type === 'update_product') {
+    if (close.length > 1) {
+      return { actions: [action], ambiguous: false };
+    }
     if (best.score >= 16) {
       const canonical = cloneActionWithProduct(action, best.product);
       if (!action.size) {
@@ -293,7 +444,7 @@ const groundOneAction = (action, products) => {
   return { actions: [action], ambiguous: false };
 };
 
-export const groundActionsAgainstCatalog = (actions, catalog) => {
+export const groundActionsAgainstCatalog = (actions, catalog, sourceText) => {
   const products = Array.isArray(catalog?.products) ? catalog.products : [];
   if (!products.length || !Array.isArray(actions) || !actions.length) {
     return {
@@ -329,7 +480,7 @@ export const groundActionsAgainstCatalog = (actions, catalog) => {
       continue;
     }
 
-    const grounded = groundOneAction(action, products);
+    const grounded = groundOneAction(action, products, sourceText);
     if (grounded.ambiguous) {
       requiresConfirmation = true;
       missingFields.push('productMatch');
