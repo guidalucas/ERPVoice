@@ -5,7 +5,7 @@ ERP voice-first para stock y cuentas corrientes. Convierte audio o texto en acci
 ## Qué incluye
 
 - Simulador de WhatsApp flotante y desplegable.
-- Parsing de voz con Whisper para transcripción y Llama para estructurar acciones.
+- Parsing de voz con Whisper para transcripción y Gemini (con fallback Groq) para estructurar acciones.
 - Dashboard con resumen, stock real, ABM de productos y eventos de WhatsApp.
 - Backend Express para estado, persistencia y webhook de Meta WhatsApp Cloud API.
 - Persistencia en PostgreSQL conectada a Supabase o a un `DATABASE_URL` compatible.
@@ -42,9 +42,10 @@ La interfaz queda en `http://localhost:5173` y el backend en `http://localhost:3
 
 Usa `.env.local` para configurar:
 
-- `VITE_VOICE_MODEL_ENDPOINT`
-- `VITE_VOICE_MODEL_API_KEY`
-- `VITE_VOICE_MODEL_NAME`
+- `LLM_PROVIDER` (`gemini` por default, o `groq`)
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL_NAME` (opcional; default `gemini-3.5-flash-lite`)
+- `VITE_VOICE_MODEL_ENDPOINT` / `VITE_VOICE_MODEL_API_KEY` / `VITE_VOICE_MODEL_NAME` (fallback Groq)
 - `VITE_VOICE_TRANSCRIPTION_ENDPOINT`
 - `VITE_VOICE_TRANSCRIPTION_MODEL`
 - `META_WEBHOOK_PORT`
