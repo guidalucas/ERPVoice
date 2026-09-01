@@ -1,4 +1,5 @@
 import { appendTranscriptionOptions } from './transcriptQuality.js';
+import { completeChatJson, hasAnyLlmApiKey } from './llmChatClient.js';
 
 const DEFAULT_MODEL_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
@@ -582,14 +583,11 @@ const transcribeAudioUrl = async (audioUrl) => {
 };
 
 const parseVoiceTextWithModel = async (text) => {
-  const { apiKey, model, modelEndpoint } = readEnv();
-
-  if (!apiKey) {
+  if (!hasAnyLlmApiKey()) {
     return parseLocalText(text);
   }
 
-  const requestBody = {
-    model,
+  const llm = await completeChatJson({
     temperature: 0,
     messages: [
       {
@@ -601,30 +599,23 @@ const parseVoiceTextWithModel = async (text) => {
         content: buildPrompt(text),
       },
     ],
-  };
-
-  const response = await fetch(modelEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(requestBody),
   });
 
-  if (!response.ok) {
+  if (!llm.ok) {
+    console.warn('[TwilioVoice] parseVoiceText falling back to local parser: all LLM providers failed', llm.reason);
     return parseLocalText(text);
   }
 
-  const data = await response.json();
-  const content = extractContent(data);
-
-  if (!content) {
-    return parseLocalText(text);
-  }
+  const content = llm.content;
+  console.log('[TwilioVoice] LLM parse', {
+    provider: llm.provider,
+    model: llm.model,
+    latencyMs: llm.latencyMs,
+    fallbackUsed: llm.fallbackUsed,
+  });
 
   try {
-    const parsed = JSON.parse(stripCodeFences(content));
+    const parsed = llm.json && typeof llm.json === 'object' ? llm.json : JSON.parse(stripCodeFences(content));
     const sourceText = typeof parsed.sourceText === 'string' ? parsed.sourceText : text;
     const actions = Array.isArray(parsed.actions) ? parsed.actions.map(parseAction).filter(Boolean) : [];
     const normalizedActions = actions.length ? actions : extractMultipleActionsFromText(sourceText);

@@ -12,6 +12,7 @@ import {
   appendTranscriptionOptions,
   looksLikeUnusableTranscript,
 } from './transcriptQuality.js';
+import { completeChatJson, hasAnyLlmApiKey } from './llmChatClient.js';
 
 const DEFAULT_MODEL_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
@@ -20,7 +21,6 @@ const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-large-v3-turbo';
 const DEFAULT_META_GRAPH_API_VERSION = 'v21.0';
 const MAX_CONVERSATION_TURNS = 4;
 const MAX_CONTEXT_REPLY_CHARS = 450;
-const MAX_MODEL_OUTPUT_TOKENS = 2048;
 
 const truncateText = (value, maxChars) => {
   const text = String(value ?? '').trim();
@@ -1923,7 +1923,6 @@ const parseVoiceTextWithModel = async (
   conversationTurns = [],
   catalog = null,
 ) => {
-  const { apiKey, model, modelEndpoint } = readEnv();
   const operationHint = buildOperationHint(text, conversationTurns);
   const forceAddStock = looksLikeLoadPreviousCommand(text) || looksLikeInventoryCatalog(text);
   const previousCatalog = looksLikeLoadPreviousCommand(text) ? findLastCatalogUserText(conversationTurns) : '';
@@ -1948,16 +1947,13 @@ const parseVoiceTextWithModel = async (
     return finish(buildPayload(text, [localQueryStock], { intent: 'query_stock', requiresConfirmation: false }));
   }
 
-  if (!apiKey) {
-    console.warn('[MetaWebhook] parseVoiceText falling back to local parser: missing VITE_VOICE_MODEL_API_KEY');
+  if (!hasAnyLlmApiKey()) {
+    console.warn('[MetaWebhook] parseVoiceText falling back to local parser: missing GEMINI_API_KEY / VITE_VOICE_MODEL_API_KEY');
     return parseLocalText(text, conversationTurns, catalog);
   }
 
-  const requestBody = {
-    model,
+  const llm = await completeChatJson({
     temperature: 0,
-    max_tokens: MAX_MODEL_OUTPUT_TOKENS,
-    response_format: { type: 'json_object' },
     messages: [
       {
         role: 'system',
@@ -1968,73 +1964,35 @@ const parseVoiceTextWithModel = async (
         content: buildPrompt(text, preset, conversationTurns, operationHint, catalog),
       },
     ],
-  };
-
-  let response = await fetch(modelEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(requestBody),
   });
 
-  if (!response.ok && response.status !== 429 && response.status !== 413) {
-    delete requestBody.response_format;
-    response = await fetch(modelEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(requestBody),
+  if (!llm.ok) {
+    console.warn('[MetaWebhook] parseVoiceText falling back to local parser: all LLM providers failed', {
+      reason: llm.reason,
+      failures: llm.failures?.map((item) => ({ provider: item.provider, reason: item.reason, status: item.status })),
     });
-  }
-
-  const retryableStatus = (status) => status === 429 || status === 413;
-  const describeRateLimit = (res) => ({
-    retryAfter: res.headers.get('retry-after'),
-    remainingRequests: res.headers.get('x-ratelimit-remaining-requests'),
-    remainingTokens: res.headers.get('x-ratelimit-remaining-tokens'),
-    resetRequests: res.headers.get('x-ratelimit-reset-requests'),
-    resetTokens: res.headers.get('x-ratelimit-reset-tokens'),
-  });
-  for (let attempt = 1; attempt <= 3 && response && !response.ok && retryableStatus(response.status); attempt += 1) {
-    const retryAfter = Number(response.headers.get('retry-after'));
-    const hinted = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2000 * attempt;
-    const waitMs = Math.min(8000, hinted);
-    console.warn(
-      '[MetaWebhook] model HTTP',
-      response.status,
-      `— retry ${attempt}/3 in ${waitMs}ms (no se cae al parser local todavía)`,
-      describeRateLimit(response),
-    );
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
-    response = await fetch(modelEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(requestBody),
-    });
-  }
-
-  if (!response.ok) {
-    console.warn('[MetaWebhook] parseVoiceText falling back to local parser: model HTTP', response.status);
     return parseLocalText(text, conversationTurns, catalog);
   }
 
-  const data = await response.json();
-  const content = extractContent(data);
-
-  if (!content) {
-    console.warn('[MetaWebhook] parseVoiceText falling back to local parser: empty model content');
-    return parseLocalText(text, conversationTurns, catalog);
+  const content = llm.content;
+  if (llm.latencyMs >= 2000) {
+    console.warn('[MetaWebhook] LLM parse lento', {
+      provider: llm.provider,
+      model: llm.model,
+      latencyMs: llm.latencyMs,
+      fallbackUsed: llm.fallbackUsed,
+    });
+  } else {
+    console.log('[MetaWebhook] LLM parse', {
+      provider: llm.provider,
+      model: llm.model,
+      latencyMs: llm.latencyMs,
+      fallbackUsed: llm.fallbackUsed,
+    });
   }
 
   try {
-    const parsed = JSON.parse(stripCodeFences(content));
+    const parsed = llm.json && typeof llm.json === 'object' ? llm.json : JSON.parse(stripCodeFences(content));
     const sourceText = typeof parsed.sourceText === 'string' ? parsed.sourceText : text;
     const actions = coerceCatalogActions(
       Array.isArray(parsed.actions) ? parsed.actions.map(parseAction).filter(Boolean) : [],

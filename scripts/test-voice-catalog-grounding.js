@@ -123,8 +123,8 @@ console.log(
 const mashed = loaded?.actions?.some((action) => (action.productName.match(/camiseta/gi) || []).length > 1);
 console.log('¿algún nombre mashup con varias camisetas?', mashed);
 
-if (process.env.VITE_VOICE_MODEL_API_KEY) {
-  line('LLM + catálogo (Groq)');
+if (process.env.GEMINI_API_KEY || process.env.VITE_VOICE_MODEL_API_KEY || process.env.GROQ_API_KEY) {
+  line('LLM + catálogo');
   const { parseVoiceText } = await import('../server/metaWebhookProcessor.js');
   const llmDelete = await parseVoiceText(DELETE_TEXT, {
     businessCategory: 'indumentaria',
@@ -158,5 +158,5 @@ if (process.env.VITE_VOICE_MODEL_API_KEY) {
     ),
   );
 } else {
-  console.log('\n(sin VITE_VOICE_MODEL_API_KEY: no se prueba el LLM)');
+  console.log('\n(sin GEMINI_API_KEY / VITE_VOICE_MODEL_API_KEY: no se prueba el LLM)');
 }

@@ -1,7 +1,7 @@
 /**
  * Batería de robustez del parser multi-rubro de Stocky.
  *
- * Llama al parser real (parseVoiceText → Groq/Llama + grounding de catálogo).
+ * Llama al parser real (parseVoiceText → Gemini/Groq + grounding de catálogo).
  * No muta inventario ni toca la lógica del parser: solo mide.
  *
  *   node scripts/test-parser-robustness.js
@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { parseLocalText, parseVoiceText } from '../server/metaWebhookProcessor.js';
 import { hasProductMatchHold, scoreProductAgainstQuery } from '../server/voiceCatalogContext.js';
+import { describeLlmSetup, hasAnyLlmApiKey } from '../server/llmChatClient.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -68,7 +69,9 @@ const argValue = (name, fallback = '') => {
 
 const USE_LOCAL = flag('local');
 const LIMIT = Number(argValue('limit', '0')) || 0;
-const DELAY_MS = Number(argValue('delay-ms', USE_LOCAL ? '0' : '7000')) || 0;
+const LLM_SETUP = describeLlmSetup();
+const DEFAULT_LLM_DELAY_MS = LLM_SETUP.flag === 'groq' ? '7000' : '500';
+const DELAY_MS = Number(argValue('delay-ms', USE_LOCAL ? '0' : DEFAULT_LLM_DELAY_MS)) || 0;
 const CATEGORY_FILTER = new Set(
   argValue('categories')
     .split(',')
@@ -1287,12 +1290,19 @@ const callParser = async (text, inventory, conversationTurns) => {
 const main = async () => {
   const selectedInventories = parseArgsInventory();
   const selectedCases = parseArgsCases();
-  const hasKey = Boolean(process.env.VITE_VOICE_MODEL_API_KEY);
-  const mode = USE_LOCAL ? 'local (parseLocalText, sin Groq)' : hasKey ? 'LLM real (parseVoiceText / Groq Llama)' : 'local fallback (no hay VITE_VOICE_MODEL_API_KEY)';
-  const model = USE_LOCAL || !hasKey ? null : process.env.VITE_VOICE_MODEL_NAME || 'openai/gpt-oss-20b';
+  const hasKey = hasAnyLlmApiKey();
+  const mode = USE_LOCAL
+    ? 'local (parseLocalText, sin LLM)'
+    : hasKey
+      ? `LLM real (parseVoiceText / ${LLM_SETUP.models.join(' → ')})`
+      : 'local fallback (no hay GEMINI_API_KEY ni VITE_VOICE_MODEL_API_KEY)';
+  const model = USE_LOCAL || !hasKey ? null : LLM_SETUP.models.join(' → ');
 
   if (!USE_LOCAL && !hasKey) {
-    console.warn('[test-parser] No hay VITE_VOICE_MODEL_API_KEY. Se usa el parser local, no el modelo.');
+    console.warn('[test-parser] No hay GEMINI_API_KEY ni VITE_VOICE_MODEL_API_KEY. Se usa el parser local, no el modelo.');
+  }
+  if (!USE_LOCAL && hasKey && LLM_SETUP.flag === 'gemini' && !process.env.GEMINI_API_KEY) {
+    console.warn('[test-parser] LLM_PROVIDER=gemini pero no hay GEMINI_API_KEY; se usa Groq como fallback.');
   }
 
   let planned = selectedInventories.length * selectedCases.length;
