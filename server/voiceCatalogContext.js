@@ -469,6 +469,19 @@ const groundOneAction = (action, products, sourceText) => {
     return groundQueryStockAction(action, products, sourceText);
   }
 
+  if (action.type === 'delete_product') {
+    const wantedName = normalizeText(action.productName).replace(/\s+/g, ' ').trim();
+    const exact = products.filter((product) =>
+      normalizeText(product.name).replace(/\s+/g, ' ').trim() === wantedName,
+    );
+    if (exact.length === 1) {
+      return { actions: [cloneActionWithProduct(action, exact[0])], ambiguous: false };
+    }
+    if (exact.length > 1) {
+      return { actions: [action], ambiguous: true, candidates: exact.map((product) => product.name) };
+    }
+  }
+
   const garmentKey = productMatchKey(action);
   if (garmentKey && action.size && action.type === 'add_stock') {
     const exactGarments = products.filter((product) =>
@@ -585,6 +598,11 @@ export const groundActionsAgainstCatalog = (actions, catalog, sourceText) => {
       ['*', 'all', 'todo', 'todos', 'todas', 'inventario', 'productos', 'stock', 'todos los productos', 'todo el stock', 'todo el inventario'].includes(listAllName)
     ) {
       next.push({ ...action, productName: '*' });
+      continue;
+    }
+
+    if (action.type === 'delete_product' && listAllName === '*') {
+      next.push({ type: 'delete_product', productName: '*' });
       continue;
     }
 

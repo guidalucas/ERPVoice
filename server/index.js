@@ -11,6 +11,7 @@ import {
   createProveedorRecord,
   createPedidoRecord,
   deleteProductRecord,
+  deleteProductRecords,
   deleteClientRecord,
   deleteProveedorRecord,
   deletePedidoRecord,
@@ -556,6 +557,15 @@ app.put('/api/products/:id', authenticateRequest, async (req, res) => {
     res.json(product);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.delete('/api/products/batch', authenticateRequest, async (req, res) => {
+  try {
+    const deleted = await deleteProductRecords(req.body?.ids, tenantPhoneOf(req));
+    res.json({ deleted });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
 

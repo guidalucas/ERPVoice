@@ -276,6 +276,9 @@ const summarizeAction = (action: ParsedAction) => {
   }
 
   if (action.type === 'delete_product') {
+    if (action.productName === '*') {
+      return 'Eliminar todos los productos del inventario';
+    }
     return `Eliminar producto ${action.productName}`;
   }
 
@@ -453,11 +456,15 @@ export const applyConfirmedActions = (state: AppState, actions: ParsedAction[], 
     }
 
     if (action.type === 'delete_product') {
-      const product = resolveProduct(nextProducts, action);
-      if (product) {
-        const productIndex = nextProducts.findIndex((entry) => entry.id === product.id);
-        if (productIndex >= 0) {
-          nextProducts.splice(productIndex, 1);
+      if (action.productName === '*') {
+        nextProducts.length = 0;
+      } else {
+        const product = resolveProduct(nextProducts, action);
+        if (product) {
+          const productIndex = nextProducts.findIndex((entry) => entry.id === product.id);
+          if (productIndex >= 0) {
+            nextProducts.splice(productIndex, 1);
+          }
         }
       }
     }

@@ -30,9 +30,9 @@ La interfaz queda en `http://localhost:5173` y el backend en `http://localhost:3
 
 ### Probar el inventario sin PostgreSQL
 
-Ejecutá `npm run dev:inventory-demo` y abrí `http://localhost:5174`. El demo corre separado de la app habitual de `localhost:5173`, trae modelos de ejemplo y permite entrar con el acceso de desarrollo. En **Inventario** podés crear modelos y talles, editar cantidades y precios; desde **Inicio → Registrar ingreso** podés sumar stock. Los cambios son descartables y se pierden al detener el demo.
+Ejecutá `npm run dev:inventory-demo` y abrí `http://localhost:5174`. El demo corre separado de la app habitual de `localhost:5173`, trae modelos de ejemplo y permite entrar con el acceso de desarrollo. En **Inventario** podés crear un modelo con varios talles, seleccionar modelos completos o talles individuales para eliminarlos en lote, y editar cantidades y precios; desde **Inicio → Registrar ingreso** podés sumar stock. Los cambios son descartables y se pierden al detener el demo.
 
-`npm run test:inventory-ui` compila la app y comprueba en Edge (Windows) o Chromium (otros sistemas) que un talle repetido se rechaza, se crea un talle nuevo, se edita el modelo y se registra un ingreso. La prueba simula la API y no toca datos reales.
+`npm run test:inventory-ui` compila la app y comprueba en Edge (Windows) o Chromium (otros sistemas) la creación de varios talles, la validación de duplicados, la edición, el ingreso de stock y la eliminación múltiple. La prueba simula la API y no toca datos reales.
 
 ## Scripts
 

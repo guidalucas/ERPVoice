@@ -102,7 +102,7 @@ const formatActionLines = (
     } else if (action.type === 'delete_pedido') {
       lines.push(`${nextIndex()}. delete_pedido ${action.productName}`);
     } else if (action.type === 'delete_product') {
-      lines.push(`${nextIndex()}. delete_product ${describeProduct(action)}`);
+      lines.push(`${nextIndex()}. delete_product ${action.productName === '*' ? 'todo el inventario' : describeProduct(action)}`);
     }
   }
 

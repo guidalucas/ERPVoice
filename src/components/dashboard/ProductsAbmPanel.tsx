@@ -192,6 +192,36 @@ function ConfirmDeleteModal({
   );
 }
 
+function ConfirmBulkDeleteModal({
+  count,
+  variantWord,
+  onCancel,
+  onConfirm,
+  confirming,
+  error,
+}: {
+  count: number;
+  variantWord: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  confirming: boolean;
+  error: string | null;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-label="Eliminar selección" className="w-full max-w-md rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
+        <h4 className="type-title text-xl">Eliminar selección</h4>
+        <p className="mt-3 text-sm leading-6 text-[color:var(--muted)]">Vas a eliminar {count} {count === 1 ? variantWord : pluralizeVariantLabel(variantWord)} del inventario. Esta acción no se puede deshacer.</p>
+        {error && <p role="alert" className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onCancel} disabled={confirming} className="erp-button-secondary">Cancelar</button>
+          <button type="button" onClick={onConfirm} disabled={confirming} className="erp-button-danger">{confirming ? 'Eliminando...' : `Eliminar ${count}`}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProductFormModal({
   title,
   description,
@@ -434,7 +464,7 @@ export function ProductsAbmPanel({
   stockFilter?: 'all' | 'low-stock';
   onStockFilterChange?: (filter: 'all' | 'low-stock') => void;
 }) {
-  const { products, createProductRecord, createProductModelRecords, updateProductRecord, updateProductModelRecords, deleteProductRecord } = useInventory();
+  const { products, createProductRecord, createProductModelRecords, updateProductRecord, updateProductModelRecords, deleteProductRecord, deleteProductRecords } = useInventory();
   const preset = useBusinessCategoryPreset();
   const variantWord = getVariantWord(preset);
   const variantLabelPlural = pluralizeVariantLabel(preset.variantLabel);
@@ -452,6 +482,9 @@ export function ProductsAbmPanel({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const onlyLowStock = stockFilter === 'low-stock';
 
@@ -517,6 +550,37 @@ export function ProductsAbmPanel({
       }))
       .filter((group) => group.products.length > 0);
   }, [groupedProducts, searchQuery, onlyLowStock]);
+
+  const currentProductIds = useMemo(() => new Set(products.map((product) => product.id)), [products]);
+  const selectedCurrentIds = selectedIds.filter((id) => currentProductIds.has(id));
+  const visibleIds = preset.useVariants
+    ? filteredGroups.flatMap((group) => group.products.map((product) => product.id))
+    : flatProducts.map((product) => product.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedCurrentIds.includes(id));
+
+  const toggleSelection = (ids: string[]) => {
+    setSelectedIds((current) => {
+      const selected = new Set(current.filter((id) => currentProductIds.has(id)));
+      if (ids.every((id) => selected.has(id))) ids.forEach((id) => selected.delete(id));
+      else ids.forEach((id) => selected.add(id));
+      return [...selected];
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selectedCurrentIds.length) return;
+    setDeleting(true);
+    setBulkDeleteError(null);
+    try {
+      await deleteProductRecords(selectedCurrentIds);
+      setSelectedIds([]);
+      setConfirmBulkDelete(false);
+    } catch (error) {
+      setBulkDeleteError(error instanceof Error ? error.message : 'No se pudo eliminar la selección.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const lowStockGroupKeys = useMemo(
     () => (onlyLowStock ? filteredGroups.map((group) => group.key).join('\0') : ''),
@@ -776,8 +840,8 @@ export function ProductsAbmPanel({
             <h3 className="type-title text-xl text-[color:var(--text)]">Inventario</h3>
             <p className="mt-1 text-sm text-[color:var(--muted)]">
               {preset.useVariants
-                ? `Elegí un modelo para ver y editar sus ${variantLabelPlural}. Sumá ${variantLabelPlural} desde cada modelo.`
-                : 'Cada producto muestra su stock y precio. Editalo desde su fila.'}
+                ? `Seleccioná modelos o ${variantLabelPlural} para acciones en lote. Abrí un modelo para editar sus ${variantLabelPlural}.`
+                : 'Seleccioná productos para acciones en lote o editalos desde su fila.'}
             </p>
           </div>
           <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2 self-start">
@@ -821,11 +885,33 @@ export function ProductsAbmPanel({
                 Stock bajo
               </button>
             </div>
-            {preset.useVariants && <p className="text-xs text-[color:var(--muted)]">{filteredGroups.length} {filteredGroups.length === 1 ? 'modelo' : 'modelos'}</p>}
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-xs text-[color:var(--muted)] lg:hidden"><input type="checkbox" aria-label="Seleccionar todos los visibles" checked={allVisibleSelected} onChange={() => toggleSelection(visibleIds)} disabled={visibleIds.length === 0} className="h-4 w-4 accent-cyan-400" />Seleccionar visibles</label>
+              {preset.useVariants && <p className="text-xs text-[color:var(--muted)]">{filteredGroups.length} {filteredGroups.length === 1 ? 'modelo' : 'modelos'}</p>}
+            </div>
           </div>
         </div>
 
-        <div className="mt-4 space-y-3">
+        {selectedCurrentIds.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-4 py-3" role="toolbar" aria-label="Acciones de selección">
+            <span className="text-sm font-semibold text-[color:var(--text)]">{selectedCurrentIds.length} {preset.useVariants ? selectedCurrentIds.length === 1 ? variantWord : variantLabelPlural : selectedCurrentIds.length === 1 ? 'producto' : 'productos'} seleccionados</span>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="erp-button-secondary" onClick={() => setSelectedIds([])}>Limpiar selección</button>
+              <button type="button" className="erp-button-danger" onClick={() => { setBulkDeleteError(null); setConfirmBulkDelete(true); }}>Eliminar seleccionados</button>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 overflow-hidden rounded-2xl border border-[color:var(--border)]">
+          <div className="hidden grid-cols-12 items-center gap-3 border-b border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)] lg:grid">
+            <label className="col-span-1 flex items-center" title="Seleccionar visibles"><input type="checkbox" aria-label="Seleccionar todos los visibles" checked={allVisibleSelected} onChange={() => toggleSelection(visibleIds)} disabled={visibleIds.length === 0} className="h-4 w-4 accent-cyan-400" /></label>
+            <span className="col-span-4">{preset.useVariants ? 'Modelo' : 'Producto'}</span>
+            <span className="col-span-2">{preset.useVariants ? 'Talles' : 'Tipo / modelo'}</span>
+            <span className="col-span-1">Stock</span>
+            <span className="col-span-2">Precio</span>
+            <span className="col-span-2 text-right">Acciones</span>
+          </div>
+          <div className="divide-y divide-[color:var(--border)]">
           {preset.useVariants
             ? filteredGroups.map((group) => {
                 const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
@@ -836,39 +922,45 @@ export function ProductsAbmPanel({
                   ? formatCurrency(prices[0] ?? 0)
                   : `${formatCurrency(Math.min(...prices))}–${formatCurrency(Math.max(...prices))}`;
                 const isExpanded = expandedGroups[group.key] ?? (onlyLowStock || Boolean(searchQuery.trim()));
+                const groupIds = fullGroup.products.map((product) => product.id);
+                const allGroupSelected = groupIds.every((id) => selectedCurrentIds.includes(id));
+                const partlySelected = !allGroupSelected && groupIds.some((id) => selectedCurrentIds.includes(id));
 
                 return (
-                  <div key={group.key} className={`inventory-row ${group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? 'inventory-row-low' : ''}`}>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <button type="button" className="min-w-0 flex-1 rounded-xl py-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--accent)]" aria-label={`${isExpanded ? 'Ocultar' : 'Ver'} ${variantLabelPlural} de ${group.displayName}`} aria-expanded={isExpanded} onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !isExpanded }))}>
-                        <span className="flex flex-wrap items-center gap-2">
-                          <span className="type-title text-lg text-[color:var(--text)]">{group.displayName}</span>
-                          {group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) && <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-[#0b0b10]" style={{ background: 'var(--warning)' }}>Stock bajo</span>}
-                        </span>
-                        <span className="mt-1 block text-sm text-[color:var(--muted)]">{group.products.length} {group.products.length === 1 ? variantWord : variantLabelPlural} · {totalAvailable} disponibles{totalReserved > 0 ? ` · ${totalReserved} reservadas` : ''} · {priceLabel}</span>
-                        <span className="mt-2 flex flex-wrap gap-1.5">
-                          {group.products.slice(0, 6).map((product) => <span key={product.id} className="rounded-full border border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-2 py-1 text-xs text-[color:var(--text)]">{product.size || '—'}: <strong>{product.stockAvailable}</strong></span>)}
-                          {group.products.length > 6 && <span className="px-2 py-1 text-xs text-[color:var(--muted)]">+{group.products.length - 6} más</span>}
-                        </span>
+                  <div key={group.key} className={group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? 'border-l-[3px] border-l-[color:var(--warning)] bg-[color:var(--warning-soft)]' : 'bg-[color:var(--surface-elevated)]'}>
+                    <div className="grid grid-cols-12 items-center gap-x-3 gap-y-2 px-4 py-3.5">
+                      <label className="col-span-1 flex items-center" title={`Seleccionar modelo ${group.displayName}`}>
+                        <input type="checkbox" aria-label={`Seleccionar modelo ${group.displayName}`} checked={allGroupSelected} ref={(node) => { if (node) node.indeterminate = partlySelected; }} onChange={() => toggleSelection(groupIds)} className="h-4 w-4 accent-cyan-400" />
+                      </label>
+                      <button type="button" className="col-span-11 min-w-0 text-left lg:col-span-4" aria-label={`${isExpanded ? 'Ocultar' : 'Ver'} ${variantLabelPlural} de ${group.displayName}`} aria-expanded={isExpanded} onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !isExpanded }))}>
+                        <span className="flex flex-wrap items-center gap-2"><span className="type-title text-base text-[color:var(--text)]">{group.displayName}</span>{group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) && <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-[#0b0b10]" style={{ background: 'var(--warning)' }}>Stock bajo</span>}</span>
+                        <span className="mt-0.5 block text-xs text-[color:var(--muted)]">{group.products.length} {group.products.length === 1 ? variantWord : variantLabelPlural}{totalReserved > 0 ? ` · ${totalReserved} reservadas` : ''}</span>
                       </button>
-                      <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                        <button type="button" className="erp-button-secondary" aria-label={`Agregar ${variantWord} a ${group.displayName}`} onClick={() => openAddVariantForm(fullGroup)}>+ Agregar {variantWord}</button>
-                        <span aria-hidden="true" className="px-1 text-lg text-[color:var(--muted)]">{isExpanded ? '⌄' : '›'}</span>
+                      <div className="col-span-11 col-start-2 flex flex-wrap gap-1.5 lg:col-span-2 lg:col-start-auto">
+                        {group.products.slice(0, 5).map((product) => <span key={product.id} className="rounded-md border border-[color:var(--border)] px-1.5 py-0.5 text-xs">{product.size || '—'}: {product.stockAvailable}</span>)}
+                        {group.products.length > 5 && <span className="text-xs text-[color:var(--muted)]">+{group.products.length - 5}</span>}
+                      </div>
+                      <span className="col-span-3 col-start-2 text-sm text-[color:var(--text)] lg:col-span-1 lg:col-start-auto"><span className="lg:hidden">Stock: </span>{totalAvailable}</span>
+                      <span className="col-span-4 text-sm font-semibold text-[color:var(--text)] lg:col-span-2"><span className="lg:hidden">Precio: </span>{priceLabel}</span>
+                      <div className="col-span-11 col-start-2 flex flex-wrap items-center gap-2 lg:col-span-2 lg:col-start-auto lg:justify-end">
+                        <button type="button" className="erp-toggle-link min-h-9 text-sm" aria-label={`Agregar ${variantWord} a ${group.displayName}`} onClick={() => openAddVariantForm(fullGroup)}>+ Agregar {variantWord}</button>
+                        <button type="button" className="erp-toggle-link min-h-9 px-1 text-lg" aria-label={`${isExpanded ? 'Contraer' : 'Expandir'} fila de ${group.displayName}`} onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !isExpanded }))}>{isExpanded ? '⌄' : '›'}</button>
                       </div>
                     </div>
 
                     {isExpanded && (
-                      <div className="mt-4 border-t border-[color:var(--border)] pt-3">
-                        <div className="hidden grid-cols-12 gap-2 px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)] sm:grid">
-                          <span className="col-span-2">{preset.variantLabel}</span><span className="col-span-2">Disponible</span><span className="col-span-2">Reservado</span><span className="col-span-2">Precio</span><span className="col-span-4 text-right">Acciones</span>
+                      <div className="border-t border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-2">
+                        <div className="hidden grid-cols-12 gap-2 px-2 py-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)] sm:grid">
+                          <span className="col-span-1" /><span className="col-span-2">{preset.variantLabel}</span><span className="col-span-2">Disponible</span><span className="col-span-2">Reservado</span><span className="col-span-2">Precio</span><span className="col-span-3 text-right">Acciones</span>
                         </div>
                         <div className="divide-y divide-[color:var(--border)]">
                           {group.products.map((product) => <div key={product.id} className="grid grid-cols-2 items-center gap-2 px-2 py-3 text-sm sm:grid-cols-12">
+                            <label className="col-span-2 sm:col-span-1"><input type="checkbox" aria-label={`Seleccionar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} checked={selectedCurrentIds.includes(product.id)} onChange={() => toggleSelection([product.id])} className="h-4 w-4 accent-cyan-400" /></label>
                             <strong className="text-base text-[color:var(--text)] sm:col-span-2">{product.size || 'Sin definir'}</strong>
                             <span className="sm:col-span-2"><span className="sm:hidden">Disponible: </span>{product.stockAvailable}</span>
                             <span className="sm:col-span-2"><span className="sm:hidden">Reservado: </span>{product.stockReserved}</span>
                             <span className="font-semibold text-[color:var(--text)] sm:col-span-2">{formatCurrency(product.price)}</span>
-                            <div className="col-span-2 flex flex-wrap gap-x-3 gap-y-2 sm:col-span-4 sm:justify-end">
+                            <div className="col-span-2 flex flex-wrap gap-x-3 gap-y-2 sm:col-span-3 sm:justify-end">
                               <button type="button" className="erp-toggle-link min-h-9 text-sm" aria-label={`Editar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => openEditForm(product)}>Editar {variantWord}</button>
                               <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" aria-label={`Eliminar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => setPendingDeleteProduct(product)}>Eliminar</button>
                             </div>
@@ -887,44 +979,20 @@ export function ProductsAbmPanel({
                 const meta = [product.productType, product.productModel].filter(Boolean).join(' · ');
 
                 return (
-                  <div key={product.id} className={`inventory-row ${low ? 'inventory-row-low' : ''}`}>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="type-title text-lg text-[color:var(--text)]">{product.name}</p>
-                          {low && (
-                            <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-[#0b0b10]" style={{ background: 'var(--warning)' }}>
-                              Stock bajo
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-1 text-sm text-[color:var(--muted)]">
-                          {meta || 'Sin categoría'}
-                          {product.stockReserved > 0 ? ` · ${product.stockReserved} reservada${product.stockReserved === 1 ? '' : 's'}` : ''}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="stock-chip">
-                          <span className="type-subtitle text-[color:var(--text)]">Stock:</span>
-                          <span className="type-subtitle font-semibold text-emerald-700 dark:text-emerald-300">{product.stockAvailable}</span>
-                          {product.stockReserved > 0 && (
-                            <>
-                              <span className="text-[color:var(--muted)]">·</span>
-                              <span className="text-xs font-medium text-cyan-700 dark:text-cyan-300" title="Stock reservado">
-                                R:{product.stockReserved}
-                              </span>
-                            </>
-                          )}
-                          <span className="text-[color:var(--muted)]">·</span>
-                          <span className="type-subtitle font-semibold text-emerald-700 dark:text-emerald-300">{formatCurrency(product.price)}</span>
-                        </div>
-                        <button type="button" className="erp-button-secondary" onClick={() => openEditForm(product)}>Editar</button>
-                        <button type="button" className="erp-button-danger" onClick={() => setPendingDeleteProduct(product)}>Eliminar</button>
-                      </div>
+                  <div key={product.id} className={`grid grid-cols-12 items-center gap-x-3 gap-y-2 px-4 py-3.5 ${low ? 'border-l-[3px] border-l-[color:var(--warning)] bg-[color:var(--warning-soft)]' : 'bg-[color:var(--surface-elevated)]'}`}>
+                    <label className="col-span-1"><input type="checkbox" aria-label={`Seleccionar producto ${product.name}`} checked={selectedCurrentIds.includes(product.id)} onChange={() => toggleSelection([product.id])} className="h-4 w-4 accent-cyan-400" /></label>
+                    <div className="col-span-11 min-w-0 lg:col-span-4"><span className="type-title text-base text-[color:var(--text)]">{product.name}</span>{low && <span className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold text-[#0b0b10]" style={{ background: 'var(--warning)' }}>Stock bajo</span>}</div>
+                    <span className="col-span-11 col-start-2 text-sm text-[color:var(--muted)] lg:col-span-2 lg:col-start-auto">{meta || 'Sin categoría'}</span>
+                    <span className="col-span-3 col-start-2 text-sm lg:col-span-1 lg:col-start-auto"><span className="lg:hidden">Stock: </span>{product.stockAvailable}{product.stockReserved > 0 ? ` · R:${product.stockReserved}` : ''}</span>
+                    <span className="col-span-4 text-sm font-semibold lg:col-span-2"><span className="lg:hidden">Precio: </span>{formatCurrency(product.price)}</span>
+                    <div className="col-span-11 col-start-2 flex gap-3 lg:col-span-2 lg:col-start-auto lg:justify-end">
+                      <button type="button" className="erp-toggle-link min-h-9 text-sm" onClick={() => openEditForm(product)}>Editar</button>
+                      <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" onClick={() => setPendingDeleteProduct(product)}>Eliminar</button>
                     </div>
                   </div>
                 );
               })}
+          </div>
 
           {products.length === 0 && <div className="px-1 py-6 text-sm text-[color:var(--muted)]">No hay productos cargados todavía.</div>}
           {products.length > 0 && (preset.useVariants ? filteredGroups.length === 0 : flatProducts.length === 0) && (
@@ -991,6 +1059,16 @@ export function ProductsAbmPanel({
             onCancel={() => setPendingDeleteProduct(null)}
             onConfirm={() => void confirmDelete()}
             confirming={deleting}
+          />
+        )}
+        {confirmBulkDelete && (
+          <ConfirmBulkDeleteModal
+            count={selectedCurrentIds.length}
+            variantWord={preset.useVariants ? variantWord : 'producto'}
+            onCancel={() => setConfirmBulkDelete(false)}
+            onConfirm={() => void handleBulkDelete()}
+            confirming={deleting}
+            error={bulkDeleteError}
           />
         )}
       </article>

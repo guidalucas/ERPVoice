@@ -80,6 +80,12 @@ export const deleteProduct = async (productId: string) =>
     method: 'DELETE',
   });
 
+export const deleteProducts = async (ids: string[]) =>
+  requestJson<{ deleted: number }>('/api/products/batch', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids }),
+  });
+
 export const createClient = async (client: ClientInput) =>
   requestJson<Client>('/api/clients', {
     method: 'POST',
