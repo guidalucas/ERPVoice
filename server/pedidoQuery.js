@@ -45,6 +45,7 @@ const resolveProveedorName = (pedido, proveedoresById) =>
   (pedido.proveedorId ? proveedoresById[pedido.proveedorId]?.name?.trim() : '') || '';
 
 export const answerPedidosQuery = (pedidos, clients, proveedores, action = {}, options = {}) => {
+  const whatsapp = options.whatsapp === true;
   const estado = resolveEstado(action);
   const clientsById = Object.fromEntries((clients ?? []).map((client) => [client.id, client]));
   const proveedoresById = Object.fromEntries((proveedores ?? []).map((proveedor) => [proveedor.id, proveedor]));
@@ -79,6 +80,9 @@ export const answerPedidosQuery = (pedidos, clients, proveedores, action = {}, o
 
   if (!matches.length) {
     const emptyLabel = estadoLabel(estado, 2);
+    if (whatsapp) {
+      return `📋 *Pedidos${emptyLabel ? ` ${emptyLabel}` : ''}${scope}*\n\nNo tenés pedidos ${emptyLabel || 'registrados'}.`;
+    }
     if (emptyLabel) {
       return `No tenés pedidos ${emptyLabel}${scope}.`;
     }
@@ -118,7 +122,7 @@ export const answerPedidosQuery = (pedidos, clients, proveedores, action = {}, o
       const estadoSuffix = !estado && pedido.estado !== 'pendiente' ? ` (${pedido.estado})` : '';
       return `• ${qty} ${pedido.producto}${size}${showProveedor ? ` · proveedor ${proveedorName}` : ''}${estadoSuffix}`;
     });
-    return `${group.title}:\n${items.join('\n')}`;
+    return whatsapp ? `*${group.title}*\n${items.join('\n')}` : `${group.title}:\n${items.join('\n')}`;
   });
 
   const count = matches.length;
@@ -128,5 +132,9 @@ export const answerPedidosQuery = (pedidos, clients, proveedores, action = {}, o
     ? `Tenés ${count} pedido${count === 1 ? '' : 's'} ${label}${scope} (${totalQty} unidad${totalQty === 1 ? '' : 'es'}):`
     : `Tenés ${count} pedido${count === 1 ? '' : 's'}${scope} (${totalQty} unidad${totalQty === 1 ? '' : 'es'}):`;
 
+  if (whatsapp) {
+    const status = estado ? ` ${estadoLabel(estado, 2)}` : '';
+    return `📋 *Pedidos${status}${scope}*\n${count} pedido${count === 1 ? '' : 's'} · ${totalQty} unidad${totalQty === 1 ? '' : 'es'}\n\n${lines.join('\n\n')}`;
+  }
   return `${header}\n\n${lines.join('\n\n')}`;
 };

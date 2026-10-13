@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { Pool } from 'pg';
 import { normalizePhone, getWhatsAppVariants } from './phone.js';
+import { productBaseName, productMatchKey, normalizeProductMetadata } from './productIdentity.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -241,7 +242,7 @@ const toJsonbParam = (value) => {
   return JSON.stringify(parseJsonValue(value));
 };
 
-const rowToProduct = (row) => ({
+const rowToProduct = (row) => normalizeProductMetadata({
   id: row.id,
   ownerPhone: row.owner_phone,
   name: row.name,
@@ -621,6 +622,17 @@ const normalizeTextList = (value) =>
     .filter((token) => token.length > 2 && !['para', 'con', 'del', 'las', 'los', 'una', 'uno', 'por', 'les', 'de', 'el', 'la', 'y', 's', 'm', 'l', 'xl', 'xxl', 'titular', 'suplente', 'camiseta', 'talle'].includes(token));
 
 const resolveProduct = (products, actionName) => {
+  const actionGarmentKey = productMatchKey(actionName);
+  if (actionGarmentKey) {
+    const actionSize = normalizeNullableString(actionName.size);
+    const exactGarments = products.filter((product) =>
+      productMatchKey(product) === actionGarmentKey &&
+      (!actionSize || normalizeText(product.size) === normalizeText(actionSize)),
+    );
+    if (exactGarments.length === 1) {
+      return exactGarments[0];
+    }
+  }
   const actionTokens = normalizeTextList(actionName.productName);
   const actionLower = normalizeText(actionName.productName);
   const hasMetadata = Boolean(
@@ -638,9 +650,10 @@ const resolveProduct = (products, actionName) => {
   let bestSpecificScore = 0;
 
   for (const product of products) {
+    const normalizedProduct = normalizeProductMetadata(product);
     if (hasMetadata) {
-      const productType = normalizeNullableString(product.productType);
-      const productModel = normalizeNullableString(product.productModel);
+      const productType = normalizeNullableString(normalizedProduct.productType);
+      const productModel = normalizeNullableString(normalizedProduct.productModel);
       const productSize = normalizeNullableString(product.size);
       const actionSize = normalizeNullableString(actionName.size);
 
@@ -652,7 +665,7 @@ const resolveProduct = (products, actionName) => {
         continue;
       }
 
-      if (actionSize && productSize && productSize !== actionSize) {
+      if (actionSize && normalizeText(productSize) !== normalizeText(actionSize)) {
         continue;
       }
     }
@@ -981,6 +994,7 @@ export const matchProductsForUpdate = (products, action) => {
 };
 
 export const answerStockQuery = (products, action, options = {}) => {
+  const whatsapp = options.whatsapp === true;
   const listAll = isListAllStockQuery(action);
   const label = listAll ? 'inventario' : String(action?.productName ?? 'producto').trim() || 'producto';
   const matches = matchProductsForQuery(products, action);
@@ -990,6 +1004,11 @@ export const answerStockQuery = (products, action, options = {}) => {
   const missingVariant = `sin ${variantWord}`;
 
   if (!matches.length) {
+    if (whatsapp) {
+      return listAll
+        ? '📦 *Inventario*\n\nTodavía no hay productos cargados.'
+        : `🔎 *Stock de ${label}*\n\nNo encontré productos que coincidan.`;
+    }
     return listAll
       ? 'No hay productos cargados en tu inventario.'
       : `No encontré stock de "${label}" en tu inventario.`;
@@ -1038,11 +1057,17 @@ export const answerStockQuery = (products, action, options = {}) => {
       const groupProducts = (groups.get(sizeLabel) ?? []).slice().sort((left, right) =>
         productLabel(left).localeCompare(productLabel(right), 'es'),
       );
-      const items = groupProducts.map((product) => `- ${productLabel(product)}: ${Number(product.stockAvailable ?? 0)}`);
+      const items = groupProducts.map((product) => whatsapp
+        ? `• ${productLabel(product)} — *${Number(product.stockAvailable ?? 0)}*`
+        : `- ${productLabel(product)}: ${Number(product.stockAvailable ?? 0)}`);
       const heading = sizeLabel === missingVariant ? sizeLabel : `${titleCase(variantWord)} ${sizeLabel}`;
-      lines.push(`${heading}:\n${items.join('\n')}`);
+      lines.push(whatsapp ? `*${heading}*\n${items.join('\n')}` : `${heading}:\n${items.join('\n')}`);
     }
 
+    if (whatsapp) {
+      const reserved = totalReserved > 0 ? `\n🔒 Reservadas: *${totalReserved}*` : '';
+      return truncateStockReply(`📦 *Inventario por ${variantWord}*\nDisponibles: *${totalAvailable}*${reserved}\n\n${lines.join('\n\n')}`);
+    }
     const header = `Inventario por ${variantWord} (${totalAvailable} unidad${totalAvailable === 1 ? '' : 'es'} disponible${totalAvailable === 1 ? '' : 's'}):`;
     return truncateStockReply(`${header}\n\n${lines.join('\n\n')}${reservedLine}`);
   }
@@ -1068,9 +1093,16 @@ export const answerStockQuery = (products, action, options = {}) => {
         return `${sizeLabel}: ${Number(product.stockAvailable ?? 0)}`;
       });
 
-    lines.push(`${groupName}: ${sizeParts.join(', ')} (total ${groupTotal})`);
+    lines.push(whatsapp
+      ? `• *${groupName}* — ${groupTotal}\n  ${sizeParts.join(' · ')}`
+      : `${groupName}: ${sizeParts.join(', ')} (total ${groupTotal})`);
   }
 
+  if (whatsapp) {
+    const title = listAll ? 'Inventario' : `Stock de ${label}`;
+    const reserved = totalReserved > 0 ? `\n🔒 Reservadas: *${totalReserved}*` : '';
+    return truncateStockReply(`📦 *${title}*\nDisponibles: *${totalAvailable}*${reserved}\n\n${lines.join('\n')}`);
+  }
   const header = listAll
     ? `Inventario: ${totalAvailable} unidad${totalAvailable === 1 ? '' : 'es'} disponible${totalAvailable === 1 ? '' : 's'}:`
     : `Tenés ${totalAvailable} unidad${totalAvailable === 1 ? '' : 'es'} disponible${totalAvailable === 1 ? '' : 's'} de ${label}:`;
@@ -1119,23 +1151,7 @@ const createProduct = (name, index, metadata = {}) => ({
   price: Number.isFinite(metadata.price) && metadata.price > 0 ? metadata.price : 0,
 });
 
-const splitBloatedGarmentFields = (action) => {
-  const type = String(action?.productType ?? '').trim();
-  const model = String(action?.productModel ?? '').trim();
-  if (!type || model) {
-    return action;
-  }
-  const descriptor = parseProductDescriptor(type);
-  if (!descriptor.productType || !descriptor.productModel) {
-    return action;
-  }
-  return {
-    ...action,
-    productType: descriptor.productType,
-    productModel: descriptor.productModel,
-    productName: action.productName || descriptor.productName,
-  };
-};
+const splitBloatedGarmentFields = (action) => normalizeProductMetadata(action);
 
 const ensureProduct = (products, action) => {
   const normalizedAction = splitBloatedGarmentFields(action);
@@ -1148,7 +1164,7 @@ const ensureProduct = (products, action) => {
     return resolvedProduct;
   }
 
-  const product = createProduct(normalizedAction.productName, products.length, {
+  const product = createProduct(productBaseName(normalizedAction) || normalizedAction.productName, products.length, {
     productType: normalizedAction.productType,
     productModel: normalizedAction.productModel,
     size: normalizedAction.size,
@@ -1447,7 +1463,8 @@ export const createProductRecord = async (productInput, ownerPhone = DEFAULT_OWN
     await ensureTenantState(client, normalizedOwnerPhone);
   });
 
-  const id = `product-${slugify(normalizeProductNameFromInput(productInput))}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const normalizedInput = normalizeProductMetadata(productInput);
+  const id = `product-${slugify(normalizeProductNameFromInput(normalizedInput))}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
   const result = await getPool().query(
     `
@@ -1458,10 +1475,10 @@ export const createProductRecord = async (productInput, ownerPhone = DEFAULT_OWN
     [
       id,
       normalizedOwnerPhone,
-      normalizeProductNameFromInput(productInput),
-      normalizeNullableString(productInput.productType),
-      normalizeNullableString(productInput.productModel),
-      normalizeNullableString(productInput.size),
+      normalizeProductNameFromInput(normalizedInput),
+      normalizeNullableString(normalizedInput.productType),
+      normalizeNullableString(normalizedInput.productModel),
+      normalizeNullableString(normalizedInput.size),
       normalizeInteger(productInput.stockAvailable, 0),
       normalizeInteger(productInput.stockReserved, 0),
       normalizeInteger(productInput.price, 0),
@@ -1485,7 +1502,7 @@ export const updateProductRecord = async (productId, updates, ownerPhone = DEFAU
     return null;
   }
 
-  const nextProduct = {
+  const nextProduct = normalizeProductMetadata({
     ...rowToProduct(existing),
     ...updates,
     name: typeof updates.name === 'string' && updates.name.trim().length ? updates.name.trim() : rowToProduct(existing).name,
@@ -1495,7 +1512,7 @@ export const updateProductRecord = async (productId, updates, ownerPhone = DEFAU
     stockAvailable: normalizeInteger(updates.stockAvailable, rowToProduct(existing).stockAvailable),
     stockReserved: normalizeInteger(updates.stockReserved, rowToProduct(existing).stockReserved),
     price: normalizeInteger(updates.price, rowToProduct(existing).price),
-  };
+  });
 
   const result = await getPool().query(
     `

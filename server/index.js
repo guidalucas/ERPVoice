@@ -964,9 +964,13 @@ const handleMetaWebhook = async (req, res) => {
             if (action.type === 'query_pedidos') {
               return answerPedidosQuery(snapshot.pedidos, snapshot.clients, snapshot.proveedores, action, {
                 variantLabel: categoryPreset.variantLabel,
+                whatsapp: true,
               });
             }
-            return answerStockQuery(snapshot.products, action, { variantLabel: categoryPreset.variantLabel });
+            return answerStockQuery(snapshot.products, action, {
+              variantLabel: categoryPreset.variantLabel,
+              whatsapp: true,
+            });
           })
           .join('\n\n');
       }
@@ -975,13 +979,7 @@ const handleMetaWebhook = async (req, res) => {
         await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber);
       }
 
-      const finalReplyText = overrideReplyText
-        ? (mutationActions.length
-          ? `${overrideReplyText}\n\n${result.replyText}`
-          : (result.transcript
-            ? `${overrideReplyText}\n\nTexto: ${result.transcript}`
-            : overrideReplyText))
-        : result.replyText;
+      const finalReplyText = [overrideReplyText, result.replyText].filter(Boolean).join('\n\n');
 
       eventRecord.replyText = finalReplyText;
       eventRecord.processed = Boolean(queryActions.length || mutationActions.length);

@@ -129,6 +129,8 @@ Contexto del rubro del negocio:
 - productModel = "${resolved.productModelLabel}"
 - size / variante = ${resolved.useVariants ? `"${resolved.variantLabel}"` : 'no aplica por defecto'}
 ${variantLine}
+- productType contiene solo "${resolved.productTypeLabel}"; marca, características y detalles del artículo van en productModel ("${resolved.productModelLabel}").
+- Cuando corresponda, la variante va solo en size y nunca forma parte de productType ni productModel. Si el usuario la dice una vez para toda la lista, aplícala a cada artículo.
 - Si la frase incluye tipo, modelo y variante, separá productType, productModel y size.
 - En query_stock NO pongas size salvo que el usuario pida una variante puntual.
 - En query_stock de una familia (equipo, marca, tipo) usá un productModel genérico. No elijas un SKU puntual del inventario.

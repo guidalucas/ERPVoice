@@ -8,6 +8,10 @@ El parseo de WhatsApp y del chat del panel (`parseVoiceText` → `/api/voice/par
   (`https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`).
 - **Modelo:** `gemini-3.5-flash-lite`. Si ese ID no existe en el proyecto, se reintenta
   `gemini-3.1-flash-lite`.
+- **Mensajes largos:** a partir de 500 caracteres de texto transcripto, se prueba
+  `gemini-3.1-flash-lite` primero y `gemini-3.5-flash-lite` queda como respaldo.
+  Esto evita esperar el timeout de 25 s del 3.5 en audios como el registrado el
+  2026-10-13. El orden corto sigue igual.
 - **Secundario:** Groq (`openai/gpt-oss-20b`), igual que antes. No se borró.
 - **Último fallback:** `parseLocalText`. Nunca se usa primero.
 

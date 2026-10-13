@@ -1,6 +1,6 @@
 export const DEFAULT_TRANSCRIPTION_LANGUAGE = 'es';
 export const TRANSCRIPTION_PROMPT =
-  'Transcripción en español rioplatense. Inventario, camisetas, talles, stock, pedidos, cargá, vendí.';
+  'Transcripción en español rioplatense de inventario, productos, variantes, ingresos, ventas y pedidos.';
 
 export const UNUSABLE_AUDIO_REPLY = 'No entendí el audio. Grabalo de nuevo, más claro y en español.';
 
@@ -28,7 +28,7 @@ export const looksLikeUnusableTranscript = (text) => {
   }
 
   const spanishCue =
-    /\b(?:el|la|los|las|de|del|que|me|te|un|una|y|en|con|por|para|es|hay|tengo|tenes|mostrame|mostrar|carga|cargame|vendi|vendiste|cuanto|cuantas|stock|talle|pedido|camisetas?|producto)\b/;
+    /\b(?:el|la|los|las|de|del|que|me|te|un|una|y|en|con|por|para|es|hay|tengo|tenes|mostrame|mostrar|carga|cargame|vendi|vendiste|vendio|ingreso|ingresaron|entro|entraron|recibi|recibimos|compre|compramos|agrega|agregaron|cuanto|cuantas|stock|talle|numero|nro|medida|variante|pedido|producto|productos|unidades)\b/;
   return !spanishCue.test(normalized);
 };
 

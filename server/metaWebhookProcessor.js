@@ -13,6 +13,7 @@ import {
   looksLikeUnusableTranscript,
 } from './transcriptQuality.js';
 import { completeChatJson, hasAnyLlmApiKey } from './llmChatClient.js';
+import { normalizeProductMetadata, productMatchKey } from './productIdentity.js';
 
 const DEFAULT_MODEL_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
@@ -53,9 +54,8 @@ const formatConversationContext = (conversationTurns = []) => {
   return `
 Contexto reciente de la conversacion (usa esto para interpretar mensajes cortos o de seguimiento):
 ${lines.join('\n')}
-- Si el mensaje actual es un seguimiento ("y las de river?", "de argentina?", "y en talle M?", "a 18 c/u"), completa la accion reusando intent/productType/campos del contexto.
-- Ejemplo: contexto consulto stock de "Camiseta Boca" y el usuario dice "y las de river?" -> query_stock de "Camiseta River".
-- Ejemplo: contexto consulto stock de "Camiseta" y dice "de argentina?" -> query_stock de "Camiseta Argentina".
+- Si el mensaje actual es un seguimiento ("¿y los de otra marca?", "¿y en otra medida?", "a 18 c/u"), completa la accion reusando intent/productType/campos del contexto.
+- Ejemplo: contexto consultó stock de un modelo de una marca y el usuario pregunta por otra marca -> query_stock del mismo tipo de producto con la marca nueva.
 - Si el mensaje actual pide cargar lo anterior ("carga todo lo que te mencioné", "eso es lo nuevo que ingresó", "cargalo al sistema"), extraé CADA producto del listado del contexto y devolvé un add_stock por ítem.
 - No ignores el mensaje actual: el contexto solo completa lo que falta.
 `.trim();
@@ -85,7 +85,7 @@ const looksLikeInventoryCatalog = (text) => {
   const cleaned = String(text ?? '')
     .replace(/\s+/g, ' ')
     .trim();
-  if (cleaned.length < 120) {
+  if (cleaned.length < 80) {
     return false;
   }
 
@@ -104,18 +104,13 @@ const looksLikeInventoryCatalog = (text) => {
     return false;
   }
 
-  const productHits = (normalized.match(/\b(?:camiseta|camisetas|buzo|buzos|short|shorts|la de|las de)\b/g) || []).length;
-  const teamHits = (
-    normalized.match(
-      /\b(?:river|boca|independiente|racing|argentina|velez|chelsea|genoa|inter|psg|paris|saint germain|madrid)\b/g,
-    ) || []
-  ).length;
+  const inbound = /\b(?:ingresaron|ingreso|entraron|entro|recibi|recibimos|llegaron|tenemos|recibidas?|nuevos?|nuevas?)\b/.test(normalized);
   const priceMentions = (normalized.match(/\b(?:vale|valen|cuesta|cuestan|sale|salen|precio)\b/g) || []).length;
   const hasPrice = priceMentions > 0 || /\bmil pesos\b/.test(normalized);
-  const hasSize = /\b(?:talle|talles)\b/.test(normalized);
-  const distinctItems = Math.max(productHits, teamHits, priceMentions);
+  const hasVariant = new RegExp(`\\b(?:${VARIANT_KEYWORD_ALT})\\b`).test(normalized);
+  const clauses = cleaned.split(/[.!?;]+/).map((part) => part.trim()).filter(Boolean).length;
 
-  return distinctItems >= 3 && (hasPrice || hasSize);
+  return inbound && clauses >= 3 && (hasPrice || hasVariant);
 };
 
 const looksLikeDeleteProducts = (text) => {
@@ -176,7 +171,7 @@ const buildOperationHint = (text, conversationTurns = []) => {
   }
 
   if (looksLikeInventoryCatalog(text)) {
-    return 'Esto es un LISTADO DE INGRESO (add_stock), no una actualización de precios. Un add_stock por cada producto distinto. Nunca concatenes varios ítems en un productName. qty 1 si no hay cantidad. Atributos globales ("todo talle/número X", "todas versión Y", "todo vale N") aplican a TODOS. Si corrige el atributo al final, usá el último. Convertí "N mil" a N*1000. Copiá el estilo de nombres del inventario. NO uses update_product ni actions vacío.';
+    return 'Esto es un LISTADO DE INGRESO (add_stock), no una actualización de precios. Un add_stock por cada producto distinto. Nunca concatenes varios ítems en un productName. qty 1 si no hay cantidad. Atributos globales (variante, modelo, precio) aplican a TODOS. Si corrige el atributo al final, usá el último. Convertí "N mil" a N*1000. Copiá el estilo de nombres del inventario. NO uses update_product ni actions vacío.';
   }
 
   return '';
@@ -263,6 +258,7 @@ Reglas:
 - Solo JSON, sin markdown.
 - sourceText = mensaje actual. confidence 0..1. Nunca qty 0.
 - Un producto distinto = una acción. NUNCA concatenes varios ítems en un productName.
+- Si el mismo producto aparece dos veces ("otra más"), sumá las cantidades en una sola acción.
 - Atributos globales ("todo en talle/número X", "todas versión Y", "todo vale N") aplican a todos los ítems. Si corrige al final, usá el último valor.
 - "N mil" = N*1000. Price solo es plata, nunca gramos/ml/kg.
 - Ingreso / carga / compré / entraron / recibí = add_stock. En un listado, "vale/cuesta" es price del ingreso, NO update_product. qty 1 si no hay cantidad.
@@ -270,12 +266,13 @@ Reglas:
 - "borrá el pedido de X" = delete_pedido. "conseguido/descartado" sobre un pedido = update_pedido.
 - Consulta de stock = query_stock (sin mutar). Consulta de pedidos = query_pedidos. Preguntas como "¿qué me pidió Juan?", "¿qué pedidos hay pendientes?", "mostrame los pedidos de María" son query_pedidos, NUNCA client_order.
 - Si pide todo el inventario / todos los productos / listado completo: query_stock con productName "*". Nunca uses "all" ni un producto inventado. Si pide agrupado por talle/número, groupBy: "size".
-- Consultas de familia ("¿no tengo más camisetas de River?", "¿cuánto hay de Boca?"): query_stock con productModel genérico ("River", "Boca"). NO elijas un SKU del inventario; el sistema lista todos los matches.
-- client_order es SOLO cuando el usuario ANOTA un pedido nuevo: "Juan me pidió una camiseta", "anotame que María quiere un mate".
+- Consultas de familia ("¿cuánto hay de esta marca?", "¿qué modelos de esta categoría tengo?"): query_stock con productModel genérico. NO elijas un SKU del inventario; el sistema lista todos los matches.
+- client_order es SOLO cuando el usuario ANOTA un pedido nuevo: "Juan me pidió un taladro", "anotame que María quiere un mate".
 - Pago recibido = payment_received. Reserva "para X" = reserve_stock + clientName.
 - update_product / update_pedido solo modifican existentes.
-- Si el mensaje tiene DOS operaciones distintas unidas con "y" / "además" / "pero" (ej: "vendí una de Boca y me llegaron 5 de River"), devolvé UN action por cláusula, types distintos, intent "mixed". No te quedes con la última ni fusiones las cláusulas.
+- Si el mensaje tiene DOS operaciones distintas unidas con "y" / "además" / "pero" (ej: "vendí un producto y me llegaron 5 de otro"), devolvé UN action por cláusula, types distintos, intent "mixed". No te quedes con la última ni fusiones las cláusulas.
 - Si no hay match claro contra el inventario (varios SKUs posibles y el usuario no dijo la variante), missingFields: ["productMatch"] y suggestedPhrases con candidatos. Aplica a delete_product, sell, add_stock y client_order. No ejecutes.
+- En add_stock, si se indicó un talle y solo existen otros talles del mismo producto, tratá el talle indicado como variante nueva; no sugieras los otros talles.
 
 Texto del usuario (mensaje actual):
 ${text}
@@ -678,23 +675,143 @@ const buildPayload = (sourceText, actions, options = {}) => {
   };
 };
 
+const REPEAT_MATCH_STOPWORDS = new Set([
+  'camiseta', 'camisetas', 'tenemos', 'tengo', 'ingreso', 'ingresaron',
+  'tambien', 'talle', 'talla', 'version', 'jugador', 'otra', 'otro', 'mas',
+  'pesos', 'vale', 'valen', 'mil', 'una', 'uno',
+  'en', 'de', 'del', 'la', 'el', 'las', 'los', 'con', 'por', 'para',
+]);
+
+const repeatMatchTokens = (value) =>
+  (normalizeText(String(value ?? '')).match(/[a-z0-9]+/g) || [])
+    .filter((token) => token.length > 2 && !/^\d+$/.test(token) && !REPEAT_MATCH_STOPWORDS.has(token));
+
+const reconcileExplicitRepeats = (actions, sourceText) => {
+  if (!/\botra\s+m[aá]s\b/i.test(sourceText) || !actions.some((action) => action.type === 'add_stock')) {
+    return actions;
+  }
+
+  const sentences = String(sourceText).split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÜÑ])/u);
+  const repeats = new Map();
+  for (let index = 1; index < sentences.length; index += 1) {
+    if (!/\botra\s+m[aá]s\b/i.test(sentences[index])) {
+      continue;
+    }
+    const sentenceTokens = new Set(repeatMatchTokens(sentences[index]));
+    if (sentenceTokens.size < 1) {
+      continue;
+    }
+    const scored = actions.map((action, actionIndex) => ({
+      actionIndex,
+      score: action.type === 'add_stock'
+        ? repeatMatchTokens(action.productName).filter((token) => sentenceTokens.has(token)).length
+        : 0,
+    })).sort((left, right) => right.score - left.score);
+    if (!scored[0] || scored[0].score < 1 || scored[0].score === scored[1]?.score) {
+      continue;
+    }
+    const actionIndex = scored[0].actionIndex;
+    const productTokens = repeatMatchTokens(actions[actionIndex].productName)
+      .filter((token) => sentenceTokens.has(token));
+    if (!productTokens.length || !sentences.slice(0, index).some((sentence) => {
+      const earlierTokens = new Set(repeatMatchTokens(sentence));
+      return productTokens.every((token) => earlierTokens.has(token));
+    })) {
+      continue;
+    }
+    repeats.set(actionIndex, (repeats.get(actionIndex) || 0) + 1);
+  }
+
+  return actions.map((action, index) => repeats.has(index)
+    ? { ...action, qty: Math.max(action.qty, 1 + repeats.get(index)) }
+    : action);
+};
+
+const recoverExplicitSize = (actions, sourceText) => {
+  const normalized = normalizeText(sourceText || '');
+  const variantPattern = new RegExp(`\\b(?:${VARIANT_KEYWORD_ALT}|talla)\\s+([a-z0-9/]+)\\b`, 'g');
+  const mentioned = [...normalized.matchAll(variantPattern)]
+    .map((match) => match[1].toUpperCase());
+  if (new Set(mentioned).size !== 1) return actions;
+
+  const globalPattern = new RegExp(`\\b(?:todas?|todos?)\\s+(?:en\\s+)?(?:${VARIANT_KEYWORD_ALT}|talla)\\s+[a-z0-9/]+\\b`);
+  const global = globalPattern.test(normalized);
+  if (!global && actions.length !== 1) return actions;
+  const size = mentioned[0];
+  return actions.map((action) => {
+    if (!['add_stock', 'sell', 'reserve_stock', 'client_order'].includes(action.type)) return action;
+    const normalizedAction = normalizeProductMetadata({ ...action, size });
+    return { ...normalizedAction, size };
+  });
+};
+
+const inheritCatalogMetadata = (actions, catalog) => {
+  const products = Array.isArray(catalog?.products) ? catalog.products : [];
+  if (!products.length) return actions;
+  return actions.map((action) => {
+    if (!action?.productName || (action.productType && action.productModel)) return action;
+    const key = productMatchKey(action);
+    if (!key) return action;
+    const matches = products.filter((product) => productMatchKey(product) === key);
+    const metadata = new Map(matches.map((product) => [
+      JSON.stringify([product.productType || '', product.productModel || '']), product,
+    ]));
+    if (metadata.size !== 1) return action;
+    const product = metadata.values().next().value;
+    return {
+      ...action,
+      productType: action.productType || product.productType || undefined,
+      productModel: action.productModel || product.productModel || undefined,
+    };
+  });
+};
+
 const withCatalogGrounding = (payload, catalog, originalText) => {
   if (!payload?.actions?.length) {
     return payload;
   }
 
+  const sizedActions = inheritCatalogMetadata(
+    recoverExplicitSize(payload.actions, originalText || payload.sourceText),
+    catalog,
+  );
   const grounded = groundActionsAgainstCatalog(
-    payload.actions,
+    sizedActions,
     catalog,
     originalText || payload.sourceText,
   );
-  const missingFields = [...new Set([...(payload.missingFields || []), ...(grounded.missingFields || [])])];
-  const suggestedPhrases = grounded.suggestedPhrases?.length ? grounded.suggestedPhrases : payload.suggestedPhrases;
+  const resolvedActions = reconcileExplicitRepeats(grounded.actions, originalText || payload.sourceText);
+  const requestedSizes = new Set(
+    sizedActions.map((action) => normalizeText(action.size || '')).filter(Boolean),
+  );
+  const modelSuggestions = Array.isArray(payload.suggestedPhrases) ? payload.suggestedPhrases : [];
+  const catalogProducts = Array.isArray(catalog?.products) ? catalog.products : [];
+  const suggestionsOnlyOtherSizes = modelSuggestions.length > 0 && modelSuggestions.every((phrase) => {
+    const normalizedPhrase = normalizeText(phrase);
+    const matches = catalogProducts.filter((product) =>
+      product.name && normalizedPhrase.includes(normalizeText(product.name)),
+    );
+    return matches.length > 0 && matches.every((product) => {
+      const size = normalizeText(product.size || '');
+      return size && !requestedSizes.has(size);
+    });
+  });
+  const staleVariantHold =
+    sizedActions.every((action) => action.type === 'add_stock' && action.size) &&
+    !grounded.missingFields?.includes('productMatch') &&
+    suggestionsOnlyOtherSizes;
+  const modelMissingFields = (payload.missingFields || []).filter((field) =>
+    !(staleVariantHold && field === 'productMatch'),
+  );
+  const missingFields = [...new Set([...modelMissingFields, ...(grounded.missingFields || [])])];
+  const suggestedPhrases = grounded.suggestedPhrases?.length
+    ? grounded.suggestedPhrases
+    : staleVariantHold ? undefined : payload.suggestedPhrases;
 
   return {
     ...payload,
-    actions: grounded.actions,
-    intent: inferIntent(grounded.actions) || payload.intent,
+    actions: resolvedActions,
+    intent: inferIntent(resolvedActions) || payload.intent,
     requiresConfirmation: Boolean(payload.requiresConfirmation || grounded.requiresConfirmation),
     missingFields: missingFields.length ? missingFields : undefined,
     suggestedPhrases,
@@ -738,9 +855,10 @@ const parseAction = (value) => {
   const amount = typeof value.amount === 'number' ? value.amount : Number(value.amount);
 
   if (value.type === 'add_stock' || value.type === 'reserve_stock' || value.type === 'sell') {
-    const productType = typeof value.productType === 'string' ? value.productType : undefined;
-    const productModel = typeof value.productModel === 'string' ? value.productModel : undefined;
-    const size = typeof value.size === 'string' ? value.size : undefined;
+    const normalizedProduct = normalizeProductMetadata(value);
+    const productType = typeof normalizedProduct.productType === 'string' ? normalizedProduct.productType : undefined;
+    const productModel = typeof normalizedProduct.productModel === 'string' ? normalizedProduct.productModel : undefined;
+    const size = typeof normalizedProduct.size === 'string' ? normalizedProduct.size : undefined;
     const price = typeof value.price === 'number' ? value.price : Number(value.price);
     const productName = typeof value.productName === 'string' ? value.productName : composeProductName({ productType, productModel, size });
     const resolvedQty = Number.isFinite(qty) && qty > 0 ? qty : value.type === 'add_stock' ? 1 : NaN;
@@ -1733,7 +1851,7 @@ const extractCatalogActionsFromText = (text) => {
   return actions;
 };
 
-const parseLocalText = (text, conversationTurns = [], catalog = null) => {
+const parseLocalText = (text, conversationTurns = [], catalog = null, preset = getBusinessCategoryPreset('indumentaria')) => {
   const finish = (payload) => withCatalogGrounding(payload, catalog, text);
 
   if (looksLikeUnusableTranscript(text)) {
@@ -1768,7 +1886,7 @@ const parseLocalText = (text, conversationTurns = [], catalog = null) => {
   if (looksLikeLoadPreviousCommand(text)) {
     const previous = findLastCatalogUserText(conversationTurns);
     if (previous) {
-      const catalogActions = extractCatalogActionsFromText(previous);
+      const catalogActions = preset.id === 'indumentaria' ? extractCatalogActionsFromText(previous) : [];
       if (catalogActions.length) {
         applyPriceFromText(catalogActions, previous);
         return finish(buildPayload(text, catalogActions, { intent: 'add_stock' }));
@@ -1776,10 +1894,16 @@ const parseLocalText = (text, conversationTurns = [], catalog = null) => {
     }
   }
 
-  const catalogActions = extractCatalogActionsFromText(text);
+  const catalogActions = preset.id === 'indumentaria' ? extractCatalogActionsFromText(text) : [];
   if (catalogActions.length) {
     applyPriceFromText(catalogActions, text);
     return finish(buildPayload(text, catalogActions, { intent: 'add_stock' }));
+  }
+
+  // The deterministic list extractor only understands legacy clothing descriptions.
+  // For other rubros, do not turn a long list into a guessed stock mutation.
+  if (preset.id !== 'indumentaria' && looksLikeInventoryCatalog(text)) {
+    return null;
   }
 
   const actions = extractMultipleActionsFromText(text);
@@ -1832,7 +1956,7 @@ export const buildConversationTurnsFromEvents = (events, { excludeMessageId = nu
     if (
       replyText &&
       !/^procesando tu mensaje/i.test(replyText) &&
-      !/^no pude detectar una acci[oó]n clara/i.test(replyText)
+      !/^(?:no pude detectar una acci[oó]n clara|⚠️ \*No pude interpretar)/i.test(replyText)
     ) {
       turns.push({
         role: 'assistant',
@@ -1949,11 +2073,12 @@ const parseVoiceTextWithModel = async (
 
   if (!hasAnyLlmApiKey()) {
     console.warn('[MetaWebhook] parseVoiceText falling back to local parser: missing GEMINI_API_KEY / VITE_VOICE_MODEL_API_KEY');
-    return parseLocalText(text, conversationTurns, catalog);
+    return parseLocalText(text, conversationTurns, catalog, preset);
   }
 
   const llm = await completeChatJson({
     temperature: 0,
+    sourceTextChars: text.length,
     messages: [
       {
         role: 'system',
@@ -1971,7 +2096,7 @@ const parseVoiceTextWithModel = async (
       reason: llm.reason,
       failures: llm.failures?.map((item) => ({ provider: item.provider, reason: item.reason, status: item.status })),
     });
-    return parseLocalText(text, conversationTurns, catalog);
+    return parseLocalText(text, conversationTurns, catalog, preset);
   }
 
   const content = llm.content;
@@ -2049,7 +2174,7 @@ const parseVoiceTextWithModel = async (
     }
 
     const catalogSource = previousCatalog || text;
-    const catalogActions = extractCatalogActionsFromText(catalogSource);
+    const catalogActions = preset.id === 'indumentaria' ? extractCatalogActionsFromText(catalogSource) : [];
     if (forceAddStock && shouldPreferCatalogActions(catalogActions, normalizedActions)) {
       applyPriceFromText(catalogActions, catalogSource);
       return finish(buildPayload(text, catalogActions, { intent: 'add_stock' }));
@@ -2079,9 +2204,10 @@ const parseVoiceTextWithModel = async (
         contentPreview: String(content).slice(0, 400),
       });
       const emptyCatalogSource = previousCatalog || text;
-      const emptyCatalogActions = coerceCatalogActions(extractCatalogActionsFromText(emptyCatalogSource), {
-        forceAddStock: true,
-      });
+      const emptyCatalogActions = coerceCatalogActions(
+        preset.id === 'indumentaria' ? extractCatalogActionsFromText(emptyCatalogSource) : [],
+        { forceAddStock: true },
+      );
       if (emptyCatalogActions.length) {
         applyPriceFromText(emptyCatalogActions, emptyCatalogSource);
         return finish(buildPayload(text, emptyCatalogActions, { intent: 'add_stock' }));
@@ -2090,7 +2216,7 @@ const parseVoiceTextWithModel = async (
       if (looksLikeUnusableTranscript(text)) {
         return null;
       }
-      return parseLocalText(text, conversationTurns, catalog);
+      return parseLocalText(text, conversationTurns, catalog, preset);
     }
 
     return finish(
@@ -2113,7 +2239,7 @@ const parseVoiceTextWithModel = async (
       contentPreview: String(content).slice(0, 400),
       error: error instanceof Error ? error.message : error,
     });
-    return parseLocalText(text, conversationTurns, catalog);
+    return parseLocalText(text, conversationTurns, catalog, preset);
   }
 };
 
@@ -2151,7 +2277,9 @@ const formatOrderHeader = (items) => {
 
 const formatOrderItem = (action, preset = getBusinessCategoryPreset('general'), { includeProveedor = false } = {}) => {
   const qty = action.qty && action.qty > 0 ? action.qty : 1;
-  const sizeLabel = action.size ? ` ${formatVariantRef(preset, action.size)}` : '';
+  const sizeLabel = action.size && !String(action.productName ?? '').toLowerCase().trim().endsWith(` ${String(action.size).toLowerCase()}`)
+    ? ` ${formatVariantRef(preset, action.size)}`
+    : '';
   const proveedorLabel =
     includeProveedor && action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
   return `${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
@@ -2160,7 +2288,7 @@ const formatOrderItem = (action, preset = getBusinessCategoryPreset('general'), 
 const formatOrderGroup = (items, preset) => {
   const includeProveedor = uniqueActionNames(items, 'proveedorName').length > 1;
   const lines = items.map((item) => `• ${formatOrderItem(item, preset, { includeProveedor })}`);
-  return `${formatOrderHeader(items)}:\n${lines.join('\n')}`;
+  return `*${formatOrderHeader(items)}*\n${lines.join('\n')}`;
 };
 
 const formatActionsSummary = (actions, preset) => {
@@ -2202,24 +2330,30 @@ const formatActionsSummary = (actions, preset) => {
   }
   flushOrders();
 
-  return parts.join('\n\n');
+  return parts.join('\n');
 };
 
 const formatAction = (action, preset = getBusinessCategoryPreset('general')) => {
+  const variant = action.size && !String(action.productName ?? '').toLowerCase().trim().endsWith(` ${String(action.size).toLowerCase()}`)
+    ? ` · ${formatVariantRef(preset, action.size)}`
+    : '';
   if (action.type === 'add_stock') {
-    return `+${action.qty} stock de ${action.productName}`;
+    const price = Number.isFinite(action.price) && action.price > 0
+      ? ` · $${action.price.toLocaleString('es-AR')} c/u`
+      : '';
+    return `• *Stock cargado:* +${action.qty} ${action.productName}${variant}${price}`;
   }
 
   if (action.type === 'reserve_stock') {
-    return `-${action.qty} reserva de ${action.productName}${action.clientName ? ` para ${action.clientName}` : ''}`;
+    return `• *Reserva:* ${action.qty} ${action.productName}${variant}${action.clientName ? ` · ${action.clientName}` : ''}`;
   }
 
   if (action.type === 'sell') {
-    return `-${action.qty} venta de ${action.productName}`;
+    return `• *Venta:* ${action.qty} ${action.productName}${variant}`;
   }
 
   if (action.type === 'payment_received') {
-    return `-$${action.amount.toLocaleString('es-AR')} cobrado a ${action.clientName}`;
+    return `• *Cobro:* $${action.amount.toLocaleString('es-AR')} · ${action.clientName}`;
   }
 
   if (action.type === 'client_order') {
@@ -2249,7 +2383,7 @@ const formatAction = (action, preset = getBusinessCategoryPreset('general')) => 
       parts.push(`stock ${action.stockAvailable}`);
     }
     const scope = action.size ? formatVariantRef(preset, action.size) : formatAllVariantsScope(preset);
-    return `Actualicé ${action.productName} (${scope})${parts.length ? `: ${parts.join(', ')}` : ''}`;
+    return `• *Producto actualizado:* ${action.productName} (${scope})${parts.length ? ` · ${parts.join(', ')}` : ''}`;
   }
 
   if (action.type === 'update_pedido') {
@@ -2263,18 +2397,18 @@ const formatAction = (action, preset = getBusinessCategoryPreset('general')) => 
     if (action.estado) {
       parts.push(`estado ${action.estado}`);
     }
-    return `Actualicé pedido ${action.productName}${parts.length ? `: ${parts.join(', ')}` : ''}`;
+    return `• *Pedido actualizado:* ${action.productName}${parts.length ? ` · ${parts.join(', ')}` : ''}`;
   }
 
   if (action.type === 'delete_pedido') {
-    return `Eliminé pedido ${action.productName}`;
+    return `• *Pedido eliminado:* ${action.productName}`;
   }
 
   if (action.type === 'delete_product') {
-    return `Eliminé producto ${action.productName}`;
+    return `• *Producto eliminado:* ${action.productName}`;
   }
 
-  return `+$${action.amount.toLocaleString('es-AR')} en cuenta de ${action.clientName}`;
+  return `• *Deuda registrada:* $${action.amount.toLocaleString('es-AR')} · ${action.clientName}`;
 };
 
 const buildReplyText = ({ transcript, parsed, preset }) => {
@@ -2282,20 +2416,27 @@ const buildReplyText = ({ transcript, parsed, preset }) => {
 
   if (!parsed?.actions?.length) {
     return transcript
-      ? `No pude detectar una acción clara. Texto: ${transcript}`
-      : 'No pude detectar una acción clara. Probá de nuevo con más detalle.';
+      ? `⚠️ *No pude interpretar el audio*\n\nEntendí: “${transcript}”.\nProbá de nuevo con más detalle.`
+      : '⚠️ *No pude interpretar el mensaje*\n\nProbá de nuevo con más detalle.';
   }
 
   if (hasProductMatchHold(parsed)) {
-    const options = (parsed.suggestedPhrases || []).join('\n');
-    const prefix = transcript ? `Texto: ${transcript}\n\n` : '';
-    return `${prefix}No apliqué cambios: hay más de un producto posible.\n${options || 'Decime el nombre exacto.'}`;
+    const options = (parsed.suggestedPhrases || []).map((phrase) => `• ${phrase}`).join('\n');
+    const audioNote = transcript ? `\n\n🎙️ Entendí: “${transcript}”` : '';
+    return `⚠️ *Necesito identificar el producto*\n\nHay más de una opción. No apliqué cambios.\n${options || 'Decime el nombre exacto.'}${audioNote}`;
   }
 
-  const actionSummary = formatActionsSummary(parsed.actions, resolvedPreset);
-  const prefix = transcript ? `Listo (audio). Texto: ${transcript}\n\n` : 'Listo.\n\n';
-
-  return `${prefix}${actionSummary}`;
+  const mutations = parsed.actions.filter((action) => action.type !== 'query_stock' && action.type !== 'query_pedidos');
+  const actionSummary = formatActionsSummary(mutations, resolvedPreset);
+  const audioNote = transcript ? `\n\n🎙️ Entendí: “${transcript}”` : '';
+  if (!mutations.length) {
+    return audioNote.trim();
+  }
+  const onlyStock = mutations.every((action) => action.type === 'add_stock');
+  const title = onlyStock ? 'Stock actualizado' : 'Cambios guardados';
+  const total = onlyStock ? mutations.reduce((sum, action) => sum + action.qty, 0) : 0;
+  const totalLine = onlyStock ? `\n${total} unidad${total === 1 ? '' : 'es'} cargada${total === 1 ? '' : 's'}` : '';
+  return `✅ *${title}*${totalLine}\n\n${actionSummary}${audioNote}`;
 };
 
 const extractMetaMessages = (body) => {
