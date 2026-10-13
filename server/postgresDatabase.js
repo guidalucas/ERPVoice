@@ -1488,6 +1488,52 @@ export const createProductRecord = async (productInput, ownerPhone = DEFAULT_OWN
   return rowToProduct(result.rows[0]);
 };
 
+export const createProductModelRecords = async (input, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const productType = String(input?.productType ?? '').trim();
+  const productModel = String(input?.productModel ?? '').trim();
+  const variants = input?.variants;
+  if (!productType || !productModel || !Array.isArray(variants) || variants.length === 0) {
+    throw new Error('Completá el tipo, el modelo y al menos un talle.');
+  }
+  const sizes = new Set();
+  for (const variant of variants) {
+    const size = String(variant?.size ?? '').trim();
+    const normalizedSize = size.toLocaleLowerCase('es');
+    if (!size || sizes.has(normalizedSize)) throw new Error('Cada talle debe estar completo y ser único.');
+    if (![variant?.stockAvailable, variant?.price].every((value) => Number.isSafeInteger(value) && value >= 0)) {
+      throw new Error('Stock y precio deben ser números enteros mayores o iguales a cero.');
+    }
+    sizes.add(normalizedSize);
+  }
+
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  return withTransaction(async (client) => {
+    await ensureTenantState(client, normalizedOwnerPhone);
+    const existing = await client.query(
+      `SELECT id FROM products WHERE owner_phone = ANY($1)
+       AND lower(trim(coalesce(product_type, ''))) = lower($2)
+       AND lower(trim(coalesce(product_model, ''))) = lower($3) LIMIT 1`,
+      [getOwnerPhoneVariants(ownerPhone), productType, productModel],
+    );
+    if (existing.rowCount) throw new Error('Ese modelo ya existe. Agregá el talle desde su tarjeta.');
+
+    const name = `${productType} ${productModel}`;
+    const created = [];
+    for (const variant of variants) {
+      const id = `product-${slugify(name)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const result = await client.query(
+        `INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8)
+         RETURNING id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price`,
+        [id, normalizedOwnerPhone, name, productType, productModel, String(variant.size).trim(), variant.stockAvailable, variant.price],
+      );
+      created.push(rowToProduct(result.rows[0]));
+    }
+    return created;
+  });
+};
+
 export const updateProductRecord = async (productId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
   await ensureReady();
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
@@ -1541,6 +1587,31 @@ export const updateProductRecord = async (productId, updates, ownerPhone = DEFAU
   );
 
   return result.rows[0] ? rowToProduct(result.rows[0]) : null;
+};
+
+export const updateProductModelRecords = async (input, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const ids = [...new Set(Array.isArray(input?.ids) ? input.ids.filter((id) => typeof id === 'string' && id.trim()) : [])];
+  const productType = normalizeNullableString(input?.productType);
+  const productModel = normalizeNullableString(input?.productModel);
+  const name = String(input?.name ?? '').trim();
+  if (!ids.length || !name || (!productType && !productModel)) {
+    throw new Error('Indicá los productos y los datos del modelo.');
+  }
+
+  return withTransaction(async (client) => {
+    const result = await client.query(
+      `UPDATE products
+       SET name = $1, product_type = $2, product_model = $3
+       WHERE id = ANY($4) AND owner_phone = ANY($5)
+       RETURNING id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price`,
+      [name, productType, productModel, ids, getOwnerPhoneVariants(ownerPhone)],
+    );
+    if (result.rowCount !== ids.length) {
+      throw new Error('El modelo cambió mientras lo editabas. Actualizá la página e intentá de nuevo.');
+    }
+    return result.rows.map(rowToProduct);
+  });
 };
 
 export const deleteProductRecord = async (productId, ownerPhone = DEFAULT_OWNER_PHONE) => {

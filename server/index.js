@@ -6,6 +6,7 @@ import { hasProductMatchHold } from './voiceCatalogContext.js';
 import { answerPedidosQuery } from './pedidoQuery.js';
 import {
   createProductRecord,
+  createProductModelRecords,
   createClientRecord,
   createProveedorRecord,
   createPedidoRecord,
@@ -27,6 +28,7 @@ import {
   upsertAuthUser,
   hasDatabaseConfig,
   updateProductRecord,
+  updateProductModelRecords,
   updateClientRecord,
   updateProveedorRecord,
   updatePedidoRecord,
@@ -480,6 +482,19 @@ app.get('/api/state', authenticateRequest, async (req, res) => {
   }
 });
 
+app.post('/api/products/model', authenticateRequest, async (req, res) => {
+  try {
+    const products = await createProductModelRecords({
+      productType: req.body?.productType,
+      productModel: req.body?.productModel,
+      variants: req.body?.variants,
+    }, tenantPhoneOf(req));
+    res.status(201).json(products);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 app.post('/api/products', authenticateRequest, async (req, res) => {
   try {
     const clientPhone = tenantPhoneOf(req);
@@ -502,6 +517,20 @@ app.post('/api/products', authenticateRequest, async (req, res) => {
     res.status(201).json(product);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.put('/api/products/model', authenticateRequest, async (req, res) => {
+  try {
+    const products = await updateProductModelRecords({
+      ids: req.body?.ids,
+      name: req.body?.name,
+      productType: req.body?.productType,
+      productModel: req.body?.productModel,
+    }, tenantPhoneOf(req));
+    res.json(products);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
 

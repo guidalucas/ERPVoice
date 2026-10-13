@@ -57,10 +57,22 @@ export const createProduct = async (product: ProductInput) =>
     body: JSON.stringify(product),
   });
 
+export const createProductModel = async (input: { productType: string; productModel: string; variants: Array<{ size: string; stockAvailable: number; price: number }> }) =>
+  requestJson<Product[]>('/api/products/model', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
 export const updateProduct = async (productId: string, product: Partial<ProductInput>) =>
   requestJson<Product>(`/api/products/${productId}`, {
     method: 'PUT',
     body: JSON.stringify(product),
+  });
+
+export const updateProductModel = async (input: { ids: string[]; name: string; productType: string; productModel: string }) =>
+  requestJson<Product[]>('/api/products/model', {
+    method: 'PUT',
+    body: JSON.stringify(input),
   });
 
 export const deleteProduct = async (productId: string) =>

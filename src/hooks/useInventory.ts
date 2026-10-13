@@ -4,6 +4,7 @@ import {
   createClient,
   createPedido,
   createProduct,
+  createProductModel,
   createProveedor,
   deleteClient,
   deletePedido,
@@ -15,6 +16,7 @@ import {
   updateClient,
   updatePedido,
   updateProduct,
+  updateProductModel,
   updateProveedor,
 } from '../services/productService';
 import type { Client, ParsedActionUnion, Pedido, PedidoEstado, Product, Proveedor } from '../domain/types';
@@ -58,6 +60,11 @@ export const useInventory = () => {
     await refreshState();
   };
 
+  const createProductModelRecords = async (input: { productType: string; productModel: string; variants: Array<{ size: string; stockAvailable: number; price: number }> }) => {
+    await createProductModel(input);
+    await refreshState();
+  };
+
   const updateProductRecord = async (productId: string, input: Partial<Omit<Product, 'id'>>) => {
     await updateProduct(productId, {
       ...input,
@@ -65,6 +72,11 @@ export const useInventory = () => {
       productModel: input.productModel ?? undefined,
       size: input.size ?? undefined,
     });
+    await refreshState();
+  };
+
+  const updateProductModelRecords = async (input: { ids: string[]; name: string; productType: string; productModel: string }) => {
+    await updateProductModel(input);
     await refreshState();
   };
 
@@ -162,7 +174,9 @@ export const useInventory = () => {
     refreshState,
     applyActions,
     createProductRecord,
+    createProductModelRecords,
     updateProductRecord,
+    updateProductModelRecords,
     deleteProductRecord,
     createClientRecord,
     updateClientRecord,

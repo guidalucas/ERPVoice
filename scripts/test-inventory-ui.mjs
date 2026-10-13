@@ -1,0 +1,193 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { chromium } from 'playwright';
+
+const browser = await chromium.launch(process.platform === 'win32' ? { channel: 'msedge', headless: true } : { headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const products = [{
+  id: 'product-1',
+  name: 'Camiseta Argentina',
+  productType: 'Camiseta',
+  productModel: 'Argentina',
+  size: 'S',
+  stockAvailable: 1,
+  stockReserved: 0,
+  price: 65000,
+}];
+const created = [];
+const createdModels = [];
+const modelUpdates = [];
+const movements = [];
+
+await page.addInitScript(() => {
+  localStorage.setItem('erpvoice.auth.token', 'local-ui-test');
+  localStorage.setItem('erpvoice.auth.phoneNumber', '5491100000000');
+});
+
+await page.route('**/api/**', async (route) => {
+  const request = route.request();
+  const path = new URL(request.url()).pathname;
+  const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+
+  if (path === '/api/auth/me') {
+    return json({ phoneNumber: '5491100000000', tenantPhone: '5491100000000', role: 'owner', businessName: 'Prueba local', businessCategory: 'indumentaria', needsOnboarding: false, pendingInvite: null, hasOwnBusiness: true });
+  }
+  if (path === '/api/state') {
+    return json({ products, clients: [], proveedores: [], pedidos: [], transactions: [] });
+  }
+  if (path === '/api/state/apply' && request.method() === 'POST') {
+    const input = request.postDataJSON();
+    movements.push(input);
+    for (const action of input.actions) {
+      const product = products.find((item) => item.name === action.productName && item.size === action.size);
+      if (!product) return json({ error: 'No se encontró el talle.' }, 404);
+      product.stockAvailable += action.type === 'add_stock' ? action.qty : -action.qty;
+    }
+    return json({ products, clients: [], proveedores: [], pedidos: [], transactions: [] });
+  }
+  if (path === '/api/products' && request.method() === 'POST') {
+    const input = request.postDataJSON();
+    created.push(input);
+    const product = { id: `product-${products.length + 1}`, ...input };
+    products.push(product);
+    return json(product, 201);
+  }
+  if (path === '/api/products/model' && request.method() === 'POST') {
+    const input = request.postDataJSON();
+    createdModels.push(input);
+    const newProducts = input.variants.map((variant, index) => ({
+      id: `model-product-${products.length + index + 1}`,
+      name: `${input.productType} ${input.productModel}`,
+      productType: input.productType,
+      productModel: input.productModel,
+      size: variant.size,
+      stockAvailable: variant.stockAvailable,
+      stockReserved: 0,
+      price: variant.price,
+    }));
+    products.push(...newProducts);
+    return json(newProducts, 201);
+  }
+  if (path === '/api/products/model' && request.method() === 'PUT') {
+    const input = request.postDataJSON();
+    modelUpdates.push(input);
+    const matching = products.filter((product) => input.ids.includes(product.id));
+    for (const product of matching) Object.assign(product, { name: input.name, productType: input.productType, productModel: input.productModel });
+    return json(matching);
+  }
+  return json({});
+});
+
+await page.route('http://127.0.0.1:5173/**', async (route) => {
+  const path = new URL(route.request().url()).pathname;
+  if (path.startsWith('/api/')) return route.fallback();
+  const file = resolve('dist', `.${path === '/' ? '/index.html' : path}`);
+  if (!file.startsWith(resolve('dist'))) return route.abort();
+  try {
+    const body = await readFile(file);
+    const contentType = path.endsWith('.js') ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : 'text/html';
+    return route.fulfill({ status: 200, body, contentType });
+  } catch {
+    return route.fulfill({ status: 404, body: '' });
+  }
+});
+
+try {
+  await page.goto('http://127.0.0.1:5173');
+  await page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name: 'Inventario' }).click();
+  await page.getByRole('button', { name: 'Ver talles de Camiseta Argentina' }).waitFor();
+  await page.getByRole('button', { name: 'Ver talles de Camiseta Argentina' }).click();
+  await page.getByRole('button', { name: 'Editar talle S de Camiseta Argentina' }).waitFor();
+  await page.getByRole('button', { name: 'Agregar talle a Camiseta Argentina' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Agregar talle' });
+  assert.equal(await dialog.getByLabel('Tipo de prenda').count(), 0);
+  await dialog.getByText('Modelo: Camiseta Argentina').waitFor();
+  assert.equal(await dialog.getByLabel('Precio').inputValue(), '65000');
+  assert.equal(await dialog.getByLabel('Stock Disponible').inputValue(), '0');
+
+  await dialog.getByLabel('Talle', { exact: true }).fill('s');
+  await dialog.getByRole('button', { name: 'Agregar talle' }).click();
+  await dialog.getByRole('alert').getByText(/ya existe/).waitFor();
+  assert.equal(created.length, 0);
+
+  await dialog.getByLabel('Talle', { exact: true }).fill('M');
+  await dialog.getByLabel('Stock Disponible').fill('4');
+  await dialog.getByRole('button', { name: 'Agregar talle' }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Editar talle M de Camiseta Argentina' }).waitFor();
+
+  assert.equal(created.length, 1);
+  assert.deepEqual({
+    name: created[0].name,
+    productType: created[0].productType,
+    productModel: created[0].productModel,
+    size: created[0].size,
+    stockAvailable: created[0].stockAvailable,
+    price: created[0].price,
+  }, {
+    name: 'Camiseta Argentina',
+    productType: 'Camiseta',
+    productModel: 'Argentina',
+    size: 'M',
+    stockAvailable: 4,
+    price: 65000,
+  });
+  await page.getByRole('button', { name: 'Editar modelo Camiseta Argentina' }).click();
+  const modelDialog = page.getByRole('dialog', { name: 'Editar modelo Camiseta Argentina' });
+  await modelDialog.getByLabel('Modelo').fill('Argentina Selección');
+  await modelDialog.getByRole('button', { name: 'Guardar modelo' }).click();
+  await modelDialog.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Editar talle M de Camiseta Argentina Selección' }).waitFor();
+  assert.equal(modelUpdates.length, 1);
+  assert.equal(modelUpdates[0].ids.length, 2);
+
+  await page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name: 'Inicio' }).click();
+  await page.getByRole('button', { name: 'Registrar ingreso' }).click();
+  await page.getByRole('button', { name: /Camiseta Argentina Selección M/ }).click();
+  await page.getByLabel('Cantidad').fill('3');
+  await page.getByRole('button', { name: '+ Confirmar ingreso' }).click();
+  await page.getByRole('button', { name: '+ Confirmar ingreso' }).waitFor({ state: 'hidden' });
+  assert.equal(movements.length, 1);
+  assert.equal(products.find((product) => product.size === 'M').stockAvailable, 7);
+
+  await page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name: 'Inventario' }).click();
+  await page.getByRole('button', { name: 'Ver talles de Camiseta Argentina Selección' }).getByText('M:').waitFor();
+  await page.getByRole('button', { name: '+ Nuevo modelo' }).click();
+  const newModelDialog = page.getByRole('dialog', { name: 'Nuevo modelo' });
+  await newModelDialog.getByLabel('Tipo de prenda').fill('Camiseta');
+  await newModelDialog.getByLabel('Modelo').fill('Uruguay Titular');
+  const firstVariant = newModelDialog.getByRole('group', { name: 'talle 1' });
+  await firstVariant.getByLabel('Talle', { exact: true }).fill('S');
+  await firstVariant.getByLabel('Stock disponible').fill('2');
+  await firstVariant.getByLabel('Precio').fill('70000');
+  await newModelDialog.getByRole('button', { name: '+ Agregar otro talle' }).click();
+  const secondVariant = newModelDialog.getByRole('group', { name: 'talle 2' });
+  assert.equal(await secondVariant.getByLabel('Precio').inputValue(), '70000');
+  await secondVariant.getByLabel('Talle', { exact: true }).fill('s');
+  await newModelDialog.getByRole('button', { name: 'Crear modelo' }).click();
+  await newModelDialog.getByRole('alert').getByText(/repetido/).waitFor();
+  assert.equal(createdModels.length, 0);
+  await secondVariant.getByLabel('Talle', { exact: true }).fill('M');
+  await secondVariant.getByLabel('Stock disponible').fill('5');
+  await newModelDialog.getByRole('button', { name: 'Crear modelo' }).click();
+  await newModelDialog.waitFor({ state: 'hidden' });
+  assert.equal(createdModels.length, 1);
+  assert.deepEqual(createdModels[0].variants, [
+    { size: 'S', stockAvailable: 2, price: 70000 },
+    { size: 'M', stockAvailable: 5, price: 70000 },
+  ]);
+  await page.getByRole('button', { name: 'Ocultar talles de Camiseta Uruguay Titular' }).waitFor();
+  if (process.env.INVENTORY_SCREENSHOT_PATH) {
+    await page.waitForTimeout(350);
+    await page.screenshot({ path: process.env.INVENTORY_SCREENSHOT_PATH, fullPage: true });
+    await page.getByRole('button', { name: 'Ver talles de Camiseta Argentina Selección' }).click();
+    await page.screenshot({ path: process.env.INVENTORY_SCREENSHOT_PATH.replace(/\.png$/i, '-details.png'), fullPage: true });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.getByRole('button', { name: 'Agregar talle a Camiseta Argentina' }).isVisible(), true);
+  console.log('Inventario local: nuevo modelo con dos talles, talle duplicado bloqueado, edición e ingreso de stock verificados.');
+} finally {
+  await browser.close();
+}
