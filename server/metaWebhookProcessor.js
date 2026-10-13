@@ -132,6 +132,21 @@ const looksLikeDeleteProducts = (text) => {
   );
 };
 
+const tryParseDeleteAllProductsAction = (text) => {
+  const normalized = normalizeText(text).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  const deleteVerb = /\b(?:borra(?:r)?|elimina(?:r)?|quita(?:r)?|saca(?:r)?)\b/;
+  const match = normalized.match(deleteVerb);
+  if (!match) return null;
+
+  const before = normalized.slice(0, match.index).trim();
+  const after = normalized.slice(match.index + match[0].length).trim().replace(/\s+por favor$/, '');
+  const allScope = /^(?:(?:todos?|todas?)(?:\s+(?:los|las))?(?:\s+(?:productos?|articulos?|items?))?|todo\s+el\s+(?:inventario|stock))(?:\s+que\s+(?:tengo|tenemos)\s+disponibles?)?(?:\s+(?:de|en)\s+(?:mi|el)\s+(?:inventario|stock))?$/;
+  if (allScope.test(after) || (allScope.test(before) && !after)) {
+    return { type: 'delete_product', productName: '*' };
+  }
+  return null;
+};
+
 const findLastCatalogUserText = (conversationTurns = []) => {
   if (!Array.isArray(conversationTurns)) {
     return '';
@@ -769,6 +784,18 @@ const inheritCatalogMetadata = (actions, catalog) => {
 const withCatalogGrounding = (payload, catalog, originalText) => {
   if (!payload?.actions?.length) {
     return payload;
+  }
+
+  if (
+    payload.actions.some((action) => action.type === 'delete_product' && action.productName === '*') &&
+    !tryParseDeleteAllProductsAction(originalText || payload.sourceText)
+  ) {
+    return {
+      ...payload,
+      requiresConfirmation: true,
+      missingFields: [...new Set([...(payload.missingFields || []), 'productMatch'])],
+      suggestedPhrases: ["Decime 'borrá todos los productos' si querés vaciar el inventario."],
+    };
   }
 
   const sizedActions = inheritCatalogMetadata(
@@ -1858,6 +1885,11 @@ const parseLocalText = (text, conversationTurns = [], catalog = null, preset = g
     return null;
   }
 
+  const deleteAll = tryParseDeleteAllProductsAction(text);
+  if (deleteAll) {
+    return finish(buildPayload(text, [deleteAll], { intent: 'delete_product' }));
+  }
+
   const listAll = tryParseListAllStockQuery(text);
   if (listAll) {
     return finish(buildPayload(text, [listAll], { intent: 'query_stock' }));
@@ -2054,6 +2086,11 @@ const parseVoiceTextWithModel = async (
 
   if (looksLikeUnusableTranscript(text)) {
     return null;
+  }
+
+  const deleteAll = tryParseDeleteAllProductsAction(text);
+  if (deleteAll) {
+    return finish(buildPayload(text, [deleteAll], { intent: 'delete_product' }));
   }
 
   const listAll = tryParseListAllStockQuery(text);
@@ -2405,6 +2442,9 @@ const formatAction = (action, preset = getBusinessCategoryPreset('general')) => 
   }
 
   if (action.type === 'delete_product') {
+    if (action.productName === '*') {
+      return '• *Productos eliminados:* todo el inventario';
+    }
     return `• *Producto eliminado:* ${action.productName}`;
   }
 

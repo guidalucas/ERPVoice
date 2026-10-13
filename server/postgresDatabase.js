@@ -725,6 +725,14 @@ const scoreNameMatch = (candidateName, queryName) => {
 };
 
 const resolveProductFlexible = (products, action) => {
+  const wantedName = normalizeText(action.productName).replace(/\s+/g, ' ').trim();
+  const exactNames = products.filter((product) =>
+    normalizeText(product.name).replace(/\s+/g, ' ').trim() === wantedName,
+  );
+  if (exactNames.length === 1) {
+    return exactNames[0];
+  }
+
   const exact = resolveProduct(products, action);
   if (exact) {
     return exact;
@@ -1322,6 +1330,9 @@ const summarizeAction = (action) => {
   }
 
   if (action.type === 'delete_product') {
+    if (action.productName === '*') {
+      return 'Eliminar todos los productos del inventario';
+    }
     return `Eliminar producto ${action.productName}`;
   }
 
@@ -1619,6 +1630,20 @@ export const deleteProductRecord = async (productId, ownerPhone = DEFAULT_OWNER_
   const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
   const result = await getPool().query('DELETE FROM products WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [productId, ownerPhoneVariants]);
   return result.rowCount > 0;
+};
+
+export const deleteProductRecords = async (idsInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  await ensureReady();
+  const ids = [...new Set(Array.isArray(idsInput) ? idsInput.filter((id) => typeof id === 'string' && id.trim()) : [])];
+  if (!ids.length) throw new Error('Seleccioná al menos un producto.');
+  return withTransaction(async (client) => {
+    const result = await client.query(
+      'DELETE FROM products WHERE id = ANY($1) AND owner_phone = ANY($2) RETURNING id',
+      [ids, getOwnerPhoneVariants(ownerPhone)],
+    );
+    if (result.rowCount !== ids.length) throw new Error('El inventario cambió. Actualizá la página e intentá de nuevo.');
+    return result.rowCount;
+  });
 };
 
 export const createClientRecord = async (clientInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
@@ -2197,11 +2222,15 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
       }
 
       if (action.type === 'delete_product' && typeof action.productName === 'string') {
-        const product = resolveProductFlexible(nextProducts, action);
-        if (product) {
-          const productIndex = nextProducts.findIndex((entry) => entry.id === product.id);
-          if (productIndex >= 0) {
-            nextProducts.splice(productIndex, 1);
+        if (action.productName === '*') {
+          nextProducts.length = 0;
+        } else {
+          const product = resolveProductFlexible(nextProducts, action);
+          if (product) {
+            const productIndex = nextProducts.findIndex((entry) => entry.id === product.id);
+            if (productIndex >= 0) {
+              nextProducts.splice(productIndex, 1);
+            }
           }
         }
       }

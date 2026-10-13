@@ -95,6 +95,13 @@ http.createServer(async (req, res) => {
     }
     return send(res, 200, matching);
   }
+  if (path === '/api/products/batch' && req.method === 'DELETE') {
+    const input = await readJson(req);
+    const ids = [...new Set(Array.isArray(input.ids) ? input.ids : [])];
+    if (!ids.length || ids.some((id) => !products.some((product) => product.id === id))) return send(res, 400, { error: 'El inventario cambió. Actualizá la página.' });
+    for (const id of ids) products.splice(products.findIndex((product) => product.id === id), 1);
+    return send(res, 200, { deleted: ids.length });
+  }
   const id = path.startsWith('/api/products/') ? decodeURIComponent(path.slice('/api/products/'.length)) : null;
   const index = id ? products.findIndex((product) => product.id === id) : -1;
   if (index >= 0 && req.method === 'PUT') {

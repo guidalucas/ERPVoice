@@ -19,6 +19,7 @@ const created = [];
 const createdModels = [];
 const modelUpdates = [];
 const movements = [];
+const bulkDeletions = [];
 
 await page.addInitScript(() => {
   localStorage.setItem('erpvoice.auth.token', 'local-ui-test');
@@ -75,6 +76,13 @@ await page.route('**/api/**', async (route) => {
     const matching = products.filter((product) => input.ids.includes(product.id));
     for (const product of matching) Object.assign(product, { name: input.name, productType: input.productType, productModel: input.productModel });
     return json(matching);
+  }
+  if (path === '/api/products/batch' && request.method() === 'DELETE') {
+    const input = request.postDataJSON();
+    bulkDeletions.push(input.ids);
+    if (input.ids.some((id) => !products.some((product) => product.id === id))) return json({ error: 'El inventario cambió.' }, 400);
+    for (const id of input.ids) products.splice(products.findIndex((product) => product.id === id), 1);
+    return json({ deleted: input.ids.length });
   }
   return json({});
 });
@@ -153,7 +161,7 @@ try {
   assert.equal(products.find((product) => product.size === 'M').stockAvailable, 7);
 
   await page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name: 'Inventario' }).click();
-  await page.getByRole('button', { name: 'Ver talles de Camiseta Argentina Selección' }).getByText('M:').waitFor();
+  await page.getByText('M: 7').waitFor();
   await page.getByRole('button', { name: '+ Nuevo modelo' }).click();
   const newModelDialog = page.getByRole('dialog', { name: 'Nuevo modelo' });
   await newModelDialog.getByLabel('Tipo de prenda').fill('Camiseta');
@@ -187,7 +195,25 @@ try {
   }
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.getByRole('button', { name: 'Agregar talle a Camiseta Argentina' }).isVisible(), true);
-  console.log('Inventario local: nuevo modelo con dos talles, talle duplicado bloqueado, edición e ingreso de stock verificados.');
+  if (process.env.INVENTORY_SCREENSHOT_PATH) {
+    await page.screenshot({ path: process.env.INVENTORY_SCREENSHOT_PATH.replace(/\.png$/i, '-mobile.png'), fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  if (await page.getByRole('button', { name: 'Ver talles de Camiseta Argentina Selección' }).count()) {
+    await page.getByRole('button', { name: 'Ver talles de Camiseta Argentina Selección' }).click();
+  }
+  await page.getByRole('checkbox', { name: 'Seleccionar modelo Camiseta Uruguay Titular' }).check();
+  await page.getByRole('checkbox', { name: 'Seleccionar talle M de Camiseta Argentina Selección' }).check();
+  await page.getByRole('toolbar', { name: 'Acciones de selección' }).getByText('3 talles seleccionados').waitFor();
+  await page.getByRole('button', { name: 'Eliminar seleccionados' }).click();
+  const bulkDialog = page.getByRole('dialog', { name: 'Eliminar selección' });
+  await bulkDialog.getByText(/Vas a eliminar 3 talles/).waitFor();
+  await bulkDialog.getByRole('button', { name: 'Eliminar 3' }).click();
+  await bulkDialog.waitFor({ state: 'hidden' });
+  assert.equal(bulkDeletions.length, 1);
+  assert.equal(bulkDeletions[0].length, 3);
+  assert.equal(products.length, 1);
+  console.log('Inventario local: múltiples talles creados, grilla y selección múltiple verificadas.');
 } finally {
   await browser.close();
 }

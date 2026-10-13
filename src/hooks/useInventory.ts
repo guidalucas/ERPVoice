@@ -9,6 +9,7 @@ import {
   deleteClient,
   deletePedido,
   deleteProduct,
+  deleteProducts,
   deleteProveedor,
   fetchPersistedState,
   mergeClients,
@@ -82,6 +83,11 @@ export const useInventory = () => {
 
   const deleteProductRecord = async (productId: string) => {
     await deleteProduct(productId);
+    await refreshState();
+  };
+
+  const deleteProductRecords = async (ids: string[]) => {
+    await deleteProducts(ids);
     await refreshState();
   };
 
@@ -178,6 +184,7 @@ export const useInventory = () => {
     updateProductRecord,
     updateProductModelRecords,
     deleteProductRecord,
+    deleteProductRecords,
     createClientRecord,
     updateClientRecord,
     deleteClientRecord,

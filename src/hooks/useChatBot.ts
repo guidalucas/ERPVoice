@@ -313,7 +313,7 @@ export const useChatBot = () => {
       }
 
       if (action.type === 'delete_product') {
-        lines.push(`${nextOtherIndex()}. delete_product -> ${action.productName}`);
+        lines.push(`${nextOtherIndex()}. delete_product -> ${action.productName === '*' ? 'todo el inventario' : action.productName}`);
         continue;
       }
 
