@@ -34,6 +34,7 @@ const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-20b';
 const REQUEST_TIMEOUT_MS = 25000;
 const PRIMARY_RETRIES = 2;
 const SECONDARY_RETRIES = 2;
+const LONG_INPUT_CHARS = 500;
 
 const firstNonEmpty = (...values) => {
   for (const value of values) {
@@ -259,12 +260,26 @@ const buildRequestBody = (provider, model, messages, options, { jsonObject, incl
   return body;
 };
 
+export const modelsForRequest = (provider, sourceTextChars = 0) => {
+  const models = [...provider.models];
+  if (
+    provider.id === 'gemini' &&
+    models[0] === DEFAULT_GEMINI_MODEL &&
+    models.includes(FALLBACK_GEMINI_MODEL) &&
+    sourceTextChars >= LONG_INPUT_CHARS
+  ) {
+    return [FALLBACK_GEMINI_MODEL, ...models.filter((model) => model !== FALLBACK_GEMINI_MODEL)];
+  }
+  return models;
+};
+
 const tryProvider = async (provider, messages, options, retries) => {
   const startedAt = Date.now();
   let lastFailure = { reason: 'unknown', status: 0 };
+  const models = modelsForRequest(provider, options.sourceTextChars);
 
-  for (let modelIndex = 0; modelIndex < provider.models.length; modelIndex += 1) {
-    const model = provider.models[modelIndex];
+  for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
+    const model = models[modelIndex];
     let jsonObject = true;
     let includeReasoning = Boolean(provider.reasoningEffort);
 
@@ -309,8 +324,8 @@ const tryProvider = async (provider, messages, options, retries) => {
           continue;
         }
 
-        if (looksLikeUnknownModel(response.status, errorText) && modelIndex < provider.models.length - 1) {
-          console.warn(`[LLM] ${provider.id} modelo ${model} no disponible (${response.status}); pruebo ${provider.models[modelIndex + 1]}`);
+        if (looksLikeUnknownModel(response.status, errorText) && modelIndex < models.length - 1) {
+          console.warn(`[LLM] ${provider.id} modelo ${model} no disponible (${response.status}); pruebo ${models[modelIndex + 1]}`);
           break;
         }
 
@@ -387,7 +402,7 @@ const tryProvider = async (provider, messages, options, retries) => {
   };
 };
 
-export const completeChatJson = async ({ messages, temperature = 0, maxTokens } = {}) => {
+export const completeChatJson = async ({ messages, temperature = 0, maxTokens, sourceTextChars = 0 } = {}) => {
   const chain = resolveProviderChain();
   if (!chain.length) {
     return { ok: false, reason: 'missing_api_key' };
@@ -397,7 +412,7 @@ export const completeChatJson = async ({ messages, temperature = 0, maxTokens } 
   for (let index = 0; index < chain.length; index += 1) {
     const provider = chain[index];
     const retries = index === 0 ? PRIMARY_RETRIES : SECONDARY_RETRIES;
-    const result = await tryProvider(provider, messages, { temperature, maxTokens }, retries);
+    const result = await tryProvider(provider, messages, { temperature, maxTokens, sourceTextChars }, retries);
     if (result.ok) {
       if (failures.length) {
         console.warn(`[LLM] ${provider.id} respondió después de fallar ${failures.map((item) => item.provider).join(' → ')}`);

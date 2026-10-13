@@ -1,4 +1,6 @@
-const MAX_CATALOG_PRODUCTS = 80;
+import { productMatchKey } from './productIdentity.js';
+
+const MAX_CATALOG_PRODUCTS = 30;
 const MAX_CATALOG_CLIENTS = 25;
 const MAX_CATALOG_PEDIDOS = 20;
 
@@ -31,8 +33,6 @@ const STOPWORDS = new Set([
   'version',
   'producto',
   'productos',
-  'camiseta',
-  'camisetas',
   'todo',
   'toda',
   'todos',
@@ -85,7 +85,6 @@ const MATCH_ACTIONS = new Set([
 ]);
 
 const VARIANT_HOLD_TYPES = new Set(['delete_product', 'sell', 'add_stock', 'client_order']);
-
 const normalizeText = (value) =>
   String(value ?? '')
     .toLowerCase()
@@ -150,6 +149,15 @@ const sharedField = (products, key) => {
 
 const productHaystack = (product) =>
   normalizeText([product?.name, product?.productType, product?.productModel, product?.size].filter(Boolean).join(' '));
+
+const distinctiveCatalogTokens = (text, products) => {
+  const tokens = tokenize(text);
+  if (products.length < 2) return tokens;
+  const productTokens = products.map((product) => tokenize(productHaystack(product)));
+  return tokens.filter((token) =>
+    productTokens.filter((hay) => tokenMatchesHay(token, hay)).length / products.length <= 0.7,
+  );
+};
 
 export const scoreProductAgainstQuery = (product, query) => {
   const hay = productHaystack(product);
@@ -233,14 +241,15 @@ export const selectCatalogForPrompt = (catalog, text) => {
   const products = Array.isArray(catalog?.products) ? catalog.products : [];
   const clients = Array.isArray(catalog?.clients) ? catalog.clients : [];
   const pedidos = Array.isArray(catalog?.pedidos) ? catalog.pedidos : [];
-  const tokens = tokenize(text);
+  const tokens = distinctiveCatalogTokens(text, products);
 
   let selectedProducts = products;
   if (products.length > MAX_CATALOG_PRODUCTS) {
     const ranked = products
       .map((product) => {
         const hay = productHaystack(product);
-        const overlap = tokens.filter((token) => hay.includes(token)).length;
+        const hayTokens = tokenize(hay);
+        const overlap = tokens.filter((token) => tokenMatchesHay(token, hayTokens)).length;
         return { product, overlap };
       })
       .sort((left, right) => right.overlap - left.overlap);
@@ -250,6 +259,9 @@ export const selectCatalogForPrompt = (catalog, text) => {
       if (picked.length >= MAX_CATALOG_PRODUCTS) {
         break;
       }
+      if (tokens.length && entry.overlap === 0) {
+        break;
+      }
       const id = entry.product.id || entry.product.name;
       if (seen.has(id)) {
         continue;
@@ -257,7 +269,7 @@ export const selectCatalogForPrompt = (catalog, text) => {
       seen.add(id);
       picked.push(entry.product);
     }
-    selectedProducts = picked;
+    selectedProducts = picked.length ? picked : products.slice(0, 8);
   }
 
   return {
@@ -322,12 +334,14 @@ ${clientLines.length ? `\nClientes: \n${clientLines.join('\n')}` : ''}
 ${pedidoLines.length ? `\nPedidos pendientes:\n${pedidoLines.join('\n')}` : ''}
 Reglas contra este inventario:
 - delete / venta / reserva / pedido: usá el productName EXACTO de la lista si hay un match único.
-- query_stock de una familia ("las de River", "camisetas de Boca", "no tengo más de X"): productName GENÉRICO de esa familia (ej. "Camiseta River"). NUNCA elijas un SKU puntual; el sistema lista todos los que matchean.
-- query_stock de un SKU puntual ("River titular 2024 talle S"): ahí sí usá el nombre exacto.
+- query_stock de una familia ("los de esta marca", "no tengo más de X"): productName GENÉRICO de esa familia. NUNCA elijas un SKU puntual; el sistema lista todos los que matchean.
+- query_stock de un SKU puntual con modelo y variante explícitos: ahí sí usá el nombre exacto.
 - Si pide todo el inventario / todos los productos: query_stock con productName "*" y, si agrupó por talle, groupBy "size". No inventes un producto llamado all.
 - "la de X" o un nombre parcial se resuelve contra esta lista, no se inventa.
 - Si hay varios SKUs posibles (mismo modelo en dos talles/números, o dos modelos parecidos) y el usuario NO dijo la variante, NO ejecutes: missingFields ["productMatch"] y suggestedPhrases con cada candidato. Aplica a delete_product, sell, add_stock y client_order.
+- En add_stock, si el usuario sí dijo el talle/variante y solo existen otros talles, es una variante nueva: conservá el nombre y talle pedidos, sin pedir aclaración.
 - Ingresos nuevos (add_stock de algo que no está): copiá el estilo de nombre del inventario. Un ítem dictado = una acción. Nunca juntes dos productos en un productName.
+- Si el mismo producto se menciona otra vez ("otra más"), sumá las unidades: no descartes la repetición.
 `.trim();
 };
 
@@ -455,14 +469,52 @@ const groundOneAction = (action, products, sourceText) => {
     return groundQueryStockAction(action, products, sourceText);
   }
 
+  const garmentKey = productMatchKey(action);
+  if (garmentKey && action.size && action.type === 'add_stock') {
+    const exactGarments = products.filter((product) =>
+      sizeOf(product) === normalizeText(action.size) && productMatchKey(product) === garmentKey,
+    );
+    if (exactGarments.length === 1) {
+      return { actions: [cloneActionWithProduct(action, exactGarments[0])], ambiguous: false };
+    }
+    if (exactGarments.length > 1) {
+      return { actions: [action], ambiguous: true, candidates: exactGarments.map((product) => product.name) };
+    }
+  }
+
   const query = [action.productName, action.productType, action.productModel, action.size].filter(Boolean).join(' ');
   const ranked = rankProducts(products, query);
   if (!ranked.length) {
     return { actions: [action], ambiguous: false };
   }
 
-  const best = ranked[0];
-  const close = ranked.filter((entry) => entry.score >= Math.max(16, best.score - 8));
+  // Un ingreso de talle nuevo no debe confundirse con SKUs existentes de otro talle.
+  // El backend puede crear la variante nueva si no hay una coincidencia exacta.
+  const sizeMatches = action.size
+    ? ranked.filter((entry) => sizeOf(entry.product) === normalizeText(action.size))
+    : ranked;
+  const distinctiveTokens = action.type === 'add_stock'
+    ? distinctiveCatalogTokens(action.productName, products).filter((token) =>
+        token !== normalizeText(action.size),
+      )
+    : [];
+  const addStockMatches = distinctiveTokens.length
+    ? sizeMatches.filter((entry) => productHasQueryTokens(entry.product, distinctiveTokens))
+    : sizeMatches;
+  if (action.type === 'add_stock' && action.size && !addStockMatches.length) {
+    return { actions: [action], ambiguous: false };
+  }
+  if (garmentKey && action.type === 'add_stock' && action.size && addStockMatches.length) {
+    return {
+      actions: [action],
+      ambiguous: true,
+      candidates: addStockMatches.map((entry) => entry.product.name),
+    };
+  }
+  const candidates = action.type === 'add_stock' && action.size ? addStockMatches : ranked;
+
+  const best = candidates[0];
+  const close = candidates.filter((entry) => entry.score >= Math.max(16, best.score - 8));
 
   if (VARIANT_HOLD_TYPES.has(action.type) && isAmbiguousClose(action, close)) {
     return {
@@ -551,20 +603,25 @@ export const groundActionsAgainstCatalog = (actions, catalog, sourceText) => {
     next.push(...grounded.actions);
   }
 
-  const seen = new Set();
+  const seen = new Map();
   const deduped = [];
   for (const action of next) {
     const key = JSON.stringify({
       type: action.type,
       productName: action.productName,
       size: action.size,
-      qty: action.qty,
+      qty: action.type === 'add_stock' ? undefined : action.qty,
+      price: action.type === 'add_stock' ? action.price : undefined,
       clientName: action.clientName,
     });
     if (seen.has(key)) {
+      if (action.type === 'add_stock') {
+        const previous = deduped[seen.get(key)];
+        previous.qty += action.qty;
+      }
       continue;
     }
-    seen.add(key);
+    seen.set(key, deduped.length);
     deduped.push(action);
   }
 

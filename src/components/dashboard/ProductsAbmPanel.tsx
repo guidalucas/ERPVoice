@@ -157,15 +157,23 @@ const emptyDraft = (): ProductDraft => ({
   price: '0',
 });
 
-const toDraft = (product: ProductRow): ProductDraft => ({
-  name: product.name ?? '',
-  productType: product.productType ?? '',
-  productModel: product.productModel ?? '',
-  size: product.size ?? '',
-  stockAvailable: String(product.stockAvailable ?? 0),
-  stockReserved: String(product.stockReserved ?? 0),
-  price: String(product.price ?? 0),
-});
+const toDraft = (product: ProductRow): ProductDraft => {
+  const size = product.size?.trim() ?? '';
+  const name = product.name?.trim() ?? '';
+  const nameWithoutSize = size && name.toLowerCase().endsWith(` ${size.toLowerCase()}`)
+    ? name.slice(0, -(size.length + 1)).trim()
+    : name;
+
+  return {
+    name: nameWithoutSize,
+    productType: product.productType ?? '',
+    productModel: product.productModel ?? '',
+    size,
+    stockAvailable: String(product.stockAvailable ?? 0),
+    stockReserved: String(product.stockReserved ?? 0),
+    price: String(product.price ?? 0),
+  };
+};
 
 const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
 
@@ -175,7 +183,7 @@ const buildProductName = (draft: ProductDraft) => {
     return explicitName;
   }
 
-  const parts = [draft.productType.trim(), draft.productModel.trim(), draft.size.trim()].filter(Boolean);
+  const parts = [draft.productType.trim(), draft.productModel.trim()].filter(Boolean);
   return parts.length ? parts.join(' ') : 'Nuevo Producto';
 };
 
