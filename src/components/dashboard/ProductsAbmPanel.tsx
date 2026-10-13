@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { getVariantWord, type BusinessCategoryPreset } from '../../domain/businessCategories';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
@@ -15,6 +14,20 @@ type ProductDraft = {
   price: string;
 };
 
+type NewVariantDraft = {
+  key: string;
+  size: string;
+  stockAvailable: string;
+  price: string;
+};
+
+const emptyVariantDraft = (price = '0'): NewVariantDraft => ({
+  key: Math.random().toString(36).slice(2),
+  size: '',
+  stockAvailable: '0',
+  price,
+});
+
 type ProductRow = {
   id: string;
   name: string;
@@ -26,15 +39,11 @@ type ProductRow = {
   price: number;
 };
 
-type InventoryGroupBy = 'model' | 'variant';
-
 type ProductGroup = {
   key: string;
   displayName: string;
-  groupedBy: InventoryGroupBy;
   productType?: string | null;
   productModel?: string | null;
-  variantValue?: string | null;
   products: ProductRow[];
 };
 
@@ -84,39 +93,19 @@ const pluralizeVariantLabel = (label: string | null | undefined) => {
   return `${singular}s`;
 };
 
-const buildProductGroups = (
-  products: ProductRow[],
-  groupBy: InventoryGroupBy,
-  preset: BusinessCategoryPreset,
-): ProductGroup[] => {
+const buildProductGroups = (products: ProductRow[]): ProductGroup[] => {
   const groups: Record<string, ProductGroup> = {};
-  const variantWord = getVariantWord(preset);
-  const variantTitle = preset.variantLabel?.trim() || 'Variante';
 
   for (const product of products) {
-    if (groupBy === 'variant') {
-      const sizePart = product.size?.trim() ?? '';
-      const key = `variant||${sizePart.toLowerCase() || '__none__'}`;
-      const displayName = sizePart ? `${variantTitle} ${sizePart}` : `Sin ${variantWord}`;
-      groups[key] = groups[key] ?? {
-        key,
-        displayName,
-        groupedBy: 'variant',
-        variantValue: sizePart || null,
-        products: [],
-      };
-      groups[key]!.products.push(product);
-      continue;
-    }
-
     const typePart = product.productType?.trim() ?? '';
     const modelPart = product.productModel?.trim() ?? '';
-    const key = typePart || modelPart ? `model||${typePart}||${modelPart}` : `model||name||${product.name}`;
+    const key = typePart || modelPart
+      ? `model||${normalizeSearch(typePart)}||${normalizeSearch(modelPart)}`
+      : `model||name||${normalizeSearch(product.name)}`;
     const displayName = typePart || modelPart ? [typePart, modelPart].filter(Boolean).join(' ') : product.name;
     groups[key] = groups[key] ?? {
       key,
       displayName,
-      groupedBy: 'model',
       productType: product.productType,
       productModel: product.productModel,
       products: [],
@@ -127,24 +116,9 @@ const buildProductGroups = (
   return Object.values(groups)
     .map((group) => ({
       ...group,
-      products: group.products.slice().sort((left, right) => {
-        if (group.groupedBy === 'variant') {
-          return productLineName(left).localeCompare(productLineName(right), 'es', { sensitivity: 'base' });
-        }
-        return compareVariantValues(left.size, right.size);
-      }),
+      products: group.products.slice().sort((left, right) => compareVariantValues(left.size, right.size)),
     }))
-    .sort((left, right) => {
-      if (groupBy === 'variant') {
-        const leftMissing = !left.variantValue;
-        const rightMissing = !right.variantValue;
-        if (leftMissing !== rightMissing) {
-          return leftMissing ? 1 : -1;
-        }
-        return compareVariantValues(left.variantValue, right.variantValue);
-      }
-      return left.displayName.localeCompare(right.displayName, 'es', { sensitivity: 'base' });
-    });
+    .sort((left, right) => left.displayName.localeCompare(right.displayName, 'es', { sensitivity: 'base' }));
 };
 
 const emptyDraft = (): ProductDraft => ({
@@ -187,33 +161,6 @@ const buildProductName = (draft: ProductDraft) => {
   return parts.length ? parts.join(' ') : 'Nuevo Producto';
 };
 
-function IconButton({
-  label,
-  onClick,
-  danger = false,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className={`inline-flex h-11 w-11 items-center justify-center rounded-full border transition ${
-        danger
-          ? 'border-rose-500/20 bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 hover:text-rose-700 dark:text-rose-300 dark:hover:text-rose-200'
-          : 'border-[color:var(--border)] bg-[color:var(--overlay-soft)] text-[color:var(--text)] hover:bg-slate-900/5 hover:text-[color:var(--text)] dark:hover:bg-white/10'
-      }`}
-    >
-      <span className="pointer-events-none">{children}</span>
-    </button>
-  );
-}
-
 function ConfirmDeleteModal({
   productName,
   onCancel,
@@ -247,6 +194,7 @@ function ConfirmDeleteModal({
 
 function ProductFormModal({
   title,
+  description,
   draft,
   onDraftChange,
   onClose,
@@ -254,8 +202,13 @@ function ProductFormModal({
   submitLabel,
   submitting,
   preset,
+  variantOnly,
+  showReserved,
+  requireVariant,
+  error,
 }: {
   title: string;
+  description?: string;
   draft: ProductDraft;
   onDraftChange: (nextDraft: ProductDraft) => void;
   onClose: () => void;
@@ -263,57 +216,211 @@ function ProductFormModal({
   submitLabel: string;
   submitting: boolean;
   preset: BusinessCategoryPreset;
+  variantOnly: boolean;
+  showReserved: boolean;
+  requireVariant: boolean;
+  error: string | null;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-3xl rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" role="presentation">
+      <div role="dialog" aria-modal="true" aria-label={title} className="max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
         <div className="flex items-start justify-between gap-3">
           <h4 className="type-title text-[1.55rem] leading-none text-[color:var(--text)]">{title}</h4>
           <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" onClick={onClose}>
             ×
           </button>
         </div>
+        {description && <p className="mt-2 text-sm text-[color:var(--muted)]">{description}</p>}
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
-            {preset.productTypeLabel}
-            <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.productType} onChange={(event) => onDraftChange({ ...draft, productType: event.target.value })} />
-          </label>
-          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
-            {preset.productModelLabel}
-            <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.productModel} onChange={(event) => onDraftChange({ ...draft, productModel: event.target.value })} />
-          </label>
-          {preset.useVariants && preset.variantLabel && (
-            <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
-              {preset.variantLabel}
-              <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.size} onChange={(event) => onDraftChange({ ...draft, size: event.target.value })} />
-            </label>
+        <form id="product-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
+          {!variantOnly && (
+            <fieldset>
+              {preset.useVariants && <legend className="mb-3 type-subtitle text-sm text-[color:var(--muted)]">1. Modelo</legend>}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
+                  {preset.productTypeLabel}
+                  <input className="erp-input h-11 rounded-xl text-[15px]" required={preset.useVariants} value={draft.productType} onChange={(event) => onDraftChange({ ...draft, productType: event.target.value })} />
+                </label>
+                <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
+                  {preset.productModelLabel}
+                  <input className="erp-input h-11 rounded-xl text-[15px]" required={preset.useVariants} value={draft.productModel} onChange={(event) => onDraftChange({ ...draft, productModel: event.target.value })} />
+                </label>
+                <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)] sm:col-span-2">
+                  Nombre para mostrar (opcional)
+                  <input className="erp-input h-11 rounded-xl text-[15px]" placeholder="Si queda vacío, se usa tipo + modelo" value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} />
+                </label>
+              </div>
+            </fieldset>
           )}
-          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
-            Precio
-            <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.price} onChange={(event) => onDraftChange({ ...draft, price: event.target.value })} />
-          </label>
-          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
-            Stock Disponible
-            <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.stockAvailable} onChange={(event) => onDraftChange({ ...draft, stockAvailable: event.target.value })} />
-          </label>
-          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
-            Stock Reservado
-            <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" value={draft.stockReserved} onChange={(event) => onDraftChange({ ...draft, stockReserved: event.target.value })} />
-          </label>
-          <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)] sm:col-span-2 lg:col-span-3">
-            Nombre (opcional)
-            <input className="erp-input h-11 rounded-xl text-[15px]" value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} />
-          </label>
-        </div>
+          <fieldset className={!variantOnly && preset.useVariants ? 'border-t border-[color:var(--border)] pt-4' : ''}>
+            <legend className="mb-3 type-subtitle text-sm text-[color:var(--muted)]">
+              {preset.useVariants ? variantOnly ? `Datos del ${getVariantWord(preset)}` : `2. Primer ${getVariantWord(preset)}` : 'Stock y precio'}
+            </legend>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {preset.useVariants && preset.variantLabel && (
+                <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
+                  {preset.variantLabel}
+                  <input className="erp-input h-11 rounded-xl text-[15px]" autoFocus={variantOnly} required={requireVariant} value={draft.size} onChange={(event) => onDraftChange({ ...draft, size: event.target.value })} />
+                </label>
+              )}
+              <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
+                Stock Disponible
+                <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" step="1" required value={draft.stockAvailable} onChange={(event) => onDraftChange({ ...draft, stockAvailable: event.target.value })} />
+              </label>
+              <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
+                Precio
+                <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" step="1" required value={draft.price} onChange={(event) => onDraftChange({ ...draft, price: event.target.value })} />
+              </label>
+              {showReserved && <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
+                Stock Reservado
+                <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" step="1" required value={draft.stockReserved} onChange={(event) => onDraftChange({ ...draft, stockReserved: event.target.value })} />
+              </label>}
+            </div>
+            {!showReserved && <p className="mt-2 text-xs text-[color:var(--muted)]">Podés cargar stock ahora o dejarlo en 0 y registrar un ingreso después.</p>}
+          </fieldset>
+        </form>
+        {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button type="button" onClick={onClose} className="erp-button-secondary">
             Cancelar
           </button>
-          <button type="button" onClick={() => void onSubmit()} disabled={submitting} className="erp-button-primary">
+          <button type="submit" form="product-form" disabled={submitting} className="erp-button-primary">
             {submitting ? 'Guardando...' : submitLabel}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewModelModal({
+  draft,
+  variants,
+  preset,
+  onDraftChange,
+  onVariantsChange,
+  onClose,
+  onSubmit,
+  saving,
+  error,
+}: {
+  draft: ProductDraft;
+  variants: NewVariantDraft[];
+  preset: BusinessCategoryPreset;
+  onDraftChange: (draft: ProductDraft) => void;
+  onVariantsChange: (variants: NewVariantDraft[]) => void;
+  onClose: () => void;
+  onSubmit: () => Promise<void>;
+  saving: boolean;
+  error: string | null;
+}) {
+  const variantWord = getVariantWord(preset);
+  const updateVariant = (key: string, changes: Partial<NewVariantDraft>) =>
+    onVariantsChange(variants.map((variant) => variant.key === key ? { ...variant, ...changes } : variant));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" role="presentation">
+      <div role="dialog" aria-modal="true" aria-label="Nuevo modelo" className="max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
+        <div className="flex items-start justify-between gap-3">
+          <h4 className="type-title text-[1.55rem] leading-none">Nuevo modelo</h4>
+          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" onClick={onClose}>×</button>
+        </div>
+        <p className="mt-2 text-sm text-[color:var(--muted)]">Cargá el modelo y todos los {pluralizeVariantLabel(preset.variantLabel)} que quieras vender.</p>
+        <form id="new-model-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
+          <fieldset>
+            <legend className="mb-3 type-subtitle text-sm text-[color:var(--muted)]">Modelo</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-1.5 text-sm type-subtitle">
+                {preset.productTypeLabel}
+                <input className="erp-input h-11 rounded-xl text-[15px]" required value={draft.productType} onChange={(event) => onDraftChange({ ...draft, productType: event.target.value })} />
+              </label>
+              <label className="block space-y-1.5 text-sm type-subtitle">
+                {preset.productModelLabel}
+                <input className="erp-input h-11 rounded-xl text-[15px]" required value={draft.productModel} onChange={(event) => onDraftChange({ ...draft, productModel: event.target.value })} />
+              </label>
+            </div>
+          </fieldset>
+          <fieldset className="border-t border-[color:var(--border)] pt-4">
+            <legend className="mb-3 type-subtitle text-sm text-[color:var(--muted)]">{pluralizeVariantLabel(preset.variantLabel)}</legend>
+            <div className="space-y-3">
+              {variants.map((variant, index) => (
+                <div key={variant.key} role="group" aria-label={`${variantWord} ${index + 1}`} className="rounded-xl border border-[color:var(--border)] bg-[color:var(--overlay-soft)] p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="type-subtitle text-sm text-[color:var(--muted)]">{variantWord.charAt(0).toUpperCase() + variantWord.slice(1)} {index + 1}</span>
+                    {variants.length > 1 && <button type="button" className="text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" aria-label={`Quitar ${variantWord} ${index + 1}`} onClick={() => onVariantsChange(variants.filter((item) => item.key !== variant.key))}>Quitar</button>}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="block space-y-1.5 text-sm type-subtitle">
+                      {preset.variantLabel}
+                      <input className="erp-input h-11 rounded-xl text-[15px]" required value={variant.size} onChange={(event) => updateVariant(variant.key, { size: event.target.value })} />
+                    </label>
+                    <label className="block space-y-1.5 text-sm type-subtitle">
+                      Stock disponible
+                      <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" step="1" required value={variant.stockAvailable} onChange={(event) => updateVariant(variant.key, { stockAvailable: event.target.value })} />
+                    </label>
+                    <label className="block space-y-1.5 text-sm type-subtitle">
+                      Precio
+                      <input className="erp-input h-11 rounded-xl text-[15px]" type="number" min="0" step="1" required value={variant.price} onChange={(event) => updateVariant(variant.key, { price: event.target.value })} />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button type="button" className="erp-button-secondary mt-3" onClick={() => onVariantsChange([...variants, emptyVariantDraft(variants[variants.length - 1]?.price ?? '0')])}>+ Agregar otro {variantWord}</button>
+            <p className="mt-2 text-xs text-[color:var(--muted)]">Podés dejar el stock en 0 y registrar un ingreso después.</p>
+          </fieldset>
+        </form>
+        {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button type="button" onClick={onClose} className="erp-button-secondary" disabled={saving}>Cancelar</button>
+          <button type="submit" form="new-model-form" disabled={saving} className="erp-button-primary">{saving ? 'Guardando...' : 'Crear modelo'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModelFormModal({
+  group,
+  preset,
+  productType,
+  productModel,
+  onChange,
+  onClose,
+  onSubmit,
+  saving,
+  error,
+}: {
+  group: ProductGroup;
+  preset: BusinessCategoryPreset;
+  productType: string;
+  productModel: string;
+  onChange: (values: { productType: string; productModel: string }) => void;
+  onClose: () => void;
+  onSubmit: () => Promise<void>;
+  saving: boolean;
+  error: string | null;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" role="presentation">
+      <div role="dialog" aria-modal="true" aria-label={`Editar modelo ${group.displayName}`} className="w-full max-w-lg rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl">
+        <h4 className="type-title text-xl">Editar modelo</h4>
+        <p className="mt-2 text-sm text-[color:var(--muted)]">Los cambios de nombre se aplican a sus {group.products.length} {group.products.length === 1 ? getVariantWord(preset) : pluralizeVariantLabel(preset.variantLabel)}.</p>
+        <form id="model-form" className="mt-5 space-y-3" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
+          <label className="block space-y-1.5 text-sm type-subtitle">
+            {preset.productTypeLabel}
+            <input className="erp-input" required value={productType} onChange={(event) => onChange({ productType: event.target.value, productModel })} />
+          </label>
+          <label className="block space-y-1.5 text-sm type-subtitle">
+            {preset.productModelLabel}
+            <input className="erp-input" required value={productModel} onChange={(event) => onChange({ productType, productModel: event.target.value })} />
+          </label>
+        </form>
+        {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" className="erp-button-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button type="submit" form="model-form" className="erp-button-primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar modelo'}</button>
         </div>
       </div>
     </div>
@@ -327,22 +434,26 @@ export function ProductsAbmPanel({
   stockFilter?: 'all' | 'low-stock';
   onStockFilterChange?: (filter: 'all' | 'low-stock') => void;
 }) {
-  const { products, createProductRecord, updateProductRecord, deleteProductRecord } = useInventory();
+  const { products, createProductRecord, createProductModelRecords, updateProductRecord, updateProductModelRecords, deleteProductRecord } = useInventory();
   const preset = useBusinessCategoryPreset();
   const variantWord = getVariantWord(preset);
   const variantLabelPlural = pluralizeVariantLabel(preset.variantLabel);
   const [draft, setDraft] = useState<ProductDraft>(() => emptyDraft());
+  const [newVariants, setNewVariants] = useState<NewVariantDraft[]>(() => [emptyVariantDraft()]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [addingToGroup, setAddingToGroup] = useState<ProductGroup | null>(null);
+  const [editingGroup, setEditingGroup] = useState<ProductGroup | null>(null);
+  const [modelDraft, setModelDraft] = useState({ productType: '', productModel: '' });
+  const [modelError, setModelError] = useState<string | null>(null);
+  const [savingModel, setSavingModel] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [pendingDeleteProduct, setPendingDeleteProduct] = useState<ProductRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [groupBy, setGroupBy] = useState<InventoryGroupBy>('model');
   const onlyLowStock = stockFilter === 'low-stock';
-
-  const editingProduct = useMemo(() => products.find((product) => product.id === editingProductId) ?? null, [products, editingProductId]);
 
   const stockSummary = useMemo(() => {
     const totalAvailable = products.reduce((total, product) => total + product.stockAvailable, 0);
@@ -353,8 +464,8 @@ export function ProductsAbmPanel({
   }, [products]);
 
   const groupedProducts = useMemo(
-    () => (preset.useVariants ? buildProductGroups(products, groupBy, preset) : []),
-    [products, groupBy, preset],
+    () => (preset.useVariants ? buildProductGroups(products) : []),
+    [products, preset.useVariants],
   );
 
   const flatProducts = useMemo(() => {
@@ -382,7 +493,7 @@ export function ProductsAbmPanel({
       : groupedProducts
           .map((group) => {
             const headerHaystack = normalizeSearch(
-              [group.displayName, group.productType, group.productModel, group.variantValue].filter(Boolean).join(' '),
+              [group.displayName, group.productType, group.productModel].filter(Boolean).join(' '),
             );
             if (headerHaystack.includes(normalizedQuery)) {
               return group;
@@ -431,61 +542,193 @@ export function ProductsAbmPanel({
     });
   }, [onlyLowStock, lowStockGroupKeys]);
 
-  const isEditing = Boolean(editingProductId);
-
   useEffect(() => {
     if (!isFormOpen) {
       setEditingProductId(null);
+      setAddingToGroup(null);
       setDraft(emptyDraft());
+      setNewVariants([emptyVariantDraft()]);
       setSaving(false);
+      setFormError(null);
     }
   }, [isFormOpen]);
 
-  useEffect(() => {
-    if (editingProduct) {
-      setDraft(toDraft(editingProduct));
-      return;
-    }
-
-    if (!isEditing) {
-      setDraft(emptyDraft());
-    }
-  }, [editingProduct, isEditing]);
-
   const openCreateForm = () => {
     setEditingProductId(null);
+    setAddingToGroup(null);
+    setFormError(null);
     setDraft(emptyDraft());
+    setNewVariants([emptyVariantDraft()]);
     setIsFormOpen(true);
+  };
+
+  const handleCreateModel = async () => {
+    const productType = draft.productType.trim();
+    const productModel = draft.productModel.trim();
+    if (!productType || !productModel) {
+      setFormError('Completá el tipo de prenda y el modelo.');
+      return;
+    }
+    const modelKey = `model||${normalizeSearch(productType)}||${normalizeSearch(productModel)}`;
+    if (groupedProducts.some((group) => group.key === modelKey)) {
+      setFormError(`Ese modelo ya existe. Agregá el ${variantWord} desde su tarjeta.`);
+      return;
+    }
+    const sizes = new Set<string>();
+    for (const variant of newVariants) {
+      const size = normalizeSearch(variant.size);
+      if (!size) {
+        setFormError(`Completá todos los ${variantLabelPlural}.`);
+        return;
+      }
+      if (sizes.has(size)) {
+        setFormError(`El ${variantWord} ${variant.size.trim()} está repetido.`);
+        return;
+      }
+      sizes.add(size);
+      if (![variant.stockAvailable, variant.price].every((value) => value.trim() !== '' && Number.isSafeInteger(Number(value)) && Number(value) >= 0)) {
+        setFormError('Stock y precio deben ser números enteros mayores o iguales a cero.');
+        return;
+      }
+    }
+    setFormError(null);
+    setSaving(true);
+    try {
+      await createProductModelRecords({
+        productType,
+        productModel,
+        variants: newVariants.map((variant) => ({
+          size: variant.size.trim(),
+          stockAvailable: Number(variant.stockAvailable),
+          price: Number(variant.price),
+        })),
+      });
+      setExpandedGroups((current) => ({ ...current, [modelKey]: true }));
+      setIsFormOpen(false);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'No se pudo crear el modelo.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openEditForm = (product: ProductRow) => {
     setEditingProductId(product.id);
+    setAddingToGroup(null);
+    setFormError(null);
     setDraft(toDraft(product));
     setIsFormOpen(true);
   };
 
+  const openAddVariantForm = (group: ProductGroup) => {
+    const reference = group.products[0];
+    if (!reference) return;
+    setEditingProductId(null);
+    setAddingToGroup(group);
+    setFormError(null);
+    setDraft({ ...toDraft(reference), size: '', stockAvailable: '0', stockReserved: '0' });
+    setIsFormOpen(true);
+  };
+
+  const openEditModelForm = (group: ProductGroup) => {
+    setEditingGroup(group);
+    setModelDraft({ productType: group.productType ?? '', productModel: group.productModel ?? '' });
+    setModelError(null);
+  };
+
+  const handleModelSubmit = async () => {
+    if (!editingGroup) return;
+    const productType = modelDraft.productType.trim();
+    const productModel = modelDraft.productModel.trim();
+    if (!productType || !productModel) {
+      setModelError('Completá el tipo y el modelo.');
+      return;
+    }
+    const nextKey = `model||${normalizeSearch(productType)}||${normalizeSearch(productModel)}`;
+    if (groupedProducts.some((group) => group.key === nextKey && group.key !== editingGroup.key)) {
+      setModelError('Ya existe un modelo con ese nombre.');
+      return;
+    }
+    setSavingModel(true);
+    setModelError(null);
+    try {
+      const currentGroup = groupedProducts.find((group) => group.key === editingGroup.key);
+      if (!currentGroup) throw new Error('El modelo cambió. Actualizá la página e intentá de nuevo.');
+      await updateProductModelRecords({
+        ids: currentGroup.products.map((product) => product.id),
+        name: `${productType} ${productModel}`,
+        productType,
+        productModel,
+      });
+      setExpandedGroups((current) => ({ ...current, [nextKey]: true }));
+      setEditingGroup(null);
+    } catch (error) {
+      setModelError(error instanceof Error ? error.message : 'No se pudo editar el modelo.');
+    } finally {
+      setSavingModel(false);
+    }
+  };
+
   const handleSubmit = async () => {
+    const size = draft.size.trim();
+    const quantities = [draft.stockAvailable, draft.stockReserved, draft.price].map(Number);
+    if (!editingProductId && preset.useVariants && !size) {
+      setFormError(`Ingresá un ${variantWord}.`);
+      return;
+    }
+    if (!editingProductId && !addingToGroup && preset.useVariants && (!draft.productType.trim() || !draft.productModel.trim())) {
+      setFormError('Completá el tipo de producto y el modelo.');
+      return;
+    }
+    if (quantities.some((value) => !Number.isSafeInteger(value) || value < 0)) {
+      setFormError('Precio y stock deben ser números enteros mayores o iguales a cero.');
+      return;
+    }
+    if (preset.useVariants && size) {
+      const sameModel = (addingToGroup ? groupedProducts.find((group) => group.key === addingToGroup.key)?.products : null) ?? products.filter((product) => {
+        if (draft.productType.trim() || draft.productModel.trim()) {
+          return normalizeSearch(product.productType ?? '') === normalizeSearch(draft.productType)
+            && normalizeSearch(product.productModel ?? '') === normalizeSearch(draft.productModel);
+        }
+        return normalizeSearch(product.name) === normalizeSearch(buildProductName(draft));
+      });
+      if (!editingProductId && !addingToGroup && sameModel.length > 0) {
+        setFormError(`Ese modelo ya existe. Usá “Agregar ${variantWord}” desde su tarjeta.`);
+        return;
+      }
+      if (sameModel.some((product) => product.id !== editingProductId && normalizeSearch(product.size ?? '') === normalizeSearch(size))) {
+        setFormError(`Ese ${variantWord} ya existe en el modelo. Editá el existente para cambiar su stock o precio.`);
+        return;
+      }
+    }
+
+    setFormError(null);
     setSaving(true);
     try {
       const payload = {
-        name: editingProductId && !draft.name.trim() ? editingProduct?.name ?? buildProductName(draft) : buildProductName(draft),
+        name: editingProductId && !draft.name.trim()
+          ? products.find((product) => product.id === editingProductId)?.name ?? buildProductName(draft)
+          : buildProductName(draft),
         productType: draft.productType.trim() || undefined,
         productModel: draft.productModel.trim() || undefined,
         size: preset.useVariants ? draft.size.trim() || undefined : undefined,
-        stockAvailable: Number(draft.stockAvailable || 0),
-        stockReserved: Number(draft.stockReserved || 0),
-        price: Number(draft.price || 0),
+        stockAvailable: quantities[0],
+        stockReserved: quantities[1],
+        price: quantities[2],
       };
 
       if (editingProductId) {
-        await updateProductRecord(editingProductId, payload);
+        await updateProductRecord(editingProductId, preset.useVariants
+          ? { size: payload.size, stockAvailable: payload.stockAvailable, stockReserved: payload.stockReserved, price: payload.price }
+          : payload);
       } else {
         await createProductRecord(payload as ProductRow & { name: string });
       }
 
       setIsFormOpen(false);
-      setEditingProductId(null);
-      setDraft(emptyDraft());
+      if (addingToGroup) setExpandedGroups((current) => ({ ...current, [addingToGroup.key]: true }));
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'No se pudo guardar el producto.');
     } finally {
       setSaving(false);
     }
@@ -533,14 +776,12 @@ export function ProductsAbmPanel({
             <h3 className="type-title text-xl text-[color:var(--text)]">Inventario</h3>
             <p className="mt-1 text-sm text-[color:var(--muted)]">
               {preset.useVariants
-                ? groupBy === 'variant'
-                  ? `Agrupados por ${variantWord}. Usá el lápiz para editar stock, precio y datos del producto.`
-                  : 'Agrupados por modelo. Usá el lápiz para editar stock, precio y datos del producto.'
-                : 'Lista plana por producto. Usá el lápiz para editar stock, precio y datos del producto.'}
+                ? `Elegí un modelo para ver y editar sus ${variantLabelPlural}. Sumá ${variantLabelPlural} desde cada modelo.`
+                : 'Cada producto muestra su stock y precio. Editalo desde su fila.'}
             </p>
           </div>
           <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2 self-start">
-            Nuevo producto
+            + {preset.useVariants ? 'Nuevo modelo' : 'Nuevo producto'}
           </button>
         </div>
 
@@ -580,26 +821,7 @@ export function ProductsAbmPanel({
                 Stock bajo
               </button>
             </div>
-            {preset.useVariants ? (
-              <div className="flex flex-wrap gap-2" role="group" aria-label="Agrupar inventario">
-                <button
-                  type="button"
-                  className="activity-filter-chip"
-                  aria-pressed={groupBy === 'model'}
-                  onClick={() => setGroupBy('model')}
-                >
-                  Por modelo
-                </button>
-                <button
-                  type="button"
-                  className="activity-filter-chip"
-                  aria-pressed={groupBy === 'variant'}
-                  onClick={() => setGroupBy('variant')}
-                >
-                  Por {variantWord}
-                </button>
-              </div>
-            ) : null}
+            {preset.useVariants && <p className="text-xs text-[color:var(--muted)]">{filteredGroups.length} {filteredGroups.length === 1 ? 'modelo' : 'modelos'}</p>}
           </div>
         </div>
 
@@ -608,96 +830,52 @@ export function ProductsAbmPanel({
             ? filteredGroups.map((group) => {
                 const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
                 const totalReserved = group.products.reduce((sum, product) => sum + product.stockReserved, 0);
-                const samePrice = group.products.every((product) => product.price === group.products[0]?.price);
-                const itemCount = group.products.length;
-                const groupedByVariant = group.groupedBy === 'variant';
-                const isExpanded = Boolean(expandedGroups[group.key]);
-                const countLabel = groupedByVariant
-                  ? `${itemCount} ${itemCount === 1 ? 'producto' : 'productos'}`
-                  : `${itemCount} ${itemCount === 1 ? variantWord : variantLabelPlural}`;
-                const toggleLabel = groupedByVariant
-                  ? isExpanded
-                    ? 'Ocultar productos'
-                    : 'Ver productos'
-                  : isExpanded
-                    ? `Ocultar ${variantLabelPlural}`
-                    : `Ver ${variantLabelPlural}`;
+                const fullGroup = groupedProducts.find((item) => item.key === group.key) ?? group;
+                const prices = group.products.map((product) => product.price);
+                const priceLabel = Math.min(...prices) === Math.max(...prices)
+                  ? formatCurrency(prices[0] ?? 0)
+                  : `${formatCurrency(Math.min(...prices))}–${formatCurrency(Math.max(...prices))}`;
+                const isExpanded = expandedGroups[group.key] ?? (onlyLowStock || Boolean(searchQuery.trim()));
 
                 return (
-                  <div
-                    key={group.key}
-                    className={`inventory-row ${
-                      group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? 'inventory-row-low' : ''
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      className="flex w-full flex-col gap-3 text-left sm:flex-row sm:items-center sm:justify-between"
-                      onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !current[group.key] }))}
-                    >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="type-title text-lg text-[color:var(--text)]">{group.displayName}</p>
-                          {group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) && (
-                            <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-[#0b0b10]" style={{ background: 'var(--warning)' }}>
-                              Stock bajo
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-1 text-sm text-[color:var(--muted)]">
-                          {countLabel}
-                          {' · '}
-                          {totalAvailable} disponible{totalAvailable === 1 ? '' : 's'}
-                          {totalReserved > 0 ? ` · ${totalReserved} reservada${totalReserved === 1 ? '' : 's'}` : ''}
-                          {samePrice && group.products[0] ? ` · ${formatCurrency(group.products[0].price)}` : ''}
-                        </p>
+                  <div key={group.key} className={`inventory-row ${group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? 'inventory-row-low' : ''}`}>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <button type="button" className="min-w-0 flex-1 rounded-xl py-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--accent)]" aria-label={`${isExpanded ? 'Ocultar' : 'Ver'} ${variantLabelPlural} de ${group.displayName}`} aria-expanded={isExpanded} onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !isExpanded }))}>
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="type-title text-lg text-[color:var(--text)]">{group.displayName}</span>
+                          {group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) && <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-[#0b0b10]" style={{ background: 'var(--warning)' }}>Stock bajo</span>}
+                        </span>
+                        <span className="mt-1 block text-sm text-[color:var(--muted)]">{group.products.length} {group.products.length === 1 ? variantWord : variantLabelPlural} · {totalAvailable} disponibles{totalReserved > 0 ? ` · ${totalReserved} reservadas` : ''} · {priceLabel}</span>
+                        <span className="mt-2 flex flex-wrap gap-1.5">
+                          {group.products.slice(0, 6).map((product) => <span key={product.id} className="rounded-full border border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-2 py-1 text-xs text-[color:var(--text)]">{product.size || '—'}: <strong>{product.stockAvailable}</strong></span>)}
+                          {group.products.length > 6 && <span className="px-2 py-1 text-xs text-[color:var(--muted)]">+{group.products.length - 6} más</span>}
+                        </span>
+                      </button>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                        <button type="button" className="erp-button-secondary" aria-label={`Agregar ${variantWord} a ${group.displayName}`} onClick={() => openAddVariantForm(fullGroup)}>+ Agregar {variantWord}</button>
+                        <span aria-hidden="true" className="px-1 text-lg text-[color:var(--muted)]">{isExpanded ? '⌄' : '›'}</span>
                       </div>
-                      <span className="erp-toggle-link text-xs">
-                        {toggleLabel}
-                      </span>
-                    </button>
+                    </div>
 
                     {isExpanded && (
-                      <div className="space-y-3 border-t border-[color:var(--border)] pt-3">
-                        <div className="flex flex-wrap gap-2">
-                          {group.products.map((product) => {
-                            const low = product.stockAvailable <= LOW_STOCK_THRESHOLD;
-
-                            return (
-                              <div
-                                key={product.id}
-                                className={`stock-chip max-w-full ${low ? 'border-amber-400/30 bg-amber-400/10' : ''}`}
-                              >
-                                <span className="type-subtitle min-w-0 break-words text-[color:var(--text)]">
-                                  {groupedByVariant ? productLineName(product) : (product.size ?? '-')}:
-                                </span>
-                                <span className="type-subtitle font-semibold text-emerald-700 dark:text-emerald-300">{product.stockAvailable}</span>
-                                {product.stockReserved > 0 && (
-                                  <>
-                                    <span className="text-[color:var(--muted)]">·</span>
-                                    <span className="text-xs font-medium text-cyan-700 dark:text-cyan-300" title="Stock reservado">
-                                      R:{product.stockReserved}
-                                    </span>
-                                  </>
-                                )}
-                                <span className="text-[color:var(--muted)]">·</span>
-                                <span className="type-subtitle font-semibold text-emerald-700 dark:text-emerald-300">{formatCurrency(product.price)}</span>
-                                <IconButton label={`Editar ${product.name}`} onClick={() => openEditForm(product)}>
-                                  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
-                                    <path d="M4 20h4l10.5-10.5a1.5 1.5 0 0 0-2.1-2.1L5.9 17.9 4 20z" />
-                                    <path d="M13.5 6.5l4 4" />
-                                  </svg>
-                                </IconButton>
-                                <IconButton label={`Eliminar ${product.name}`} danger onClick={() => setPendingDeleteProduct(product)}>
-                                  <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
-                                    <path d="M4 7h16" />
-                                    <path d="M9 7V5h6v2" />
-                                    <path d="M6 7l1 13h10l1-13" />
-                                  </svg>
-                                </IconButton>
-                              </div>
-                            );
-                          })}
+                      <div className="mt-4 border-t border-[color:var(--border)] pt-3">
+                        <div className="hidden grid-cols-12 gap-2 px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)] sm:grid">
+                          <span className="col-span-2">{preset.variantLabel}</span><span className="col-span-2">Disponible</span><span className="col-span-2">Reservado</span><span className="col-span-2">Precio</span><span className="col-span-4 text-right">Acciones</span>
+                        </div>
+                        <div className="divide-y divide-[color:var(--border)]">
+                          {group.products.map((product) => <div key={product.id} className="grid grid-cols-2 items-center gap-2 px-2 py-3 text-sm sm:grid-cols-12">
+                            <strong className="text-base text-[color:var(--text)] sm:col-span-2">{product.size || 'Sin definir'}</strong>
+                            <span className="sm:col-span-2"><span className="sm:hidden">Disponible: </span>{product.stockAvailable}</span>
+                            <span className="sm:col-span-2"><span className="sm:hidden">Reservado: </span>{product.stockReserved}</span>
+                            <span className="font-semibold text-[color:var(--text)] sm:col-span-2">{formatCurrency(product.price)}</span>
+                            <div className="col-span-2 flex flex-wrap gap-x-3 gap-y-2 sm:col-span-4 sm:justify-end">
+                              <button type="button" className="erp-toggle-link min-h-9 text-sm" aria-label={`Editar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => openEditForm(product)}>Editar {variantWord}</button>
+                              <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" aria-label={`Eliminar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => setPendingDeleteProduct(product)}>Eliminar</button>
+                            </div>
+                          </div>)}
+                        </div>
+                        <div className="flex justify-end border-t border-[color:var(--border)] pt-2">
+                          <button type="button" className="erp-toggle-link min-h-9 text-sm" aria-label={`Editar modelo ${group.displayName}`} onClick={() => openEditModelForm(fullGroup)}>Editar modelo</button>
                         </div>
                       </div>
                     )}
@@ -740,19 +918,8 @@ export function ProductsAbmPanel({
                           <span className="text-[color:var(--muted)]">·</span>
                           <span className="type-subtitle font-semibold text-emerald-700 dark:text-emerald-300">{formatCurrency(product.price)}</span>
                         </div>
-                        <IconButton label={`Editar ${product.name}`} onClick={() => openEditForm(product)}>
-                          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
-                            <path d="M4 20h4l10.5-10.5a1.5 1.5 0 0 0-2.1-2.1L5.9 17.9 4 20z" />
-                            <path d="M13.5 6.5l4 4" />
-                          </svg>
-                        </IconButton>
-                        <IconButton label={`Eliminar ${product.name}`} danger onClick={() => setPendingDeleteProduct(product)}>
-                          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.9]">
-                            <path d="M4 7h16" />
-                            <path d="M9 7V5h6v2" />
-                            <path d="M6 7l1 13h10l1-13" />
-                          </svg>
-                        </IconButton>
+                        <button type="button" className="erp-button-secondary" onClick={() => openEditForm(product)}>Editar</button>
+                        <button type="button" className="erp-button-danger" onClick={() => setPendingDeleteProduct(product)}>Eliminar</button>
                       </div>
                     </div>
                   </div>
@@ -769,22 +936,58 @@ export function ProductsAbmPanel({
           )}
         </div>
 
-        {isFormOpen && (
-          <ProductFormModal
-            title={isEditing ? 'Editar Producto' : 'Nuevo Producto'}
+        {isFormOpen && preset.useVariants && !editingProductId && !addingToGroup && (
+          <NewModelModal
             draft={draft}
-            onDraftChange={setDraft}
-            onClose={() => setIsFormOpen(false)}
-            onSubmit={handleSubmit}
-            submitLabel={isEditing ? 'Guardar' : 'Crear'}
-            submitting={saving}
+            variants={newVariants}
             preset={preset}
+            onDraftChange={(nextDraft) => { setDraft(nextDraft); setFormError(null); }}
+            onVariantsChange={(nextVariants) => { setNewVariants(nextVariants); setFormError(null); }}
+            onClose={() => setIsFormOpen(false)}
+            onSubmit={handleCreateModel}
+            saving={saving}
+            error={formError}
           />
         )}
 
+        {isFormOpen && (!preset.useVariants || Boolean(editingProductId || addingToGroup)) && (
+          <ProductFormModal
+            title={editingProductId ? preset.useVariants ? `Editar ${variantWord}` : 'Editar producto' : addingToGroup ? `Agregar ${variantWord}` : preset.useVariants ? 'Nuevo modelo' : 'Nuevo producto'}
+            description={addingToGroup
+              ? `Modelo: ${addingToGroup.displayName}. Precio sugerido del primer ${variantWord}.`
+              : editingProductId && preset.useVariants ? `Modelo: ${[draft.productType, draft.productModel].filter(Boolean).join(' ') || draft.name}. Acá editás solo este ${variantWord}.`
+              : preset.useVariants && !editingProductId ? `Cargá el modelo y su primer ${variantWord}. Si ya existe, agregá el ${variantWord} desde su tarjeta.` : undefined}
+            draft={draft}
+            onDraftChange={(nextDraft) => { setDraft(nextDraft); setFormError(null); }}
+            onClose={() => setIsFormOpen(false)}
+            onSubmit={handleSubmit}
+            submitLabel={editingProductId ? 'Guardar cambios' : addingToGroup ? `Agregar ${variantWord}` : preset.useVariants ? 'Crear modelo' : 'Crear producto'}
+            submitting={saving}
+            preset={preset}
+            variantOnly={preset.useVariants && Boolean(editingProductId || addingToGroup)}
+            showReserved={Boolean(editingProductId) || !preset.useVariants}
+            requireVariant={preset.useVariants && !editingProductId}
+            error={formError}
+          />
+        )}
+
+        {editingGroup && <ModelFormModal
+          group={editingGroup}
+          preset={preset}
+          productType={modelDraft.productType}
+          productModel={modelDraft.productModel}
+          onChange={(nextDraft) => { setModelDraft(nextDraft); setModelError(null); }}
+          onClose={() => setEditingGroup(null)}
+          onSubmit={handleModelSubmit}
+          saving={savingModel}
+          error={modelError}
+        />}
+
         {pendingDeleteProduct && (
           <ConfirmDeleteModal
-            productName={pendingDeleteProduct.name}
+            productName={preset.useVariants
+              ? `${productLineName(pendingDeleteProduct)} · ${preset.variantLabel ?? 'Variante'} ${pendingDeleteProduct.size || 'sin definir'}`
+              : pendingDeleteProduct.name}
             onCancel={() => setPendingDeleteProduct(null)}
             onConfirm={() => void confirmDelete()}
             confirming={deleting}
