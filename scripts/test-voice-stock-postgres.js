@@ -248,6 +248,24 @@ try {
     for (const name of ['Aceite Aurora', 'Arroz Norte']) assert.equal(products.find((product) => product.name === name).stockAvailable, 1);
     extractionOverride = null; useSavedContext = false; resolutionKind = 'ambiguous';
   });
+  await check('respuesta parcial no sustituye el lote pendiente ni aplica stock', async () => {
+    const source = 'Ingresó Aceite Aurora. Ingresó Arroz Norte. Ingresó Sal Sol. Ingresó Azúcar Luna.';
+    extractionOverride = ['Aceite Aurora', 'Arroz Norte', 'Sal Sol', 'Azúcar Luna']
+      .map((name) => ({ type: 'add_stock', productName: name, qty: 1, evidence: name, fieldEvidence: {} }));
+    auditComplete = false;
+    const held = await message('partial-source', source);
+    assert.equal(held.batchStatus, 'awaiting_correction');
+    const before = await db.getStateSnapshotStrict(owner);
+    extractionOverride = extractionOverride.slice(0, 2);
+    auditComplete = true;
+    const partial = await message('partial-answer', 'Aceite Aurora y Arroz Norte sí; cargá el resto.');
+    assert.equal(partial.batchStatus, 'awaiting_correction');
+    assert.equal(partial.actions.length, 4);
+    assert.deepEqual((await db.getStateSnapshotStrict(owner)).products, before.products);
+    assert.equal((await db.getVoiceStockBatchByMessage(owner, 'partial-source')).payload.evidenceSourceText, source);
+    await message('partial-cancel', 'cancelar');
+    extractionOverride = null;
+  });
   await check('borrar un candidato no cambia el significado de los números ofrecidos', async () => {
     await message('deleted-source', 'Ingresaron dos Taladro Makita');
     await db.deleteProductRecord(drillA.id, owner);

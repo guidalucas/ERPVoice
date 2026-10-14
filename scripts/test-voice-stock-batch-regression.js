@@ -65,6 +65,43 @@ try {
     assert.match(draft.clarifications[0].question, /¿“la anterior” corrige/);
     assert.equal(requests.some((body) => body.messages[0].content.includes('Etapa: resolve.')), false);
   });
+  await run('una aclaración parcial no reemplaza el listado guardado ni llega a resolver', async () => {
+    const answer = 'La suplente del Manchester City 2025 talle L es versión jugador. La camiseta de Independiente suplente 2026 sí va. Cargá el resto.';
+    const partial = [
+      { type: 'add_stock', productName: 'camiseta suplente del Manchester City 2025', size: 'L', qty: 1, evidence: 'La suplente del Manchester City 2025 talle L es versión jugador.', fieldEvidence: {} },
+      { type: 'add_stock', productName: 'camiseta de Independiente suplente 2026', qty: 1, evidence: 'La camiseta de Independiente suplente 2026 sí va.', fieldEvidence: {} },
+    ];
+    const previous = [incidentActions[0], { ...incidentActions[1], evidence: ambiguousMention, productName: 'camiseta de Independiente, la anterior del Manchester City' }, ...incidentActions.slice(1)];
+    scenario = { actions: partial, auditCount: 0 };
+    const draft = await prepareStockDraft({ sourceText: answer, businessCategory: 'general', catalog: incidentCatalog,
+      clarificationContext: { sourceText: incidentText, actions: previous, questions: [{ kind: 'clarification', evidence: ambiguousMention, question: '¿Corrige el producto previo o es otro?' }] } });
+    assert.equal(draft.ok, false);
+    assert.equal(draft.reason, 'clarification_dropped_items');
+    assert.equal(draft.actions.length, previous.length);
+    assert.equal(draft.sourceText, incidentText);
+    assert.equal(requests.some((body) => /Etapa: (audit|resolve)/.test(body.messages[0].content)), false);
+    assert.match(stockDraftFailureReply(draft), /Conservé el borrador completo/);
+  });
+  await run('una aclaración completa conserva el origen y todos los ítems restantes', async () => {
+    const answer = 'La segunda frase corrige la primera camiseta; no es otro producto.';
+    const previous = [incidentActions[0], { ...incidentActions[1], evidence: ambiguousMention, productName: 'camiseta de Independiente, la anterior del Manchester City' }, ...incidentActions.slice(1)];
+    scenario = { actions: incidentActions, auditCount: 0 };
+    const draft = await prepareStockDraft({ sourceText: answer, businessCategory: 'general', catalog: incidentCatalog,
+      clarificationContext: { sourceText: incidentText, actions: previous, questions: [{ kind: 'clarification', evidence: ambiguousMention, question: '¿Corrige el producto previo o es otro?' }] } });
+    assert.equal(draft.ok, true);
+    assert.equal(draft.actions.length, incidentActions.length);
+    assert.equal(draft.sourceText, `${incidentText}\n${answer}`);
+  });
+  await run('una lista completa explícita puede reemplazar un borrador anterior', async () => {
+    const sourceText = `Lista completa corregida: ${genericCases[0].text}`;
+    scenario = { actions: genericCases[0].actions, auditCount: 0 };
+    const draft = await prepareStockDraft({ sourceText, businessCategory: 'ferreteria', catalog: genericCases[0].catalog,
+      clarificationContext: { sourceText: incidentText, actions: incidentActions, questions: [] } });
+    assert.equal(draft.ok, true);
+    assert.equal(draft.actions.length, 1);
+    assert.equal(draft.sourceText, sourceText);
+    assert.equal(JSON.parse(requests[0].messages[1].content.split('\nDATOS:\n')[1]).sourceSpans.some((span) => span.text.includes('Manchester City')), false);
+  });
   await run('lista aclarada: Argentina y Boca presentes, Chelsea ausente, precio global y excepción', async () => {
     const draft = await prepare();
     assert.equal(draft.ok, true); assert.equal(draft.coverageVerified, true); assert.equal(draft.actions.length, 11);

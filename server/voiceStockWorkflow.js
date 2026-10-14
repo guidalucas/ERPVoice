@@ -67,6 +67,7 @@ const draftPayload = (draft, messageId, previous = {}) => ({
 });
 
 export const stockDraftFailureReply = (draft) => {
+  if (draft.reason === 'clarification_dropped_items') return `Conservé el borrador completo y no apliqué cambios. No pude vincular tu respuesta con todos los productos guardados. ${draft.clarifications?.map((issue) => issue.question).filter(Boolean).join(' ') ?? ''} También podés enviar “Lista completa corregida: …” con todos los productos, o escribir “cancelar”.`;
   if (draft.clarifications?.length) return `Guardé el ingreso como borrador y no apliqué cambios.\n${draft.clarifications.map((issue) => issue.question).join('\n')}\nRespondé esas preguntas; conservo el resto de la lista. También podés escribir “cancelar”.`;
   return 'Guardé tu mensaje como borrador y no apliqué cambios. No pude verificar automáticamente la lista de productos. Podés escribir “reintentar” para procesar lo guardado sin repetir el mensaje ni el audio, o “cancelar”.';
 };

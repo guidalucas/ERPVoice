@@ -189,22 +189,23 @@ export const validateStockDraft = (sourceText, actions) => {
 };
 
 export const extractStockDraft = async ({ sourceText, businessCategory, conversationTurns = [], clarificationContext = null }) => {
-  const referencedTurns = /\b(anterior|antes|eso|esas|esos|mencione|dije|dictado|listado)\b/.test(normalizeIdentity(sourceText))
+  const referencedTurns = !clarificationContext && /\b(anterior|antes|eso|esas|esos|mencione|dije|dictado|listado)\b/.test(normalizeIdentity(sourceText))
     ? conversationTurns.filter((turn) => turn.role === 'user') : [];
-  const spanSource = [...referencedTurns.map((turn) => turn.text), clarificationContext?.sourceText, sourceText].filter(Boolean).join('\n');
+  const replacement = Boolean(clarificationContext && /^(?:lista completa(?: corregida)?|reemplazo (?:la lista completa|el listado completo)|esta es la lista completa|este es el listado completo)\b/.test(normalizeIdentity(sourceText)));
+  const spanSource = [...referencedTurns.map((turn) => turn.text), !replacement && clarificationContext?.sourceText, sourceText].filter(Boolean).join('\n');
   const sourceSpans = buildSourceSpans(spanSource);
   const result = await jsonCall('extract', `Decidí si el mensaje indica un ingreso de stock para registrar ahora. No confundas consultas, ventas ni pedidos con ingresos.
 Las referencias al producto anterior y autocorrecciones actualizan ese ítem, no crean otro ni suman cantidad salvo una entrada adicional explícita. Aplicá atributos globales solo en su alcance. Un atributo local no se propaga. Si falta medida/talle/presentación, omití ese campo: no inventes un valor por defecto.
-Si hay clarificationContext, el mensaje puede ser una respuesta breve a las preguntas del borrador. Si lo aclara, reconstruí TODOS sus productos usando el texto guardado más la respuesta y devolvé sourceText EXACTAMENTE igual a clarificationContext.sourceText. Si trae una lista completa de reemplazo, usá solo el mensaje actual. Si es ajeno a ese ingreso, devolvé kind:"other"; nunca agregues una orden independiente al borrador.
+Si hay clarificationContext, el mensaje puede ser una respuesta breve a las preguntas del borrador. Si lo aclara, reconstruí TODOS sus productos usando el texto guardado más la respuesta; conservá todos los ítems no cuestionados. Solo tratá el mensaje actual como lista nueva si empieza explícitamente con "lista completa" o "reemplazo la lista completa". Si es ajeno a ese ingreso, devolvé kind:"other"; nunca agregues una orden independiente al borrador.
 Devolvé {kind:"stock_intake"|"other", actions:[]}. Para ingresos, una acción por producto distinto:
 {type:"add_stock",productName:string,productType?:string,productModel?:string,size?:string,qty:integer,price?:integer,mentionId:integer,priceSpanId?:integer,qtySpanId?:integer,attributeSpanIds?:integer[],identityAttributes?:object}.
 Usá los IDs de sourceSpans: mentionId señala el segmento que menciona ese producto; priceSpanId señala el segmento que dice su precio (puede ser global y repetirse en varias acciones); qtySpanId señala cantidad explícita si qty no es 1; attributeSpanIds señala segmentos con atributos globales aplicados. NO copies citas: el servidor las tomará del texto original. Un segmento puede respaldar varios ítems; elegí el segmento correcto para cada uno. Por ejemplo, si el último segmento dice "todos valen 65.000, este vale 70.000", asigná price 65000 a los anteriores y 70000 al último, todos con ese priceSpanId. Cantidad por defecto 1. Si repite el mismo SKU, sumá cantidades con respaldo de la repetición. Conservá año, marca, versión, presentación, medida y demás diferencias. Nunca inventes nombres ni completes atributos con conocimiento externo. Ante una frase dudosa conservá lo dicho; la auditoría podrá pedir aclaración. El contexto solo sirve para referencias explícitas a mensajes anteriores: en ese caso devolvé también sourceText con el listado literal completo usado.`, { sourceText, sourceSpans: sourceSpans.map(({ id, text }) => ({ id, text })), businessCategory, conversationTurns: referencedTurns, clarificationContext }, { maxTokens: 4096 });
   if (!result.ok) return { ok: false, reason: 'extractor_unavailable', trace: result.trace };
   if (result.json?.kind === 'other') return { ok: true, kind: 'other', trace: result.trace };
   if (result.json?.kind !== 'stock_intake') return { ok: false, reason: 'invalid_intent', trace: result.trace };
-  const effectiveSource = result.json.sourceText && (referencedTurns.some((turn) => turn.text === result.json.sourceText)
-    || clarificationContext?.sourceText === result.json.sourceText)
-    ? `${result.json.sourceText}\n${sourceText}` : sourceText;
+  const effectiveSource = clarificationContext && !replacement ? `${clarificationContext.sourceText}\n${sourceText}`
+    : result.json.sourceText && referencedTurns.some((turn) => turn.text === result.json.sourceText)
+      ? `${result.json.sourceText}\n${sourceText}` : sourceText;
   let validation = validateStockDraft(effectiveSource, groundStockDraft(effectiveSource, result.json.actions, sourceSpans));
   const traces = [result.trace];
   let repair;
@@ -220,6 +221,20 @@ Usá solo IDs de sourceSpans; el servidor obtiene las citas literales. Si el pre
     if (repair.ok) validation = validateStockDraft(effectiveSource, groundStockDraft(effectiveSource, repair.json?.actions, repairSpans));
     if (!repair.ok || !validation.ok) {
       console.warn('[VoiceStockBatch] extraction repair failed', { ...validation, repairAvailable: repair.ok });
+    }
+  }
+  if (validation.ok && clarificationContext && !replacement) {
+    const previous = Array.isArray(clarificationContext.actions) ? clarificationContext.actions : [];
+    const questions = Array.isArray(clarificationContext.questions) ? clarificationContext.questions : [];
+    const questioned = (action) => questions.some((issue) => typeof issue?.evidence === 'string' && typeof action?.evidence === 'string'
+      && (action.evidence.includes(issue.evidence) || issue.evidence.includes(action.evidence)));
+    const unchanged = previous.filter((action) => !questioned(action));
+    const retained = unchanged.filter((prior) => validation.actions.some((action) => typeof prior.evidence === 'string'
+      && (action.evidence.includes(prior.evidence) || prior.evidence.includes(action.evidence))));
+    if (previous.length && (validation.actions.length < Math.max(1, previous.length - questions.length)
+      || retained.length < unchanged.length)) {
+      return { ok: false, kind: 'stock_intake', reason: 'clarification_dropped_items', actions: previous,
+        sourceText: clarificationContext.sourceText, clarifications: questions, trace: result.trace, traces };
     }
   }
   return { ...validation, kind: 'stock_intake', sourceText: effectiveSource, trace: result.trace, traces };
