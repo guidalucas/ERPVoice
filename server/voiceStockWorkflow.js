@@ -62,7 +62,13 @@ const draftPayload = (draft, messageId, previous = {}) => ({
   initialActions: previous.initialActions ?? draft.actions ?? [],
   traces: [...(previous.traces ?? []), ...(draft.traces ?? [draft.trace]).filter(Boolean)],
   issues: draft.issues ?? [], resolutionError: draft.ok ? null : draft.reason, replyMessageId: messageId,
+  validationError: draft.ok ? null : { reason: draft.reason, itemIndex: draft.itemIndex, field: draft.field },
 });
+
+export const stockDraftFailureReply = (draft) => {
+  if (draft.issues?.length) return `Guardé el ingreso como borrador y no apliqué cambios. Necesito aclarar lo siguiente:\n${draft.issues.join('\n')}\nEnviame la lista completa con esa aclaración, o escribí “cancelar”.`;
+  return 'Guardé tu mensaje como borrador y no apliqué cambios. No pude verificar automáticamente la lista de productos. Podés escribir “reintentar” para procesar lo guardado sin repetir el mensaje ni el audio, o “cancelar”.';
+};
 
 export const processStockBatchMessage = async ({ sourceText, businessCategory, conversationTurns, ownerPhone, senderPhone, messageId }) => {
   const replay = await getVoiceStockBatchByMessage(ownerPhone, messageId);
@@ -162,7 +168,9 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, c
   }
   const mode = await getVoiceStockBatchMode(ownerPhone);
   if (!active && mode === 'disabled') return null;
-  const draft = await prepare({ sourceText, businessCategory, conversationTurns, catalog });
+  const retrySaved = active?.status === 'awaiting_correction' && /^(reintentar|reintenta|volver a intentar)$/.test(text);
+  const draft = await prepare({ sourceText: retrySaved ? active.payload.evidenceSourceText ?? active.sourceText : sourceText,
+    businessCategory, conversationTurns: retrySaved ? [] : conversationTurns, catalog });
   if (!draft) return active ? asResult(active, 'El ingreso sigue en borrador. Enviame la lista completa corregida o escribí “cancelar”.') : null;
   if (!active && mode === 'shadow') {
     await saveVoiceStockShadowRun(messageId, ownerPhone, draft);
@@ -178,8 +186,9 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, c
   });
   if (!batch) return concurrentResult(active, ownerPhone);
   if (!draft.ok) {
-    const issues = draft.issues?.length ? `\n${draft.issues.join('\n')}` : '';
-    const reply = `Guardé el ingreso como borrador y no apliqué cambios. Necesito la lista completa corregida para verificar todos los productos. También podés escribir “cancelar”.${issues}`;
+    console.warn('[VoiceStockBatch] draft held', { batchId: batch.id, messageId, reason: draft.reason,
+      itemIndex: draft.itemIndex, field: draft.field, issues: draft.issues });
+    const reply = stockDraftFailureReply(draft);
     const saved = await saveTransition(batch, messageId, batch.payload, 'awaiting_correction', reply);
     return saved ? asResult(saved) : concurrentResult(batch, ownerPhone);
   }

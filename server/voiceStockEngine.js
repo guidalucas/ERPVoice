@@ -34,12 +34,14 @@ export const validateStockDraft = (sourceText, actions) => {
   if (!Array.isArray(actions) || !actions.length || actions.length > 100) return { ok: false, reason: 'empty_or_oversized_draft' };
   const validated = [];
   for (const [index, input] of actions.entries()) {
-    if (input?.type !== 'add_stock' || typeof input.productName !== 'string' || !input.productName.trim() ||
-      ['productType', 'productModel', 'size'].some((field) => input[field] != null && typeof input[field] !== 'string') ||
-      !Number.isSafeInteger(input.qty) || input.qty < 1 ||
-      (input.price != null && (!Number.isSafeInteger(input.price) || input.price < 0)) ||
-      typeof input.evidence !== 'string' || !input.evidence.trim() || !sourceText.includes(input.evidence)) {
-      return { ok: false, reason: 'invalid_action_or_evidence', itemIndex: index };
+    const invalidField = input?.type !== 'add_stock' ? 'type'
+      : typeof input.productName !== 'string' || !input.productName.trim() ? 'productName'
+        : ['productType', 'productModel', 'size'].find((field) => input[field] != null && typeof input[field] !== 'string')
+          || (!Number.isSafeInteger(input.qty) || input.qty < 1 ? 'qty' : null)
+          || (input.price != null && (!Number.isSafeInteger(input.price) || input.price < 0) ? 'price' : null)
+          || (typeof input.evidence !== 'string' || !input.evidence.trim() || !sourceText.includes(input.evidence) ? 'evidence' : null);
+    if (invalidField) {
+      return { ok: false, reason: 'invalid_action_or_evidence', itemIndex: index, field: invalidField };
     }
     const refs = input.fieldEvidence ?? {};
     if (input.price != null && (typeof refs.price !== 'string' || !refs.price || !sourceText.includes(refs.price))) return { ok: false, reason: 'unsupported_price', itemIndex: index };
@@ -59,13 +61,29 @@ export const extractStockDraft = async ({ sourceText, businessCategory, conversa
   const result = await jsonCall('extract', `Decidí si el mensaje indica un ingreso de stock para registrar ahora. No confundas consultas, ventas ni pedidos con ingresos.
 Devolvé {kind:"stock_intake"|"other", actions:[]}. Para ingresos, una acción por producto distinto:
 {type:"add_stock",productName:string,productType?:string,productModel?:string,size?:string,qty:integer,price?:integer,evidence:string,identityAttributes?:object,fieldEvidence:{qty?:string,price?:string,attributes?:string[]}}.
-evidence es un fragmento LITERAL del mensaje que identifica el producto. Guardá citas literales también para cantidad, precio y atributos globales. Un precio global puede usar la misma cita para varios productos. Cantidad por defecto 1. Si repite el mismo SKU, sumá cantidades con evidencia de la repetición. Conservá año, marca, versión, presentación, medida y demás diferencias. Nunca inventes nombres ni completes atributos con conocimiento externo. Ante una frase dudosa conservá lo dicho; la auditoría podrá pedir aclaración. El contexto solo sirve para referencias explícitas a mensajes anteriores: en ese caso devolvé también sourceText con el listado literal completo usado.`, { sourceText, businessCategory, conversationTurns: referencedTurns });
+evidence es un fragmento LITERAL CONTIGUO del mensaje que identifica el producto: no combines partes, no corrijas ortografía, mayúsculas ni puntuación. productName puede organizar los atributos, evidence no. Guardá citas literales también para cantidad, precio y atributos globales. fieldEvidence.price y fieldEvidence.qty son strings, nunca números. Un precio global puede usar la misma cita para varios productos. Ejemplo: si dice "todos valen 65.000", price es 65000 y fieldEvidence.price es "todos valen 65.000". Cantidad por defecto 1. Si repite el mismo SKU, sumá cantidades con evidencia de la repetición. Conservá año, marca, versión, presentación, medida y demás diferencias. Nunca inventes nombres ni completes atributos con conocimiento externo. Ante una frase dudosa conservá lo dicho; la auditoría podrá pedir aclaración. El contexto solo sirve para referencias explícitas a mensajes anteriores: en ese caso devolvé también sourceText con el listado literal completo usado.`, { sourceText, businessCategory, conversationTurns: referencedTurns });
   if (!result.ok) return { ok: false, reason: 'extractor_unavailable', trace: result.trace };
   if (result.json?.kind === 'other') return { ok: true, kind: 'other', trace: result.trace };
   if (result.json?.kind !== 'stock_intake') return { ok: false, reason: 'invalid_intent', trace: result.trace };
   const effectiveSource = result.json.sourceText && referencedTurns.some((turn) => turn.text === result.json.sourceText)
     ? `${result.json.sourceText}\n${sourceText}` : sourceText;
-  return { ...validateStockDraft(effectiveSource, result.json.actions), kind: 'stock_intake', sourceText: effectiveSource, trace: result.trace };
+  let validation = validateStockDraft(effectiveSource, result.json.actions);
+  const traces = [result.trace];
+  let repair;
+  if (!validation.ok) {
+    console.warn('[VoiceStockBatch] extraction validation failed', validation);
+    repair = await jsonCall('repair_extract', `Repará la extracción contra el texto original. Devolvé {actions:[]} con la LISTA COMPLETA, sin catálogo.
+Cada acción debe tener type:"add_stock", productName:string, qty:entero positivo, evidence:string y fieldEvidence:{qty?:string,price?:string,attributes?:string[]}. price opcional es entero no negativo; productType/productModel/size opcionales son strings.
+evidence y todas las citas de fieldEvidence deben ser fragmentos LITERALES CONTIGUOS del texto, respetando ortografía, mayúsculas, espacios y puntuación. No pegues frases separadas. No uses un nombre normalizado como cita. Para precios globales copiá la frase global en cada acción correspondiente. Cantidad por defecto 1. Conservá todas las menciones y excepciones; no borres un producto o un precio para eludir el error. No inventes información.`, {
+      sourceText: effectiveSource, businessCategory, actions: result.json.actions, validationError: validation,
+    });
+    traces.push(repair.trace);
+    if (repair.ok) validation = validateStockDraft(effectiveSource, repair.json?.actions);
+    if (!repair.ok || !validation.ok) {
+      console.warn('[VoiceStockBatch] extraction repair failed', { ...validation, repairAvailable: repair.ok });
+    }
+  }
+  return { ...validation, kind: 'stock_intake', sourceText: effectiveSource, trace: result.trace, traces };
 };
 
 export const auditStockDraft = async ({ sourceText, actions }) => {
@@ -117,9 +135,9 @@ export const prepareStockDraft = async (input) => {
   const extraction = await extractStockDraft(input);
   if (!extraction.ok || extraction.kind === 'other') return extraction;
   const audit = await auditStockDraft(extraction);
-  if (!audit.ok) return { ...extraction, ok: false, reason: audit.reason, issues: audit.issues, traces: [extraction.trace, audit.trace] };
+  if (!audit.ok) return { ...extraction, ok: false, reason: audit.reason, issues: audit.issues, traces: [...extraction.traces, audit.trace] };
   const resolution = await resolveStockDraft({ ...extraction, catalog: input.catalog });
-  return { ...extraction, ...resolution, coverageVerified: true, traces: [extraction.trace, audit.trace, resolution.trace], engineVersion: ENGINE_VERSION };
+  return { ...extraction, ...resolution, coverageVerified: true, traces: [...extraction.traces, audit.trace, resolution.trace], engineVersion: ENGINE_VERSION };
 };
 
 export const interpretStockClarification = async ({ sourceText, action }) => {
