@@ -13,6 +13,11 @@ globalThis.fetch = async (_url, request) => {
   requests.push(body);
   const stage = body.messages[0].content;
   const input = JSON.parse(body.messages[1].content.split('\nDATOS:\n')[1]);
+  if (stage.includes('Etapa: resolve.') && (scenario.failAllResolve || (scenario.failFirstResolve && (scenario.resolveFailures ?? 0) < 2))) {
+    scenario.resolveFailures = (scenario.resolveFailures ?? 0) + 1;
+    if (scenario.failAllResolve || scenario.failFirstResolve === 'oversized') return new Response('{"error":"Request too large"}', { status: 413 });
+    return new Response(JSON.stringify({ choices: [{ message: { content: '{"items":[' } }] }), { status: 200 });
+  }
   const auditResult = stage.includes('Etapa: audit.') ? scenario.audits?.[scenario.auditCount++] : null;
   const data = stage.includes('repair_coverage') ? { actions: structuredClone(scenario.coverageActions ?? scenario.actions) }
     : stage.includes('extract') ? { kind: 'stock_intake', sourceText: scenario.usedSourceText, actions: structuredClone(stage.includes('repair_extract') ? scenario.repairedActions ?? scenario.actions : scenario.actions) }
@@ -40,6 +45,16 @@ try {
     assert.equal(draft.ok, false);
     assert.equal(draft.clarifications[0].evidence, ambiguousMention);
     assert.match(requests[1].messages[1].content, /evidenceSpanId/);
+  });
+  await run('una referencia anterior sin resolver no pasa aunque el auditor diga cobertura completa', async () => {
+    const actions = structuredClone(incidentActions);
+    actions[1].productName = 'camiseta de Independiente, la anterior del Manchester City';
+    actions[1].evidence = ambiguousMention;
+    const draft = await prepare(incidentText, actions, incidentCatalog);
+    assert.equal(draft.ok, false);
+    assert.equal(draft.reason, 'coverage_incomplete');
+    assert.match(draft.clarifications[0].question, /¿“la anterior” corrige/);
+    assert.equal(requests.some((body) => body.messages[0].content.includes('Etapa: resolve.')), false);
   });
   await run('lista aclarada: Argentina y Boca presentes, Chelsea ausente, precio global y excepción', async () => {
     const draft = await prepare();
@@ -82,7 +97,7 @@ try {
     const draft = await prepare(clarifiedText, invalid, incidentCatalog, { repairedActions });
     assert.equal(draft.ok, true);
     assert.equal(draft.actions.length, 11);
-    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'repair_extract', 'audit', 'resolve']);
+    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'repair_extract', 'audit', ...Array(4).fill('resolve')]);
   });
   await run('un ID no puede respaldar un producto ausente ni un precio distinto', async () => {
     const spans = buildSourceSpans(incidentText);
@@ -114,7 +129,7 @@ try {
     invalid[0].fieldEvidence.price = 'TODAS LAS ANTERIORES VALEN 65,000';
     const draft = await prepare(clarifiedText, invalid, incidentCatalog);
     assert.equal(draft.ok, true); assert.equal(draft.actions.length, 11);
-    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'audit', 'resolve']);
+    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'audit', ...Array(4).fill('resolve')]);
     assert.equal(draft.actions[0].evidence, incidentActions[0].evidence);
     assert.equal(draft.actions[0].fieldEvidence.price, incidentActions[0].fieldEvidence.price);
     assert.ok(requests.slice(0, 2).every((body) => !JSON.stringify(body).includes('arg-home')));
@@ -151,7 +166,7 @@ try {
       { coverageComplete: true, issues: [] },
     ] });
     assert.equal(draft.ok, true); assert.equal(draft.actions.length, 11);
-    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'audit', 'repair_coverage', 'audit', 'resolve']);
+    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'audit', 'repair_coverage', 'audit', ...Array(4).fill('resolve')]);
     assert.equal(draft.actions[0].size, 'L'); assert.ok(draft.actions.slice(1).every((action) => !action.size));
     assert.ok(requests.slice(0, 4).every((body) => !JSON.stringify(body).includes('arg-home')));
   });
@@ -183,6 +198,42 @@ try {
       assert.equal(draft.ok, true); assert.equal(draft.actions[0].resolution.kind, 'new');
     });
   }
+  await run('catálogo grande se resuelve en pedidos acotados', async () => {
+    const products = Array.from({ length: 150 }, (_, index) => ({
+      id: `other-${index}`, name: `Camiseta versión jugador variante ${index}`,
+      productType: 'Camiseta', productModel: `versión jugador variante ${index}`,
+    }));
+    const draft = await prepare(clarifiedText, incidentActions, { products });
+    assert.equal(draft.ok, true);
+    assert.equal(draft.actions.length, 11);
+    const resolveRequests = requests.filter((body) => body.messages[0].content.includes('Etapa: resolve.'));
+    assert.equal(resolveRequests.length, 4);
+    for (const body of resolveRequests) {
+      const input = JSON.parse(body.messages[1].content.split('\nDATOS:\n')[1]);
+      assert.ok(input.actions.length <= 3);
+      assert.ok(input.candidates.every((entry) => entry.products.length <= 12));
+      assert.equal(body.max_tokens, 1536);
+      assert.equal(input.sourceText, undefined);
+    }
+  });
+  for (const failure of ['oversized', 'truncated']) {
+    await run(`resolver divide el pedido tras respuesta ${failure}`, async () => {
+      const draft = await prepare(clarifiedText, incidentActions, incidentCatalog, { failFirstResolve: failure });
+      assert.equal(draft.ok, true);
+      assert.equal(draft.actions.length, incidentActions.length);
+      assert.equal(draft.traces.filter((trace) => trace.stage === 'resolve').length, 6);
+      assert.equal(draft.traces.find((trace) => trace.stage === 'resolve').ok, false);
+      assert.ok(requests.filter((body) => body.messages[0].content.includes('Etapa: resolve.')).slice(2)
+        .some((body) => JSON.parse(body.messages[1].content.split('\nDATOS:\n')[1]).actions.length < 3));
+    });
+  }
+  await run('si incluso un solo ítem excede el límite, el lote queda retenido', async () => {
+    const draft = await prepare(clarifiedText, incidentActions, incidentCatalog, { failAllResolve: true });
+    assert.equal(draft.ok, false);
+    assert.equal(draft.reason, 'resolver_unavailable');
+    assert.ok(draft.actions.every((action) => !action.resolution));
+    assert.match(stockDraftFailureReply(draft), /reintentar/);
+  });
   await run('candidatos relevantes al final de un catálogo grande', async () => {
     const fixture = genericCases[0];
     const relevant = { id: 'real-last', name: 'Taladro Bosch 18V', productType: 'Taladro', productModel: 'Bosch 18V', size: '10 mm' };
