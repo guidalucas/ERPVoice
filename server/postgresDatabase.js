@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { Pool } from 'pg';
 import { normalizePhone, getWhatsAppVariants } from './phone.js';
 import { productBaseName, productMatchKey, normalizeProductMetadata } from './productIdentity.js';
+import { validateStockDraft, needsDistinctIdentity, productFingerprint } from './voiceStockEngine.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -14,6 +15,7 @@ const BUSINESS_INVITE_TTL_MS = Math.max(1, Number(process.env.BUSINESS_INVITE_TT
 
 const memoryMembers = new Map();
 const memoryInvites = new Map();
+const memoryVoiceStockBatchModes = new Map();
 
 export class TeamError extends Error {
   constructor(message, status = 400) {
@@ -117,11 +119,16 @@ const getPool = () => {
 
 const ensureReady = async () => {
   if (!initializePromise) {
-    initializePromise = initializeDatabase();
+    initializePromise = initializeDatabase().catch((error) => {
+      initializePromise = undefined;
+      throw error;
+    });
   }
 
   return initializePromise;
 };
+
+export const migrateDatabase = () => ensureReady();
 
 const withClient = async (callback) => {
   const client = await getPool().connect();
@@ -376,6 +383,56 @@ const initializeDatabase = async () => {
       actions_json JSONB NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS voice_stock_batches (
+      id TEXT PRIMARY KEY,
+      owner_phone TEXT NOT NULL,
+      sender_phone TEXT NOT NULL,
+      source_message_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      source_text TEXT NOT NULL,
+      business_category TEXT,
+      payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      reply_text TEXT,
+      version INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(owner_phone, source_message_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS meta_message_claims (
+      message_id TEXT PRIMARY KEY,
+      owner_phone TEXT NOT NULL,
+      sender_phone TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'processing',
+      claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE IF NOT EXISTS meta_reply_outbox (
+      event_id TEXT PRIMARY KEY,
+      recipient TEXT NOT NULL,
+      reply_text TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      claimed_at TIMESTAMPTZ,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      sent_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE IF NOT EXISTS voice_stock_batch_settings (
+      owner_phone TEXT PRIMARY KEY,
+      mode TEXT NOT NULL CHECK (mode IN ('active', 'shadow', 'disabled')),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS voice_stock_shadow_runs (
+      message_id TEXT PRIMARY KEY, owner_phone TEXT NOT NULL,
+      proposed_json JSONB NOT NULL, baseline_json JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
         CREATE TABLE IF NOT EXISTS meta_events (
       id TEXT PRIMARY KEY,
       owner_phone TEXT NOT NULL DEFAULT '__default__',
@@ -428,6 +485,13 @@ const initializeDatabase = async () => {
     ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS notas TEXT;
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS batch_id TEXT;
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS item_id TEXT;
+    ALTER TABLE meta_message_claims ADD COLUMN IF NOT EXISTS raw_body_json JSONB;
+    ALTER TABLE meta_message_claims ADD COLUMN IF NOT EXISTS transcript TEXT;
+    ALTER TABLE meta_message_claims ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE meta_message_claims ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE meta_message_claims ADD COLUMN IF NOT EXISTS last_error TEXT;
     ALTER TABLE meta_events ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS proveedor_id TEXT;
@@ -467,6 +531,9 @@ const initializeDatabase = async () => {
     CREATE INDEX IF NOT EXISTS idx_pedidos_proveedor_id ON pedidos (proveedor_id);
     CREATE INDEX IF NOT EXISTS idx_pedidos_estado ON pedidos (estado);
     CREATE INDEX IF NOT EXISTS idx_transactions_owner_phone ON transactions (owner_phone);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_batch_item ON transactions (batch_id, item_id) WHERE batch_id IS NOT NULL AND item_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_voice_stock_batches_sender ON voice_stock_batches (owner_phone, sender_phone, updated_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_stock_batches_active_sender ON voice_stock_batches (owner_phone, sender_phone) WHERE status IN ('awaiting_choice', 'awaiting_correction', 'ready');
     CREATE INDEX IF NOT EXISTS idx_meta_events_at ON meta_events (at DESC);
     CREATE INDEX IF NOT EXISTS idx_meta_events_owner_phone ON meta_events (owner_phone);
     CREATE INDEX IF NOT EXISTS idx_auth_otp_phone_number ON auth_otp_challenges (phone_number);
@@ -484,6 +551,11 @@ const initializeDatabase = async () => {
         'proveedores',
         'pedidos',
         'transactions',
+        'voice_stock_batches',
+        'meta_message_claims',
+        'meta_reply_outbox',
+        'voice_stock_batch_settings',
+        'voice_stock_shadow_runs',
         'meta_events',
         'auth_users',
         'auth_otp_challenges',
@@ -2075,11 +2147,18 @@ export const getStateSnapshot = async (ownerPhone = DEFAULT_OWNER_PHONE) => {
   }
 };
 
-export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = DEFAULT_OWNER_PHONE) => {
+export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
   await ensureReady();
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
 
   return withTransaction(async (client) => {
+    const inboundBatchId = options.messageId ? `meta:${options.messageId}` : null;
+    if (inboundBatchId) {
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [inboundBatchId]);
+      const existing = await queryRow('SELECT id FROM transactions WHERE owner_phone = $1 AND batch_id = $2 LIMIT 1', [normalizedOwnerPhone, inboundBatchId], client);
+      if (existing) return queryAllState(normalizedOwnerPhone, client);
+    }
+    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
     await ensureTenantState(client, normalizedOwnerPhone);
 
     const currentSnapshot = await queryAllState(normalizedOwnerPhone, client);
@@ -2236,7 +2315,7 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
       }
 
       newTransactions.push({
-        id: `transaction-${Date.now()}-${index + 1}`,
+        id: inboundBatchId ? `transaction-meta-${crypto.createHash('sha256').update(inboundBatchId).digest('hex').slice(0, 24)}-${index + 1}` : `transaction-${Date.now()}-${index + 1}`,
         timestamp: new Date().toISOString(),
         sourceText,
         summary: summarizeAction(action),
@@ -2314,8 +2393,8 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     for (const transaction of newTransactions) {
       await client.query(
         `
-          INSERT INTO transactions (id, owner_phone, timestamp, source_text, summary, actions_json)
-          VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+          INSERT INTO transactions (id, owner_phone, timestamp, source_text, summary, actions_json, batch_id, item_id)
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
         `,
         [
           transaction.id,
@@ -2324,11 +2403,232 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
           transaction.sourceText,
           transaction.summary,
           toJsonbParam(transaction.actions),
+          inboundBatchId,
+          inboundBatchId ? transaction.id : null,
         ],
       );
     }
 
+    if (inboundBatchId && options.replyText && options.recipient) {
+      await client.query(`INSERT INTO meta_reply_outbox (event_id, recipient, reply_text) VALUES ($1, $2, $3)
+        ON CONFLICT (event_id) DO NOTHING`, [options.messageId, normalizePhone(options.recipient), options.replyText]);
+    }
+
     return await queryAllState(normalizedOwnerPhone, client);
+  });
+};
+
+const rowToVoiceStockBatch = (row) => row ? ({
+  id: row.id,
+  ownerPhone: row.owner_phone,
+  senderPhone: row.sender_phone,
+  sourceMessageId: row.source_message_id,
+  status: row.status,
+  sourceText: row.source_text,
+  businessCategory: row.business_category,
+  payload: parseJsonValue(row.payload_json) ?? {},
+  replyText: row.reply_text,
+  version: Number(row.version ?? 1),
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+}) : null;
+
+export const getActiveVoiceStockBatch = async (ownerPhone, senderPhone) => {
+  await ensureReady();
+  await getPool().query(
+    `UPDATE voice_stock_batches SET status = 'expired', version = version + 1, updated_at = NOW()
+     WHERE owner_phone = $1 AND sender_phone = $2
+       AND status IN ('awaiting_choice', 'awaiting_correction', 'ready')
+       AND updated_at < NOW() - INTERVAL '7 days'`,
+    [normalizeOwnerPhone(ownerPhone), normalizePhone(senderPhone)],
+  );
+  const rows = await queryRows(
+    `SELECT * FROM voice_stock_batches
+     WHERE owner_phone = $1 AND sender_phone = $2
+       AND status IN ('awaiting_choice', 'awaiting_correction', 'ready')
+     ORDER BY updated_at DESC LIMIT 1`,
+    [normalizeOwnerPhone(ownerPhone), normalizePhone(senderPhone)],
+  );
+  return rowToVoiceStockBatch(rows[0]);
+};
+
+export const getVoiceStockBatchByMessage = async (ownerPhone, messageId) => {
+  await ensureReady();
+  const row = await queryRow(
+    `SELECT * FROM voice_stock_batches WHERE owner_phone = $1
+       AND (source_message_id = $2 OR payload_json->'handledMessages' @> $3::jsonb)
+       ORDER BY created_at DESC LIMIT 1`,
+    [normalizeOwnerPhone(ownerPhone), String(messageId), JSON.stringify([{ messageId: String(messageId) }])],
+  );
+  return rowToVoiceStockBatch(row);
+};
+
+export const createVoiceStockBatch = async (batch) => {
+  await ensureReady();
+  const result = await getPool().query(
+    `INSERT INTO voice_stock_batches
+       (id, owner_phone, sender_phone, source_message_id, status, source_text, business_category, payload_json, reply_text)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+     ON CONFLICT (owner_phone, source_message_id) DO NOTHING
+     RETURNING *`,
+    [
+      batch.id,
+      normalizeOwnerPhone(batch.ownerPhone),
+      normalizePhone(batch.senderPhone),
+      String(batch.sourceMessageId),
+      batch.status,
+      batch.sourceText,
+      batch.businessCategory ?? null,
+      toJsonbParam(batch.payload ?? {}),
+      batch.replyText ?? null,
+    ],
+  );
+  if (result.rows[0]) return rowToVoiceStockBatch(result.rows[0]);
+  return getVoiceStockBatchByMessage(batch.ownerPhone, batch.sourceMessageId);
+};
+
+export const updateVoiceStockBatch = async (batchId, updates) => {
+  await ensureReady();
+  return withTransaction(async (client) => {
+    const current = await queryRow('SELECT * FROM voice_stock_batches WHERE id = $1 FOR UPDATE', [batchId], client);
+    if (!current || ['applied', 'cancelled', 'expired'].includes(current.status) || current.version !== updates.expectedVersion) return null;
+    const transitions = {
+      awaiting_choice: ['awaiting_choice', 'ready', 'awaiting_correction', 'cancelled'],
+      awaiting_correction: ['awaiting_correction', 'ready', 'cancelled'],
+      ready: ['ready', 'awaiting_choice', 'awaiting_correction', 'cancelled'],
+    };
+    if (updates.status && !transitions[current.status]?.includes(updates.status)) throw new Error('Transición de lote inválida.');
+    const row = await queryRow(
+      `UPDATE voice_stock_batches
+       SET status = COALESCE($2, status), payload_json = COALESCE($3::jsonb, payload_json),
+           reply_text = COALESCE($4, reply_text), version = version + 1, updated_at = NOW()
+       WHERE id = $1 AND status <> 'applied' AND ($5::integer IS NULL OR version = $5)
+       RETURNING *`,
+      [batchId, updates.status ?? null, toJsonbParam(updates.payload), updates.replyText ?? null, updates.expectedVersion], client,
+    );
+    if (row && updates.replyText) {
+      const payload = parseJsonValue(row.payload_json);
+      await client.query(`INSERT INTO meta_reply_outbox (event_id, recipient, reply_text) VALUES ($1, $2, $3)
+        ON CONFLICT (event_id) DO NOTHING`, [payload.replyMessageId ?? row.source_message_id, row.sender_phone, updates.replyText]);
+    }
+    return rowToVoiceStockBatch(row);
+  });
+};
+
+export const applyResolvedVoiceStockBatch = async (batchId, ownerPhone) => {
+  await ensureReady();
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+
+  return withTransaction(async (client) => {
+    const batchRow = await queryRow(
+      'SELECT * FROM voice_stock_batches WHERE id = $1 AND owner_phone = $2 FOR UPDATE',
+      [batchId, normalizedOwnerPhone],
+      client,
+    );
+    if (!batchRow) throw new Error('No encontré el lote de ingreso pendiente.');
+    const batch = rowToVoiceStockBatch(batchRow);
+    if (batch.status === 'applied') return batch.payload?.resultSnapshot ?? null;
+    if (batch.status !== 'ready') throw new Error('El lote todavía tiene decisiones pendientes.');
+    const actions = Array.isArray(batch.payload?.actions) ? batch.payload.actions : [];
+    if (!batch.payload.coverageVerified || !validateStockDraft(batch.payload.evidenceSourceText ?? batch.sourceText, actions).ok ||
+      new Set(actions.map((action) => action.itemId)).size !== actions.length || actions.some((action) => !action.itemId) ||
+      actions.some((action) => !['existing', 'new'].includes(action.resolution?.kind))) {
+      throw new Error('El lote tiene productos sin resolución final.');
+    }
+
+    // Serialize with the legacy state writer, which still replaces tenant rows.
+    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
+    await ensureTenantState(client, normalizedOwnerPhone);
+    const snapshot = await queryAllState(normalizedOwnerPhone, client);
+    const nextProducts = snapshot.products.map((product) => ({ ...product }));
+    const originalProductIds = new Set(nextProducts.map((product) => product.id));
+    const changedProducts = new Map();
+    const appliedActions = [];
+
+    for (let index = 0; index < actions.length; index += 1) {
+      const action = actions[index];
+      const qty = action.qty;
+      if (!Number.isSafeInteger(qty) || qty < 1) throw new Error(`Cantidad inválida en ${action.productName || 'un producto'}.`);
+      let product;
+      if (action.resolution.kind === 'existing') {
+        product = nextProducts.find((entry) => entry.id === action.resolution.productId);
+        if (!product) throw new Error(`El producto elegido ya no está disponible: ${action.productName}.`);
+        if (!action.resolution.fingerprint || action.resolution.fingerprint !== productFingerprint(product)) throw new Error(`El producto elegido cambió: ${action.productName}.`);
+        if (Number.isFinite(Number(action.price)) && Number(action.price) > 0 && !product.price) {
+          product.price = Math.trunc(Number(action.price));
+        }
+      } else if (action.resolution.kind === 'new') {
+        if (nextProducts.some((entry) => needsDistinctIdentity(action, entry))) throw new Error(`Ese producto ya existe. Indicá qué lo diferencia: ${action.productName}.`);
+        product = createProduct(productBaseName(normalizeProductMetadata(action)) || action.productName, nextProducts.length, {
+          productType: action.productType,
+          productModel: action.productModel,
+          size: action.size,
+          price: Number.isFinite(Number(action.price)) && Number(action.price) > 0 ? Number(action.price) : undefined,
+        });
+        nextProducts.push(product);
+      } else {
+        throw new Error(`Resolución inválida para ${action.productName}.`);
+      }
+
+      product.stockAvailable += qty;
+      changedProducts.set(product.id, product);
+      appliedActions.push({ ...action, resolvedProductId: product.id });
+    }
+
+    for (const product of changedProducts.values()) {
+      if (originalProductIds.has(product.id)) {
+        const updateResult = await client.query(
+          `UPDATE products SET stock_available = $1, price = $2, owner_phone = $3
+           WHERE id = $4 AND owner_phone = ANY($5)`,
+          [product.stockAvailable, product.price, normalizedOwnerPhone, product.id, getOwnerPhoneVariants(ownerPhone)],
+        );
+        if (!updateResult.rowCount) throw new Error(`El producto elegido ya no está disponible: ${product.name}.`);
+      } else {
+        await client.query(
+          `INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [product.id, normalizedOwnerPhone, product.name, product.productType ?? null, product.productModel ?? null,
+            product.size ?? null, product.stockAvailable, product.stockReserved, product.price],
+        );
+      }
+    }
+    const timestamp = new Date().toISOString();
+    for (let index = 0; index < appliedActions.length; index += 1) {
+      const action = appliedActions[index];
+      const itemId = String(action.itemId ?? `item-${index + 1}`);
+      await client.query(
+        `INSERT INTO transactions (id, owner_phone, timestamp, source_text, summary, actions_json, batch_id, item_id)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
+        [
+          `transaction-${batch.id}-${itemId}`,
+          normalizedOwnerPhone,
+          timestamp,
+          batch.sourceText,
+          summarizeAction(action),
+          toJsonbParam([action]),
+          batch.id,
+          itemId,
+        ],
+      );
+    }
+
+    const resultSnapshot = await queryAllState(normalizedOwnerPhone, client);
+    const replyText = `Ingreso aplicado:\n${appliedActions.map((action) => {
+      const product = nextProducts.find((entry) => entry.id === action.resolvedProductId);
+      return `• ${product.name}${product.size ? ` — ${product.size}` : ''}: +${action.qty} (stock ${product.stockAvailable})${action.price != null ? `, $${action.price.toLocaleString('es-AR')} c/u` : ''}`;
+    }).join('\n')}`;
+    const replyMessageId = batch.payload.replyMessageId ?? batch.sourceMessageId;
+    const payload = { ...batch.payload, appliedActions, resultSnapshot,
+      handledMessages: [...(batch.payload.handledMessages ?? []).filter((entry) => entry.messageId !== replyMessageId), { messageId: replyMessageId, replyText }],
+    };
+    await client.query(
+      `UPDATE voice_stock_batches SET status = 'applied', payload_json = $2::jsonb, reply_text = $3,
+         version = version + 1, updated_at = NOW() WHERE id = $1`,
+      [batch.id, toJsonbParam(payload), replyText],
+    );
+    await client.query(`INSERT INTO meta_reply_outbox (event_id, recipient, reply_text) VALUES ($1, $2, $3)
+      ON CONFLICT (event_id) DO NOTHING`, [replyMessageId, batch.senderPhone, replyText]);
+    return resultSnapshot;
   });
 };
 
@@ -2371,6 +2671,150 @@ export const resolveTenant = async (phoneNumber) => {
     normalizedPhoneNumber,
   ]);
   return row?.tenant_phone ?? normalizedPhoneNumber;
+};
+
+export const claimMetaMessage = async ({ messageId, ownerPhone, senderPhone, rawBody }) => {
+  await ensureReady();
+  const result = await getPool().query(
+    `INSERT INTO meta_message_claims (message_id, owner_phone, sender_phone, status, claimed_at, raw_body_json)
+     VALUES ($1, $2, $3, 'processing', NOW(), $4::jsonb)
+     ON CONFLICT (message_id) DO UPDATE
+       SET status = 'processing', claimed_at = NOW(), completed_at = NULL, attempts = meta_message_claims.attempts + 1,
+         raw_body_json = COALESCE(meta_message_claims.raw_body_json, EXCLUDED.raw_body_json)
+       WHERE meta_message_claims.status <> 'completed'
+         AND meta_message_claims.claimed_at < NOW() - INTERVAL '5 minutes'
+     RETURNING message_id`,
+    [String(messageId), normalizeOwnerPhone(ownerPhone), normalizePhone(senderPhone), toJsonbParam(rawBody)],
+  );
+  return result.rowCount > 0;
+};
+
+export const loadMetaTranscript = async (messageId) => {
+  await ensureReady();
+  const row = await queryRow('SELECT transcript FROM meta_message_claims WHERE message_id = $1', [messageId]);
+  return row?.transcript ?? null;
+};
+export const saveMetaTranscript = async (messageId, transcript) => {
+  await ensureReady();
+  await getPool().query('UPDATE meta_message_claims SET transcript = COALESCE(transcript, $2) WHERE message_id = $1', [messageId, transcript]);
+};
+export const failMetaMessageClaim = async (messageId, error) => {
+  await ensureReady();
+  await getPool().query(`UPDATE meta_message_claims SET status = 'pending', last_error = $2,
+    next_attempt_at = NOW() + LEAST(60, attempts) * INTERVAL '30 seconds'
+    WHERE message_id = $1 AND status <> 'completed'`, [messageId, String(error).slice(0, 500)]);
+};
+export const claimRecoverableMetaMessages = async () => {
+  await ensureReady();
+  return withTransaction(async (client) => {
+    const result = await client.query(`WITH ready AS (
+      SELECT message_id FROM meta_message_claims WHERE raw_body_json IS NOT NULL
+      AND ((status = 'pending' AND next_attempt_at <= NOW()) OR (status = 'processing' AND claimed_at < NOW() - INTERVAL '5 minutes'))
+      ORDER BY claimed_at LIMIT 5 FOR UPDATE SKIP LOCKED)
+      UPDATE meta_message_claims AS job SET status = 'processing', claimed_at = NOW(), attempts = attempts + 1
+      FROM ready WHERE job.message_id = ready.message_id RETURNING job.message_id, job.raw_body_json`);
+    return result.rows;
+  });
+};
+
+export const getStateSnapshotStrict = async (ownerPhone) => {
+  await ensureReady();
+  return queryAllState(normalizeOwnerPhone(ownerPhone));
+};
+
+export const closeDatabase = async () => {
+  if (pool) await pool.end();
+  pool = undefined; initializePromise = undefined;
+};
+
+export const completeMetaMessageClaim = async (messageId) => {
+  await ensureReady();
+  await getPool().query(
+    `UPDATE meta_message_claims SET status = 'completed', completed_at = NOW() WHERE message_id = $1`,
+    [String(messageId)],
+  );
+};
+
+export const enqueueMetaReply = async (eventId, recipient, replyText) => {
+  await ensureReady();
+  await getPool().query(
+    `INSERT INTO meta_reply_outbox (event_id, recipient, reply_text)
+     VALUES ($1, $2, $3) ON CONFLICT (event_id) DO NOTHING`,
+    [String(eventId), normalizePhone(recipient), String(replyText)],
+  );
+};
+
+export const claimPendingMetaReplies = async (limit = 20) => {
+  await ensureReady();
+  return withTransaction(async (client) => {
+    const result = await client.query(
+      `WITH ready AS (
+         SELECT event_id FROM meta_reply_outbox
+         WHERE (status = 'pending' AND next_attempt_at <= NOW())
+            OR (status = 'sending' AND claimed_at < NOW() - INTERVAL '2 minutes')
+         ORDER BY created_at LIMIT $1 FOR UPDATE SKIP LOCKED
+       )
+       UPDATE meta_reply_outbox AS outbox
+       SET status = 'sending', attempts = attempts + 1, claimed_at = NOW()
+       FROM ready WHERE outbox.event_id = ready.event_id
+       RETURNING outbox.event_id, outbox.recipient, outbox.reply_text, outbox.attempts`,
+      [Math.max(1, Math.min(100, normalizeInteger(limit, 20)))],
+    );
+    return result.rows;
+  });
+};
+
+export const finishMetaReply = async (eventId, error = null) => {
+  await ensureReady();
+  await getPool().query(
+    `UPDATE meta_reply_outbox
+     SET status = CASE WHEN $2::text IS NULL THEN 'sent' ELSE 'pending' END,
+         sent_at = CASE WHEN $2::text IS NULL THEN NOW() ELSE sent_at END,
+         last_error = $2,
+         next_attempt_at = CASE WHEN $2::text IS NULL THEN next_attempt_at
+           ELSE NOW() + LEAST(60, GREATEST(1, attempts * 2)) * INTERVAL '1 minute' END
+     WHERE event_id = $1`,
+    [String(eventId), error ? String(error).slice(0, 500) : null],
+  );
+};
+
+const defaultVoiceStockBatchMode = () => {
+  const configured = String(process.env.VOICE_STOCK_BATCHES_MODE ?? 'active').trim().toLowerCase();
+  return ['active', 'shadow', 'disabled'].includes(configured) ? configured : 'active';
+};
+
+export const getVoiceStockBatchMode = async (ownerPhone) => {
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  if (!hasDatabaseConfig()) return memoryVoiceStockBatchModes.get(normalizedOwnerPhone) ?? defaultVoiceStockBatchMode();
+  await ensureReady();
+  const row = await queryRow('SELECT mode FROM voice_stock_batch_settings WHERE owner_phone = $1', [normalizedOwnerPhone]);
+  return row?.mode ?? defaultVoiceStockBatchMode();
+};
+
+export const setVoiceStockBatchMode = async (ownerPhone, mode) => {
+  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
+  if (!['active', 'shadow', 'disabled'].includes(mode)) throw new Error('Modo de ingresos por voz inválido.');
+  if (!hasDatabaseConfig()) {
+    memoryVoiceStockBatchModes.set(normalizedOwnerPhone, mode);
+    return mode;
+  }
+  await ensureReady();
+  await getPool().query(
+    `INSERT INTO voice_stock_batch_settings (owner_phone, mode, updated_at) VALUES ($1, $2, NOW())
+     ON CONFLICT (owner_phone) DO UPDATE SET mode = EXCLUDED.mode, updated_at = NOW()`,
+    [normalizedOwnerPhone, mode],
+  );
+  return mode;
+};
+
+export const saveVoiceStockShadowRun = async (messageId, ownerPhone, result) => {
+  await ensureReady();
+  await getPool().query(`INSERT INTO voice_stock_shadow_runs (message_id, owner_phone, proposed_json)
+    VALUES ($1, $2, $3::jsonb) ON CONFLICT (message_id) DO NOTHING`, [messageId, normalizeOwnerPhone(ownerPhone), toJsonbParam(result)]);
+};
+export const saveVoiceStockShadowBaseline = async (messageId, result) => {
+  await ensureReady();
+  await getPool().query('UPDATE voice_stock_shadow_runs SET baseline_json = $2::jsonb WHERE message_id = $1', [messageId, toJsonbParam(result)]);
 };
 
 export const saveMetaEvent = async (event) => {
@@ -2461,8 +2905,8 @@ export const getMetaEvents = async (limit = 50, ownerPhone = null, options = {})
   if (senderPhone) {
     const senderVariants = getOwnerPhoneVariants(senderPhone);
     const rows = await queryRows(
-      'SELECT * FROM meta_events WHERE from_number = ANY($1) ORDER BY at DESC LIMIT $2',
-      [senderVariants, safeLimit],
+      'SELECT * FROM meta_events WHERE from_number = ANY($1) AND ($3::text[] IS NULL OR owner_phone = ANY($3)) ORDER BY at DESC LIMIT $2',
+      [senderVariants, safeLimit, ownerPhone ? getOwnerPhoneVariants(ownerPhone) : null],
     );
     return rows.map(rowToMetaEvent);
   }

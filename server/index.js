@@ -1,3 +1,4 @@
+import { processStockBatchMessage } from './voiceStockWorkflow.js';
 import express from 'express';
 import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
@@ -18,6 +19,15 @@ import {
   applyActionsToDatabase,
   answerStockQuery,
   findMetaEventById,
+  claimMetaMessage,
+  completeMetaMessageClaim,
+  loadMetaTranscript,
+  saveMetaTranscript,
+  failMetaMessageClaim,
+  claimRecoverableMetaMessages,
+  claimPendingMetaReplies,
+  enqueueMetaReply,
+  finishMetaReply,
   getAuthUserProfile,
   getStateSnapshot,
   getMetaEvents,
@@ -26,6 +36,9 @@ import {
   mergeProveedorRecords,
   saveBusinessProfile,
   saveMetaEvent,
+  saveVoiceStockShadowBaseline,
+  getVoiceStockBatchMode,
+  setVoiceStockBatchMode,
   upsertAuthUser,
   hasDatabaseConfig,
   updateProductRecord,
@@ -360,6 +373,31 @@ app.post('/api/business-profile', authenticateRequest, async (req, res) => {
     res.json(profile);
   } catch (error) {
     sendTeamError(res, error);
+  }
+});
+
+app.get('/api/settings/voice-stock-batches', authenticateRequest, async (req, res) => {
+  try {
+    res.json({ mode: await getVoiceStockBatchMode(tenantPhoneOf(req)) });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+app.put('/api/settings/voice-stock-batches', authenticateRequest, async (req, res) => {
+  try {
+    if (normalizePhone(authPhoneOf(req)) !== normalizePhone(tenantPhoneOf(req))) {
+      res.status(403).json({ error: 'Solo el titular del negocio puede cambiar este modo.' });
+      return;
+    }
+    const mode = String(req.body?.mode ?? '').trim().toLowerCase();
+    if (!['active', 'shadow', 'disabled'].includes(mode)) {
+      res.status(400).json({ error: 'El modo debe ser active, shadow o disabled.' });
+      return;
+    }
+    res.json({ mode: await setVoiceStockBatchMode(tenantPhoneOf(req), mode) });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -882,24 +920,69 @@ app.post('/api/voice/parse', authenticateRequest, async (req, res) => {
   }
 });
 
+const dispatchPendingMetaReplies = async () => {
+  const pending = await claimPendingMetaReplies(20);
+  for (const item of pending) {
+    try {
+      const result = await sendMetaReply({ to: item.recipient, text: item.reply_text });
+      if (result?.sent) {
+        await finishMetaReply(item.event_id);
+      } else {
+        await finishMetaReply(item.event_id, result?.reason ?? 'send_failed');
+      }
+    } catch (error) {
+      await finishMetaReply(item.event_id, error instanceof Error ? error.message : String(error));
+    }
+  }
+};
+
 const handleMetaWebhook = async (req, res) => {
-  res.sendStatus(200);
   const fastRepliedMessageIds = new Set();
   const body = req.body ?? {};
+  let processingBody = body;
 
   try {
     const handledLogin = await handleIncomingWaLogin(body);
     if (handledLogin) {
+      res.sendStatus(200);
       return;
     }
   } catch (error) {
     console.error('[auth:wa-login] webhook handler failed:', error);
   }
 
-  // Enviar ACK rápido para mensajes de texto para que el usuario reciba respuesta inmediata
   try {
     if (body.object === 'whatsapp_business_account') {
-      const entry = Array.isArray(body.entry) ? body.entry[0] : null;
+      processingBody = JSON.parse(JSON.stringify(body));
+      for (const entry of processingBody.entry ?? []) {
+        for (const change of entry.changes ?? []) {
+          const value = change.value;
+          if (!Array.isArray(value?.messages)) continue;
+          const accepted = [];
+          for (const message of value.messages) {
+            if (!message?.id || !message?.from) {
+              continue;
+            }
+            const ownerPhone = await resolveTenant(message.from);
+            const rawBody = { ...body, entry: [{ ...entry, changes: [{ ...change, value: { ...value, messages: [message] } }] }] };
+            const claimed = await claimMetaMessage({ messageId: message.id, ownerPhone, senderPhone: message.from, rawBody });
+            if (claimed) accepted.push(message);
+          }
+          value.messages = accepted;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[MetaWebhook] failed to claim inbound message:', error);
+    res.sendStatus(503);
+    return;
+  }
+  res.sendStatus(200);
+
+  // Enviar ACK rápido para mensajes de texto para que el usuario reciba respuesta inmediata
+  try {
+    if (processingBody.object === 'whatsapp_business_account') {
+      const entry = Array.isArray(processingBody.entry) ? processingBody.entry[0] : null;
       const changes = entry?.changes?.[0]?.value;
       const message = changes?.messages?.[0];
 
@@ -929,8 +1012,18 @@ const handleMetaWebhook = async (req, res) => {
     console.error('[MetaWebhook] failed to send fast-reply:', err);
   }
 
+  await processClaimedMetaBody(processingBody, fastRepliedMessageIds);
+};
+
+const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = new Set()) => {
   try {
-    const results = await processMetaWebhook(req.body ?? {}, {
+    const results = await processMetaWebhook(processingBody, {
+      loadTranscript: loadMetaTranscript,
+      saveTranscript: saveMetaTranscript,
+      processStockText: async ({ sourceText, businessCategory, conversationTurns, metaMessage }) => processStockBatchMessage({
+        sourceText, businessCategory, conversationTurns, ownerPhone: await resolveTenant(metaMessage.fromNumber),
+        senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId(),
+      }),
       resolveBusinessCategory: async (fromNumber) => {
         try {
           const profile = await getAuthUserProfile(fromNumber);
@@ -942,7 +1035,7 @@ const handleMetaWebhook = async (req, res) => {
       },
       resolveConversationHistory: async (fromNumber, messageId) => {
         try {
-          const recentEvents = await getMetaEvents(8, null, { senderPhone: fromNumber });
+          const recentEvents = await getMetaEvents(8, await resolveTenant(fromNumber), { senderPhone: fromNumber });
           return buildConversationTurnsFromEvents(recentEvents, {
             excludeMessageId: messageId,
             maxTurns: 3,
@@ -965,13 +1058,19 @@ const handleMetaWebhook = async (req, res) => {
 
     for (const result of results) {
       const incomingId = result.messageId ?? createEventId();
+      await saveVoiceStockShadowBaseline(incomingId, result.parsed);
       const existingEvent = await findMetaEventById(incomingId);
 
       if (existingEvent?.processed && existingEvent.replyText) {
+        await enqueueMetaReply(incomingId, result.fromNumber, existingEvent.replyText);
+        await completeMetaMessageClaim(incomingId);
+        await dispatchPendingMetaReplies();
         continue;
       }
 
       const tenantPhone = result.fromNumber ? await resolveTenant(result.fromNumber) : null;
+      const ownerPhone = tenantPhone || result.fromNumber;
+      const stockBatchResponse = result.stockBatchResponse ?? null;
 
       const eventRecord = {
         id: incomingId,
@@ -993,10 +1092,12 @@ const handleMetaWebhook = async (req, res) => {
       const isReadOnlyAction = (action) => action.type === 'query_stock' || action.type === 'query_pedidos';
       const queryActions = allActions.filter(isReadOnlyAction);
       const mutationActions = allActions.filter((action) => !isReadOnlyAction(action));
+      const legacyStockHold = !stockBatchResponse && mutationActions.some((action) => action.type === 'add_stock')
+        && await getVoiceStockBatchMode(ownerPhone) === 'active';
       const categoryPreset = getBusinessCategoryPreset(result.businessCategory);
 
-      let overrideReplyText = null;
-      if (queryActions.length) {
+      let overrideReplyText = stockBatchResponse?.replyText ?? null;
+      if (!stockBatchResponse && queryActions.length) {
         const snapshot = await getStateSnapshot(tenantPhone || result.fromNumber);
         overrideReplyText = queryActions
           .map((action) => {
@@ -1014,14 +1115,21 @@ const handleMetaWebhook = async (req, res) => {
           .join('\n\n');
       }
 
-      if (mutationActions.length && !hasProductMatchHold(result.parsed)) {
-        await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber);
+      if (!stockBatchResponse && !legacyStockHold && mutationActions.length && !hasProductMatchHold(result.parsed)) {
+        await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber, {
+          messageId: incomingId, recipient: result.fromNumber,
+          replyText: [overrideReplyText, result.replyText].filter(Boolean).join('\n\n'),
+        });
       }
 
-      const finalReplyText = [overrideReplyText, result.replyText].filter(Boolean).join('\n\n');
+      const finalReplyText = stockBatchResponse
+        ? stockBatchResponse.replyText
+        : legacyStockHold ? 'Detecté un ingreso de stock pero no pude verificarlo completo. No apliqué cambios. Enviame el ingreso en un mensaje separado para revisarlo.'
+          : [overrideReplyText, result.replyText].filter(Boolean).join('\n\n');
 
       eventRecord.replyText = finalReplyText;
-      eventRecord.processed = Boolean(queryActions.length || mutationActions.length);
+      eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? result.parsed?.actions ?? []);
+      eventRecord.processed = Boolean(stockBatchResponse || queryActions.length || mutationActions.length);
 
       console.log('[MetaWebhook] response debug:', {
         messageId: incomingId,
@@ -1035,21 +1143,14 @@ const handleMetaWebhook = async (req, res) => {
 
       await saveMetaEvent(eventRecord);
       await markMetaEventProcessed(eventRecord.id, { processed: eventRecord.processed });
+      if (finalReplyText) await enqueueMetaReply(incomingId, result.fromNumber, finalReplyText);
+      await completeMetaMessageClaim(incomingId);
 
       // Siempre enviar el resultado final (aunque ya haya habido un ACK de "procesando").
       if (finalReplyText) {
-        try {
-          const replyResult = await sendMetaReply({
-            to: result.fromNumber,
-            text: finalReplyText,
-          });
-          if (!replyResult?.sent) {
-            console.warn('[MetaWebhook] reply not sent:', replyResult);
-          } else if (result.kind === 'text' && result.messageId && fastRepliedMessageIds.has(result.messageId)) {
-            console.log('[MetaWebhook] sent result reply after fast ACK:', result.messageId);
-          }
-        } catch (replyError) {
-          console.error('[MetaWebhook] reply failed for event:', incomingId, replyError);
+        await dispatchPendingMetaReplies();
+        if (result.kind === 'text' && result.messageId && fastRepliedMessageIds.has(result.messageId)) {
+          console.log('[MetaWebhook] queued final reply after fast ACK:', result.messageId);
         }
       }
 
@@ -1062,10 +1163,26 @@ const handleMetaWebhook = async (req, res) => {
     }
   } catch (error) {
     console.error('[MetaWebhook] processing failed:', error);
+    for (const entry of processingBody.entry ?? []) {
+      for (const change of entry.changes ?? []) {
+        for (const message of change.value?.messages ?? []) {
+          if (message.id) await failMetaMessageClaim(message.id, error.message).catch(() => {});
+        }
+      }
+    }
   }
 };
 
 app.post('/api/meta-webhook', handleMetaWebhook);
+
+setInterval(() => {
+  dispatchPendingMetaReplies().catch((error) => {
+    console.warn('[MetaWebhook] outbox retry failed:', error instanceof Error ? error.message : error);
+  });
+  claimRecoverableMetaMessages().then(async (jobs) => {
+    for (const job of jobs) await processClaimedMetaBody(job.raw_body_json);
+  }).catch((error) => console.warn('[MetaWebhook] inbound recovery failed:', error.message));
+}, 30_000).unref();
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`[MetaWebhook] listening on port ${port}`);

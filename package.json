@@ -15,6 +15,9 @@
     "db:migrate": "node scripts/migrate-postgres.js",
     "db:seed-dev": "node scripts/seed-dev-tenant.js",
     "test:parser": "node scripts/test-parser-robustness.js",
+    "test:voice-stock-batches": "node scripts/test-voice-stock-batch-regression.js",
+    "test:voice-stock-postgres": "node scripts/test-voice-stock-postgres.js",
+    "eval:voice-stock:live": "node scripts/evaluate-stock-corpus.js --live",
     "test:inventory-ui": "npm run build && node scripts/test-inventory-ui.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
@@ -34,6 +37,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.21",
     "concurrently": "^10.0.0",
+    "embedded-postgres": "18.4.0-beta.17",
     "nodemon": "^3.1.10",
     "playwright": "^1.55.0",
     "postcss": "^8.5.3",
