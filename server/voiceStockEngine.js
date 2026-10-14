@@ -30,6 +30,139 @@ const jsonCall = async (stage, instruction, data) => {
   return { ...result, trace };
 };
 
+// Models sometimes return the right words with altered case, accents or punctuation.
+// Recover only a unique, contiguous word sequence; validation still requires literal quotes.
+const quoteTokens = (text) => [...String(text).matchAll(/[\p{L}\p{N}]+(?:[.,][0-9]{3})*/gu)]
+  .map((match) => ({
+    value: match[0].toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[.,](?=\d)/g, ''),
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+const quoteConnectors = new Set(['a', 'al', 'de', 'del', 'el', 'en', 'la', 'las', 'los', 'un', 'una']);
+
+const uniqueQuoteSpan = (sourceText, sourceTokens, wanted, allowConnectors) => {
+  let found = null;
+  for (let start = 0; start < sourceTokens.length; start += 1) {
+    if (sourceTokens[start].value !== wanted[0].value) continue;
+    let position = start;
+    let skipped = 0;
+    let matched = true;
+    for (let index = 1; index < wanted.length; index += 1) {
+      position += 1;
+      while (allowConnectors && quoteConnectors.has(sourceTokens[position]?.value) && sourceTokens[position]?.value !== wanted[index].value && skipped < 2) {
+        position += 1;
+        skipped += 1;
+      }
+      if (sourceTokens[position]?.value !== wanted[index].value) { matched = false; break; }
+    }
+    if (!matched) continue;
+    if (found !== null) return null;
+    found = sourceText.slice(sourceTokens[start].start, sourceTokens[position].end);
+  }
+  return found;
+};
+
+const literalizeQuote = (sourceText, quote, sourceTokens) => {
+  if (typeof quote !== 'string' || !quote.trim() || sourceText.includes(quote)) return quote;
+  const wanted = quoteTokens(quote);
+  if (wanted.length < 2 || wanted.length > sourceTokens.length) return quote;
+  const exactWords = uniqueQuoteSpan(sourceText, sourceTokens, wanted, false);
+  if (exactWords) return exactWords;
+  // A model may omit short connecting words ("2025 talle L" vs "2025 en talle L").
+  const contentWords = wanted.filter((token) => !quoteConnectors.has(token.value));
+  if (contentWords.length < 3) return quote;
+  return uniqueQuoteSpan(sourceText, sourceTokens, contentWords, true) ?? quote;
+};
+
+export const literalizeStockDraftQuotes = (sourceText, actions) => {
+  if (!Array.isArray(actions)) return actions;
+  const sourceTokens = quoteTokens(sourceText);
+  return actions.map((action) => {
+    if (!action || typeof action !== 'object') return action;
+    const refs = action.fieldEvidence;
+    return {
+      ...action,
+      evidence: literalizeQuote(sourceText, action.evidence, sourceTokens),
+      ...(refs && typeof refs === 'object' && !Array.isArray(refs) ? { fieldEvidence: {
+        ...refs,
+        ...(refs.qty != null ? { qty: literalizeQuote(sourceText, refs.qty, sourceTokens) } : {}),
+        ...(refs.price != null ? { price: literalizeQuote(sourceText, refs.price, sourceTokens) } : {}),
+        ...(Array.isArray(refs.attributes) ? { attributes: refs.attributes.map((quote) => literalizeQuote(sourceText, quote, sourceTokens)) } : {}),
+      } } : {}),
+    };
+  });
+};
+
+export const buildSourceSpans = (sourceText) => {
+  const text = String(sourceText ?? '');
+  const spans = [];
+  let start = 0;
+  const addSpan = (end) => {
+    const raw = text.slice(start, end);
+    const leading = raw.length - raw.trimStart().length;
+    const trimmed = raw.trim();
+    if (trimmed) spans.push({ id: spans.length + 1, text: trimmed, start: start + leading, end: start + leading + trimmed.length });
+    start = end;
+  };
+  for (const match of text.matchAll(/[.!?;\n]+(?!\d)/g)) addSpan(match.index + match[0].length);
+  addSpan(text.length);
+  return spans;
+};
+
+const groundToken = (value) => {
+  const normalized = value.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[.,](?=\d)/g, '');
+  return normalized.length > 4 && normalized.endsWith('s') ? normalized.slice(0, -1) : normalized;
+};
+const groundTokens = (value) => quoteTokens(value).map((token) => groundToken(token.value))
+  .filter((token) => token.length > 1 && !quoteConnectors.has(token));
+
+const spanSupportsProduct = (sourceText, spans, span, productName) => {
+  const names = groundTokens(productName);
+  if (!names.length) return false;
+  const all = new Set(groundTokens(sourceText));
+  if (names.some((token) => !all.has(token))) return false;
+  const local = new Set(groundTokens(span.text));
+  if (!names.some((token) => local.has(token))) return false;
+  const distinctive = names.filter((token) => spans.filter((part) => groundTokens(part.text).includes(token)).length <= Math.max(1, Math.floor(spans.length / 2)));
+  return !distinctive.length || distinctive.some((token) => local.has(token));
+};
+
+const priceQuoteFromSpan = (span, price) => {
+  const clauses = span.text.split(/,(?!\d{3}\b)/).map((part) => part.trim()).filter(Boolean);
+  const hasPriceCue = (part) => /\b(vale|valen|cuesta|cuestan|sale|salen|precio|pesos|cada)\b|\$|\bc\/u\b|\ba\s+\d/i.test(part);
+  const match = clauses.find((part) => hasPriceCue(part) && quoteTokens(part).some((token) => /^\d+$/.test(token.value) && Number(token.value) === price));
+  if (match) return match;
+  return !quoteTokens(span.text).some((token) => /^\d+$/.test(token.value)) && hasPriceCue(span.text) ? span.text : undefined;
+};
+
+// New model responses point to server-numbered spans. Legacy responses can still
+// supply literal quotes, which are handled by the conservative normalizer above.
+export const groundStockDraft = (sourceText, actions, sourceSpans = buildSourceSpans(sourceText)) => {
+  const literalized = literalizeStockDraftQuotes(sourceText, actions);
+  if (!Array.isArray(literalized)) return literalized;
+  const findSpan = (id) => {
+    const number = typeof id === 'string' && /^\d+$/.test(id) ? Number(id) : id;
+    const span = Number.isSafeInteger(number) ? sourceSpans.find((entry) => entry.id === number) : null;
+    return span && sourceText.includes(span.text) ? span : null;
+  };
+  return literalized.map((action) => {
+    if (!action || typeof action !== 'object') return action;
+    const result = { ...action, fieldEvidence: { ...(action.fieldEvidence ?? {}) } };
+    if (action.mentionId != null) {
+      const span = findSpan(action.mentionId);
+      result.evidence = span && spanSupportsProduct(sourceText, sourceSpans, span, action.productName) ? span.text : undefined;
+    }
+    if (action.priceSpanId != null) {
+      const span = findSpan(action.priceSpanId);
+      result.fieldEvidence.price = span && Number.isSafeInteger(action.price) ? priceQuoteFromSpan(span, action.price) : undefined;
+    }
+    if (action.qtySpanId != null) result.fieldEvidence.qty = findSpan(action.qtySpanId)?.text;
+    if (action.attributeSpanIds != null) result.fieldEvidence.attributes = Array.isArray(action.attributeSpanIds)
+      ? action.attributeSpanIds.map((id) => findSpan(id)?.text) : [undefined];
+    return result;
+  });
+};
+
 export const validateStockDraft = (sourceText, actions) => {
   if (!Array.isArray(actions) || !actions.length || actions.length > 100) return { ok: false, reason: 'empty_or_oversized_draft' };
   const validated = [];
@@ -58,30 +191,33 @@ export const validateStockDraft = (sourceText, actions) => {
 export const extractStockDraft = async ({ sourceText, businessCategory, conversationTurns = [], clarificationContext = null }) => {
   const referencedTurns = /\b(anterior|antes|eso|esas|esos|mencione|dije|dictado|listado)\b/.test(normalizeIdentity(sourceText))
     ? conversationTurns.filter((turn) => turn.role === 'user') : [];
+  const spanSource = [...referencedTurns.map((turn) => turn.text), clarificationContext?.sourceText, sourceText].filter(Boolean).join('\n');
+  const sourceSpans = buildSourceSpans(spanSource);
   const result = await jsonCall('extract', `Decidí si el mensaje indica un ingreso de stock para registrar ahora. No confundas consultas, ventas ni pedidos con ingresos.
-Las referencias al producto anterior y autocorrecciones actualizan ese ítem, no crean otro ni suman cantidad salvo una entrada adicional explícita. Aplicá atributos globales solo en su alcance y guardá su cita en fieldEvidence.attributes. Un atributo local no se propaga. Si falta medida/talle/presentación, omití ese campo: no inventes un valor por defecto.
+Las referencias al producto anterior y autocorrecciones actualizan ese ítem, no crean otro ni suman cantidad salvo una entrada adicional explícita. Aplicá atributos globales solo en su alcance. Un atributo local no se propaga. Si falta medida/talle/presentación, omití ese campo: no inventes un valor por defecto.
 Si hay clarificationContext, el mensaje puede ser una respuesta breve a las preguntas del borrador. Si lo aclara, reconstruí TODOS sus productos usando el texto guardado más la respuesta y devolvé sourceText EXACTAMENTE igual a clarificationContext.sourceText. Si trae una lista completa de reemplazo, usá solo el mensaje actual. Si es ajeno a ese ingreso, devolvé kind:"other"; nunca agregues una orden independiente al borrador.
 Devolvé {kind:"stock_intake"|"other", actions:[]}. Para ingresos, una acción por producto distinto:
-{type:"add_stock",productName:string,productType?:string,productModel?:string,size?:string,qty:integer,price?:integer,evidence:string,identityAttributes?:object,fieldEvidence:{qty?:string,price?:string,attributes?:string[]}}.
-evidence es un fragmento LITERAL CONTIGUO del mensaje que identifica el producto: no combines partes, no corrijas ortografía, mayúsculas ni puntuación. productName puede organizar los atributos, evidence no. Guardá citas literales también para cantidad, precio y atributos globales. fieldEvidence.price y fieldEvidence.qty son strings, nunca números. Un precio global puede usar la misma cita para varios productos. Ejemplo: si dice "todos valen 65.000", price es 65000 y fieldEvidence.price es "todos valen 65.000". Cantidad por defecto 1. Si repite el mismo SKU, sumá cantidades con evidencia de la repetición. Conservá año, marca, versión, presentación, medida y demás diferencias. Nunca inventes nombres ni completes atributos con conocimiento externo. Ante una frase dudosa conservá lo dicho; la auditoría podrá pedir aclaración. El contexto solo sirve para referencias explícitas a mensajes anteriores: en ese caso devolvé también sourceText con el listado literal completo usado.`, { sourceText, businessCategory, conversationTurns: referencedTurns, clarificationContext });
+{type:"add_stock",productName:string,productType?:string,productModel?:string,size?:string,qty:integer,price?:integer,mentionId:integer,priceSpanId?:integer,qtySpanId?:integer,attributeSpanIds?:integer[],identityAttributes?:object}.
+Usá los IDs de sourceSpans: mentionId señala el segmento que menciona ese producto; priceSpanId señala el segmento que dice su precio (puede ser global y repetirse en varias acciones); qtySpanId señala cantidad explícita si qty no es 1; attributeSpanIds señala segmentos con atributos globales aplicados. NO copies citas: el servidor las tomará del texto original. Un segmento puede respaldar varios ítems; elegí el segmento correcto para cada uno. Por ejemplo, si el último segmento dice "todos valen 65.000, este vale 70.000", asigná price 65000 a los anteriores y 70000 al último, todos con ese priceSpanId. Cantidad por defecto 1. Si repite el mismo SKU, sumá cantidades con respaldo de la repetición. Conservá año, marca, versión, presentación, medida y demás diferencias. Nunca inventes nombres ni completes atributos con conocimiento externo. Ante una frase dudosa conservá lo dicho; la auditoría podrá pedir aclaración. El contexto solo sirve para referencias explícitas a mensajes anteriores: en ese caso devolvé también sourceText con el listado literal completo usado.`, { sourceText, sourceSpans: sourceSpans.map(({ id, text }) => ({ id, text })), businessCategory, conversationTurns: referencedTurns, clarificationContext });
   if (!result.ok) return { ok: false, reason: 'extractor_unavailable', trace: result.trace };
   if (result.json?.kind === 'other') return { ok: true, kind: 'other', trace: result.trace };
   if (result.json?.kind !== 'stock_intake') return { ok: false, reason: 'invalid_intent', trace: result.trace };
   const effectiveSource = result.json.sourceText && (referencedTurns.some((turn) => turn.text === result.json.sourceText)
     || clarificationContext?.sourceText === result.json.sourceText)
     ? `${result.json.sourceText}\n${sourceText}` : sourceText;
-  let validation = validateStockDraft(effectiveSource, result.json.actions);
+  let validation = validateStockDraft(effectiveSource, groundStockDraft(effectiveSource, result.json.actions, sourceSpans));
   const traces = [result.trace];
   let repair;
   if (!validation.ok) {
     console.warn('[VoiceStockBatch] extraction validation failed', validation);
+    const repairSpans = buildSourceSpans(effectiveSource);
     repair = await jsonCall('repair_extract', `Repará la extracción contra el texto original. Devolvé {actions:[]} con la LISTA COMPLETA, sin catálogo.
-Cada acción debe tener type:"add_stock", productName:string, qty:entero positivo, evidence:string y fieldEvidence:{qty?:string,price?:string,attributes?:string[]}. price opcional es entero no negativo; productType/productModel/size opcionales son strings.
-evidence y todas las citas de fieldEvidence deben ser fragmentos LITERALES CONTIGUOS del texto, respetando ortografía, mayúsculas, espacios y puntuación. No pegues frases separadas. No uses un nombre normalizado como cita. Para precios globales copiá la frase global en cada acción correspondiente. Cantidad por defecto 1. Conservá todas las menciones y excepciones; no borres un producto o un precio para eludir el error. No inventes información.`, {
-      sourceText: effectiveSource, businessCategory, actions: result.json.actions, validationError: validation,
+Cada acción debe tener type:"add_stock", productName:string, qty:entero positivo, mentionId:ID del segmento del producto, priceSpanId?:ID del segmento del precio, qtySpanId?:ID del segmento de cantidad explícita, attributeSpanIds?:IDs de atributos globales. price opcional es entero no negativo; productType/productModel/size opcionales son strings.
+Usá solo IDs de sourceSpans; el servidor obtiene las citas literales. Si el precio global aparece en un segmento final, repetí ese priceSpanId en los ítems correspondientes y respetá las excepciones. Cantidad por defecto 1. Conservá todas las menciones y excepciones; no borres un producto o un precio para eludir el error. No inventes información.`, {
+      sourceText: effectiveSource, sourceSpans: repairSpans.map(({ id, text }) => ({ id, text })), businessCategory, actions: result.json.actions, validationError: validation,
     });
     traces.push(repair.trace);
-    if (repair.ok) validation = validateStockDraft(effectiveSource, repair.json?.actions);
+    if (repair.ok) validation = validateStockDraft(effectiveSource, groundStockDraft(effectiveSource, repair.json?.actions, repairSpans));
     if (!repair.ok || !validation.ok) {
       console.warn('[VoiceStockBatch] extraction repair failed', { ...validation, repairAvailable: repair.ok });
     }
@@ -90,15 +226,20 @@ evidence y todas las citas de fieldEvidence deben ser fragmentos LITERALES CONTI
 };
 
 export const auditStockDraft = async ({ sourceText, actions }) => {
+  const sourceSpans = buildSourceSpans(sourceText);
   const result = await jsonCall('audit', `Auditá la lista contra TODO el texto, sin catálogo. Buscá productos omitidos, inventados o duplicados y cantidades/precios/atributos globales mal asignados, incluyendo excepciones. No modifiques la lista.
-Devolvé {coverageComplete:boolean, issues:[{kind:"repairable"|"clarification",detail:string,evidence:string,question?:string}], verifiedItemIds:string[]}.
+Devolvé {coverageComplete:boolean, issues:[{kind:"repairable"|"clarification",detail:string,evidenceSpanId:integer,question?:string}], verifiedItemIds:string[]}.
 Solo coverageComplete=true con issues vacío y cada mención explicada por una acción respaldada. Las referencias al producto anterior y autocorrecciones no son otro producto ni suman unidades salvo ingreso adicional explícito.
 Una cita de atributo global ausente o un atributo mal aplicado es repairable: el sistema lo arregla usando el original. Nunca le preguntes al usuario por citas, posiciones, evidencia, IDs ni formato interno.
 Un atributo NO mencionado (medida, talle, marca, etc.) debe quedar ausente. Esto NO es un problema de cobertura ni requiere aclaración. Un dato local no se propaga. La falta de atributos para elegir una variante del catálogo se resuelve DESPUÉS, al comparar productos.
-clarification solo si hay dos interpretaciones materiales del texto que no se pueden resolver desde lo dicho (por ejemplo, no se sabe si una mención es otro producto o una corrección). evidence debe ser una cita literal del texto y question una pregunta breve sobre esa duda concreta, sin pedir repetir la lista completa. Leé las aclaraciones posteriores del usuario como tales, sin convertirlas en nuevos productos.`, { sourceText, actions });
+clarification solo si hay dos interpretaciones materiales del texto que no se pueden resolver desde lo dicho (por ejemplo, no se sabe si una mención es otro producto o una corrección). evidenceSpanId apunta al segmento de sourceSpans que contiene la duda; el servidor obtiene la cita literal. question es una pregunta breve sobre esa duda concreta, sin pedir repetir la lista completa. Leé las aclaraciones posteriores del usuario como tales, sin convertirlas en nuevos productos.`, { sourceText, sourceSpans: sourceSpans.map(({ id, text }) => ({ id, text })), actions });
   const data = result.json;
   const verified = new Set(Array.isArray(data?.verifiedItemIds) ? data.verifiedItemIds : []);
-  const issues = Array.isArray(data?.issues) ? data.issues : [];
+  const issues = Array.isArray(data?.issues) ? data.issues.map((issue) => {
+    if (!issue || typeof issue !== 'object' || issue.evidenceSpanId == null) return issue;
+    const span = sourceSpans.find((entry) => entry.id === Number(issue.evidenceSpanId));
+    return { ...issue, evidence: span?.text };
+  }) : [];
   const clarifications = issues.filter((issue) => issue?.kind === 'clarification'
     && typeof issue.question === 'string' && issue.question.trim() && issue.question.length <= 500
     && typeof issue.evidence === 'string' && issue.evidence.trim() && sourceText.includes(issue.evidence));
@@ -150,13 +291,14 @@ export const prepareStockDraft = async (input) => {
   let audit = await auditStockDraft(extraction);
   const traces = [...extraction.traces, audit.trace];
   if (!audit.ok && audit.needsRepair) {
+    const repairSpans = buildSourceSpans(extraction.sourceText);
     const repaired = await jsonCall('repair_coverage', `Repará la lista COMPLETA con el texto original y el diagnóstico de auditoría. Devolvé {actions:[]}.
-Cada acción tiene type:"add_stock", productName:string, qty:entero positivo, evidence:cita literal contigua, fieldEvidence:{qty?:cita literal,price?:cita literal,attributes?:citas literales[]}; price opcional es entero no negativo; productType/productModel/size opcionales strings.
-Repará omisiones, duplicados, referencias al producto anterior y alcance de atributos globales. Adjuntá las citas globales a los ítems que correspondan. Las referencias/autocorrecciones no agregan unidades. Un atributo local no se propaga, y los atributos no mencionados quedan ausentes. No borres precios ni productos reales para pasar la auditoría. Si queda una duda de intención, conservá lo dicho para que la nueva auditoría formule una pregunta concreta. No inventes información.`, {
-      sourceText: extraction.sourceText, actions: extraction.actions, issues: audit.issues,
+Cada acción tiene type:"add_stock", productName:string, qty:entero positivo, mentionId:ID del segmento del producto, priceSpanId?:ID del segmento del precio, qtySpanId?:ID de cantidad explícita, attributeSpanIds?:IDs de atributos globales; price opcional es entero no negativo; productType/productModel/size opcionales strings.
+Repará omisiones, duplicados, referencias al producto anterior y alcance de atributos globales. Usá IDs de sourceSpans; el servidor extrae las citas. Las referencias/autocorrecciones no agregan unidades. Un atributo local no se propaga, y los atributos no mencionados quedan ausentes. No borres precios ni productos reales para pasar la auditoría. Si queda una duda de intención, conservá lo dicho para que la nueva auditoría formule una pregunta concreta. No inventes información.`, {
+      sourceText: extraction.sourceText, sourceSpans: repairSpans.map(({ id, text }) => ({ id, text })), actions: extraction.actions, issues: audit.issues,
     });
     traces.push(repaired.trace);
-    const valid = repaired.ok ? validateStockDraft(extraction.sourceText, repaired.json?.actions) : { ok: false };
+    const valid = repaired.ok ? validateStockDraft(extraction.sourceText, groundStockDraft(extraction.sourceText, repaired.json?.actions, repairSpans)) : { ok: false };
     if (valid.ok) {
       extraction = { ...extraction, actions: valid.actions };
       audit = await auditStockDraft(extraction);

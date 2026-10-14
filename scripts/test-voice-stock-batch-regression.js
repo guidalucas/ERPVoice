@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { prepareStockDraft, validateStockDraft, retrieveStockCandidates } from '../server/voiceStockEngine.js';
+import { prepareStockDraft, validateStockDraft, retrieveStockCandidates, literalizeStockDraftQuotes, buildSourceSpans, groundStockDraft } from '../server/voiceStockEngine.js';
 import { stockDraftFailureReply } from '../server/voiceStockWorkflow.js';
 import { incidentText, clarifiedText, incidentActions, incidentCatalog, ambiguousMention, genericCases } from './fixtures/voice-stock-corpus.js';
 
@@ -31,6 +31,16 @@ try {
     assert.equal(draft.ok, false); assert.equal(draft.actions.length, 11);
     assert.equal(draft.clarifications.length, 1); assert.equal(draft.clarifications[0].evidence, ambiguousMention); assert.equal(requests.length, 2);
   });
+  await run('la auditoría formula la aclaración desde un segmento numerado', async () => {
+    const evidenceSpanId = buildSourceSpans(incidentText).find((span) => span.text.includes(ambiguousMention)).id;
+    const draft = await prepare(incidentText, incidentActions, incidentCatalog, { audits: [{
+      coverageComplete: false,
+      issues: [{ kind: 'clarification', detail: 'Mención ambigua', evidenceSpanId, question: '¿Es otro producto?' }],
+    }] });
+    assert.equal(draft.ok, false);
+    assert.equal(draft.clarifications[0].evidence, ambiguousMention);
+    assert.match(requests[1].messages[1].content, /evidenceSpanId/);
+  });
   await run('lista aclarada: Argentina y Boca presentes, Chelsea ausente, precio global y excepción', async () => {
     const draft = await prepare();
     assert.equal(draft.ok, true); assert.equal(draft.coverageVerified, true); assert.equal(draft.actions.length, 11);
@@ -43,18 +53,84 @@ try {
     assert.ok(draft.actions.every((action) => clarifiedText.slice(action.evidenceStart, action.evidenceEnd) === action.evidence));
     assert.ok(requests.slice(0, 2).every((body) => !JSON.stringify(body).includes('arg-home')));
   });
+  await run('el servidor deriva citas desde IDs sin pedirle texto literal al modelo', async () => {
+    const spans = buildSourceSpans(clarifiedText);
+    const priceSpanId = spans.find((span) => span.text.includes('todas las anteriores valen 65.000')).id;
+    const globalVersionId = spans.find((span) => span.text.startsWith('Todas estas')).id;
+    const actions = incidentActions.map(({ evidence, fieldEvidence, ...action }, index) => ({
+      ...action, mentionId: spans.find((span) => span.text.includes(evidence)).id,
+      priceSpanId, ...(index === 0 ? { attributeSpanIds: [globalVersionId] } : {}),
+    }));
+    const draft = await prepare(clarifiedText, actions, incidentCatalog);
+    assert.equal(draft.ok, true);
+    assert.equal(draft.actions.length, 11);
+    assert.ok(draft.actions.every((action) => clarifiedText.includes(action.evidence) && clarifiedText.includes(action.fieldEvidence.price)));
+    assert.equal(draft.actions[0].fieldEvidence.attributes[0], spans.find((span) => span.id === globalVersionId).text);
+    assert.equal(draft.actions[0].fieldEvidence.price, 'todas las anteriores valen 65.000');
+    assert.equal(draft.actions.at(-1).fieldEvidence.price, 'esta manga larga vale 70.000.');
+    assert.match(requests[0].messages[1].content, /sourceSpans/);
+    assert.match(requests[0].messages[1].content, /mentionId/);
+  });
+  await run('una referencia de segmento errónea se repara sin copiar citas', async () => {
+    const spans = buildSourceSpans(clarifiedText);
+    const priceSpanId = spans.at(-1).id;
+    const repairedActions = incidentActions.map(({ evidence, fieldEvidence, ...action }) => ({
+      ...action, mentionId: spans.find((span) => span.text.includes(evidence)).id, priceSpanId,
+    }));
+    const invalid = structuredClone(repairedActions);
+    invalid[0].mentionId = 999;
+    const draft = await prepare(clarifiedText, invalid, incidentCatalog, { repairedActions });
+    assert.equal(draft.ok, true);
+    assert.equal(draft.actions.length, 11);
+    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'repair_extract', 'audit', 'resolve']);
+  });
+  await run('un ID no puede respaldar un producto ausente ni un precio distinto', async () => {
+    const spans = buildSourceSpans(incidentText);
+    const first = spans[0].id;
+    const last = spans.at(-1).id;
+    const invented = groundStockDraft(incidentText, [{ type: 'add_stock', productName: 'Camiseta Chelsea 2025', mentionId: first, qty: 1 }], spans);
+    assert.equal(validateStockDraft(incidentText, invented).field, 'evidence');
+    const wrongPrice = groundStockDraft(incidentText, [{ ...incidentActions[0], mentionId: first, price: 99000, priceSpanId: last }], spans);
+    assert.equal(validateStockDraft(incidentText, wrongPrice).reason, 'unsupported_price');
+    const yearAsPrice = groundStockDraft(incidentText, [{ ...incidentActions[0], mentionId: first, price: 2025, priceSpanId: first }], spans);
+    assert.equal(validateStockDraft(incidentText, yearAsPrice).reason, 'unsupported_price');
+    assert.equal(validateStockDraft(incidentText, groundStockDraft(incidentText, [{ ...incidentActions[0], mentionId: 999 }], spans)).field, 'evidence');
+  });
+  await run('un segmento también respalda cantidad y precio de otro rubro', async () => {
+    const { text: source, actions } = genericCases[0];
+    const [span] = buildSourceSpans(source);
+    const grounded = groundStockDraft(source, [{ ...actions[0], evidence: undefined, fieldEvidence: {}, mentionId: span.id, qtySpanId: span.id, priceSpanId: span.id }], [span]);
+    assert.equal(validateStockDraft(source, grounded).ok, true);
+    assert.equal(grounded[0].fieldEvidence.price, 'a 65000 pesos.');
+  });
   await run('acción inventada sin cita literal no llega a resolver catálogo', async () => {
     const draft = await prepare(incidentText, [{ ...incidentActions[0], productName: 'Camiseta Chelsea', evidence: 'Chelsea' }]);
     assert.equal(draft.ok, false); assert.equal(draft.reason, 'invalid_action_or_evidence'); assert.equal(draft.field, 'evidence'); assert.equal(draft.itemIndex, 0); assert.equal(requests.length, 2);
     assert.equal(requests.some((request) => /Etapa: (audit|resolve)/.test(request.messages[0].content)), false);
   });
-  await run('cita normalizada se repara una vez y la lista completa pasa auditoría antes de resolver', async () => {
+  await run('cita con mayúsculas se recupera del texto literal antes de auditar', async () => {
     const invalid = structuredClone(incidentActions);
     invalid[0].evidence = invalid[0].evidence.toUpperCase();
-    const draft = await prepare(clarifiedText, invalid, incidentCatalog, { repairedActions: incidentActions });
+    invalid[0].fieldEvidence.price = 'TODAS LAS ANTERIORES VALEN 65,000';
+    const draft = await prepare(clarifiedText, invalid, incidentCatalog);
     assert.equal(draft.ok, true); assert.equal(draft.actions.length, 11);
-    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'repair_extract', 'audit', 'resolve']);
-    assert.ok(requests.slice(0, 3).every((body) => !JSON.stringify(body).includes('arg-home')));
+    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'audit', 'resolve']);
+    assert.equal(draft.actions[0].evidence, incidentActions[0].evidence);
+    assert.equal(draft.actions[0].fieldEvidence.price, incidentActions[0].fieldEvidence.price);
+    assert.ok(requests.slice(0, 2).every((body) => !JSON.stringify(body).includes('arg-home')));
+  });
+  await run('citas ambiguas o con palabras inventadas no se recuperan', async () => {
+    const source = 'Camiseta de Racing. Camiseta de Racing.';
+    assert.equal(literalizeStockDraftQuotes(source, [{ evidence: 'CAMISETA DE RACING' }])[0].evidence, 'CAMISETA DE RACING');
+    assert.equal(literalizeStockDraftQuotes(source, [{ evidence: 'Camiseta de Chelsea' }])[0].evidence, 'Camiseta de Chelsea');
+    assert.equal(validateStockDraft(source, [{ ...incidentActions[0], evidence: 'CAMISETA DE RACING' }]).ok, false);
+  });
+  await run('palabras de enlace omitidas se recuperan solo en una mención única', async () => {
+    const quote = 'camiseta suplente Manchester City 2025 talle L';
+    const recovered = literalizeStockDraftQuotes(incidentText, [{ evidence: quote }])[0].evidence;
+    assert.equal(recovered, incidentActions[0].evidence);
+    assert.equal(literalizeStockDraftQuotes(incidentText, [{ evidence: 'version jugador titular tambien' }])[0].evidence, 'versión jugador titular también');
+    assert.equal(literalizeStockDraftQuotes(incidentText, [{ evidence: 'camiseta Chelsea 2025 talle L' }])[0].evidence, 'camiseta Chelsea 2025 talle L');
   });
   await run('precio sin cita se repara sin eliminar el precio global ni su excepción', async () => {
     const invalid = incidentActions.map((action) => ({ ...action, fieldEvidence: {} }));
