@@ -2123,7 +2123,9 @@ const parseVoiceTextWithModel = async (
       },
       {
         role: 'user',
-        content: buildPrompt(text, preset, conversationTurns, operationHint, catalog),
+        // Extraction is intentionally blind to the catalog. Catalog grounding runs only
+        // after the action list has been reconstructed from the user's message.
+        content: buildPrompt(text, preset, conversationTurns, operationHint, null),
       },
     ],
   });
@@ -2513,9 +2515,18 @@ const processMetaMessage = async (
   preset = getBusinessCategoryPreset('general'),
   conversationTurns = [],
   catalog = null,
+  hooks = {},
 ) => {
+  const stockResult = async (sourceText, kind) => {
+    const response = await hooks.processStockText?.({ sourceText, businessCategory: preset.id, conversationTurns, metaMessage });
+    if (!response) return null;
+    return { ...metaMessage, kind, sourceText, transcript: kind === 'audio' ? sourceText : null,
+      parsed: { schemaVersion: 1, sourceText, intent: 'add_stock', actions: response.actions ?? [], requiresConfirmation: response.batchStatus !== 'applied' },
+      businessCategory: preset.id, replyText: response.replyText, stockBatchResponse: response };
+  };
   if (metaMessage.messageType === 'audio' && metaMessage.audioId) {
-    const transcript = await transcribeMetaAudioId(metaMessage.audioId);
+    const transcript = (await hooks.loadTranscript?.(metaMessage.messageId)) ?? await transcribeMetaAudioId(metaMessage.audioId);
+    await hooks.saveTranscript?.(metaMessage.messageId, transcript);
     if (looksLikeUnusableTranscript(transcript)) {
       console.warn('[MetaWebhook] unusable transcript, asking for a new audio:', String(transcript).slice(0, 160));
       return {
@@ -2529,6 +2540,8 @@ const processMetaMessage = async (
       };
     }
 
+    const handled = await stockResult(transcript, 'audio');
+    if (handled) return handled;
     const parsed = await parseVoiceTextWithModel(transcript, preset, conversationTurns, catalog);
 
     return {
@@ -2543,6 +2556,8 @@ const processMetaMessage = async (
   }
 
   if (metaMessage.textBody) {
+    const handled = await stockResult(metaMessage.textBody, 'text');
+    if (handled) return handled;
     const parsed = await parseVoiceTextWithModel(metaMessage.textBody, preset, conversationTurns, catalog);
 
     return {
@@ -2569,7 +2584,7 @@ const processMetaMessage = async (
 
 export const processMetaWebhook = async (
   body,
-  { resolveBusinessCategory, resolveConversationHistory, resolveCatalog } = {},
+  { resolveBusinessCategory, resolveConversationHistory, resolveCatalog, processStockText, loadTranscript, saveTranscript } = {},
 ) => {
   if (!body || body.object !== 'whatsapp_business_account') {
     return [];
@@ -2607,7 +2622,7 @@ export const processMetaWebhook = async (
     }
 
     const preset = getBusinessCategoryPreset(categoryId);
-    results.push(await processMetaMessage(message, preset, conversationTurns, catalog));
+    results.push(await processMetaMessage(message, preset, conversationTurns, catalog, { processStockText, loadTranscript, saveTranscript }));
   }
 
   return results;

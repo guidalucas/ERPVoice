@@ -389,6 +389,7 @@ const tryProvider = async (provider, messages, options, retries) => {
         content,
         json: parsed.json,
         latencyMs,
+        usage: data.usage ?? null,
         recoveredJson: Boolean(parsed.recovered),
       };
     }
