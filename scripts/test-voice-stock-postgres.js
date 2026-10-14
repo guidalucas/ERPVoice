@@ -196,6 +196,21 @@ try {
     const result = await message('correction-cancel', 'cancelar'); assert.equal(result.batchStatus, 'cancelled');
     assert.equal((await db.getVoiceStockBatchByMessage(owner, batch.sourceMessageId)).status, 'cancelled');
   });
+  await check('reintentar recupera la transcripción guardada de un borrador sin acciones', async () => {
+    const sourceText = 'Ingresaron dos Taladro Makita';
+    const batch = await createBatch([], { status: 'awaiting_correction', sourceText,
+      payload: { actions: [], coverageVerified: false, resolutionError: 'unsupported_price', evidenceSourceText: sourceText } });
+    const retried = await message('retry-saved-transcript', 'reintentar');
+    assert.equal(retried.batchId, batch.id); assert.equal(retried.batchStatus, 'awaiting_choice');
+    assert.match(retried.replyText, /Taladro Makita/);
+    const saved = await db.getVoiceStockBatchByMessage(owner, batch.sourceMessageId);
+    assert.equal(saved.sourceText, sourceText); assert.equal(saved.payload.evidenceSourceText, sourceText);
+    assert.equal(saved.payload.actions.length, 1); assert.equal(saved.payload.coverageVerified, true);
+    const selected = await message('retry-saved-select', '1'); assert.equal(selected.batchStatus, 'applied');
+    const beforeReplay = calls;
+    assert.equal((await message('retry-saved-transcript', 'reintentar')).replyText, retried.replyText);
+    assert.equal(calls, beforeReplay);
+  });
   await check('corrección conserva el texto original y requiere una nueva auditoría', async () => {
     auditComplete = false;
     const original = 'Ingresaron dos Taladro Makita. Hay otra mención dudosa.';

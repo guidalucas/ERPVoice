@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { prepareStockDraft, validateStockDraft, retrieveStockCandidates } from '../server/voiceStockEngine.js';
+import { stockDraftFailureReply } from '../server/voiceStockWorkflow.js';
 import { incidentText, clarifiedText, incidentActions, incidentCatalog, ambiguousMention, genericCases } from './fixtures/voice-stock-corpus.js';
 
 process.env.GEMINI_API_KEY = 'test-key'; process.env.LLM_PROVIDER = 'gemini'; process.env.LLM_DISABLE_FALLBACK = '1';
@@ -11,7 +12,7 @@ globalThis.fetch = async (_url, request) => {
   const body = JSON.parse(request.body);
   requests.push(body);
   const stage = body.messages[0].content;
-  const data = stage.includes('extract') ? { kind: 'stock_intake', actions: structuredClone(scenario.actions) }
+  const data = stage.includes('extract') ? { kind: 'stock_intake', actions: structuredClone(stage.includes('repair_extract') ? scenario.repairedActions ?? scenario.actions : scenario.actions) }
     : stage.includes('audit') ? { coverageComplete: scenario.complete !== false, issues: scenario.complete === false ? [ambiguousMention] : [], verifiedItemIds: scenario.actions.map((_, index) => `item-${index + 1}`) }
     : { items: scenario.actions.map((_, index) => ({ itemId: `item-${index + 1}`, kind: scenario.resolutionKind ?? 'new', productId: scenario.productId, candidateIds: scenario.candidateIds ?? [], reason: 'Clasificación de prueba.' })) };
   return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(data) } }] }), { status: 200 });
@@ -41,7 +42,27 @@ try {
   });
   await run('acción inventada sin cita literal no llega a resolver catálogo', async () => {
     const draft = await prepare(incidentText, [{ ...incidentActions[0], productName: 'Camiseta Chelsea', evidence: 'Chelsea' }]);
-    assert.equal(draft.ok, false); assert.equal(draft.reason, 'invalid_action_or_evidence'); assert.equal(requests.length, 1);
+    assert.equal(draft.ok, false); assert.equal(draft.reason, 'invalid_action_or_evidence'); assert.equal(draft.field, 'evidence'); assert.equal(draft.itemIndex, 0); assert.equal(requests.length, 2);
+    assert.equal(requests.some((request) => /Etapa: (audit|resolve)/.test(request.messages[0].content)), false);
+  });
+  await run('cita normalizada se repara una vez y la lista completa pasa auditoría antes de resolver', async () => {
+    const invalid = structuredClone(incidentActions);
+    invalid[0].evidence = invalid[0].evidence.toUpperCase();
+    const draft = await prepare(clarifiedText, invalid, incidentCatalog, { repairedActions: incidentActions });
+    assert.equal(draft.ok, true); assert.equal(draft.actions.length, 11);
+    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'repair_extract', 'audit', 'resolve']);
+    assert.ok(requests.slice(0, 3).every((body) => !JSON.stringify(body).includes('arg-home')));
+  });
+  await run('precio sin cita se repara sin eliminar el precio global ni su excepción', async () => {
+    const invalid = incidentActions.map((action) => ({ ...action, fieldEvidence: {} }));
+    const draft = await prepare(clarifiedText, invalid, incidentCatalog, { repairedActions: incidentActions });
+    assert.equal(draft.ok, true); assert.equal(draft.actions.filter((action) => action.price === 65000).length, 10);
+    assert.equal(draft.actions.find((action) => /mangas largas/.test(action.productName)).price, 70000);
+  });
+  await run('rechazo técnico permite reintentar; una ambigüedad muestra la pregunta concreta', async () => {
+    const technical = stockDraftFailureReply({ reason: 'unsupported_price' });
+    assert.match(technical, /reintentar/); assert.doesNotMatch(technical, /lista completa corregida/);
+    assert.match(stockDraftFailureReply({ issues: ['¿Son dos productos distintos?'] }), /¿Son dos productos distintos\?/);
   });
   await run('cantidades fraccionarias y precio sin respaldo se rechazan', async () => {
     assert.equal(validateStockDraft(incidentText, [{ ...incidentActions[0], qty: 1.5 }]).ok, false);
