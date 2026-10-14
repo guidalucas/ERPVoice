@@ -8,10 +8,19 @@ let scenario;
 let requests = [];
 let count = 0;
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async (_url, request) => {
+globalThis.fetch = async (url, request) => {
   const body = JSON.parse(request.body);
   requests.push(body);
+  if (scenario.geminiUnavailable && String(url).includes('generativelanguage.googleapis.com')) throw new Error('Gemini timeout simulado');
   const stage = body.messages[0].content;
+  if (scenario.groqOversizedOnce && !scenario.groqSizeRejected && String(url).includes('api.groq.com') && stage.includes('Etapa: extract.')) {
+    scenario.groqSizeRejected = true;
+    return new Response('{"error":{"message":"Limit 8000, Requested 8500"}}', { status: 413 });
+  }
+  if (scenario.groqRateLimitedOnce && scenario.groqSizeRejected && !scenario.groqRateLimited && String(url).includes('api.groq.com') && stage.includes('Etapa: extract.')) {
+    scenario.groqRateLimited = true;
+    return new Response('{"error":"rate limit"}', { status: 429, headers: { 'retry-after': '0.001' } });
+  }
   const input = JSON.parse(body.messages[1].content.split('\nDATOS:\n')[1]);
   if (stage.includes('Etapa: resolve.') && (scenario.failAllResolve || (scenario.failFirstResolve && (scenario.resolveFailures ?? 0) < 2))) {
     scenario.resolveFailures = (scenario.resolveFailures ?? 0) + 1;
@@ -59,6 +68,7 @@ try {
   await run('lista aclarada: Argentina y Boca presentes, Chelsea ausente, precio global y excepción', async () => {
     const draft = await prepare();
     assert.equal(draft.ok, true); assert.equal(draft.coverageVerified, true); assert.equal(draft.actions.length, 11);
+    assert.equal(requests[0].model, 'gemini-3.5-flash-lite');
     const argentina = draft.actions.find((action) => /Argentina/.test(action.productName));
     assert.equal(argentina.resolution.kind, 'new'); assert.equal(argentina.price, 65000);
     assert.ok(draft.actions.some((action) => /Boca/.test(action.productName)));
@@ -214,6 +224,31 @@ try {
       assert.ok(input.candidates.every((entry) => entry.products.length <= 12));
       assert.equal(body.max_tokens, 1536);
       assert.equal(input.sourceText, undefined);
+    }
+  });
+  await run('Gemini caído: Groq recibe una extracción acotada y de bajo razonamiento', async () => {
+    const priorGroqKey = process.env.GROQ_API_KEY;
+    const priorDisableFallback = process.env.LLM_DISABLE_FALLBACK;
+    process.env.GROQ_API_KEY = 'test-key';
+    process.env.LLM_DISABLE_FALLBACK = '0';
+    try {
+      const draft = await prepare(clarifiedText, incidentActions, incidentCatalog, { geminiUnavailable: true, groqOversizedOnce: true, groqRateLimitedOnce: true });
+      assert.equal(draft.ok, true);
+      assert.equal(draft.actions.length, incidentActions.length);
+      const extractRequests = requests.filter((body) => body.model === 'openai/gpt-oss-20b' && body.messages[0].content.includes('Etapa: extract.'));
+      const extractRequest = extractRequests[0];
+      const auditRequest = requests.find((body) => body.model === 'openai/gpt-oss-20b' && body.messages[0].content.includes('Etapa: audit.'));
+      assert.equal(extractRequest.max_tokens, 4096);
+      assert.equal(extractRequest.reasoning_effort, 'low');
+      assert.equal(extractRequests.length, 3);
+      assert.ok(extractRequests[1].max_tokens < extractRequest.max_tokens);
+      assert.equal(extractRequests[2].max_tokens, extractRequests[1].max_tokens);
+      assert.equal(auditRequest.max_tokens, 1024);
+      assert.ok(requests.filter((body) => body.model === 'openai/gpt-oss-20b' && body.messages[0].content.includes('Etapa: resolve.'))
+        .every((body) => body.max_tokens === 1536));
+    } finally {
+      if (priorGroqKey == null) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = priorGroqKey;
+      if (priorDisableFallback == null) delete process.env.LLM_DISABLE_FALLBACK; else process.env.LLM_DISABLE_FALLBACK = priorDisableFallback;
     }
   });
   for (const failure of ['oversized', 'truncated']) {

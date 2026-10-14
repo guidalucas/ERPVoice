@@ -171,13 +171,14 @@ const buildGroqProvider = () => {
   if (!apiKey) {
     return null;
   }
+  const model = firstNonEmpty(process.env.VITE_VOICE_MODEL_NAME, DEFAULT_GROQ_MODEL) || DEFAULT_GROQ_MODEL;
   return {
     id: 'groq',
     endpoint: firstNonEmpty(process.env.VITE_VOICE_MODEL_ENDPOINT, GROQ_CHAT_COMPLETIONS) || GROQ_CHAT_COMPLETIONS,
     apiKey,
-    models: [firstNonEmpty(process.env.VITE_VOICE_MODEL_NAME, DEFAULT_GROQ_MODEL) || DEFAULT_GROQ_MODEL],
+    models: [model],
     supportsJsonObject: true,
-    reasoningEffort: '',
+    reasoningEffort: /^openai\/gpt-oss-(?:20b|120b)$/.test(model) ? 'low' : '',
     maxTokens: Number(process.env.GROQ_MAX_TOKENS) || 2048,
   };
 };
@@ -260,14 +261,10 @@ const buildRequestBody = (provider, model, messages, options, { jsonObject, incl
   return body;
 };
 
-export const modelsForRequest = (provider, sourceTextChars = 0) => {
+export const modelsForRequest = (provider, sourceTextChars = 0, preferPrimaryModel = false) => {
   const models = [...provider.models];
-  if (
-    provider.id === 'gemini' &&
-    models[0] === DEFAULT_GEMINI_MODEL &&
-    models.includes(FALLBACK_GEMINI_MODEL) &&
-    sourceTextChars >= LONG_INPUT_CHARS
-  ) {
+  if (!preferPrimaryModel && provider.id === 'gemini' && models[0] === DEFAULT_GEMINI_MODEL &&
+    models.includes(FALLBACK_GEMINI_MODEL) && sourceTextChars >= LONG_INPUT_CHARS) {
     return [FALLBACK_GEMINI_MODEL, ...models.filter((model) => model !== FALLBACK_GEMINI_MODEL)];
   }
   return models;
@@ -276,15 +273,17 @@ export const modelsForRequest = (provider, sourceTextChars = 0) => {
 const tryProvider = async (provider, messages, options, retries) => {
   const startedAt = Date.now();
   let lastFailure = { reason: 'unknown', status: 0 };
-  const models = modelsForRequest(provider, options.sourceTextChars);
+  const models = modelsForRequest(provider, options.sourceTextChars, options.preferPrimaryModel);
 
   for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
     const model = models[modelIndex];
     let jsonObject = true;
     let includeReasoning = Boolean(provider.reasoningEffort);
+    let requestMaxTokens = options.maxTokens ?? provider.maxTokens;
+    let adjustedForSize = false;
 
     for (let attempt = 1; attempt <= retries; attempt += 1) {
-      const body = buildRequestBody(provider, model, messages, options, { jsonObject, includeReasoning });
+      const body = buildRequestBody(provider, model, messages, { ...options, maxTokens: requestMaxTokens }, { jsonObject, includeReasoning });
       let response;
       let errorText = '';
 
@@ -324,6 +323,18 @@ const tryProvider = async (provider, messages, options, retries) => {
           continue;
         }
 
+        if (provider.id === 'groq' && response.status === 413 && !adjustedForSize) {
+          const limit = errorText.match(/Limit\s+(\d+)\s*,\s*Requested\s+(\d+)/i);
+          const reduction = limit ? Number(limit[2]) - Number(limit[1]) + 256 : 0;
+          if (reduction > 0 && requestMaxTokens - reduction >= 768) {
+            requestMaxTokens -= reduction;
+            adjustedForSize = true;
+            console.warn(`[LLM] ${provider.id}/${model} reduce max_tokens a ${requestMaxTokens} tras HTTP 413`);
+            attempt -= 1;
+            continue;
+          }
+        }
+
         if (looksLikeUnknownModel(response.status, errorText) && modelIndex < models.length - 1) {
           console.warn(`[LLM] ${provider.id} modelo ${model} no disponible (${response.status}); pruebo ${models[modelIndex + 1]}`);
           break;
@@ -332,7 +343,7 @@ const tryProvider = async (provider, messages, options, retries) => {
         if (retryableStatus(response.status) && attempt < retries) {
           const retryAfter = Number(response.headers.get('retry-after'));
           const hinted = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1500 * attempt;
-          const waitMs = Math.min(8000, hinted);
+          const waitMs = Math.min(response.status === 429 ? 120000 : 8000, hinted);
           console.warn(
             `[LLM] ${provider.id}/${model} HTTP ${response.status} — retry ${attempt}/${retries} in ${waitMs}ms`,
             describeRateLimit(response),
@@ -403,7 +414,7 @@ const tryProvider = async (provider, messages, options, retries) => {
   };
 };
 
-export const completeChatJson = async ({ messages, temperature = 0, maxTokens, sourceTextChars = 0 } = {}) => {
+export const completeChatJson = async ({ messages, temperature = 0, maxTokens, sourceTextChars = 0, preferPrimaryModel = false } = {}) => {
   const chain = resolveProviderChain();
   if (!chain.length) {
     return { ok: false, reason: 'missing_api_key' };
@@ -413,7 +424,7 @@ export const completeChatJson = async ({ messages, temperature = 0, maxTokens, s
   for (let index = 0; index < chain.length; index += 1) {
     const provider = chain[index];
     const retries = index === 0 ? PRIMARY_RETRIES : SECONDARY_RETRIES;
-    const result = await tryProvider(provider, messages, { temperature, maxTokens, sourceTextChars }, retries);
+    const result = await tryProvider(provider, messages, { temperature, maxTokens, sourceTextChars, preferPrimaryModel }, retries);
     if (result.ok) {
       if (failures.length) {
         console.warn(`[LLM] ${provider.id} respondió después de fallar ${failures.map((item) => item.provider).join(' → ')}`);
