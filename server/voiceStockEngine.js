@@ -55,17 +55,20 @@ export const validateStockDraft = (sourceText, actions) => {
   return { ok: true, actions: validated };
 };
 
-export const extractStockDraft = async ({ sourceText, businessCategory, conversationTurns = [] }) => {
+export const extractStockDraft = async ({ sourceText, businessCategory, conversationTurns = [], clarificationContext = null }) => {
   const referencedTurns = /\b(anterior|antes|eso|esas|esos|mencione|dije|dictado|listado)\b/.test(normalizeIdentity(sourceText))
     ? conversationTurns.filter((turn) => turn.role === 'user') : [];
   const result = await jsonCall('extract', `Decidí si el mensaje indica un ingreso de stock para registrar ahora. No confundas consultas, ventas ni pedidos con ingresos.
+Las referencias al producto anterior y autocorrecciones actualizan ese ítem, no crean otro ni suman cantidad salvo una entrada adicional explícita. Aplicá atributos globales solo en su alcance y guardá su cita en fieldEvidence.attributes. Un atributo local no se propaga. Si falta medida/talle/presentación, omití ese campo: no inventes un valor por defecto.
+Si hay clarificationContext, el mensaje puede ser una respuesta breve a las preguntas del borrador. Si lo aclara, reconstruí TODOS sus productos usando el texto guardado más la respuesta y devolvé sourceText EXACTAMENTE igual a clarificationContext.sourceText. Si trae una lista completa de reemplazo, usá solo el mensaje actual. Si es ajeno a ese ingreso, devolvé kind:"other"; nunca agregues una orden independiente al borrador.
 Devolvé {kind:"stock_intake"|"other", actions:[]}. Para ingresos, una acción por producto distinto:
 {type:"add_stock",productName:string,productType?:string,productModel?:string,size?:string,qty:integer,price?:integer,evidence:string,identityAttributes?:object,fieldEvidence:{qty?:string,price?:string,attributes?:string[]}}.
-evidence es un fragmento LITERAL CONTIGUO del mensaje que identifica el producto: no combines partes, no corrijas ortografía, mayúsculas ni puntuación. productName puede organizar los atributos, evidence no. Guardá citas literales también para cantidad, precio y atributos globales. fieldEvidence.price y fieldEvidence.qty son strings, nunca números. Un precio global puede usar la misma cita para varios productos. Ejemplo: si dice "todos valen 65.000", price es 65000 y fieldEvidence.price es "todos valen 65.000". Cantidad por defecto 1. Si repite el mismo SKU, sumá cantidades con evidencia de la repetición. Conservá año, marca, versión, presentación, medida y demás diferencias. Nunca inventes nombres ni completes atributos con conocimiento externo. Ante una frase dudosa conservá lo dicho; la auditoría podrá pedir aclaración. El contexto solo sirve para referencias explícitas a mensajes anteriores: en ese caso devolvé también sourceText con el listado literal completo usado.`, { sourceText, businessCategory, conversationTurns: referencedTurns });
+evidence es un fragmento LITERAL CONTIGUO del mensaje que identifica el producto: no combines partes, no corrijas ortografía, mayúsculas ni puntuación. productName puede organizar los atributos, evidence no. Guardá citas literales también para cantidad, precio y atributos globales. fieldEvidence.price y fieldEvidence.qty son strings, nunca números. Un precio global puede usar la misma cita para varios productos. Ejemplo: si dice "todos valen 65.000", price es 65000 y fieldEvidence.price es "todos valen 65.000". Cantidad por defecto 1. Si repite el mismo SKU, sumá cantidades con evidencia de la repetición. Conservá año, marca, versión, presentación, medida y demás diferencias. Nunca inventes nombres ni completes atributos con conocimiento externo. Ante una frase dudosa conservá lo dicho; la auditoría podrá pedir aclaración. El contexto solo sirve para referencias explícitas a mensajes anteriores: en ese caso devolvé también sourceText con el listado literal completo usado.`, { sourceText, businessCategory, conversationTurns: referencedTurns, clarificationContext });
   if (!result.ok) return { ok: false, reason: 'extractor_unavailable', trace: result.trace };
   if (result.json?.kind === 'other') return { ok: true, kind: 'other', trace: result.trace };
   if (result.json?.kind !== 'stock_intake') return { ok: false, reason: 'invalid_intent', trace: result.trace };
-  const effectiveSource = result.json.sourceText && referencedTurns.some((turn) => turn.text === result.json.sourceText)
+  const effectiveSource = result.json.sourceText && (referencedTurns.some((turn) => turn.text === result.json.sourceText)
+    || clarificationContext?.sourceText === result.json.sourceText)
     ? `${result.json.sourceText}\n${sourceText}` : sourceText;
   let validation = validateStockDraft(effectiveSource, result.json.actions);
   const traces = [result.trace];
@@ -87,12 +90,22 @@ evidence y todas las citas de fieldEvidence deben ser fragmentos LITERALES CONTI
 };
 
 export const auditStockDraft = async ({ sourceText, actions }) => {
-  const result = await jsonCall('audit', `Auditá la lista contra TODO el texto, sin catálogo. Buscá productos omitidos, inventados o duplicados y cantidades/precios/atributos globales mal asignados, incluyendo excepciones. No modifiques la lista. Devolvé {coverageComplete:boolean, issues:string[], verifiedItemIds:string[]}. Solo coverageComplete=true si cada mención está explicada por una acción y cada acción está respaldada; una autocorrección no es otro producto. Si una frase es ambigua, indicá exactamente cuál y por qué.`, { sourceText, actions });
+  const result = await jsonCall('audit', `Auditá la lista contra TODO el texto, sin catálogo. Buscá productos omitidos, inventados o duplicados y cantidades/precios/atributos globales mal asignados, incluyendo excepciones. No modifiques la lista.
+Devolvé {coverageComplete:boolean, issues:[{kind:"repairable"|"clarification",detail:string,evidence:string,question?:string}], verifiedItemIds:string[]}.
+Solo coverageComplete=true con issues vacío y cada mención explicada por una acción respaldada. Las referencias al producto anterior y autocorrecciones no son otro producto ni suman unidades salvo ingreso adicional explícito.
+Una cita de atributo global ausente o un atributo mal aplicado es repairable: el sistema lo arregla usando el original. Nunca le preguntes al usuario por citas, posiciones, evidencia, IDs ni formato interno.
+Un atributo NO mencionado (medida, talle, marca, etc.) debe quedar ausente. Esto NO es un problema de cobertura ni requiere aclaración. Un dato local no se propaga. La falta de atributos para elegir una variante del catálogo se resuelve DESPUÉS, al comparar productos.
+clarification solo si hay dos interpretaciones materiales del texto que no se pueden resolver desde lo dicho (por ejemplo, no se sabe si una mención es otro producto o una corrección). evidence debe ser una cita literal del texto y question una pregunta breve sobre esa duda concreta, sin pedir repetir la lista completa. Leé las aclaraciones posteriores del usuario como tales, sin convertirlas en nuevos productos.`, { sourceText, actions });
   const data = result.json;
   const verified = new Set(Array.isArray(data?.verifiedItemIds) ? data.verifiedItemIds : []);
+  const issues = Array.isArray(data?.issues) ? data.issues : [];
+  const clarifications = issues.filter((issue) => issue?.kind === 'clarification'
+    && typeof issue.question === 'string' && issue.question.trim() && issue.question.length <= 500
+    && typeof issue.evidence === 'string' && issue.evidence.trim() && sourceText.includes(issue.evidence));
   return {
     ok: Boolean(result.ok && data?.coverageComplete === true && Array.isArray(data?.issues) && data.issues.length === 0 && actions.every((action) => verified.has(action.itemId))),
-    reason: result.ok ? 'coverage_incomplete' : 'auditor_unavailable', issues: Array.isArray(data?.issues) ? data.issues : [], trace: result.trace,
+    reason: result.ok ? 'coverage_incomplete' : 'auditor_unavailable', issues, clarifications,
+    needsRepair: Boolean(result.ok && (!issues.length || clarifications.length !== issues.length)), trace: result.trace,
   };
 };
 
@@ -132,12 +145,27 @@ Si el texto distingue explícitamente otra marca, modelo, año, medida o present
 };
 
 export const prepareStockDraft = async (input) => {
-  const extraction = await extractStockDraft(input);
+  let extraction = await extractStockDraft(input);
   if (!extraction.ok || extraction.kind === 'other') return extraction;
-  const audit = await auditStockDraft(extraction);
-  if (!audit.ok) return { ...extraction, ok: false, reason: audit.reason, issues: audit.issues, traces: [...extraction.traces, audit.trace] };
+  let audit = await auditStockDraft(extraction);
+  const traces = [...extraction.traces, audit.trace];
+  if (!audit.ok && audit.needsRepair) {
+    const repaired = await jsonCall('repair_coverage', `Repará la lista COMPLETA con el texto original y el diagnóstico de auditoría. Devolvé {actions:[]}.
+Cada acción tiene type:"add_stock", productName:string, qty:entero positivo, evidence:cita literal contigua, fieldEvidence:{qty?:cita literal,price?:cita literal,attributes?:citas literales[]}; price opcional es entero no negativo; productType/productModel/size opcionales strings.
+Repará omisiones, duplicados, referencias al producto anterior y alcance de atributos globales. Adjuntá las citas globales a los ítems que correspondan. Las referencias/autocorrecciones no agregan unidades. Un atributo local no se propaga, y los atributos no mencionados quedan ausentes. No borres precios ni productos reales para pasar la auditoría. Si queda una duda de intención, conservá lo dicho para que la nueva auditoría formule una pregunta concreta. No inventes información.`, {
+      sourceText: extraction.sourceText, actions: extraction.actions, issues: audit.issues,
+    });
+    traces.push(repaired.trace);
+    const valid = repaired.ok ? validateStockDraft(extraction.sourceText, repaired.json?.actions) : { ok: false };
+    if (valid.ok) {
+      extraction = { ...extraction, actions: valid.actions };
+      audit = await auditStockDraft(extraction);
+      traces.push(audit.trace);
+    }
+  }
+  if (!audit.ok) return { ...extraction, ok: false, reason: audit.reason, issues: audit.issues, clarifications: audit.clarifications, traces };
   const resolution = await resolveStockDraft({ ...extraction, catalog: input.catalog });
-  return { ...extraction, ...resolution, coverageVerified: true, traces: [...extraction.traces, audit.trace, resolution.trace], engineVersion: ENGINE_VERSION };
+  return { ...extraction, ...resolution, coverageVerified: true, traces: [...traces, resolution.trace], engineVersion: ENGINE_VERSION };
 };
 
 export const interpretStockClarification = async ({ sourceText, action }) => {

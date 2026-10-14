@@ -62,11 +62,12 @@ const draftPayload = (draft, messageId, previous = {}) => ({
   initialActions: previous.initialActions ?? draft.actions ?? [],
   traces: [...(previous.traces ?? []), ...(draft.traces ?? [draft.trace]).filter(Boolean)],
   issues: draft.issues ?? [], resolutionError: draft.ok ? null : draft.reason, replyMessageId: messageId,
+  clarificationsNeeded: draft.clarifications ?? [],
   validationError: draft.ok ? null : { reason: draft.reason, itemIndex: draft.itemIndex, field: draft.field },
 });
 
 export const stockDraftFailureReply = (draft) => {
-  if (draft.issues?.length) return `Guardé el ingreso como borrador y no apliqué cambios. Necesito aclarar lo siguiente:\n${draft.issues.join('\n')}\nEnviame la lista completa con esa aclaración, o escribí “cancelar”.`;
+  if (draft.clarifications?.length) return `Guardé el ingreso como borrador y no apliqué cambios.\n${draft.clarifications.map((issue) => issue.question).join('\n')}\nRespondé esas preguntas; conservo el resto de la lista. También podés escribir “cancelar”.`;
   return 'Guardé tu mensaje como borrador y no apliqué cambios. No pude verificar automáticamente la lista de productos. Podés escribir “reintentar” para procesar lo guardado sin repetir el mensaje ni el audio, o “cancelar”.';
 };
 
@@ -77,7 +78,7 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, c
     const prior = replay.payload.handledMessages?.find((entry) => entry.messageId === messageId);
     if (!prior?.replyText && !replay.replyText && ['awaiting_choice', 'awaiting_correction'].includes(replay.status)) {
       if (pendingItem(replay)) return finish(replay, ownerPhone, messageId);
-      const saved = await saveTransition(replay, messageId, replay.payload, 'awaiting_correction', 'Tu ingreso está guardado como borrador. Enviame la lista completa corregida o escribí “cancelar”.');
+      const saved = await saveTransition(replay, messageId, replay.payload, 'awaiting_correction', stockDraftFailureReply({ clarifications: replay.payload.clarificationsNeeded }));
       return saved ? asResult(saved) : concurrentResult(replay, ownerPhone);
     }
     return asResult(replay, prior?.replyText ?? replay.replyText);
@@ -170,8 +171,12 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, c
   if (!active && mode === 'disabled') return null;
   const retrySaved = active?.status === 'awaiting_correction' && /^(reintentar|reintenta|volver a intentar)$/.test(text);
   const draft = await prepare({ sourceText: retrySaved ? active.payload.evidenceSourceText ?? active.sourceText : sourceText,
-    businessCategory, conversationTurns: retrySaved ? [] : conversationTurns, catalog });
-  if (!draft) return active ? asResult(active, 'El ingreso sigue en borrador. Enviame la lista completa corregida o escribí “cancelar”.') : null;
+    businessCategory, conversationTurns: retrySaved ? [] : conversationTurns, catalog,
+    clarificationContext: !retrySaved && active?.status === 'awaiting_correction' ? {
+      sourceText: active.payload.evidenceSourceText ?? active.sourceText,
+      actions: active.payload.actions, questions: active.payload.clarificationsNeeded ?? [],
+    } : null });
+  if (!draft) return active ? asResult(active, stockDraftFailureReply({ clarifications: active.payload.clarificationsNeeded })) : null;
   if (!active && mode === 'shadow') {
     await saveVoiceStockShadowRun(messageId, ownerPhone, draft);
     console.log('[VoiceStockBatch] shadow', { messageId, ok: draft.ok, reason: draft.reason, items: draft.actions?.length, traces: draft.traces });
