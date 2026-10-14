@@ -52,17 +52,18 @@ const finish = async (batch, ownerPhone, messageId) => {
 const prepare = async (input) => {
   const draft = await prepareStockDraft(input);
   if (draft.kind === 'other') return null;
-  if (!draft.ok && !draft.kind && !/\b(ingres|recib|lleg|entr|carg|agreg|compr)/i.test(input.sourceText)) return null;
+  if (!draft.ok && !draft.kind && !input.clarificationContext
+    && !/\b(ingres|recib|lleg|entr|carg|agreg|compr)/i.test(input.sourceText)) return null;
   return draft;
 };
 
-const draftPayload = (draft, messageId, previous = {}) => ({
-  ...previous, actions: draft.actions ?? [], coverageVerified: Boolean(draft.ok && draft.coverageVerified),
-  evidenceSourceText: draft.sourceText, engineVersion: ENGINE_VERSION,
+const draftPayload = (draft, messageId, previous = {}, fallbackSourceText = '') => ({
+  ...previous, actions: draft.actions ?? previous.actions ?? [], coverageVerified: Boolean(draft.ok && draft.coverageVerified),
+  evidenceSourceText: draft.sourceText ?? previous.evidenceSourceText ?? fallbackSourceText, engineVersion: ENGINE_VERSION,
   initialActions: previous.initialActions ?? draft.actions ?? [],
   traces: [...(previous.traces ?? []), ...(draft.traces ?? [draft.trace]).filter(Boolean)],
-  issues: draft.issues ?? [], resolutionError: draft.ok ? null : draft.reason, replyMessageId: messageId,
-  clarificationsNeeded: draft.clarifications ?? [],
+  issues: draft.issues ?? (draft.ok ? [] : previous.issues ?? []), resolutionError: draft.ok ? null : draft.reason, replyMessageId: messageId,
+  clarificationsNeeded: draft.clarifications ?? (draft.ok ? [] : previous.clarificationsNeeded ?? []),
   validationError: draft.ok ? null : { reason: draft.reason, itemIndex: draft.itemIndex, field: draft.field },
 });
 
@@ -72,7 +73,19 @@ export const stockDraftFailureReply = (draft) => {
   return 'Guardé tu mensaje como borrador y no apliqué cambios. No pude verificar automáticamente la lista de productos. Podés escribir “reintentar” para procesar lo guardado sin repetir el mensaje ni el audio, o “cancelar”.';
 };
 
-export const processStockBatchMessage = async ({ sourceText, businessCategory, conversationTurns, ownerPhone, senderPhone, messageId }) => {
+export const holdUnverifiedStockMessage = async ({ sourceText, businessCategory, ownerPhone, senderPhone, messageId }) => {
+  const replyText = 'Guardé el ingreso como borrador y no apliqué cambios. No pude verificar la lista. Escribí “reintentar” para procesar el mensaje guardado, sin repetir el texto ni el audio, o “cancelar”.';
+  const batch = await createVoiceStockBatch({
+    id: `voice-stock-${crypto.randomUUID()}`, ownerPhone, senderPhone, sourceMessageId: messageId,
+    status: 'awaiting_correction', sourceText, businessCategory, replyText,
+    payload: { actions: [], initialActions: [], coverageVerified: false, evidenceSourceText: sourceText,
+      engineVersion: ENGINE_VERSION, forceStockIntake: true, resolutionError: 'legacy_stock_unverified',
+      replyMessageId: messageId, handledMessages: [{ messageId, replyText }] },
+  });
+  return asResult(batch);
+};
+
+export const processStockBatchMessage = async ({ sourceText, businessCategory, ownerPhone, senderPhone, messageId }) => {
   const replay = await getVoiceStockBatchByMessage(ownerPhone, messageId);
   if (replay) {
     if (replay.status === 'ready') return finish(replay, ownerPhone, replay.payload.replyMessageId ?? messageId);
@@ -100,7 +113,7 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, c
   if (active?.status === 'ready') {
     await finish(active, ownerPhone, active.payload.replyMessageId ?? active.sourceMessageId);
     // A ready batch is recovered independently; the new incoming message still gets handled.
-    return processStockBatchMessage({ sourceText, businessCategory, conversationTurns, ownerPhone, senderPhone, messageId });
+    return processStockBatchMessage({ sourceText, businessCategory, ownerPhone, senderPhone, messageId });
   }
   if (active?.status === 'awaiting_choice') {
     const actions = active.payload.actions.map((action) => ({ ...action }));
@@ -171,10 +184,12 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, c
   const mode = await getVoiceStockBatchMode(ownerPhone);
   if (!active && mode === 'disabled') return null;
   const retrySaved = active?.status === 'awaiting_correction' && /^(reintentar|reintenta|volver a intentar)$/.test(text);
-  const draft = await prepare({ sourceText: retrySaved ? active.payload.evidenceSourceText ?? active.sourceText : sourceText,
-    businessCategory, conversationTurns: retrySaved ? [] : conversationTurns, catalog,
-    clarificationContext: !retrySaved && active?.status === 'awaiting_correction' ? {
-      sourceText: active.payload.evidenceSourceText ?? active.sourceText,
+  const pendingCorrection = retrySaved ? active.payload.pendingCorrectionText : null;
+  const savedSource = active?.payload.evidenceSourceText ?? active?.sourceText;
+  const draft = await prepare({ sourceText: retrySaved ? pendingCorrection ?? savedSource : sourceText,
+    businessCategory, catalog, forceStockIntake: Boolean(retrySaved && active.payload.forceStockIntake),
+    clarificationContext: active?.status === 'awaiting_correction' && (!retrySaved || pendingCorrection) ? {
+      sourceText: savedSource,
       actions: active.payload.actions, questions: active.payload.clarificationsNeeded ?? [],
     } : null });
   if (!draft) return active ? asResult(active, stockDraftFailureReply({ clarifications: active.payload.clarificationsNeeded })) : null;
@@ -184,7 +199,9 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, c
     return null;
   }
   const status = draft.ok ? 'ready' : 'awaiting_correction';
-  const payload = draftPayload(draft, messageId, active?.payload);
+  const payload = draftPayload(draft, messageId, active?.payload, retrySaved ? savedSource : sourceText);
+  if (draft.ok || (draft.sourceText && draft.sourceText !== savedSource)) delete payload.pendingCorrectionText;
+  else if (active && !retrySaved && !draft.ok) payload.pendingCorrectionText = sourceText;
   if (active) payload.corrections = [...(active.payload.corrections ?? []), { messageId, text: sourceText }];
   const batch = active ? await saveTransition(active, messageId, payload, status) : await createVoiceStockBatch({
     id: `voice-stock-${crypto.randomUUID()}`, ownerPhone, senderPhone, sourceMessageId: messageId,

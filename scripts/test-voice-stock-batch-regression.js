@@ -28,7 +28,8 @@ globalThis.fetch = async (url, request) => {
     return new Response(JSON.stringify({ choices: [{ message: { content: '{"items":[' } }] }), { status: 200 });
   }
   const auditResult = stage.includes('Etapa: audit.') ? scenario.audits?.[scenario.auditCount++] : null;
-  const data = stage.includes('repair_coverage') ? { actions: structuredClone(scenario.coverageActions ?? scenario.actions) }
+  const data = stage.includes('Etapa: extract.') && scenario.extractOther ? { kind: 'other', actions: [] }
+    : stage.includes('repair_coverage') ? { actions: structuredClone(scenario.coverageActions ?? scenario.actions) }
     : stage.includes('extract') ? { kind: 'stock_intake', sourceText: scenario.usedSourceText, actions: structuredClone(stage.includes('repair_extract') ? scenario.repairedActions ?? scenario.actions : scenario.actions) }
       : stage.includes('audit') ? { coverageComplete: scenario.complete !== false, issues: scenario.complete === false ? [{ kind: 'clarification', detail: ambiguousMention, evidence: ambiguousMention, question: '¿La primera mención de Independiente corresponde a la suplente 2026 o a otro producto?' }] : [], verifiedItemIds: input.actions.map((action) => action.itemId), ...auditResult }
         : { items: input.actions.map((action) => ({ itemId: action.itemId, kind: scenario.resolutionKind ?? 'new', productId: scenario.productId, candidateIds: scenario.candidateIds ?? [], reason: 'Clasificación de prueba.' })) };
@@ -40,6 +41,35 @@ const prepare = (text = clarifiedText, actions = incidentActions, catalog = inci
   return prepareStockDraft({ sourceText: text, businessCategory: 'general', catalog });
 };
 try {
+  await run('una orden explícita no cae al parser anterior cuando extract dice other', async () => {
+    const draft = await prepare(incidentText, incidentActions, incidentCatalog, { extractOther: true, complete: false });
+    assert.equal(draft.kind, 'stock_intake');
+    assert.equal(draft.actions.length, 11);
+    assert.equal(draft.reason, 'coverage_incomplete');
+    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'repair_extract', 'audit']);
+  });
+  await run('si la recuperación no extrae productos se conserva el dictado sin aplicar', async () => {
+    const draft = await prepare(incidentText, incidentActions, incidentCatalog, { extractOther: true, repairedActions: [] });
+    assert.equal(draft.kind, 'stock_intake');
+    assert.equal(draft.ok, false);
+    assert.equal(draft.sourceText, incidentText);
+    assert.equal(requests.some((body) => /Etapa: (audit|resolve)\./.test(body.messages[0].content)), false);
+    assert.match(stockDraftFailureReply(draft), /reintentar/);
+  });
+  await run('una consulta sin orden de carga conserva kind other', async () => {
+    const draft = await prepare('¿Cuánto stock hay de camisetas?', incidentActions, incidentCatalog, { extractOther: true });
+    assert.equal(draft.kind, 'other');
+    assert.equal(requests.length, 1);
+  });
+  await run('una referencia dentro del audio no importa mensajes anteriores al lote', async () => {
+    const oldMessage = 'Cargué una camiseta histórica de Chelsea en talle XS.';
+    scenario = { actions: incidentActions, usedSourceText: oldMessage, complete: false, auditCount: 0 };
+    const draft = await prepareStockDraft({ sourceText: incidentText, businessCategory: 'indumentaria', catalog: incidentCatalog,
+      conversationTurns: [{ role: 'user', text: oldMessage }] });
+    assert.equal(draft.sourceText, incidentText);
+    assert.equal(draft.actions.length, 11);
+    assert.equal(requests.some((body) => JSON.stringify(body).includes(oldMessage)), false);
+  });
   await run('dictado original conserva once menciones y señala la frase adicional ambigua', async () => {
     const draft = await prepare(incidentText, incidentActions, incidentCatalog, { complete: false });
     assert.equal(draft.ok, false); assert.equal(draft.actions.length, 11);

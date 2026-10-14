@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import { hasAnyLlmApiKey } from '../server/llmChatClient.js';
 import { prepareStockDraft, normalizeIdentity } from '../server/voiceStockEngine.js';
-import { incidentText, clarifiedText, incidentCatalog, genericCases } from './fixtures/voice-stock-corpus.js';
+import { incidentText, clarifiedText, incidentActions, incidentCatalog, ambiguousMention, genericCases } from './fixtures/voice-stock-corpus.js';
 
 dotenv.config({ path: '.env.local', quiet: true }); dotenv.config({ quiet: true });
 if (!process.argv.includes('--live') || !hasAnyLlmApiKey()) {
@@ -11,15 +11,24 @@ if (!process.argv.includes('--live') || !hasAnyLlmApiKey()) {
 } else {
   const cases = [
     { id: 'incident-original', text: incidentText, category: 'indumentaria', catalog: incidentCatalog, allowHold: true },
+    { id: 'incident-after-history', text: incidentText, category: 'indumentaria', catalog: incidentCatalog, allowHold: true,
+      conversationTurns: [{ role: 'user', text: 'Cargué una camiseta de Chelsea que no aparece en el mensaje actual.' }] },
     { id: 'incident-clarified', text: clarifiedText, category: 'indumentaria', catalog: incidentCatalog },
+    { id: 'incident-clarification-answer', text: 'La segunda frase corregía la primera camiseta, no era otro producto.',
+      category: 'indumentaria', catalog: incidentCatalog,
+      clarificationContext: { sourceText: incidentText,
+        actions: [incidentActions[0], { ...incidentActions[1], evidence: ambiguousMention, productName: 'Camiseta de Independiente, la anterior del Manchester City' }, ...incidentActions.slice(1)],
+        questions: [{ kind: 'clarification', evidence: ambiguousMention, question: '¿Es una corrección o un producto aparte?' }] } },
     ...genericCases,
   ];
   const results = [];
   for (const fixture of cases) {
     const started = Date.now();
-    const draft = await prepareStockDraft({ sourceText: fixture.text, businessCategory: fixture.category, catalog: fixture.catalog });
+    const draft = await prepareStockDraft({ sourceText: fixture.text, businessCategory: fixture.category, catalog: fixture.catalog,
+      conversationTurns: fixture.conversationTurns, clarificationContext: fixture.clarificationContext });
     const errors = [];
     const actions = draft.actions ?? [];
+    if (fixture.id === 'incident-after-history' && draft.sourceText !== incidentText) errors.push('El ingreso absorbió mensajes anteriores.');
     if (fixture.id.startsWith('incident')) {
       if (actions.length < 11) errors.push(`La extracción tiene menos de once menciones identificables: ${actions.length}.`);
       if (!actions.some((action) => /argentina/.test(normalizeIdentity(action.productName)) && /tercera/.test(normalizeIdentity(action.productName)))) errors.push('Falta Argentina tercera.');

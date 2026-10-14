@@ -1,4 +1,4 @@
-import { processStockBatchMessage } from './voiceStockWorkflow.js';
+import { holdUnverifiedStockMessage, processStockBatchMessage } from './voiceStockWorkflow.js';
 import express from 'express';
 import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
@@ -1020,8 +1020,8 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
     const results = await processMetaWebhook(processingBody, {
       loadTranscript: loadMetaTranscript,
       saveTranscript: saveMetaTranscript,
-      processStockText: async ({ sourceText, businessCategory, conversationTurns, metaMessage }) => processStockBatchMessage({
-        sourceText, businessCategory, conversationTurns, ownerPhone: await resolveTenant(metaMessage.fromNumber),
+      processStockText: async ({ sourceText, businessCategory, metaMessage }) => processStockBatchMessage({
+        sourceText, businessCategory, ownerPhone: await resolveTenant(metaMessage.fromNumber),
         senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId(),
       }),
       resolveBusinessCategory: async (fromNumber) => {
@@ -1070,7 +1070,7 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
 
       const tenantPhone = result.fromNumber ? await resolveTenant(result.fromNumber) : null;
       const ownerPhone = tenantPhone || result.fromNumber;
-      const stockBatchResponse = result.stockBatchResponse ?? null;
+      let stockBatchResponse = result.stockBatchResponse ?? null;
 
       const eventRecord = {
         id: incomingId,
@@ -1094,6 +1094,11 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       const mutationActions = allActions.filter((action) => !isReadOnlyAction(action));
       const legacyStockHold = !stockBatchResponse && mutationActions.some((action) => action.type === 'add_stock')
         && await getVoiceStockBatchMode(ownerPhone) === 'active';
+      if (legacyStockHold) {
+        console.warn('[VoiceStockBatch] legacy parser detected stock after batch classifier declined; preserving draft', { messageId: incomingId });
+        stockBatchResponse = await holdUnverifiedStockMessage({ sourceText: result.sourceText,
+          businessCategory: result.businessCategory, ownerPhone, senderPhone: result.fromNumber, messageId: incomingId });
+      }
       const categoryPreset = getBusinessCategoryPreset(result.businessCategory);
 
       let overrideReplyText = stockBatchResponse?.replyText ?? null;
@@ -1122,10 +1127,7 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
         });
       }
 
-      const finalReplyText = stockBatchResponse
-        ? stockBatchResponse.replyText
-        : legacyStockHold ? 'Detecté un ingreso de stock pero no pude verificarlo completo. No apliqué cambios. Enviame el ingreso en un mensaje separado para revisarlo.'
-          : [overrideReplyText, result.replyText].filter(Boolean).join('\n\n');
+      const finalReplyText = stockBatchResponse?.replyText ?? [overrideReplyText, result.replyText].filter(Boolean).join('\n\n');
 
       eventRecord.replyText = finalReplyText;
       eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? result.parsed?.actions ?? []);
@@ -1138,7 +1140,7 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
         sourceText: result.sourceText,
         transcript: result.transcript ?? null,
         replyText: finalReplyText,
-        actions: result.parsed?.actions ?? [],
+        actions: stockBatchResponse?.actions ?? result.parsed?.actions ?? [],
       });
 
       await saveMetaEvent(eventRecord);
