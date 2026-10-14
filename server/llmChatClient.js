@@ -207,7 +207,7 @@ export const describeLlmSetup = () => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const retryableStatus = (status) => status === 429 || status === 500 || status === 502 || status === 503 || status === 413;
+const retryableStatus = (status) => status === 429 || status === 500 || status === 502 || status === 503;
 
 const looksLikeUnknownModel = (status, errorText) => {
   if (status === 404) {
