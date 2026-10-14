@@ -159,14 +159,20 @@ try {
   let auditComplete = true;
   let semanticClarification = null;
   let resolutionKind = 'ambiguous';
+  let extractionOverride = null;
+  let useSavedContext = false;
+  const modelInputs = [];
   globalThis.fetch = async (_url, request) => {
     calls++;
     const body = JSON.parse(request.body);
     const stage = body.messages[0].content;
+    const input = JSON.parse(body.messages[1].content.split('\nDATOS:\n')[1]);
+    modelInputs.push({ stage, input });
+    const extracted = extractionOverride ?? [{ type: 'add_stock', productName: 'Taladro Makita', qty: 2, evidence: 'Taladro Makita', fieldEvidence: { qty: 'dos' } }];
     const content = stage.includes('clarify') ? (semanticClarification ?? { kind: 'unrelated' })
-      : stage.includes('extract') ? { kind: 'stock_intake', actions: [{ type: 'add_stock', productName: 'Taladro Makita', qty: 2, evidence: 'Taladro Makita', fieldEvidence: { qty: 'dos' } }] }
-      : stage.includes('audit') ? { coverageComplete: auditComplete, issues: auditComplete ? [] : ['Falta aclarar una mención.'], verifiedItemIds: ['item-1'] }
-      : { items: [{ itemId: 'item-1', kind: resolutionKind, candidateIds: [drillA.id, drillB.id], reason: 'Falta medida.' }] };
+      : stage.includes('extract') ? { kind: 'stock_intake', sourceText: useSavedContext ? input.clarificationContext?.sourceText : undefined, actions: extracted }
+      : stage.includes('audit') ? { coverageComplete: auditComplete, issues: auditComplete ? [] : [{ kind: 'clarification', detail: 'Una referencia puede ser otra unidad.', evidence: extracted[0].evidence, question: '¿La segunda mención es otro producto o una referencia al primero?' }], verifiedItemIds: input.actions.map((item) => item.itemId) }
+      : { items: input.actions.map((item) => ({ itemId: item.itemId, kind: resolutionKind, candidateIds: [drillA.id, drillB.id], reason: 'Falta medida.' })) };
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
   };
   const message = (messageId, sourceText) => processStockBatchMessage({ ownerPhone: owner, senderPhone: owner, messageId, sourceText, businessCategory: 'ferreteria', conversationTurns: [] });
@@ -221,6 +227,26 @@ try {
     const saved = await db.getVoiceStockBatchByMessage(owner, 'audit-hold');
     assert.equal(saved.sourceText, original); assert.equal(saved.payload.corrections[0].messageId, 'audit-corrected');
     assert.equal(saved.status, 'applied');
+  });
+  await check('respuesta breve a una duda conserva toda la lista y aplica una sola vez', async () => {
+    const source = 'Ingresó Aceite Aurora y Arroz Norte. El anterior es importado.';
+    extractionOverride = ['Aceite Aurora', 'Arroz Norte'].map((name) => ({ type: 'add_stock', productName: name, qty: 1, evidence: name, fieldEvidence: {} }));
+    auditComplete = false;
+    const held = await message('brief-source', source);
+    assert.equal(held.batchStatus, 'awaiting_correction'); assert.match(held.replyText, /¿La segunda mención/);
+    assert.doesNotMatch(held.replyText, /lista completa|evidencia|caracteres/);
+    auditComplete = true; useSavedContext = true; resolutionKind = 'new';
+    const answer = 'Es una referencia al primero, no es otra unidad.';
+    const answered = await message('brief-answer', answer); assert.equal(answered.batchStatus, 'applied');
+    const saved = await db.getVoiceStockBatchByMessage(owner, 'brief-source');
+    assert.equal(saved.sourceText, source); assert.equal(saved.payload.evidenceSourceText, `${source}\n${answer}`);
+    assert.equal(saved.payload.actions.length, 2);
+    const extractionInput = modelInputs.findLast((entry) => entry.stage.includes('Etapa: extract.')).input;
+    assert.equal(extractionInput.sourceText, answer); assert.equal(extractionInput.clarificationContext.sourceText, source);
+    const beforeReplay = calls; await message('brief-answer', answer); assert.equal(calls, beforeReplay);
+    const products = (await db.getStateSnapshotStrict(owner)).products;
+    for (const name of ['Aceite Aurora', 'Arroz Norte']) assert.equal(products.find((product) => product.name === name).stockAvailable, 1);
+    extractionOverride = null; useSavedContext = false; resolutionKind = 'ambiguous';
   });
   await check('borrar un candidato no cambia el significado de los números ofrecidos', async () => {
     await message('deleted-source', 'Ingresaron dos Taladro Makita');

@@ -34,7 +34,7 @@ if (!process.argv.includes('--live') || !hasAnyLlmApiKey()) {
     } else {
       if (actions.length !== fixture.actions.length || actions.some((action, index) => action.qty !== fixture.actions[index]?.qty || action.price !== fixture.actions[index]?.price)) errors.push('Cantidad de productos, unidades o precios incorrectos.');
     }
-    if (!draft.ok && !(fixture.allowHold && draft.issues?.length)) errors.push(`Lote no verificable: ${draft.reason}.`);
+    if (!draft.ok && !(fixture.allowHold && draft.clarifications?.length)) errors.push(`Lote no verificable: ${draft.reason}.`);
     const row = { id: fixture.id, passed: errors.length === 0, errors, elapsedMs: Date.now() - started, draft };
     results.push(row); console.log(`${row.passed ? 'PASS' : 'FAIL'} ${fixture.id}: ${errors.join(' ') || `${actions.length} productos`}`);
   }
