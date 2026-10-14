@@ -10,7 +10,7 @@ import EmbeddedPostgres from 'embedded-postgres';
 import { Client } from 'pg';
 import * as db from '../server/postgresDatabase.js';
 import { productFingerprint } from '../server/voiceStockEngine.js';
-import { processStockBatchMessage } from '../server/voiceStockWorkflow.js';
+import { holdUnverifiedStockMessage, processStockBatchMessage } from '../server/voiceStockWorkflow.js';
 import { processMetaWebhook } from '../server/metaWebhookProcessor.js';
 
 const socket = net.createServer();
@@ -161,6 +161,9 @@ try {
   let resolutionKind = 'ambiguous';
   let extractionOverride = null;
   let useSavedContext = false;
+  let misclassifyExtract = false;
+  let failRecovery = false;
+  let failExtract = false;
   const modelInputs = [];
   globalThis.fetch = async (_url, request) => {
     calls++;
@@ -168,14 +171,54 @@ try {
     const stage = body.messages[0].content;
     const input = JSON.parse(body.messages[1].content.split('\nDATOS:\n')[1]);
     modelInputs.push({ stage, input });
+    if (stage.includes('Etapa: extract.') && failExtract) return new Response('Fallo simulado', { status: 400 });
     const extracted = extractionOverride ?? [{ type: 'add_stock', productName: 'Taladro Makita', qty: 2, evidence: 'Taladro Makita', fieldEvidence: { qty: 'dos' } }];
-    const content = stage.includes('clarify') ? (semanticClarification ?? { kind: 'unrelated' })
+    const content = stage.includes('Etapa: extract.') && misclassifyExtract ? { kind: 'other', actions: [] }
+      : stage.includes('Etapa: repair_extract.') && failRecovery ? { actions: [] }
+      : stage.includes('clarify') ? (semanticClarification ?? { kind: 'unrelated' })
       : stage.includes('extract') ? { kind: 'stock_intake', sourceText: useSavedContext ? input.clarificationContext?.sourceText : undefined, actions: extracted }
       : stage.includes('audit') ? { coverageComplete: auditComplete, issues: auditComplete ? [] : [{ kind: 'clarification', detail: 'Una referencia puede ser otra unidad.', evidence: extracted[0].evidence, question: '¿La segunda mención es otro producto o una referencia al primero?' }], verifiedItemIds: input.actions.map((item) => item.itemId) }
       : { items: input.actions.map((item) => ({ itemId: item.itemId, kind: resolutionKind, candidateIds: [drillA.id, drillB.id], reason: 'Falta medida.' })) };
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
   };
   const message = (messageId, sourceText) => processStockBatchMessage({ ownerPhone: owner, senderPhone: owner, messageId, sourceText, businessCategory: 'ferreteria', conversationTurns: [] });
+  await check('clasificación other de una carga explícita se repara y no pasa al parser anterior', async () => {
+    misclassifyExtract = true;
+    const first = await message('misclassified-source', 'Cargé dos Taladro Makita');
+    assert.equal(first.batchStatus, 'awaiting_choice');
+    assert.equal(first.actions.length, 1);
+    assert.match(first.replyText, /Taladro Makita/);
+    await message('misclassified-cancel', 'cancelar');
+    misclassifyExtract = false;
+  });
+  await check('si la reparación falla se guarda el audio y no se modifica stock', async () => {
+    misclassifyExtract = true; failRecovery = true;
+    const before = await db.getStateSnapshotStrict(owner);
+    const first = await message('misclassified-fail', 'Cargé dos Taladro Makita');
+    assert.equal(first.batchStatus, 'awaiting_correction');
+    assert.match(first.replyText, /reintentar/);
+    assert.equal((await db.getVoiceStockBatchByMessage(owner, 'misclassified-fail')).payload.evidenceSourceText, 'Cargé dos Taladro Makita');
+    assert.deepEqual((await db.getStateSnapshotStrict(owner)).products, before.products);
+    await message('misclassified-fail-cancel', 'cancelar');
+    misclassifyExtract = false; failRecovery = false;
+  });
+  await check('el desacuerdo entre parsers guarda el mensaje y reintentar usa esa fuente', async () => {
+    const sourceText = 'Hoy recibimos dos Taladro Makita';
+    const held = await holdUnverifiedStockMessage({ sourceText, businessCategory: 'ferreteria',
+      ownerPhone: owner, senderPhone: owner, messageId: 'legacy-conflict-source' });
+    assert.equal(held.batchStatus, 'awaiting_correction');
+    assert.match(held.replyText, /reintentar/);
+    const saved = await db.getVoiceStockBatchByMessage(owner, 'legacy-conflict-source');
+    assert.equal(saved.payload.evidenceSourceText, sourceText);
+    assert.equal(saved.payload.forceStockIntake, true);
+    misclassifyExtract = true;
+    const retried = await message('legacy-conflict-retry', 'reintentar');
+    assert.equal(retried.batchStatus, 'awaiting_choice');
+    assert.equal(retried.batchId, held.batchId);
+    assert.equal((await db.getVoiceStockBatchByMessage(owner, 'legacy-conflict-source')).sourceText, sourceText);
+    await message('legacy-conflict-cancel', 'cancelar');
+    misclassifyExtract = false;
+  });
   await check('diálogo real: pregunta, elección, replay y no reinterpretación', async () => {
     const first = await message('dialog-source', 'Ingresaron dos Taladro Makita');
     assert.equal(first.batchStatus, 'awaiting_choice'); assert.match(first.replyText, /13 mm/);
@@ -266,12 +309,41 @@ try {
     await message('partial-cancel', 'cancelar');
     extractionOverride = null;
   });
+  await check('fallo del proveedor durante una aclaración conserva ítems y reintenta esa respuesta', async () => {
+    const source = 'Ingresó Bota Nube. Ingresó Casco Sol.';
+    const answer = 'La primera era una corrección, no otra unidad.';
+    extractionOverride = ['Bota Nube', 'Casco Sol']
+      .map((name) => ({ type: 'add_stock', productName: name, qty: 1, evidence: name, fieldEvidence: {} }));
+    auditComplete = false;
+    const held = await message('provider-source', source);
+    assert.equal(held.batchStatus, 'awaiting_correction');
+    const before = await db.getStateSnapshotStrict(owner);
+    failExtract = true;
+    const failed = await message('provider-answer', answer);
+    assert.equal(failed.batchStatus, 'awaiting_correction');
+    assert.equal(failed.actions.length, 2);
+    const saved = await db.getVoiceStockBatchByMessage(owner, 'provider-source');
+    assert.equal(saved.payload.evidenceSourceText, source);
+    assert.equal(saved.payload.pendingCorrectionText, answer);
+    assert.equal(saved.payload.clarificationsNeeded.length, 1);
+    assert.deepEqual((await db.getStateSnapshotStrict(owner)).products, before.products);
+    failExtract = false; auditComplete = true; resolutionKind = 'new';
+    const retried = await message('provider-retry', 'reintentar');
+    assert.equal(retried.batchStatus, 'applied');
+    const lastExtract = modelInputs.findLast((entry) => entry.stage.includes('Etapa: extract.')).input;
+    assert.equal(lastExtract.sourceText, answer);
+    assert.equal(lastExtract.clarificationContext.sourceText, source);
+    extractionOverride = null; resolutionKind = 'ambiguous';
+  });
   await check('borrar un candidato no cambia el significado de los números ofrecidos', async () => {
-    await message('deleted-source', 'Ingresaron dos Taladro Makita');
+    const beforeDelete = await message('deleted-source', 'Ingresaron dos Taladro Makita');
+    const offeredIds = beforeDelete.actions[0].resolution.candidateIds;
+    const deletedChoice = offeredIds.indexOf(drillA.id) + 1;
+    assert.ok(deletedChoice > 0);
     await db.deleteProductRecord(drillA.id, owner);
-    const afterDeletion = await message('deleted-answer', '1'); assert.equal(afterDeletion.batchStatus, 'awaiting_choice');
+    const afterDeletion = await message('deleted-answer', String(deletedChoice)); assert.equal(afterDeletion.batchStatus, 'awaiting_choice');
     const saved = await db.getVoiceStockBatchByMessage(owner, 'deleted-source');
-    assert.deepEqual(saved.payload.actions[0].resolution.candidateIds, [drillA.id, drillB.id]);
+    assert.deepEqual(saved.payload.actions[0].resolution.candidateIds, offeredIds);
     await message('deleted-cancel', 'cancelar');
   });
   await check('nuevo indistinguible pide diferencia y usa la aclaración literal', async () => {

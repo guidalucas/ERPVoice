@@ -4,6 +4,7 @@ import { productBaseName } from './productIdentity.js';
 export const ENGINE_VERSION = 'stock-batch-v2';
 export const normalizeIdentity = (value) => String(value ?? '').toLowerCase().normalize('NFD')
   .replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9]+/g, ' ').trim();
+const startsWithStockIntake = (value) => /^(?:carge|cargue|cargamos|cargar|ingrese|ingresamos|agregue|agregamos|sume|sumamos|recibi|recibimos|entraron|llegaron|anota|anote|registra|registre)\b/.test(normalizeIdentity(value));
 export const stockIdentityKey = (item) => [normalizeIdentity(productBaseName(item)).split(' ').sort().join(' '), normalizeIdentity(item.size)].join('|');
 export const productFingerprint = (item) => JSON.stringify([item.name, item.productType ?? '', item.productModel ?? '', item.size ?? '']);
 export const isSameSku = (action, product) => stockIdentityKey(action) === stockIdentityKey(product);
@@ -188,31 +189,29 @@ export const validateStockDraft = (sourceText, actions) => {
   return { ok: true, actions: validated };
 };
 
-export const extractStockDraft = async ({ sourceText, businessCategory, conversationTurns = [], clarificationContext = null }) => {
-  const referencedTurns = !clarificationContext && /\b(anterior|antes|eso|esas|esos|mencione|dije|dictado|listado)\b/.test(normalizeIdentity(sourceText))
-    ? conversationTurns.filter((turn) => turn.role === 'user') : [];
+export const extractStockDraft = async ({ sourceText, businessCategory, clarificationContext = null, forceStockIntake = false }) => {
   const replacement = Boolean(clarificationContext && /^(?:lista completa(?: corregida)?|reemplazo (?:la lista completa|el listado completo)|esta es la lista completa|este es el listado completo)\b/.test(normalizeIdentity(sourceText)));
-  const spanSource = [...referencedTurns.map((turn) => turn.text), !replacement && clarificationContext?.sourceText, sourceText].filter(Boolean).join('\n');
+  const spanSource = [!replacement && clarificationContext?.sourceText, sourceText].filter(Boolean).join('\n');
   const sourceSpans = buildSourceSpans(spanSource);
   const result = await jsonCall('extract', `Decidí si el mensaje indica un ingreso de stock para registrar ahora. No confundas consultas, ventas ni pedidos con ingresos.
 Las referencias al producto anterior y autocorrecciones actualizan ese ítem, no crean otro ni suman cantidad salvo una entrada adicional explícita. Aplicá atributos globales solo en su alcance. Un atributo local no se propaga. Si falta medida/talle/presentación, omití ese campo: no inventes un valor por defecto.
 Si hay clarificationContext, el mensaje puede ser una respuesta breve a las preguntas del borrador. Si lo aclara, reconstruí TODOS sus productos usando el texto guardado más la respuesta; conservá todos los ítems no cuestionados. Solo tratá el mensaje actual como lista nueva si empieza explícitamente con "lista completa" o "reemplazo la lista completa". Si es ajeno a ese ingreso, devolvé kind:"other"; nunca agregues una orden independiente al borrador.
 Devolvé {kind:"stock_intake"|"other", actions:[]}. Para ingresos, una acción por producto distinto:
 {type:"add_stock",productName:string,productType?:string,productModel?:string,size?:string,qty:integer,price?:integer,mentionId:integer,priceSpanId?:integer,qtySpanId?:integer,attributeSpanIds?:integer[],identityAttributes?:object}.
-Usá los IDs de sourceSpans: mentionId señala el segmento que menciona ese producto; priceSpanId señala el segmento que dice su precio (puede ser global y repetirse en varias acciones); qtySpanId señala cantidad explícita si qty no es 1; attributeSpanIds señala segmentos con atributos globales aplicados. NO copies citas: el servidor las tomará del texto original. Un segmento puede respaldar varios ítems; elegí el segmento correcto para cada uno. Por ejemplo, si el último segmento dice "todos valen 65.000, este vale 70.000", asigná price 65000 a los anteriores y 70000 al último, todos con ese priceSpanId. Cantidad por defecto 1. Si repite el mismo SKU, sumá cantidades con respaldo de la repetición. Conservá año, marca, versión, presentación, medida y demás diferencias. Nunca inventes nombres ni completes atributos con conocimiento externo. Ante una frase dudosa conservá lo dicho; la auditoría podrá pedir aclaración. El contexto solo sirve para referencias explícitas a mensajes anteriores: en ese caso devolvé también sourceText con el listado literal completo usado.`, { sourceText, sourceSpans: sourceSpans.map(({ id, text }) => ({ id, text })), businessCategory, conversationTurns: referencedTurns, clarificationContext }, { maxTokens: 4096 });
+Usá los IDs de sourceSpans: mentionId señala el segmento que menciona ese producto; priceSpanId señala el segmento que dice su precio (puede ser global y repetirse en varias acciones); qtySpanId señala cantidad explícita si qty no es 1; attributeSpanIds señala segmentos con atributos globales aplicados. NO copies citas: el servidor las tomará del texto original. Un segmento puede respaldar varios ítems; elegí el segmento correcto para cada uno. Por ejemplo, si el último segmento dice "todos valen 65.000, este vale 70.000", asigná price 65000 a los anteriores y 70000 al último, todos con ese priceSpanId. Cantidad por defecto 1. Si repite el mismo SKU, sumá cantidades con respaldo de la repetición. Conservá año, marca, versión, presentación, medida y demás diferencias. Nunca inventes nombres ni completes atributos con conocimiento externo. Ante una frase dudosa conservá lo dicho; la auditoría podrá pedir aclaración. Para un ingreso nuevo, usá solo el mensaje actual.`, { sourceText, sourceSpans: sourceSpans.map(({ id, text }) => ({ id, text })), businessCategory, clarificationContext }, { maxTokens: 4096 });
   if (!result.ok) return { ok: false, reason: 'extractor_unavailable', trace: result.trace };
-  if (result.json?.kind === 'other') return { ok: true, kind: 'other', trace: result.trace };
-  if (result.json?.kind !== 'stock_intake') return { ok: false, reason: 'invalid_intent', trace: result.trace };
-  const effectiveSource = clarificationContext && !replacement ? `${clarificationContext.sourceText}\n${sourceText}`
-    : result.json.sourceText && referencedTurns.some((turn) => turn.text === result.json.sourceText)
-      ? `${result.json.sourceText}\n${sourceText}` : sourceText;
+  const explicitIntakeMisclassified = result.json?.kind === 'other' && (forceStockIntake || startsWithStockIntake(sourceText));
+  if (explicitIntakeMisclassified) console.warn('[VoiceStockBatch] explicit intake classified other; repairing extraction', { sourceTextChars: sourceText.length });
+  if (result.json?.kind === 'other' && !explicitIntakeMisclassified) return { ok: true, kind: 'other', trace: result.trace };
+  if (result.json?.kind !== 'stock_intake' && !explicitIntakeMisclassified) return { ok: false, reason: 'invalid_intent', trace: result.trace };
+  const effectiveSource = spanSource;
   let validation = validateStockDraft(effectiveSource, groundStockDraft(effectiveSource, result.json.actions, sourceSpans));
   const traces = [result.trace];
   let repair;
   if (!validation.ok) {
     console.warn('[VoiceStockBatch] extraction validation failed', validation);
     const repairSpans = buildSourceSpans(effectiveSource);
-    repair = await jsonCall('repair_extract', `Repará la extracción contra el texto original. Devolvé {actions:[]} con la LISTA COMPLETA, sin catálogo.
+    repair = await jsonCall('repair_extract', `${explicitIntakeMisclassified ? 'El mensaje empieza con una orden de ingreso de stock, pero la clasificación anterior fue "other". Extraé el ingreso completo; si realmente no menciona productos para cargar, devolvé actions vacío.\n' : ''}Repará la extracción contra el texto original. Devolvé {actions:[]} con la LISTA COMPLETA, sin catálogo.
 Cada acción debe tener type:"add_stock", productName:string, qty:entero positivo, mentionId:ID del segmento del producto, priceSpanId?:ID del segmento del precio, qtySpanId?:ID del segmento de cantidad explícita, attributeSpanIds?:IDs de atributos globales. price opcional es entero no negativo; productType/productModel/size opcionales son strings.
 Usá solo IDs de sourceSpans; el servidor obtiene las citas literales. Si el precio global aparece en un segmento final, repetí ese priceSpanId en los ítems correspondientes y respetá las excepciones. Cantidad por defecto 1. Conservá todas las menciones y excepciones; no borres un producto o un precio para eludir el error. No inventes información.`, {
       sourceText: effectiveSource, sourceSpans: repairSpans.map(({ id, text }) => ({ id, text })), businessCategory, actions: result.json.actions, validationError: validation,
