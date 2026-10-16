@@ -10,8 +10,8 @@ if (!process.argv.includes('--live') || !hasAnyLlmApiKey()) {
   process.exitCode = 2;
 } else {
   const cases = [
-    { id: 'incident-original', text: incidentText, category: 'indumentaria', catalog: incidentCatalog, allowHold: true },
-    { id: 'incident-after-history', text: incidentText, category: 'indumentaria', catalog: incidentCatalog, allowHold: true,
+    { id: 'incident-original', text: incidentText, category: 'indumentaria', catalog: incidentCatalog },
+    { id: 'incident-after-history', text: incidentText, category: 'indumentaria', catalog: incidentCatalog,
       conversationTurns: [{ role: 'user', text: 'Cargué una camiseta de Chelsea que no aparece en el mensaje actual.' }] },
     { id: 'incident-clarified', text: clarifiedText, category: 'indumentaria', catalog: incidentCatalog },
     { id: 'incident-clarification-answer', text: 'La segunda frase corregía la primera camiseta, no era otro producto.',
@@ -35,16 +35,15 @@ if (!process.argv.includes('--live') || !hasAnyLlmApiKey()) {
       if (!actions.some((action) => /argentina/.test(normalizeIdentity(action.productName)) && /tercera/.test(normalizeIdentity(action.productName)))) errors.push('Falta Argentina tercera.');
       if (!actions.some((action) => /boca/.test(normalizeIdentity(action.productName)))) errors.push('Falta Boca.');
       if (actions.some((action) => /chelsea/.test(normalizeIdentity(action.productName)))) errors.push('Chelsea no está en el dictado.');
-      if (!fixture.allowHold) {
-        if (actions.length !== 11) errors.push(`Se esperaban 11 productos después de aclarar la mención dudosa: ${actions.length}.`);
-        const long = actions.filter((action) => /barcelona/.test(normalizeIdentity(action.productName)) && /larg/.test(normalizeIdentity(action.productName)));
-        if (long.length !== 1 || long[0].price !== 70000) errors.push('Excepción de manga larga incorrecta.');
-        if (actions.filter((action) => action.price === 65000).length !== 10) errors.push('Precio global incorrecto.');
-      }
+      if (actions.length !== 11) errors.push(`Se esperaban 11 productos: ${actions.length}.`);
+      if (actions.some((action) => !/version jugador/.test(normalizeIdentity(action.productName)))) errors.push('La versión jugador no llegó a todos los productos.');
+      const long = actions.filter((action) => /barcelona/.test(normalizeIdentity(action.productName)) && /larg/.test(normalizeIdentity(action.productName)));
+      if (long.length !== 1 || long[0].price !== 70000) errors.push('Excepción de manga larga incorrecta.');
+      if (actions.filter((action) => action.price === 65000).length !== 10) errors.push('Precio global incorrecto.');
     } else {
       if (actions.length !== fixture.actions.length || actions.some((action, index) => action.qty !== fixture.actions[index]?.qty || action.price !== fixture.actions[index]?.price)) errors.push('Cantidad de productos, unidades o precios incorrectos.');
     }
-    if (!draft.ok && !(fixture.allowHold && draft.clarifications?.length)) errors.push(`Lote no verificable: ${draft.reason}.`);
+    if (!draft.ok) errors.push(`Lote no verificable: ${draft.reason}.`);
     const row = { id: fixture.id, passed: errors.length === 0, errors, elapsedMs: Date.now() - started, draft };
     results.push(row); console.log(`${row.passed ? 'PASS' : 'FAIL'} ${fixture.id}: ${errors.join(' ') || `${actions.length} productos`}`);
   }

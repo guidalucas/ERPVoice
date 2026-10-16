@@ -44,9 +44,19 @@ export const productBaseName = (input) => {
   const product = normalizeProductMetadata(input);
   const type = String(product?.productType ?? '').trim();
   const model = String(product?.productModel ?? '').trim();
-  if (type && model) return `${type} ${model}`;
-
   const name = String(product?.productName ?? product?.name ?? '').trim();
+  let useName = !type || !model;
+  // Extractors may put only the variant ("titular") in productModel while the
+  // productName contains the team and season. Never discard that identity.
+  if (type && model && name) {
+    const words = (value) => value.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
+      .split(/[^a-z0-9]+/).filter((word) => word && !['de', 'del', 'la', 'el', 'en'].includes(word));
+    const nameWords = new Set(words(name).filter((word) => word !== type.toLowerCase()));
+    const modelWords = words(model);
+    if (modelWords.length && modelWords.every((word) => nameWords.has(word))) useName = true;
+    else if (nameWords.size && ![...nameWords].every((word) => modelWords.includes(word))) useName = true;
+  }
+  if (!useName) return `${type} ${model}`;
   const size = String(product?.size ?? '').trim();
   if (!size) return name;
   const escaped = size.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

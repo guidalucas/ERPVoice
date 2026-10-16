@@ -1,7 +1,7 @@
 import { completeChatJson } from './llmChatClient.js';
 import { normalizeProductMetadata, productBaseName, productMatchKey } from './productIdentity.js';
 
-export const ENGINE_VERSION = 'stock-batch-v2';
+export const ENGINE_VERSION = 'stock-batch-v3';
 export const normalizeIdentity = (value) => String(value ?? '').toLowerCase().normalize('NFD')
   .replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const startsWithStockIntake = (value) => /^(?:carge|cargue|cargamos|cargar|ingrese|ingresamos|agregue|agregamos|sume|sumamos|recibi|recibimos|entraron|llegaron|anota|anote|registra|registre)\b/.test(normalizeIdentity(value));
@@ -176,6 +176,8 @@ export const groundStockDraft = (sourceText, actions, sourceSpans = buildSourceS
   return literalized.map((action) => {
     if (!action || typeof action !== 'object') return action;
     const result = { ...action, fieldEvidence: { ...(action.fieldEvidence ?? {}) } };
+    delete result.repeatClarification;
+    delete result.resolvedReferences;
     if (action.mentionId != null) {
       const span = findSpan(action.mentionId);
       result.evidence = span && spanSupportsProduct(sourceText, sourceSpans, span, action.productName) ? span.text : undefined;
@@ -217,8 +219,9 @@ export const validateStockDraft = (sourceText, actions) => {
 };
 
 const previousReference = /\b(?:la|el|las|los)\s+anterior(?:es)?\b[^.!?;\n]*/i;
-const referenceFiller = new Set(['anterior', 'anteriore', 'version', 'jugador', 'fan', 'titular', 'suplente', 'de', 'del', 'la', 'el', 'las', 'los', 'en']);
-const identityWords = (action) => new Set((productMatchKey({ productName: action.productName, size: action.size }) ?? '').split(' ').filter(Boolean));
+const referenceFiller = new Set(['anterior', 'anteriores', 'de', 'del', 'la', 'el', 'las', 'los', 'en']);
+const identityWords = (action) => new Set(normalizeIdentity(action.productName).split(' ')
+  .filter((word) => word && !['de', 'del', 'la', 'el', 'en', 'con'].includes(word)));
 
 // A sentence that corrects a previous item can mention it again without adding a
 // unit. The model's own coverage verdict cannot authorize that duplicate.
@@ -236,7 +239,7 @@ export const stockReferenceIssues = (actions, sourceText = '') => {
     const actionWords = identityWords(action);
     const earlier = actions.slice(0, index).find((prior) => startOf(prior) >= 0 && startOf(prior) < startOf(action)
       && [...targetWords].some((word) => actionWords.has(word) && identityWords(prior).has(word)));
-    if (earlier) issues.push({ kind: 'repairable', code: 'duplicate_previous_reference', evidence: action.evidence,
+    if (earlier) issues.push({ kind: 'repairable', code: 'duplicate_previous_reference', itemId: action.itemId, duplicateOf: earlier.itemId, evidence: action.evidence,
       detail: `La referencia al producto anterior en ${action.itemId} parece repetir ${earlier.itemId}. Conservá la corrección, sin sumar otra unidad salvo que el texto lo ordene expresamente.` });
 
     const words = [...actionWords].filter((word) => word.length > 3 && !referenceFiller.has(word)
@@ -248,12 +251,170 @@ export const stockReferenceIssues = (actions, sourceText = '') => {
       return words.length > 0 && words.every((word) => nextWords.has(word))
         && [...actionWords].every((word) => nextWords.has(word)) && nextWords.size > actionWords.size;
     });
-    if (later && !/\b(?:otra|otro|adicional|segunda|segundo)\b/i.test(action.evidence)) {
-      issues.push({ kind: 'repairable', code: 'underspecified_repeat', evidence: action.evidence,
+    const distinctConfirmed = action.repeatClarification?.kind === 'distinct'
+      && typeof action.repeatClarification.text === 'string'
+      && sourceText.includes(action.repeatClarification.text)
+      && confirmsDistinctRepeat(action.repeatClarification.text);
+    if (later && !distinctConfirmed && !/\b(?:otra|otro|adicional|segunda|segundo)\b/i.test(action.evidence)) {
+      issues.push({ kind: 'repairable', code: 'underspecified_repeat', itemId: action.itemId, repeatsItemId: later.itemId, evidence: action.evidence,
         detail: `${action.itemId} tiene un nombre parcial que puede repetirse como ${later.itemId}. Inferí si es una reformulación; no sumes dos unidades sin una orden adicional explícita.` });
     }
   }
   return issues;
+};
+
+// A short answer can settle one question while other questions in the batch remain.
+// Only accept an explicit correction of the previous item; "otro producto" is not one.
+export const confirmsPreviousReference = (text) => {
+  const value = normalizeIdentity(text);
+  return /\b(?:anterior|previo|primero)\b/.test(value)
+    && (/\b(?:corrig|correspond|refier|mism|referencia)\w*\b/.test(value) || /\bno (?:es|era) otr[oa] producto\b/.test(value))
+    && !/\bno\s+(?:(?:se\s+)?(?:corrig\w*|correspond\w*|refier\w*|refer\w*)|(?:es|era)\s+(?:el\s+|la\s+)?mism\w*)\b/.test(value)
+    && !/\b(?:es|era|corresponde a|se refiere a)\s+(?:un[oa]?\s+)?otr[oa]\s+(?:producto|unidad)\b/.test(value);
+};
+
+const confirmsDistinctRepeat = (text) => {
+  const value = normalizeIdentity(text);
+  return /\b(?:otr[oa] (?:producto|unidad|[a-z0-9]+)|son distintos|son diferentes|son dos productos|es distinto|es diferente)\b/.test(value)
+    && !/\b(?:no es otr[oa]|no son distintos|no son diferentes)\b/.test(value);
+};
+
+const confirmsSameRepeat = (text) => {
+  const value = normalizeIdentity(text);
+  return /\b(?:es el mismo|son el mismo|mism[oa] (?:producto|unidad|[a-z0-9]+)|es una duplicacion|es duplicado|corrige la primera)\b/.test(value)
+    && !/\b(?:no es el mismo|no son el mismo)\b/.test(value);
+};
+
+const normalizeSelfCorrections = (validation, sourceText, clarificationContext, answer) => {
+  if (!validation.ok) return validation;
+  const answerText = normalizeIdentity(answer);
+  const explicitSeparate = clarificationContext && /\b(?:anterior|previo)\b/.test(answerText)
+    && !confirmsPreviousReference(answer)
+    && (confirmsDistinctRepeat(answer) || /\bno\s+(?:(?:se\s+)?(?:corrig\w*|correspond\w*|refier\w*)|(?:es|era)\s+(?:el\s+|la\s+)?mism\w*)\b/.test(answerText));
+  if (explicitSeparate) return validation;
+  const issues = stockReferenceIssues(validation.actions, sourceText);
+  const removals = new Set();
+  const references = new Map();
+  for (const issue of issues) {
+    if (issue.code === 'duplicate_previous_reference') {
+      const action = validation.actions.find((entry) => entry.itemId === issue.itemId);
+      const prior = validation.actions.find((entry) => entry.itemId === issue.duplicateOf);
+      const priorWords = identityWords(prior);
+      const extras = [...identityWords(action)].filter((word) => word.length > 3 && !priorWords.has(word)
+        && !referenceFiller.has(word));
+      const laterExplainsExtras = !extras.length || validation.actions.some((entry) => entry.evidenceStart > action.evidenceStart
+        && extras.every((word) => identityWords(entry).has(word)));
+      if (laterExplainsExtras) {
+        removals.add(issue.itemId);
+        references.set(issue.duplicateOf, [...(references.get(issue.duplicateOf) ?? []), issue.evidence]);
+      }
+    } else if (issue.code === 'underspecified_repeat') {
+      const action = validation.actions.find((entry) => entry.itemId === issue.itemId);
+      const clause = buildSourceSpans(sourceText).find((span) => action?.evidenceStart >= span.start && action.evidenceStart < span.end)?.text;
+      if (clause && previousReference.test(clause) && action?.repeatClarification?.kind !== 'distinct') {
+        removals.add(issue.itemId);
+        references.set(issue.repeatsItemId, [...(references.get(issue.repeatsItemId) ?? []), issue.evidence]);
+      }
+    }
+  }
+  if (!removals.size) return validation;
+  return validateStockDraft(sourceText, validation.actions.filter((action) => !removals.has(action.itemId))
+    .map((action) => ({ ...action, resolvedReferences: [...(action.resolvedReferences ?? []), ...(references.get(action.itemId) ?? [])] })));
+};
+
+const needsAttributeReview = (actions) => actions.length > 1 || actions.some((action) =>
+  action.resolvedReferences?.length || action.fieldEvidence?.attributes?.length
+  || (action.productModel && !normalizeIdentity(action.productModel).split(' ')
+    .every((word) => normalizeIdentity(action.productName).split(' ').includes(word))));
+
+const groundedWords = (value) => new Set(normalizeIdentity(value).split(' ').filter(Boolean));
+
+// The model resolves attribute scope; the server accepts only attributes backed
+// by literal text attached to that item. Prices, quantities and item IDs cannot change.
+const enrichStockAttributes = async ({ sourceText, actions }) => {
+  if (!needsAttributeReview(actions)) return { ok: true, actions, traces: [] };
+  const result = await jsonCall('enrich_attributes', `Revisá atributos de CADA producto contra todo el dictado. Una referencia al producto anterior modifica ese producto. Una declaración global afecta solo los productos dentro de su alcance. Una mención incompleta reformulada después conserva la variante más específica. No agregues ni elimines productos.
+Devolvé {items:[{itemId,productName,productType?,productModel?,size?,identityAttributes?:object,attributeQuotes?:string[]}]}. La lista debe incluir exactamente los IDs recibidos. productName debe identificar al SKU completo (marca/equipo, año, variante, versión, presentación y medida cuando se dijeron). Si ya está completo, copialo. identityAttributes registra como pares atributo/valor los rasgos compartidos que incorporaste; attributeQuotes contiene citas literales de las frases que justifican esos rasgos, incluidas referencias retroactivas y reglas globales. No inventes valores ni cites otro mensaje.`, {
+    sourceText, sourceSpans: buildSourceSpans(sourceText).map(({ id, text }) => ({ id, text })),
+    actions: actions.map(({ itemId, productName, productType, productModel, size, evidence, fieldEvidence, resolvedReferences, identityAttributes }) =>
+      ({ itemId, productName, productType, productModel, size, evidence, attributeQuotes: fieldEvidence?.attributes ?? [], resolvedReferences, identityAttributes })),
+  }, { maxTokens: 4096 });
+  const items = result.json?.items;
+  if (!result.ok || !Array.isArray(items) || items.length !== actions.length
+    || new Set(items.map((item) => item?.itemId)).size !== actions.length) {
+    return { ok: false, reason: 'attribute_review_unavailable', actions, traces: [result.trace] };
+  }
+  const byId = new Map(items.map((item) => [item.itemId, item]));
+  const enriched = [];
+  for (const action of actions) {
+    const item = byId.get(action.itemId);
+    if (!item || typeof item.productName !== 'string' || !item.productName.trim()
+      || (item.productType != null && typeof item.productType !== 'string')
+      || (item.productModel != null && typeof item.productModel !== 'string')
+      || (item.size != null && typeof item.size !== 'string')
+      || !Array.isArray(item.attributeQuotes) || item.attributeQuotes.some((quote) => typeof quote !== 'string' || !quote.trim() || !sourceText.includes(quote))
+      || (item.identityAttributes != null && (typeof item.identityAttributes !== 'object' || Array.isArray(item.identityAttributes)))) {
+      return { ok: false, reason: 'invalid_attribute_review', actions, traces: [result.trace] };
+    }
+    const quotes = [...new Set([...(action.fieldEvidence?.attributes ?? []), ...item.attributeQuotes])];
+    const permitted = groundedWords([action.productName, action.productType, action.productModel, action.size,
+      ...Object.values(action.identityAttributes ?? {}).map(String), action.evidence,
+      ...(action.resolvedReferences ?? []), ...quotes].join(' '));
+    const introduced = [item.productName, item.productType ?? '', item.productModel ?? '', item.size ?? '',
+      ...Object.values(item.identityAttributes ?? {}).map(String)].flatMap((value) => [...groundedWords(value)]);
+    if (introduced.some((word) => !permitted.has(word)))
+      return { ok: false, reason: 'ungrounded_attribute_review', actions, traces: [result.trace] };
+    enriched.push({ ...action, productName: item.productName.trim(),
+      productType: item.productType ?? action.productType,
+      productModel: item.productModel ?? action.productModel,
+      size: item.size ?? action.size,
+      identityAttributes: item.identityAttributes ?? action.identityAttributes,
+      fieldEvidence: { ...(action.fieldEvidence ?? {}), attributes: quotes } });
+  }
+  return { ok: true, actions: enriched, traces: [result.trace] };
+};
+
+const settleQuestionedRepeat = (validation, sourceText, clarificationContext, answer) => {
+  if (!validation.ok || !clarificationContext || !(confirmsDistinctRepeat(answer) || confirmsSameRepeat(answer))) return validation;
+  const repeats = stockReferenceIssues(validation.actions, sourceText).filter((issue) => issue.code === 'underspecified_repeat');
+  const questioned = repeats.filter((issue) => clarificationContext.questions?.some((question) =>
+    typeof question.evidence === 'string' && (issue.evidence.includes(question.evidence) || question.evidence.includes(issue.evidence))));
+  if (questioned.length !== 1) return validation;
+  const issue = questioned[0];
+  if (confirmsSameRepeat(answer)) return validateStockDraft(sourceText,
+    validation.actions.filter((action) => action.itemId !== issue.itemId));
+  return { ...validation, actions: validation.actions.map((action) => action.itemId === issue.itemId
+    ? { ...action, repeatClarification: { kind: 'distinct', text: answer } } : action) };
+};
+
+const isAnsweredPreviousQuestion = (issue) => {
+  const question = normalizeIdentity(issue?.question);
+  return /\b(?:anterior|previo)\b/.test(question) && /\b(?:corrig|producto previo|otro producto|indica)\b/.test(question);
+};
+
+const questionGroundedInEvidence = (issue, sourceText) => {
+  if (typeof issue?.question !== 'string' || typeof issue?.evidence !== 'string') return false;
+  const spans = buildSourceSpans(sourceText);
+  const questionWords = new Set(normalizeIdentity(issue.question).split(' ').filter((word) => word.length > 3));
+  const evidenceWords = normalizeIdentity(issue.evidence).split(' ').filter((word) => word.length > 3);
+  return evidenceWords.some((word) => questionWords.has(word)
+    && spans.filter((span) => normalizeIdentity(span.text).split(' ').includes(word)).length <= Math.max(2, Math.floor(spans.length / 3)));
+};
+
+const isResolvedSelfCorrectionQuestion = (issue, actions, sourceText) => {
+  if (typeof issue?.evidence !== 'string' || !previousReference.test(issue.evidence)) return false;
+  const span = buildSourceSpans(sourceText).find((entry) => entry.text === issue.evidence);
+  if (!span || actions.some((action) => action.evidenceStart >= span.start && action.evidenceStart < span.end)) return false;
+  const reference = issue.evidence.match(previousReference)?.[0] ?? '';
+  const prefix = issue.evidence.slice(0, issue.evidence.indexOf(reference));
+  const spans = buildSourceSpans(sourceText);
+  const words = (value) => normalizeIdentity(value).split(' ').filter((word) => word.length > 3
+    && spans.filter((entry) => normalizeIdentity(entry.text).split(' ').includes(word)).length <= Math.max(2, Math.floor(spans.length / 3)));
+  const priorWords = words(reference);
+  const laterWords = words(prefix);
+  return priorWords.length > 0 && laterWords.length > 0
+    && actions.some((action) => action.evidenceStart < span.start && priorWords.some((word) => words(action.productName).includes(word)))
+    && actions.some((action) => action.evidenceStart > span.end && laterWords.some((word) => words(action.productName).includes(word)));
 };
 
 export const extractStockDraft = async ({ sourceText, businessCategory, clarificationContext = null, forceStockIntake = false }) => {
@@ -265,7 +426,7 @@ Las referencias al producto anterior y autocorrecciones actualizan ese ítem, no
 Si hay clarificationContext, el mensaje puede ser una respuesta breve a las preguntas del borrador. Si lo aclara, reconstruí TODOS sus productos usando el texto guardado más la respuesta; conservá todos los ítems no cuestionados. Solo tratá el mensaje actual como lista nueva si empieza explícitamente con "lista completa" o "reemplazo la lista completa". Si es ajeno a ese ingreso, devolvé kind:"other"; nunca agregues una orden independiente al borrador.
 Devolvé {kind:"stock_intake"|"other", actions:[]}. Para ingresos, una acción por producto distinto:
 {type:"add_stock",productName:string,productType?:string,productModel?:string,size?:string,qty:integer,price?:integer,mentionId:integer,priceSpanId?:integer,qtySpanId?:integer,attributeSpanIds?:integer[],identityAttributes?:object}.
-Usá los IDs de sourceSpans: mentionId señala el segmento que menciona ese producto; priceSpanId señala el segmento que dice su precio (puede ser global y repetirse en varias acciones); qtySpanId señala cantidad explícita si qty no es 1; attributeSpanIds señala segmentos con atributos globales aplicados. NO copies citas: el servidor las tomará del texto original. Un segmento puede respaldar varios ítems; elegí el segmento correcto para cada uno. Por ejemplo, si el último segmento dice "todos valen 65.000, este vale 70.000", asigná price 65000 a los anteriores y 70000 al último, todos con ese priceSpanId. Cantidad por defecto 1. Si repite el mismo SKU, sumá cantidades con respaldo de la repetición. Conservá año, marca, versión, presentación, medida y demás diferencias. Nunca inventes nombres ni completes atributos con conocimiento externo. Ante una frase dudosa conservá lo dicho; la auditoría podrá pedir aclaración. Para un ingreso nuevo, usá solo el mensaje actual.`, { sourceText, sourceSpans: sourceSpans.map(({ id, text }) => ({ id, text })), businessCategory, clarificationContext }, { maxTokens: 4096 });
+Usá los IDs de sourceSpans: mentionId señala el segmento que menciona ese producto; priceSpanId señala el segmento que dice su precio (puede ser global y repetirse en varias acciones); qtySpanId señala cantidad explícita si qty no es 1; attributeSpanIds señala segmentos con atributos globales aplicados. NO copies citas: el servidor las tomará del texto original. Un segmento puede respaldar varios ítems; elegí el segmento correcto para cada uno. Si un precio se aplica a los productos anteriores y el último tiene una excepción, asigná el valor general a los anteriores y el valor excepcional al último, todos con el segmento de precio correspondiente. Cantidad por defecto 1. Si repite el mismo SKU, sumá cantidades con respaldo de la repetición. Conservá año, marca, versión, presentación, medida y demás diferencias. Nunca inventes nombres ni completes atributos con conocimiento externo. Ante una frase dudosa conservá lo dicho; la auditoría podrá pedir aclaración. Para un ingreso nuevo, usá solo el mensaje actual.`, { sourceText, sourceSpans: sourceSpans.map(({ id, text }) => ({ id, text })), businessCategory, clarificationContext }, { maxTokens: 4096 });
   if (!result.ok) return { ok: false, reason: 'extractor_unavailable', trace: result.trace };
   const explicitIntakeMisclassified = result.json?.kind === 'other' && (forceStockIntake || startsWithStockIntake(sourceText));
   if (explicitIntakeMisclassified) console.warn('[VoiceStockBatch] explicit intake classified other; repairing extraction', { sourceTextChars: sourceText.length });
@@ -289,6 +450,8 @@ Usá solo IDs de sourceSpans; el servidor obtiene las citas literales. Si el pre
       console.warn('[VoiceStockBatch] extraction repair failed', { ...validation, repairAvailable: repair.ok });
     }
   }
+  validation = settleQuestionedRepeat(validation, effectiveSource, clarificationContext, sourceText);
+  validation = normalizeSelfCorrections(validation, effectiveSource, clarificationContext, sourceText);
   if (validation.ok && clarificationContext && !replacement) {
     const previous = Array.isArray(clarificationContext.actions) ? clarificationContext.actions : [];
     const questions = Array.isArray(clarificationContext.questions) ? clarificationContext.questions : [];
@@ -311,16 +474,24 @@ export const auditStockDraft = async ({ sourceText, actions }) => {
   const result = await jsonCall('audit', `Auditá la lista contra TODO el texto, sin catálogo. Buscá productos omitidos, inventados o duplicados y cantidades/precios/atributos globales mal asignados, incluyendo excepciones. No modifiques la lista.
 Devolvé {coverageComplete:boolean, issues:[{kind:"repairable"|"clarification",detail:string,evidenceSpanId:integer,question?:string}], verifiedItemIds:string[]}.
 Solo coverageComplete=true con issues vacío y cada mención explicada por una acción respaldada. Las referencias al producto anterior y autocorrecciones no son otro producto ni suman unidades salvo ingreso adicional explícito.
-Una cita de atributo global ausente o un atributo mal aplicado es repairable: el sistema lo arregla usando el original. Nunca le preguntes al usuario por citas, posiciones, evidencia, IDs ni formato interno.
+Una cita de atributo global ausente o un atributo mal aplicado es repairable: el sistema lo arregla usando el original. Una cita literal por sí sola no prueba que el atributo corresponda a ese ítem: verificá el alcance temporal y las excepciones contra cada producto. Nunca le preguntes al usuario por citas, posiciones, evidencia, IDs ni formato interno.
 Un atributo NO mencionado (medida, talle, marca, etc.) debe quedar ausente. Esto NO es un problema de cobertura ni requiere aclaración. Un dato local no se propaga. La falta de atributos para elegir una variante del catálogo se resuelve DESPUÉS, al comparar productos.
 clarification solo si hay dos interpretaciones materiales del texto que no se pueden resolver desde lo dicho (por ejemplo, no se sabe si una mención es otro producto o una corrección). evidenceSpanId apunta al segmento de sourceSpans que contiene la duda; el servidor obtiene la cita literal. question es una pregunta breve sobre esa duda concreta, sin pedir repetir la lista completa. Leé las aclaraciones posteriores del usuario como tales, sin convertirlas en nuevos productos.`, { sourceText, sourceSpans: sourceSpans.map(({ id, text }) => ({ id, text })), actions }, { maxTokens: 1024 });
   const data = result.json;
   const verified = new Set(Array.isArray(data?.verifiedItemIds) ? data.verifiedItemIds : []);
-  const issues = Array.isArray(data?.issues) ? data.issues.map((issue) => {
+  let issues = Array.isArray(data?.issues) ? data.issues.map((issue) => {
     if (!issue || typeof issue !== 'object' || issue.evidenceSpanId == null) return issue;
     const span = sourceSpans.find((entry) => entry.id === Number(issue.evidenceSpanId));
     return { ...issue, evidence: span?.text };
   }) : [];
+  issues = issues.filter((issue) => issue?.kind !== 'clarification' || questionGroundedInEvidence(issue, sourceText));
+  issues = issues.filter((issue) =>
+    !(confirmsPreviousReference(sourceText) && isAnsweredPreviousQuestion(issue))
+    && !isResolvedSelfCorrectionQuestion(issue, actions, sourceText)
+    && !(typeof issue.evidence === 'string' && actions.some((action) => action.resolvedReferences?.includes(issue.evidence)))
+    && !(actions.some((action) => action.repeatClarification?.kind === 'distinct'
+      && typeof issue.evidence === 'string' && action.evidence === issue.evidence)
+      && /\b(?:primera mencion|otro producto|mism[oa] [a-z0-9]+|duplicacion)\b/.test(normalizeIdentity(issue.question))));
   issues.push(...stockReferenceIssues(actions, sourceText));
   for (const action of actions) {
     const reference = `${action.productName} ${action.productModel ?? ''}`.match(/\b(?:la|el|las|los)?\s*anterior(?:es)?\b/i)?.[0]?.trim();
@@ -334,7 +505,8 @@ clarification solo si hay dos interpretaciones materiales del texto que no se pu
     && typeof issue.question === 'string' && issue.question.trim() && issue.question.length <= 500
     && typeof issue.evidence === 'string' && issue.evidence.trim() && sourceText.includes(issue.evidence));
   return {
-    ok: Boolean(result.ok && data?.coverageComplete === true && Array.isArray(data?.issues) && issues.length === 0 && actions.every((action) => verified.has(action.itemId))),
+    ok: Boolean(result.ok && Array.isArray(data?.issues) && issues.length === 0 && actions.every((action) => verified.has(action.itemId))
+      && (data.coverageComplete === true || data.issues.length > 0)),
     reason: result.ok ? 'coverage_incomplete' : 'auditor_unavailable', issues, clarifications,
     needsRepair: Boolean(result.ok && (!issues.length || clarifications.length !== issues.length)), trace: result.trace,
   };
@@ -419,8 +591,12 @@ Para existing usá un productId candidato. Para ambiguous, incluí solo los IDs 
 export const prepareStockDraft = async (input) => {
   let extraction = await extractStockDraft(input);
   if (!extraction.ok || extraction.kind === 'other') return extraction;
+  const enrichment = await enrichStockAttributes(extraction);
+  if (!enrichment.ok) return { ...extraction, ok: false, reason: enrichment.reason,
+    traces: [...extraction.traces, ...enrichment.traces] };
+  extraction = { ...extraction, actions: enrichment.actions };
   let audit = await auditStockDraft(extraction);
-  const traces = [...extraction.traces, audit.trace];
+  const traces = [...extraction.traces, ...enrichment.traces, audit.trace];
   if (!audit.ok && audit.needsRepair) {
     const repairSpans = buildSourceSpans(extraction.sourceText);
     const repaired = await jsonCall('repair_coverage', `Repará la lista COMPLETA con el texto original y el diagnóstico de auditoría. Devolvé {actions:[]}.
@@ -429,9 +605,15 @@ Repará omisiones, duplicados, referencias al producto anterior y alcance de atr
       sourceText: extraction.sourceText, sourceSpans: repairSpans.map(({ id, text }) => ({ id, text })), actions: extraction.actions, issues: audit.issues,
     }, { maxTokens: 4096 });
     traces.push(repaired.trace);
-    const valid = repaired.ok ? validateStockDraft(extraction.sourceText, groundStockDraft(extraction.sourceText, repaired.json?.actions, repairSpans)) : { ok: false };
+    const valid = repaired.ok ? normalizeSelfCorrections(settleQuestionedRepeat(
+      validateStockDraft(extraction.sourceText, groundStockDraft(extraction.sourceText, repaired.json?.actions, repairSpans)),
+      extraction.sourceText, input.clarificationContext, input.sourceText),
+      extraction.sourceText, input.clarificationContext, input.sourceText) : { ok: false };
     if (valid.ok) {
-      extraction = { ...extraction, actions: valid.actions };
+      const reviewed = await enrichStockAttributes({ sourceText: extraction.sourceText, actions: valid.actions });
+      traces.push(...reviewed.traces);
+      if (!reviewed.ok) return { ...extraction, ok: false, reason: reviewed.reason, traces };
+      extraction = { ...extraction, actions: reviewed.actions };
       audit = await auditStockDraft(extraction);
       traces.push(audit.trace);
     }

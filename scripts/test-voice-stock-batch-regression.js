@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { prepareStockDraft, validateStockDraft, retrieveStockCandidates, literalizeStockDraftQuotes, buildSourceSpans, groundStockDraft, stockMatchScore, stockReferenceIssues } from '../server/voiceStockEngine.js';
+import { prepareStockDraft, validateStockDraft, retrieveStockCandidates, literalizeStockDraftQuotes, buildSourceSpans, groundStockDraft, stockMatchScore, stockReferenceIssues, confirmsPreviousReference } from '../server/voiceStockEngine.js';
 import { stockDraftFailureReply } from '../server/voiceStockWorkflow.js';
+import { productBaseName } from '../server/productIdentity.js';
 import { incidentText, clarifiedText, incidentActions, incidentCatalog, ambiguousMention, genericCases } from './fixtures/voice-stock-corpus.js';
 
 process.env.GEMINI_API_KEY = 'test-key'; process.env.LLM_PROVIDER = 'gemini'; process.env.LLM_DISABLE_FALLBACK = '1';
@@ -30,6 +31,14 @@ globalThis.fetch = async (url, request) => {
   const auditResult = stage.includes('Etapa: audit.') ? scenario.audits?.[scenario.auditCount++] : null;
   const data = stage.includes('Etapa: extract.') && scenario.extractOther ? { kind: 'other', actions: [] }
     : stage.includes('repair_coverage') ? { actions: structuredClone(scenario.coverageActions ?? scenario.actions) }
+    : stage.includes('enrich_attributes') ? { items: input.actions.map((action, index) => ({
+      itemId: action.itemId,
+      productName: scenario.enrichedNames?.[index] ?? action.productName,
+      productType: action.productType,
+      productModel: scenario.enrichedNames?.[index] ? undefined : action.productModel,
+      size: action.size,
+      attributeQuotes: scenario.attributeQuotes?.[index] ?? [],
+    })) }
     : stage.includes('extract') ? { kind: 'stock_intake', sourceText: scenario.usedSourceText, actions: structuredClone(stage.includes('repair_extract') ? scenario.repairedActions ?? scenario.actions : scenario.actions) }
       : stage.includes('audit') ? { coverageComplete: scenario.complete !== false, issues: scenario.complete === false ? [{ kind: 'clarification', detail: ambiguousMention, evidence: ambiguousMention, question: '¿La primera mención de Independiente corresponde a la suplente 2026 o a otro producto?' }] : [], verifiedItemIds: input.actions.map((action) => action.itemId), ...auditResult }
         : { items: input.actions.map((action) => ({ itemId: action.itemId, kind: scenario.resolutionKind ?? 'new', productId: scenario.productId, candidateIds: scenario.candidateIds ?? [], reason: 'Clasificación de prueba.' })) };
@@ -45,8 +54,8 @@ try {
     const draft = await prepare(incidentText, incidentActions, incidentCatalog, { extractOther: true, complete: false });
     assert.equal(draft.kind, 'stock_intake');
     assert.equal(draft.actions.length, 11);
-    assert.equal(draft.reason, 'coverage_incomplete');
-    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'repair_extract', 'audit']);
+    assert.equal(draft.ok, true);
+    assert.deepEqual(draft.traces.slice(0, 4).map((trace) => trace.stage), ['extract', 'repair_extract', 'enrich_attributes', 'audit']);
   });
   await run('si la recuperación no extrae productos se conserva el dictado sin aplicar', async () => {
     const draft = await prepare(incidentText, incidentActions, incidentCatalog, { extractOther: true, repairedActions: [] });
@@ -70,20 +79,22 @@ try {
     assert.equal(draft.actions.length, 11);
     assert.equal(requests.some((body) => JSON.stringify(body).includes(oldMessage)), false);
   });
-  await run('dictado original conserva once menciones y señala la frase adicional ambigua', async () => {
+  await run('dictado original conserva once menciones sin preguntar por la autocorrección', async () => {
     const draft = await prepare(incidentText, incidentActions, incidentCatalog, { complete: false });
-    assert.equal(draft.ok, false); assert.equal(draft.actions.length, 11);
-    assert.equal(draft.clarifications.length, 1); assert.equal(draft.clarifications[0].evidence, ambiguousMention); assert.equal(requests.length, 2);
+    assert.equal(draft.ok, true); assert.equal(draft.actions.length, 11);
+    assert.equal(draft.actions[0].productName.includes('versión jugador'), true);
   });
   await run('la auditoría formula la aclaración desde un segmento numerado', async () => {
-    const evidenceSpanId = buildSourceSpans(incidentText).find((span) => span.text.includes(ambiguousMention)).id;
+    const evidence = buildSourceSpans(incidentText).find((span) => span.text.includes('Racing titular'));
+    const evidenceSpanId = evidence.id;
     const draft = await prepare(incidentText, incidentActions, incidentCatalog, { audits: [{
       coverageComplete: false,
-      issues: [{ kind: 'clarification', detail: 'Mención ambigua', evidenceSpanId, question: '¿Es otro producto?' }],
+      issues: [{ kind: 'clarification', detail: 'Mención ambigua', evidenceSpanId, question: '¿Racing corresponde a otro producto?' }],
     }] });
     assert.equal(draft.ok, false);
-    assert.equal(draft.clarifications[0].evidence, ambiguousMention);
-    assert.match(requests[1].messages[1].content, /evidenceSpanId/);
+    assert.equal(draft.clarifications[0].evidence, evidence.text);
+    assert.equal(requests.some((body) => body.messages[0].content.includes('Etapa: audit.')
+      && body.messages[1].content.includes('evidenceSpanId')), true);
   });
   await run('una referencia anterior sin resolver no pasa aunque el auditor diga cobertura completa', async () => {
     const actions = structuredClone(incidentActions);
@@ -95,24 +106,122 @@ try {
     assert.match(draft.clarifications[0].question, /¿“la anterior” corrige/);
     assert.equal(requests.some((body) => body.messages[0].content.includes('Etapa: resolve.')), false);
   });
-  await run('trece acciones del audio real se reparan antes de resolver el catálogo', async () => {
+  await run('trece acciones del audio real se normalizan antes de resolver el catálogo', async () => {
     const extra = { ...incidentActions[1], productName: 'Camiseta de Independiente', productModel: 'anterior', evidence: ambiguousMention };
     const phantom = { ...incidentActions[0], productName: 'Camiseta del Manchester City', productModel: 'anterior', size: undefined, evidence: ambiguousMention };
     const thirteen = [incidentActions[0], extra, phantom, ...incidentActions.slice(1)];
     const draft = await prepare(incidentText, thirteen, incidentCatalog, { coverageActions: incidentActions });
     assert.equal(draft.ok, true);
     assert.equal(draft.actions.length, 11);
-    assert.ok(requests.some((body) => body.messages[0].content.includes('Etapa: repair_coverage.')));
+    assert.equal(requests.some((body) => body.messages[0].content.includes('Etapa: repair_coverage.')), false);
   });
-  await run('si el modelo insiste en los trece productos no se aplica el lote', async () => {
+  await run('si el modelo insiste en trece productos se conservan solo los once reales', async () => {
     const extra = { ...incidentActions[1], productName: 'Camiseta de Independiente', productModel: 'anterior', evidence: ambiguousMention };
     const phantom = { ...incidentActions[0], productName: 'Camiseta del Manchester City', productModel: 'anterior', size: undefined, evidence: ambiguousMention };
     const thirteen = [incidentActions[0], extra, phantom, ...incidentActions.slice(1)];
     const draft = await prepare(incidentText, thirteen, incidentCatalog);
+    assert.equal(draft.ok, true);
+    assert.equal(draft.actions.length, 11);
+    assert.equal(draft.actions.filter((item) => /Manchester City/.test(item.productName)).length, 1);
+  });
+  await run('salida como la del log guarda once SKU completos, versión y precios correctos', async () => {
+    const names = [
+      ['Camiseta suplente del Manchester City 2025', undefined],
+      ['Camiseta de Independiente suplente 2026', 'suplente'],
+      ['Camiseta de Racing titular, 2026', 'titular'],
+      ['Camiseta de River 2025', 'titular'],
+      ['Camiseta de Argentina, tercera equipación, 2025', 'tercera equipación'],
+      ['Camiseta de Barcelona 2025 titular', 'titular'],
+      ['Tercera camiseta de Boca', 'tercera equipación'],
+      ['Camiseta de Italia 2025', 'titular'],
+      ['Camiseta de la Roma 2025 titular', 'titular'],
+      ['Camiseta del Real Madrid', 'titular'],
+      ['Camiseta del Barcelona 2025 titular, mangas largas', 'titular'],
+    ];
+    const logActions = incidentActions.map((action, index) => ({ ...action,
+      productName: names[index][0], productModel: names[index][1] }));
+    const extra = { ...logActions[1], productName: 'Camiseta de Independiente', productModel: undefined, evidence: ambiguousMention };
+    const phantom = { ...logActions[0], productName: 'Camiseta del Manchester City', productModel: 'anterior', size: undefined, evidence: ambiguousMention };
+    const draft = await prepare(incidentText, [logActions[0], extra, phantom, ...logActions.slice(1)], incidentCatalog, {
+      enrichedNames: incidentActions.map((action) => action.productName),
+      attributeQuotes: incidentActions.map((_, index) => index === 0
+        ? [ambiguousMention] : ['Todas estas que te voy a mencionar son en versión jugador.']),
+    });
+    assert.equal(draft.ok, true);
+    assert.equal(draft.actions.length, 11);
+    assert.equal(draft.actions.reduce((sum, action) => sum + action.price, 0), 720000);
+    assert.equal(draft.actions.filter((action) => action.price === 65000).length, 10);
+    assert.equal(draft.actions[0].size, 'L');
+    assert.equal(draft.actions.slice(1).every((action) => !action.size), true);
+    assert.equal(draft.actions.every((action) => /versión jugador/i.test(productBaseName(action))), true);
+    assert.match(productBaseName(draft.actions[2]), /Racing.*titular.*2026/i);
+    assert.match(productBaseName(draft.actions[6]), /Boca/i);
+    assert.match(productBaseName(draft.actions[10]), /mangas largas/i);
+  });
+  await run('un atributo compartido se aplica a productos de ferretería sin reglas de camisetas', async () => {
+    const source = 'Ingresó un taladro Makita 18V. Ingresó una amoladora Bosch 750W. Ambos tienen batería de litio.';
+    const actions = [
+      { type: 'add_stock', productName: 'Taladro Makita 18V', qty: 1, evidence: 'taladro Makita 18V', fieldEvidence: {} },
+      { type: 'add_stock', productName: 'Amoladora Bosch 750W', qty: 1, evidence: 'amoladora Bosch 750W', fieldEvidence: {} },
+    ];
+    const draft = await prepare(source, actions, { products: [] }, {
+      enrichedNames: ['Taladro Makita 18V batería de litio', 'Amoladora Bosch 750W batería de litio'],
+      attributeQuotes: [['Ambos tienen batería de litio.'], ['Ambos tienen batería de litio.']],
+    });
+    assert.equal(draft.ok, true);
+    assert.equal(draft.actions.length, 2);
+    assert.equal(draft.actions.every((action) => /batería de litio/i.test(action.productName) && action.qty === 1), true);
+  });
+  await run('un atributo sin respaldo textual detiene el borrador', async () => {
+    const source = 'Ingresó un taladro Makita 18V. Ingresó una amoladora Bosch 750W.';
+    const actions = [
+      { type: 'add_stock', productName: 'Taladro Makita 18V', qty: 1, evidence: 'taladro Makita 18V', fieldEvidence: {} },
+      { type: 'add_stock', productName: 'Amoladora Bosch 750W', qty: 1, evidence: 'amoladora Bosch 750W', fieldEvidence: {} },
+    ];
+    const draft = await prepare(source, actions, { products: [] }, {
+      enrichedNames: ['Taladro Makita 18V rojo', 'Amoladora Bosch 750W'],
+    });
     assert.equal(draft.ok, false);
-    assert.equal(draft.actions.length, 13);
-    assert.equal(draft.reason, 'coverage_incomplete');
-    assert.equal(requests.some((body) => body.messages[0].content.includes('Etapa: resolve.')), false);
+    assert.equal(draft.reason, 'ungrounded_attribute_review');
+  });
+  await run('la respuesta real resuelve anterior sin repetir la pregunta ni duplicar stock', async () => {
+    const answer = 'la anterior corresponde a al producto previo';
+    const extra = { ...incidentActions[1], productName: 'Camiseta de Independiente', productModel: 'anterior', evidence: ambiguousMention };
+    const phantom = { ...incidentActions[0], productName: 'Camiseta del Manchester City', productModel: 'anterior', size: undefined, evidence: ambiguousMention };
+    const thirteen = [incidentActions[0], extra, phantom, ...incidentActions.slice(1)];
+    const evidenceSpanId = buildSourceSpans(incidentText).find((span) => span.text === ambiguousMention).id;
+    scenario = { actions: thirteen, coverageActions: thirteen, auditCount: 0, audits: [{
+      coverageComplete: false, issues: [
+        { kind: 'clarification', evidenceSpanId, question: '¿Los productos mencionados en la segunda parte del texto corresponden a un nuevo ingreso de stock o es una duplicación accidental?' },
+        { kind: 'clarification', evidenceSpanId, question: '¿“anterior” corrige el producto previo o indica otro producto?' },
+      ],
+    }, { coverageComplete: false, issues: [
+      { kind: 'clarification', evidenceSpanId, question: '¿La primera mención de Independiente corresponde a la suplente 2026 o a otro producto?' },
+      { kind: 'clarification', evidenceSpanId, question: '¿“anterior” corrige el producto previo o indica otro producto?' },
+    ] }] };
+    const draft = await prepareStockDraft({ sourceText: answer, businessCategory: 'indumentaria', catalog: incidentCatalog,
+      clarificationContext: { sourceText: incidentText, actions: thirteen, questions: [
+        { kind: 'clarification', evidence: ambiguousMention, question: '¿Los productos mencionados en la segunda parte del texto corresponden a un nuevo ingreso de stock o es una duplicación accidental?' },
+        { kind: 'clarification', evidence: ambiguousMention, question: '¿“anterior” corrige el producto previo o indica otro producto?' },
+      ] } });
+    assert.equal(draft.ok, true);
+    assert.equal(draft.actions.length, 11);
+    assert.equal(draft.actions.filter((item) => /Manchester City/.test(item.productName)).length, 1);
+    assert.equal(draft.clarifications, undefined);
+  });
+  await run('una negación explícita no se interpreta como confirmación de la referencia', async () => {
+    assert.equal(confirmsPreviousReference('la anterior no corresponde al producto previo'), false);
+    assert.equal(confirmsPreviousReference('la anterior corresponde a otro producto'), false);
+    assert.equal(confirmsPreviousReference('la anterior corresponde al producto previo'), true);
+  });
+  await run('reintentar recupera un borrador antiguo con la respuesta ya guardada', async () => {
+    const extra = { ...incidentActions[1], productName: 'Camiseta de Independiente', productModel: 'anterior', evidence: ambiguousMention };
+    const phantom = { ...incidentActions[0], productName: 'Camiseta del Manchester City', productModel: 'anterior', size: undefined, evidence: ambiguousMention };
+    const draft = await prepare(`${incidentText}\nla anterior corresponde a al producto previo`,
+      [incidentActions[0], extra, phantom, ...incidentActions.slice(1)]);
+    assert.equal(draft.ok, true);
+    assert.equal(draft.actions.length, 11);
+    assert.equal(draft.actions.filter((action) => /Manchester City/.test(action.productName)).length, 1);
   });
   await run('una cita corta no oculta la reformulación dentro de su oración', async () => {
     const partial = { ...incidentActions[1], productName: 'Camiseta de Independiente',
@@ -200,7 +309,7 @@ try {
     const draft = await prepare(clarifiedText, invalid, incidentCatalog, { repairedActions });
     assert.equal(draft.ok, true);
     assert.equal(draft.actions.length, 11);
-    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'repair_extract', 'audit', ...Array(4).fill('resolve')]);
+    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'repair_extract', 'enrich_attributes', 'audit', ...Array(4).fill('resolve')]);
   });
   await run('un ID no puede respaldar un producto ausente ni un precio distinto', async () => {
     const spans = buildSourceSpans(incidentText);
@@ -232,7 +341,7 @@ try {
     invalid[0].fieldEvidence.price = 'TODAS LAS ANTERIORES VALEN 65,000';
     const draft = await prepare(clarifiedText, invalid, incidentCatalog);
     assert.equal(draft.ok, true); assert.equal(draft.actions.length, 11);
-    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'audit', ...Array(4).fill('resolve')]);
+    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'enrich_attributes', 'audit', ...Array(4).fill('resolve')]);
     assert.equal(draft.actions[0].evidence, incidentActions[0].evidence);
     assert.equal(draft.actions[0].fieldEvidence.price, incidentActions[0].fieldEvidence.price);
     assert.ok(requests.slice(0, 2).every((body) => !JSON.stringify(body).includes('arg-home')));
@@ -269,16 +378,16 @@ try {
       { coverageComplete: true, issues: [] },
     ] });
     assert.equal(draft.ok, true); assert.equal(draft.actions.length, 11);
-    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'audit', 'repair_coverage', 'audit', ...Array(4).fill('resolve')]);
+    assert.deepEqual(draft.traces.map((trace) => trace.stage), ['extract', 'enrich_attributes', 'audit', 'repair_coverage', 'enrich_attributes', 'audit', ...Array(4).fill('resolve')]);
     assert.equal(draft.actions[0].size, 'L'); assert.ok(draft.actions.slice(1).every((action) => !action.size));
-    assert.ok(requests.slice(0, 4).every((body) => !JSON.stringify(body).includes('arg-home')));
+    assert.ok(requests.slice(0, 6).every((body) => !JSON.stringify(body).includes('arg-home')));
   });
   await run('la reparación de cobertura no puede saltear la segunda auditoría', async () => {
     const draft = await prepare(clarifiedText, incidentActions, incidentCatalog, { audits: [
       { coverageComplete: false, issues: [{ kind: 'repairable', detail: 'Falta atributo global.' }] },
       { coverageComplete: false, issues: [{ kind: 'repairable', detail: 'Todavía falta el atributo.' }] },
     ] });
-    assert.equal(draft.ok, false); assert.equal(requests.length, 4);
+    assert.equal(draft.ok, false); assert.equal(requests.length, 6);
     assert.equal(requests.some((request) => request.messages[0].content.includes('Etapa: resolve.')), false);
     assert.match(stockDraftFailureReply(draft), /reintentar/);
   });
