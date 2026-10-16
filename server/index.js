@@ -58,7 +58,7 @@ import {
   removeBusinessMember,
   getBusinessTeam,
 } from './postgresDatabase.js';
-import { extractBearerToken, issueJwt, normalizePhone, verifyJwt } from './auth.js';
+import { extractBearerToken, getJwtSecret, issueJwt, normalizePhone, verifyJwt } from './auth.js';
 import {
   authenticateWaLoginFromWebhook,
   buildWhatsAppLoginUrl,
@@ -84,6 +84,7 @@ const metaVerifyToken = process.env.META_VERIFY_TOKEN || 'erpvoice_token_secreto
 const authEnabled = true;
 const DEV_LOGIN_PHONE = normalizePhone(process.env.AUTH_DEV_PHONE || '5491100000000') || '5491100000000';
 const isAuthDevBypassEnabled = () => {
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1') return false;
   const flag = String(process.env.AUTH_DEV_BYPASS ?? '').trim().toLowerCase();
 
   if (['1', 'true', 'yes', 'on'].includes(flag)) {
@@ -245,10 +246,13 @@ app.get('/', (_req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
+  let authReady = true;
+  try { getJwtSecret(); } catch { authReady = false; }
   res.json({ ok: true, service: 'meta-webhook', port,
     deployment: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT_SHA || null,
     operationContractVersion: 1,
     metaWebhookReady: hasMetaWebhookAppSecret(process.env.META_APP_SECRET),
+    authReady,
   });
 });
 
@@ -888,10 +892,12 @@ app.post('/api/state/apply', authenticateRequest, async (req, res) => {
     const mutationActions = actions.filter(
       (action) => action?.type !== 'query_stock' && action?.type !== 'query_pedidos',
     );
-    const snapshot = await applyActionsToDatabase(mutationActions, sourceText, clientPhone);
+    const snapshot = await applyActionsToDatabase(mutationActions, sourceText, clientPhone, {
+      operationId: req.body?.operationId, actorId: authPhoneOf(req), channel: 'panel',
+    });
     res.json(snapshot);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(error.name === 'InventoryOperationError' ? 409 : 500).json({ error: error instanceof Error ? error.message : String(error), code: error.code });
   }
 });
 
@@ -1016,14 +1022,14 @@ const handleMetaWebhook = async (req, res) => {
         const messageId = typeof message.id === 'string' ? message.id : null;
         const senderName = changes?.contacts?.[0]?.profile?.name || 'Usuario';
 
-        console.log(`Texto recibido. Intentando responder a: ${fromNumber}`);
+        console.log('[MetaWebhook] text accepted', { messageId });
 
         // ACK corto: la confirmación real del resultado se envía al terminar de procesar.
         const responseText = `Procesando tu mensaje, ${senderName}…`;
 
         // no await, pero capturamos errores para no bloquear el flujo
         sendMetaReply({ to: fromNumber, text: responseText })
-          .then((r) => console.log('[MetaWebhook] fast-reply result:', r))
+          .then((r) => console.log('[MetaWebhook] fast-reply result:', { sent: r?.sent, reason: r?.reason }))
           .catch((err) => {
             console.error('[MetaWebhook] fast-reply failed:', err);
           });
@@ -1164,12 +1170,10 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
 
       console.log('[MetaWebhook] response debug:', {
         messageId: incomingId,
-        from: result.fromNumber,
         kind: result.kind,
-        sourceText: result.sourceText,
-        transcript: result.transcript ?? null,
-        replyText: finalReplyText,
-        actions: stockBatchResponse?.actions ?? result.parsed?.actions ?? [],
+        batchId: stockBatchResponse?.batchId,
+        batchStatus: stockBatchResponse?.batchStatus,
+        actionCount: (stockBatchResponse?.actions ?? result.parsed?.actions ?? []).length,
       });
 
       await saveMetaEvent(eventRecord);
@@ -1186,9 +1190,8 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       }
 
       console.log('[MetaWebhook] processed event:', {
-        from: result.fromNumber,
+        messageId: incomingId,
         kind: result.kind,
-        sourceText: result.sourceText,
         actions: result.parsed?.actions?.length ?? 0,
       });
     }

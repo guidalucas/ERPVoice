@@ -1,4 +1,5 @@
 export interface Product {
+  identityFingerprint?: string;
   id: string;
   name: string;
   productType?: string | null;
@@ -7,6 +8,8 @@ export interface Product {
   stockAvailable: number;
   stockReserved: number;
   price: number;
+  unit?: string;
+  priceCurrency?: string;
 }
 
 export interface Client {
@@ -57,12 +60,16 @@ export type VoiceIntent =
 export type ParsedAction =
   | {
       type: 'add_stock';
+      productId?: string;
+      expectedFingerprint?: string;
       productName: string;
       productType?: string;
       productModel?: string;
       size?: string;
       qty: number;
       price?: number;
+      unit?: string;
+      priceCurrency?: string;
     }
   | {
       type: 'reserve_stock';
@@ -161,6 +168,7 @@ export type ParsedActionExtended = ParsedAction | { type: 'sell'; productName: s
 
 export interface ParsedVoicePayload {
   schemaVersion: 1;
+  operationId?: string;
   sourceText: string;
   intent: VoiceIntent;
   confidence: number;

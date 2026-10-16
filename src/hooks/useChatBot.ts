@@ -5,6 +5,7 @@ import { answerStockQuery } from '../domain/stockQuery';
 import { useBusinessCategoryPreset } from './useBusinessCategoryPreset';
 import { voiceModelService } from '../services/voiceModelService';
 import { createChatMessage, useAppStore } from '../store/AppStore';
+import { toUserFacingError } from '../services/apiClient';
 
 const buildBotMessage = (payloadCount: number) => {
   if (!payloadCount) {
@@ -152,6 +153,7 @@ export const useChatBot = () => {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
+  const isConfirmingRef = useRef(false);
 
   const pendingActionsText = useMemo(() => {
     if (!state.pendingProposal) {
@@ -505,13 +507,20 @@ export const useChatBot = () => {
     await startRecording();
   };
 
-  const onConfirm = () => {
-    if (!state.pendingProposal) {
+  const onConfirm = async () => {
+    if (!state.pendingProposal || isConfirmingRef.current) {
       return;
     }
 
-    confirmPendingProposal();
-    addChatMessage(createChatMessage('bot', 'Transacción confirmada y aplicada al estado global.'));
+    isConfirmingRef.current = true;
+    try {
+      await confirmPendingProposal();
+      addChatMessage(createChatMessage('bot', 'Transacción confirmada y aplicada al estado global.'));
+    } catch (error) {
+      addChatMessage(createChatMessage('bot', `${toUserFacingError(error, 'No se pudo confirmar la transacción.')} Podés volver a confirmar la propuesta.`));
+    } finally {
+      isConfirmingRef.current = false;
+    }
   };
 
   const onCancel = () => {

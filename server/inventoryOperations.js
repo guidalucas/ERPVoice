@@ -82,9 +82,9 @@ function normalizePlan(input) {
     return normalized;
   });
   if (own(plan, 'source')) {
-    const source = record(plan.source, ['channel', 'text', 'messageId'], 'source');
+    const source = record(plan.source, ['channel', 'text', 'messageId', 'requestHash'], 'source');
     result.source = { channel: text(source.channel, 'source.channel') };
-    for (const field of ['text', 'messageId']) {
+    for (const field of ['text', 'messageId', 'requestHash']) {
       if (own(source, field)) { if (typeof source[field] !== 'string') invalid(`source.${field} must be a string`); result.source[field] = source[field]; }
     }
   }

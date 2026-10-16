@@ -45,10 +45,10 @@ export type PedidoInput = {
 export const fetchPersistedState = async () => requestJson<PersistedState>('/api/state');
 
 /** Aplica acciones con el mismo shape que el parser de voz (add_stock, sell, etc.). */
-export const applyStateActions = async (sourceText: string, actions: ParsedActionUnion[]) =>
+export const applyStateActions = async (sourceText: string, actions: ParsedActionUnion[], operationId: string = crypto.randomUUID()) =>
   requestJson<PersistedState>('/api/state/apply', {
     method: 'POST',
-    body: JSON.stringify({ sourceText, actions }),
+    body: JSON.stringify({ sourceText, actions, operationId }),
   });
 
 export const createProduct = async (product: ProductInput) =>

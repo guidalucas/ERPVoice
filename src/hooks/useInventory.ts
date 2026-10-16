@@ -46,8 +46,8 @@ export const useInventory = () => {
     hydrateFromSnapshot(snapshot);
   };
 
-  const applyActions = async (sourceText: string, actions: ParsedActionUnion[]) => {
-    const snapshot = await applyStateActions(sourceText, actions);
+  const applyActions = async (sourceText: string, actions: ParsedActionUnion[], operationId?: string) => {
+    const snapshot = await applyStateActions(sourceText, actions, operationId);
     hydrateFromSnapshot(snapshot);
   };
 

@@ -1,5 +1,11 @@
 # Ingresos por WhatsApp: operación y validación
 
+> Reingeniería C en curso: [estado y próximos pasos](STOCKY_REENGINEERING_PLAN.md).
+> La ejecución de `add_stock` de WhatsApp y panel ya usa `stock.receive` y el núcleo
+> determinista. La interpretación y las demás operaciones aún no completaron la migración.
+> Un ingreso del panel requiere `operationId` estable. En producción se requieren
+> `META_APP_SECRET` y `AUTH_JWT_SECRET` privado de al menos 32 bytes.
+
 ## Alcance de la entrega
 
 El motor de ingresos `add_stock` admite cualquier rubro. `voiceStockEngine.js` extrae sin inventario, audita cobertura sin inventario y luego resuelve identidad usando candidatos del mismo negocio. `voiceStockWorkflow.js` conserva el lote, interpreta aclaraciones y gobierna las transiciones. El webhook solo adapta mensajes, transcripciones y respuestas.
@@ -21,7 +27,7 @@ Ventas, reservas y pedidos mantienen su interpretación actual. El panel mantien
 - Si el proveedor falla mientras interpreta una aclaración, el lote conserva sus acciones, preguntas y texto original. La respuesta fallida queda pendiente y “reintentar” la vuelve a procesar junto con el borrador.
 - `voice_stock_batches` conserva fuente original inmutable, extracción inicial, ítems con IDs estables, citas y posiciones, evidencia de cantidades/precios, resolución, candidatos ofrecidos, aclaraciones y versión. Los ítems están en JSONB dentro de la fila bloqueada del lote para que una transición sea indivisible.
 - Un lote sin auditoría satisfactoria o con alguna resolución pendiente no puede modificar stock. Al elegir un producto existente se usa exclusivamente su ID y se valida su identidad actual. “Nuevo” fuerza creación; si la identidad coincide con un producto existente se pide qué lo diferencia.
-- La comparación normaliza artículos y orden de palabras. Una identidad única y completa obtiene 100/100; si solo falta la medida y hay una única variante de esa identidad en el catálogo, obtiene 94/100 en rubros donde la medida no es obligatoria. Es un puntaje de evidencia, no una probabilidad estadística. En indumentaria se pide el talle faltante antes de aplicar, incluso si hay una sola variante en catálogo. Con varias variantes o un año/modelo diferente se pide una elección o se crea una identidad distinta.
+- La igualdad conserva orden, dirección, puntuación y repetición. Una identidad exacta, única y completa puede obtener 100/100. El puntaje 94 de variante omitida solo sirve de indicio de búsqueda y nunca autoriza una selección automática. Son puntajes deterministas, no probabilidades. La ejecución revalida ID, fingerprint, unidad, estado y precio; los conflictos no se resuelven silenciosamente.
 - Antes de resolver el catálogo, una regla independiente del modelo elimina la unidad extra generada por “el/la anterior” cuando identifica el producto previo. En la misma frase, una mención incompleta que reaparece después con más atributos se trata como reformulación, salvo que la persona indique expresamente que son productos distintos. La auditoría vuelve a comprobar la lista resultante y la regla de aplicación impide guardar duplicados de borradores antiguos.
 - Una revisión de atributos interpreta referencias y declaraciones compartidas para cualquier categoría de producto. Cada atributo añadido exige una cita literal del dictado y se reaudita antes de comparar el catálogo. Esta resolución no codifica equipos, versiones ni precios del ejemplo; esos valores viven en el corpus de pruebas.
 - Cambiar o borrar un candidato no cambia la numeración que la persona recibió. Las opciones conservan sus IDs y su identidad original.

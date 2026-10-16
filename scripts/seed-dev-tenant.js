@@ -142,6 +142,7 @@ const main = async () => {
     ],
     'compré 3 boca titular M y 2 river titular L',
     ownerPhone,
+    { operationId: `seed-intake-${Date.now()}`, channel: 'seed', actorId: ownerPhone },
   );
 
   await applyActionsToDatabase(

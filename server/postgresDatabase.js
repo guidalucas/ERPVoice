@@ -3,9 +3,10 @@ import crypto from 'crypto';
 import { Pool } from 'pg';
 import { normalizePhone, getWhatsAppVariants } from './phone.js';
 import { productBaseName, productMatchKey, normalizeProductMetadata } from './productIdentity.js';
-import { validateStockDraft, hasExplicitStockSize, needsDistinctIdentity, productFingerprint, stockReferenceIssues, explicitIdentityConflict } from './voiceStockEngine.js';
+import { validateStockDraft, hasExplicitStockSize, productFingerprint, stockReferenceIssues, explicitIdentityConflict } from './voiceStockEngine.js';
 import { INVENTORY_SCHEMA_SQL, executeInventoryPlanInTransaction } from './inventoryPostgres.js';
-import { validateOperationPlan } from './inventoryOperations.js';
+import { validateOperationPlan, InventoryOperationError } from './inventoryOperations.js';
+import { resolvedStockBatchToPlan, confirmedStockActionsToPlan } from './stockOperationAdapter.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -251,7 +252,8 @@ const toJsonbParam = (value) => {
   return JSON.stringify(parseJsonValue(value));
 };
 
-const rowToProduct = (row) => normalizeProductMetadata({
+const rowToProduct = (row) => {
+  const product = {
   id: row.id,
   ownerPhone: row.owner_phone,
   name: row.name,
@@ -266,7 +268,9 @@ const rowToProduct = (row) => normalizeProductMetadata({
   status: row.inventory_status ?? 'active',
   revision: Number(row.inventory_revision ?? 0),
   priceCurrency: row.price_currency ?? 'XXX',
-});
+  };
+  return { ...normalizeProductMetadata(product), identityFingerprint: productFingerprint(product) };
+};
 
 const rowToClient = (row) => ({
   id: row.id,
@@ -2172,7 +2176,50 @@ export const getStateSnapshot = async (ownerPhone = DEFAULT_OWNER_PHONE) => {
   }
 };
 
+const applyConfirmedStockActions = async (actions, sourceText, ownerPhone, options) => {
+  const operationId = options.operationId ?? options.messageId;
+  if (typeof operationId !== 'string' || !operationId.trim()) {
+    throw new InventoryOperationError('OPERATION_ID_REQUIRED', 'El ingreso necesita un ID estable para poder reintentarse sin duplicar stock.');
+  }
+  await ensureReady();
+  const businessId = normalizeOwnerPhone(ownerPhone);
+  const id = `${options.channel ?? 'confirmed'}:${operationId}`;
+  const requestHash = crypto.createHash('sha256').update(JSON.stringify({ actions, sourceText })).digest('hex');
+  return withTransaction(async (client) => {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify([businessId, id])]);
+    const prior = await queryRow('SELECT plan_json FROM inventory_operations WHERE owner_phone=$1 AND operation_id=$2', [businessId, id], client);
+    if (prior) {
+      if (parseJsonValue(prior.plan_json)?.source?.requestHash !== requestHash) throw new InventoryOperationError('IDEMPOTENCY_CONFLICT', 'El ID ya corresponde a otro ingreso.');
+      return queryAllState(businessId, client);
+    }
+    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
+    const snapshot = await queryAllState(businessId, client);
+    const plan = confirmedStockActionsToPlan({ actions, sourceText, ownerPhone: businessId, operationId: id, products: snapshot.products });
+    plan.source.requestHash = requestHash;
+    const result = await executeInventoryPlanInTransaction(client, plan, {
+      businessId, actorId: options.actorId ?? ownerPhone, permissions: ['inventory:receive'],
+      ownerPhoneVariants: getOwnerPhoneVariants(ownerPhone),
+    });
+    for (const [index, item] of result.items.entries()) {
+      const transactionId = `inventory-${crypto.createHash('sha256').update(JSON.stringify([businessId,id,item.itemId])).digest('hex')}`;
+      const applied = { ...actions[index], resolvedProductId: item.skuId, qty: item.quantity.value, price: item.price, priceCurrency: item.currency };
+      await client.query(`INSERT INTO transactions (id,owner_phone,timestamp,source_text,summary,actions_json,batch_id,item_id)
+        VALUES ($1,$2,NOW(),$3,$4,$5::jsonb,$6,$7)`,
+      [transactionId,businessId,sourceText,summarizeAction(applied),JSON.stringify([applied]),`${businessId}:${id}`,item.itemId]);
+    }
+    if (options.messageId && options.replyText && options.recipient) {
+      await client.query(`INSERT INTO meta_reply_outbox (event_id,recipient,reply_text) VALUES ($1,$2,$3)
+        ON CONFLICT (event_id) DO NOTHING`, [options.messageId,normalizePhone(options.recipient),options.replyText]);
+    }
+    return queryAllState(businessId, client);
+  });
+};
+
 export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
+  if (actions.some((action) => action.type === 'add_stock')) {
+    if (actions.some((action) => action.type !== 'add_stock')) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION', 'Separá el ingreso de las otras operaciones; no apliqué cambios.');
+    return applyConfirmedStockActions(actions, sourceText, ownerPhone, options);
+  }
   await ensureReady();
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
 
@@ -2200,11 +2247,6 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     actions.forEach((action, index) => {
       if (action.type === 'query_stock' || action.type === 'query_pedidos') {
         return;
-      }
-
-      if (action.type === 'add_stock') {
-        const product = ensureProduct(nextProducts, action);
-        product.stockAvailable += action.qty;
       }
 
       if (action.type === 'reserve_stock') {
@@ -2584,59 +2626,22 @@ export const applyResolvedVoiceStockBatch = async (batchId, ownerPhone) => {
     await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
     await ensureTenantState(client, normalizedOwnerPhone);
     const snapshot = await queryAllState(normalizedOwnerPhone, client);
-    const nextProducts = snapshot.products.map((product) => ({ ...product }));
-    const originalProductIds = new Set(nextProducts.map((product) => product.id));
-    const changedProducts = new Map();
-    const appliedActions = [];
-
-    for (let index = 0; index < actions.length; index += 1) {
-      const action = actions[index];
-      const qty = action.qty;
-      if (!Number.isSafeInteger(qty) || qty < 1) throw new Error(`Cantidad inválida en ${action.productName || 'un producto'}.`);
-      let product;
-      if (action.resolution.kind === 'existing') {
-        product = nextProducts.find((entry) => entry.id === action.resolution.productId);
-        if (!product) throw new Error(`El producto elegido ya no está disponible: ${action.productName}.`);
-        if (!action.resolution.fingerprint || action.resolution.fingerprint !== productFingerprint(product)) throw new Error(`El producto elegido cambió: ${action.productName}.`);
-        if (explicitIdentityConflict(action, product)) throw new Error(`La variante elegida no coincide con la medida o los datos de ${action.productName}.`);
-        if (Number.isFinite(Number(action.price)) && Number(action.price) > 0 && !product.price) {
-          product.price = Math.trunc(Number(action.price));
-        }
-      } else if (action.resolution.kind === 'new') {
-        if (nextProducts.some((entry) => needsDistinctIdentity(action, entry))) throw new Error(`Ese producto ya existe. Indicá qué lo diferencia: ${action.productName}.`);
-        product = createProduct(productBaseName(normalizeProductMetadata(action)) || action.productName, nextProducts.length, {
-          productType: action.productType,
-          productModel: action.productModel,
-          size: action.size,
-          price: Number.isFinite(Number(action.price)) && Number(action.price) > 0 ? Number(action.price) : undefined,
-        });
-        nextProducts.push(product);
-      } else {
-        throw new Error(`Resolución inválida para ${action.productName}.`);
+    for (const action of actions) {
+      if (action.resolution.kind !== 'existing') continue;
+      const product = snapshot.products.find((entry) => entry.id === action.resolution.productId);
+      if (!product || !action.resolution.fingerprint || productFingerprint(product) !== action.resolution.fingerprint) {
+        throw new Error(`El producto elegido cambió o ya no está disponible: ${action.productName}.`);
       }
-
-      product.stockAvailable += qty;
-      changedProducts.set(product.id, product);
-      appliedActions.push({ ...action, resolvedProductId: product.id });
+      if (explicitIdentityConflict(action, product)) throw new Error(`La variante elegida no coincide con la medida o los datos de ${action.productName}.`);
     }
-
-    for (const product of changedProducts.values()) {
-      if (originalProductIds.has(product.id)) {
-        const updateResult = await client.query(
-          `UPDATE products SET stock_available = $1, price = $2, owner_phone = $3
-           WHERE id = $4 AND owner_phone = ANY($5)`,
-          [product.stockAvailable, product.price, normalizedOwnerPhone, product.id, getOwnerPhoneVariants(ownerPhone)],
-        );
-        if (!updateResult.rowCount) throw new Error(`El producto elegido ya no está disponible: ${product.name}.`);
-      } else {
-        await client.query(
-          `INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [product.id, normalizedOwnerPhone, product.name, product.productType ?? null, product.productModel ?? null,
-            product.size ?? null, product.stockAvailable, product.stockReserved, product.price],
-        );
-      }
-    }
+    const operationResult = await executeInventoryPlanInTransaction(client, resolvedStockBatchToPlan(batch), {
+      businessId: normalizedOwnerPhone, actorId: batch.senderPhone, permissions: ['inventory:receive'],
+      ownerPhoneVariants: getOwnerPhoneVariants(ownerPhone),
+    });
+    const appliedActions = actions.map((action) => {
+      const result = operationResult.items.find((item) => item.itemId === action.itemId);
+      return { ...action, resolvedProductId: result.skuId, price: result.price, priceCurrency: result.currency };
+    });
     const timestamp = new Date().toISOString();
     for (let index = 0; index < appliedActions.length; index += 1) {
       const action = appliedActions[index];
@@ -2658,12 +2663,13 @@ export const applyResolvedVoiceStockBatch = async (batchId, ownerPhone) => {
     }
 
     const resultSnapshot = await queryAllState(normalizedOwnerPhone, client);
+    const nextProducts = resultSnapshot.products;
     const replyText = `Ingreso aplicado:\n${appliedActions.map((action) => {
       const product = nextProducts.find((entry) => entry.id === action.resolvedProductId);
       return `• ${product.name}${product.size ? ` — ${product.size}` : ''}: +${action.qty} (stock ${product.stockAvailable})${action.price != null ? `, $${action.price.toLocaleString('es-AR')} c/u` : ''}`;
     }).join('\n')}`;
     const replyMessageId = batch.payload.replyMessageId ?? batch.sourceMessageId;
-    const payload = { ...batch.payload, appliedActions, resultSnapshot,
+    const payload = { ...batch.payload, appliedActions, resultSnapshot, operationResult,
       handledMessages: [...(batch.payload.handledMessages ?? []).filter((entry) => entry.messageId !== replyMessageId), { messageId: replyMessageId, replyText }],
     };
     await client.query(

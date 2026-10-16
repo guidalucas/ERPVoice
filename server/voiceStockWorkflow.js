@@ -143,7 +143,7 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
   }
   const catalog = await getStateSnapshot(ownerPhone);
   if (active?.status === 'awaiting_choice' && active.payload.engineVersion !== ENGINE_VERSION) {
-    const reply = 'Conservé tu borrador anterior. Enviame la lista completa para verificarla con el nuevo flujo, o escribí “cancelar”.';
+    const reply = 'Conservé tu borrador anterior. Escribí “reintentar” para verificar el mensaje guardado con el nuevo flujo, o “cancelar”.';
     const saved = await saveTransition(active, messageId, active.payload, 'awaiting_correction', reply);
     return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
   }

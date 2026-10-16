@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useReducer, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import type { AppState, ChatMessage, ParsedVoicePayload, Product, Client, Pedido, Proveedor, Transaction } from '../domain/types';
 import { initialAppState } from '../domain/mockDb';
 import { applyConfirmedActions } from '../services/transactionService';
@@ -15,8 +15,7 @@ type PersistedSnapshot = {
 type AppAction =
   | { type: 'ADD_CHAT_MESSAGE'; message: ChatMessage }
   | { type: 'SET_PENDING_PROPOSAL'; payload: ParsedVoicePayload | null }
-  | { type: 'CONFIRM_PENDING_PROPOSAL' }
-  | { type: 'CLEAR_PENDING_PROPOSAL' }
+  | { type: 'CLEAR_PENDING_PROPOSAL'; proposal?: ParsedVoicePayload }
   | { type: 'APPLY_EXTERNAL_PROPOSAL'; payload: ParsedVoicePayload }
   | { type: 'HYDRATE_PERSISTED_STATE'; snapshot: PersistedSnapshot };
 
@@ -24,7 +23,7 @@ interface AppStoreValue {
   state: AppState;
   addChatMessage: (message: ChatMessage) => void;
   setPendingProposal: (payload: ParsedVoicePayload | null) => void;
-  confirmPendingProposal: () => void;
+  confirmPendingProposal: () => Promise<void>;
   clearPendingProposal: () => void;
   applyExternalProposal: (payload: ParsedVoicePayload) => void;
   hydratePersistedState: (snapshot: PersistedSnapshot) => void;
@@ -44,12 +43,10 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         ...state,
         pendingProposal: action.payload,
       };
-    case 'CONFIRM_PENDING_PROPOSAL':
-      return state.pendingProposal ? applyConfirmedActions(state, state.pendingProposal.actions, state.pendingProposal.sourceText) : state;
     case 'CLEAR_PENDING_PROPOSAL':
       return {
         ...state,
-        pendingProposal: null,
+        pendingProposal: action.proposal && state.pendingProposal !== action.proposal ? state.pendingProposal : null,
       };
     case 'APPLY_EXTERNAL_PROPOSAL':
       return applyConfirmedActions(state, action.payload.actions, action.payload.sourceText);
@@ -71,55 +68,65 @@ const createId = (prefix: string) => `${prefix}-${Math.random().toString(36).sli
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
+  const pendingProposalRef = useRef(state.pendingProposal);
+  const confirmationRef = useRef<Promise<void> | null>(null);
 
   const confirmPendingProposal = useCallback(() => {
-    const proposal = state.pendingProposal;
-
-    if (!proposal) {
-      return;
+    if (confirmationRef.current) {
+      return confirmationRef.current;
     }
 
-    dispatch({ type: 'CONFIRM_PENDING_PROPOSAL' });
+    const proposal = pendingProposalRef.current;
 
-    void requestJson<PersistedSnapshot>('/api/state/apply', {
-      method: 'POST',
-      body: JSON.stringify({
-        sourceText: proposal.sourceText,
-        actions: proposal.actions,
-      }),
-    })
-      .then((snapshot) => {
-        if (snapshot?.products && snapshot?.clients && snapshot?.transactions) {
-          dispatch({
-            type: 'HYDRATE_PERSISTED_STATE',
-            snapshot: {
-              products: snapshot.products,
-              clients: snapshot.clients,
-              proveedores: snapshot.proveedores ?? [],
-              pedidos: snapshot.pedidos ?? [],
-              transactions: snapshot.transactions,
-            },
-          });
+    if (!proposal) {
+      return Promise.resolve();
+    }
+
+    const confirmation = (async () => {
+      try {
+        const snapshot = await requestJson<PersistedSnapshot>('/api/state/apply', {
+          method: 'POST',
+          body: JSON.stringify({
+            sourceText: proposal.sourceText,
+            actions: proposal.actions,
+            operationId: proposal.operationId,
+          }),
+        });
+
+        if (!Array.isArray(snapshot?.products) || !Array.isArray(snapshot?.clients) || !Array.isArray(snapshot?.transactions)) {
+          throw new Error('No se pudo verificar la confirmación. Intentá de nuevo.');
         }
-      })
-      .catch(() => {
-        // best-effort persistence
-      });
-  }, [state.pendingProposal]);
+
+        dispatch({ type: 'HYDRATE_PERSISTED_STATE', snapshot });
+        dispatch({ type: 'CLEAR_PENDING_PROPOSAL', proposal });
+        if (pendingProposalRef.current === proposal) {
+          pendingProposalRef.current = null;
+        }
+      } finally {
+        confirmationRef.current = null;
+      }
+    })();
+    confirmationRef.current = confirmation;
+    return confirmation;
+  }, []);
 
   const addChatMessage = useCallback((message: ChatMessage) => {
     dispatch({ type: 'ADD_CHAT_MESSAGE', message });
   }, []);
 
   const setPendingProposal = useCallback((payload: ParsedVoicePayload | null) => {
-    dispatch({ type: 'SET_PENDING_PROPOSAL', payload });
+    const proposal = payload ? { ...payload, operationId: payload.operationId ?? crypto.randomUUID() } : null;
+    pendingProposalRef.current = proposal;
+    dispatch({ type: 'SET_PENDING_PROPOSAL', payload: proposal });
   }, []);
 
   const clearPendingProposal = useCallback(() => {
+    pendingProposalRef.current = null;
     dispatch({ type: 'CLEAR_PENDING_PROPOSAL' });
   }, []);
 
   const applyExternalProposal = useCallback((payload: ParsedVoicePayload) => {
+    pendingProposalRef.current = null;
     dispatch({ type: 'APPLY_EXTERNAL_PROPOSAL', payload });
   }, []);
 

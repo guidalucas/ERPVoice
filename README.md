@@ -1,5 +1,18 @@
 # VoiceERP
 
+La transición a arquitectura C se sigue en [STOCKY_REENGINEERING_PLAN.md](STOCKY_REENGINEERING_PLAN.md).
+Los ingresos `add_stock` ya se ejecutan mediante un contrato `stock.receive`, recibos
+idempotentes y movimientos transaccionales. Las otras capacidades siguen en migración.
+`POST /api/inventory/operations` acepta el contrato v1 con autenticación; el negocio
+se verifica contra la sesión. `POST /api/state/apply` requiere `operationId` estable
+para ingresos. `npm run test:inventory` prueba dominio/contratos/seguridad y
+`npm run test:voice-stock-postgres` agrega integración y HTTP en PostgreSQL temporal.
+
+Antes de desplegar: configurar `META_APP_SECRET` (firma POST Meta) y, en producción,
+`AUTH_JWT_SECRET` privado de al menos 32 bytes. `/api/health` publica readiness y el SHA
+si existe `RENDER_GIT_COMMIT` o `GIT_COMMIT_SHA`. Verificar backup/restauración antes de
+la migración que amplía cantidades/precios a BIGINT. No hay despliegue automático desde esta documentación.
+
 ERP voice-first para stock y cuentas corrientes. Convierte audio o texto en acciones de negocio, las confirma en una UI tipo chat y persiste el estado en PostgreSQL/Supabase.
 
 ## Qué incluye

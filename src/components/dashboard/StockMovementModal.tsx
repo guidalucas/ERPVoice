@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ParsedActionUnion, Product } from '../../domain/types';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { toUserFacingError } from '../../services/apiClient';
@@ -9,7 +9,7 @@ type StockMovementModalProps = {
   mode: StockMovementMode;
   products: Product[];
   onClose: () => void;
-  onSubmit: (sourceText: string, actions: ParsedActionUnion[]) => Promise<void>;
+  onSubmit: (sourceText: string, actions: ParsedActionUnion[], operationId?: string) => Promise<void>;
 };
 
 const normalizeSearch = (value: string) =>
@@ -35,6 +35,8 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
   const [qtyText, setQtyText] = useState('1');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestRef = useRef<{ key: string; id: string } | null>(null);
+  const inFlightRef = useRef(false);
 
   const selectedProduct = useMemo(
     () => products.find((product) => product.id === selectedProductId) ?? null,
@@ -64,11 +66,12 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
   }, [products, searchQuery, preset.useVariants]);
 
   const qty = Number(qtyText);
-  const qtyValid = Number.isFinite(qty) && qty > 0 && Number.isInteger(qty);
+  const qtyValid = Number.isSafeInteger(qty) && qty > 0;
   const exceedsStock = !isIngreso && selectedProduct != null && qtyValid && qty > selectedProduct.stockAvailable;
   const canSubmit = Boolean(selectedProduct) && qtyValid && !exceedsStock && !submitting;
 
   const handleSubmit = async () => {
+    if (inFlightRef.current) return;
     if (!selectedProduct || !qtyValid) {
       setError('Elegí un producto y una cantidad válida.');
       return;
@@ -81,14 +84,19 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
 
     setError(null);
     setSubmitting(true);
+    inFlightRef.current = true;
 
     const action: ParsedActionUnion = isIngreso
       ? {
           type: 'add_stock',
+          productId: selectedProduct.id,
+          expectedFingerprint: selectedProduct.identityFingerprint,
+          unit: selectedProduct.unit ?? 'unit',
+          priceCurrency: selectedProduct.priceCurrency ?? 'XXX',
           productName: selectedProduct.name,
           productType: selectedProduct.productType ?? undefined,
           productModel: selectedProduct.productModel ?? undefined,
-          size: preset.useVariants ? selectedProduct.size ?? undefined : undefined,
+          size: selectedProduct.size ?? undefined,
           qty,
           price: selectedProduct.price,
         }
@@ -107,11 +115,14 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
       : `Venta manual: -${qty} ${productLabel(selectedProduct, preset.useVariants)}`;
 
     try {
-      await onSubmit(sourceText, [action]);
+      const key = JSON.stringify({ sourceText, action });
+      if (requestRef.current?.key !== key) requestRef.current = { key, id: crypto.randomUUID() };
+      await onSubmit(sourceText, [action], requestRef.current.id);
       onClose();
     } catch (submitError) {
       setError(toUserFacingError(submitError, 'No se pudo registrar el movimiento. Reintentá.'));
     } finally {
+      inFlightRef.current = false;
       setSubmitting(false);
     }
   };

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { runInventoryCoreChecks } from './inventory-core-postgres-checks.js';
+import { runInventoryHttpChecks } from './inventory-http-checks.js';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -49,6 +50,7 @@ try {
   await db.migrateDatabase();
   sql = new Client({ connectionString: connection }); await sql.connect();
   await runInventoryCoreChecks({ db, sql, check });
+  await runInventoryHttpChecks({ db, sql, check });
 
   await check('migración repetible y RLS', async () => {
     const rows = await sql.query("SELECT relrowsecurity FROM pg_class WHERE relname IN ('voice_stock_batches', 'meta_reply_outbox', 'voice_stock_batch_settings')");
@@ -108,6 +110,8 @@ try {
       await assert.rejects(db.applyResolvedVoiceStockBatch(batch.id, owner));
       assert.equal((await db.getStateSnapshotStrict(owner)).products.some((entry) => entry.name === 'Rollback de outbox'), false);
       assert.equal((await sql.query('SELECT id FROM transactions WHERE batch_id = $1', [batch.id])).rowCount, 0);
+      assert.equal((await sql.query('SELECT operation_id FROM inventory_operations WHERE owner_phone=$1 AND operation_id=$2', [owner,batch.id])).rowCount, 0);
+      assert.equal((await sql.query('SELECT item_id FROM inventory_movements WHERE owner_phone=$1 AND operation_id=$2', [owner,batch.id])).rowCount, 0);
       assert.equal((await db.getVoiceStockBatchByMessage(owner, batch.sourceMessageId)).status, 'ready');
     } finally {
       await sql.query('DROP TRIGGER test_outbox_failure ON meta_reply_outbox; DROP FUNCTION test_outbox_failure();');

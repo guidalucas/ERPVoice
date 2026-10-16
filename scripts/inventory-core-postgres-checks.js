@@ -59,6 +59,14 @@ export async function runInventoryCoreChecks({ db, sql, check }) {
     const result = await db.executeInventoryOperation(plan(a, 'core-typed-units', [fresh('item-1', 'Core typed unit', 4, { attributes, unit: 'box' })]), context(a));
     const row = await sql.query('SELECT attributes_json, inventory_unit FROM products WHERE owner_phone=$1 AND id=$2', [a, result.items[0].skuId]);
     assert.deepEqual(row.rows[0].attributes_json, attributes); assert.equal(row.rows[0].inventory_unit, 'box');
+    const directions = await db.executeInventoryOperation(plan(a, 'core-converter-directions', [
+      fresh('forward', 'Convertidor de 12 V a 24 V', 2),
+      fresh('reverse', 'Convertidor de 24 V a 12 V', 3),
+    ]), context(a));
+    assert.notEqual(directions.items[0].skuId, directions.items[1].skuId);
+    const converted = await db.getStateSnapshotStrict(a);
+    assert.equal(converted.products.find((product) => product.id === directions.items[0].skuId).stockAvailable, 2);
+    assert.equal(converted.products.find((product) => product.id === directions.items[1].skuId).stockAvailable, 3);
     await assert.rejects(db.executeInventoryOperation(plan(a, 'core-opposite-direction', [{ itemId: 'item-1', type: 'stock.receive', target: { kind: 'existing', skuId: result.items[0].skuId }, quantity: { value: 1, unit: 'piece' } }]), context(a)), { code: 'UNIT_MISMATCH' });
   });
 
@@ -98,10 +106,10 @@ export async function runInventoryCoreChecks({ db, sql, check }) {
   await run('legacy whole-table writer retains inventory metadata', async () => {
     const received = await db.executeInventoryOperation(plan(a, 'core-legacy-preserve', [fresh('item-1', 'Core legacy preserve', 1, { attributes: { finish: { state: 'known', type: 'text', value: 'mate' } }, unit: 'pack', price: { amount: 1250, currency: 'UYU', policy: 'initialize' } })]), context(a));
     const skuId = received.items[0].skuId;
-    await db.applyActionsToDatabase([{ type: 'add_stock', productName: 'Core legacy preserve', qty: 1, productId: skuId }], 'legacy metadata preservation', a, { messageId: 'core-legacy-preserve' });
+    await db.applyActionsToDatabase([{ type: 'update_product', productName: 'Core legacy preserve', price: 1250, productId: skuId }], 'legacy metadata preservation', a, { messageId: 'core-legacy-preserve' });
     const row = await sql.query('SELECT attributes_json, inventory_unit, price_currency, stock_available FROM products WHERE owner_phone=$1 AND id=$2', [a, skuId]);
     assert.deepEqual(row.rows[0].attributes_json, { finish: { state: 'known', type: 'text', value: 'mate' } });
-    assert.equal(row.rows[0].inventory_unit, 'pack'); assert.equal(row.rows[0].price_currency, 'UYU'); assert.equal(Number(row.rows[0].stock_available), 2);
+    assert.equal(row.rows[0].inventory_unit, 'pack'); assert.equal(row.rows[0].price_currency, 'UYU'); assert.equal(Number(row.rows[0].stock_available), 1);
   });
 
   await run('safe integer quantities above 32-bit range persist', async () => {

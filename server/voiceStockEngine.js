@@ -1,8 +1,9 @@
 import { completeChatJson } from './llmChatClient.js';
-import { normalizeProductMetadata, productBaseName, productMatchKey } from './productIdentity.js';
-import { canonicalIdentityText } from './inventoryDomain.js';
+import { normalizeProductMetadata, productBaseName } from './productIdentity.js';
+import { canonicalIdentityText, normalizeAttributes } from './inventoryDomain.js';
+import { inventoryProductFingerprint } from './inventoryOperations.js';
 
-export const ENGINE_VERSION = 'stock-batch-v4';
+export const ENGINE_VERSION = 'stock-batch-v5';
 export const normalizeIdentity = (value) => String(value ?? '').toLowerCase().normalize('NFD')
   .replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9]+/g, ' ').trim();
 export const hasExplicitStockSize = (action) => {
@@ -12,15 +13,16 @@ export const hasExplicitStockSize = (action) => {
   return ` ${normalizeIdentity(quoted)} `.includes(` ${normalizeIdentity(action.size)} `);
 };
 const startsWithStockIntake = (value) => /^(?:carge|cargue|cargamos|cargar|ingrese|ingresamos|agregue|agregamos|sume|sumamos|recibi|recibimos|entraron|llegaron|anota|anote|registra|registre)\b/.test(normalizeIdentity(value));
-export const stockIdentityKey = (item) => {
+const stockIdentityParts = (item) => {
   const identity = { ...item, productName: item.productName ?? item.name ?? productBaseName(item), size: normalizeProductMetadata(item).size };
   // Search-token equality is not SKU identity. Preserve direction, word order,
   // punctuation and repeated values; uncertain aliases require a choice.
-  return [canonicalIdentityText(productBaseName(identity)), canonicalIdentityText(String(identity.size ?? ''))].join('|');
+  return [canonicalIdentityText(productBaseName(identity)), canonicalIdentityText(String(identity.size ?? ''))];
 };
-export const productFingerprint = (item) => JSON.stringify([item.name, item.productType ?? '', item.productModel ?? '', item.size ?? '']);
+export const stockIdentityKey = (item) => JSON.stringify(stockIdentityParts(item));
+export const productFingerprint = (product) => product.identityFingerprint ?? inventoryProductFingerprint(product);
 export const isSameSku = (action, product) => stockIdentityKey(action) === stockIdentityKey(product);
-export const needsDistinctIdentity = (action, product) => stockIdentityKey(action).split('|')[0] === stockIdentityKey(product).split('|')[0]
+export const needsDistinctIdentity = (action, product) => stockIdentityParts(action)[0] === stockIdentityParts(product)[0]
   && (!normalizeProductMetadata(action).size || normalizeIdentity(normalizeProductMetadata(action).size) === normalizeIdentity(normalizeProductMetadata(product).size));
 export const explicitIdentityConflict = (action, product) => {
   const actionSize = normalizeProductMetadata(action).size;
@@ -35,21 +37,23 @@ export const explicitIdentityConflict = (action, product) => {
 // identity scores 100; 94 is a retrieval hint and never authorizes an omitted variant.
 export const stockMatchScore = (action, product, products = []) => {
   if (explicitIdentityConflict(action, product)) return 0;
+  if ((product.status ?? 'active') !== 'active' || (action.unit ?? 'unit') !== (product.unit ?? 'unit')) return 0;
+  if (JSON.stringify(normalizeAttributes(action.attributes ?? {})) !== JSON.stringify(normalizeAttributes(product.attributes ?? {}))) return 0;
   const attributes = action.identityAttributes && typeof action.identityAttributes === 'object' && !Array.isArray(action.identityAttributes)
     ? Object.entries(action.identityAttributes).filter(([key, value]) => !/id$/i.test(key) && (typeof value === 'string' || typeof value === 'number'))
       .flatMap(([, value]) => normalizeIdentity(value).split(' ').filter(Boolean)) : [];
   if (action.fieldEvidence?.attributes?.length && !attributes.length) return 0;
   const candidateWords = new Set(normalizeIdentity([product.name, product.productType, product.productModel, product.size].filter(Boolean).join(' ')).split(' '));
   if (attributes.some((word) => !candidateWords.has(word))) return 0;
-  const [wantedBase, wantedSize] = stockIdentityKey(action).split('|');
-  const [storedBase, storedSize] = stockIdentityKey(product).split('|');
+  const [wantedBase, wantedSize] = stockIdentityParts(action);
+  const [storedBase, storedSize] = stockIdentityParts(product);
   if (!wantedBase || wantedBase !== storedBase) return 0;
   if (wantedSize === storedSize) {
-    if (!wantedSize && products.filter((entry) => stockIdentityKey(entry).split('|')[0] === wantedBase).length > 1) return 0;
+    if (!wantedSize && products.filter((entry) => stockIdentityParts(entry)[0] === wantedBase).length > 1) return 0;
     return 100;
   }
   if (wantedSize || !storedSize) return 0;
-  const sameBase = products.filter((entry) => stockIdentityKey(entry).split('|')[0] === wantedBase);
+  const sameBase = products.filter((entry) => stockIdentityParts(entry)[0] === wantedBase);
   return sameBase.length === 1 && sameBase[0].id === product.id ? 94 : 0;
 };
 
@@ -524,16 +528,16 @@ clarification solo si hay dos interpretaciones materiales del texto que no se pu
 export const retrieveStockCandidates = (action, products, limit = 12) => {
   const typeTokens = new Set(normalizeIdentity(action.productType).split(' '));
   const wanted = new Set(normalizeIdentity(action.productName).split(' ').filter((word) => word.length > 2 && !typeTokens.has(word) && !/^\d+$/.test(word)));
-  const wantedBase = stockIdentityKey(action).split('|')[0];
+  const wantedBase = stockIdentityParts(action)[0];
   return products.map((product) => ({ product, score: isSameSku(action, product) ? 10000
-    : stockIdentityKey(product).split('|')[0] === wantedBase ? 9000
+    : stockIdentityParts(product)[0] === wantedBase ? 9000
       : normalizeIdentity(product.name).split(' ').filter((word) => wanted.has(word)).length }))
     .filter(({ score }) => score > 0).sort((a, b) => b.score - a.score).slice(0, limit).map(({ product }) => product);
 };
 
 export const resolveStockDraft = async ({ actions, catalog }) => {
   const products = catalog.products ?? [];
-  const candidates = actions.map((action) => ({ itemId: action.itemId, products: retrieveStockCandidates(action, products).map(({ id, name, productType, productModel, size }) => ({ id, name, productType, productModel, size })) }));
+  const candidates = actions.map((action) => ({ itemId: action.itemId, products: retrieveStockCandidates(action, products).map(({ id, name, productType, productModel, size, attributes, unit, status, identityFingerprint }) => ({ id, name, productType, productModel, size, ...(attributes ? { attributes } : {}), ...(unit ? { unit } : {}), ...(status ? { status } : {}), ...(identityFingerprint ? { identityFingerprint } : {}) })) }));
   const traces = [];
   const byId = new Map();
   const confidentById = new Map();

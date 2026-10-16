@@ -17,7 +17,7 @@
     "test:parser": "node scripts/test-parser-robustness.js",
     "test:voice-stock-batches": "node scripts/test-voice-stock-batch-regression.js",
     "test:voice-stock-postgres": "node scripts/test-voice-stock-postgres.js",
-    "test:inventory": "node --test scripts/test-inventory-domain.js scripts/test-inventory-operations.js scripts/test-meta-webhook-security.js",
+    "test:inventory": "node --test scripts/test-inventory-domain.js scripts/test-inventory-operations.js scripts/test-meta-webhook-security.js scripts/test-auth-boundary.js",
     "eval:voice-stock:live": "node scripts/evaluate-stock-corpus.js --live",
     "test:inventory-ui": "npm run build && node scripts/test-inventory-ui.mjs",
     "build": "tsc -b && vite build",
