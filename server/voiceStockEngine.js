@@ -2,6 +2,7 @@ import { completeChatJson } from './llmChatClient.js';
 import { normalizeProductMetadata, productBaseName } from './productIdentity.js';
 import { canonicalIdentityText, normalizeAttributes } from './inventoryDomain.js';
 import { inventoryProductFingerprint } from './inventoryOperations.js';
+export { interpretStockClarification } from './stockClarificationInterpreter.js';
 
 export const ENGINE_VERSION = 'stock-batch-v5';
 export const normalizeIdentity = (value) => String(value ?? '').toLowerCase().normalize('NFD')
@@ -634,15 +635,4 @@ Repará omisiones, duplicados, referencias al producto anterior y alcance de atr
   if (!audit.ok) return { ...extraction, ok: false, reason: audit.reason, issues: audit.issues, clarifications: audit.clarifications, traces };
   const resolution = await resolveStockDraft({ ...extraction, catalog: input.catalog });
   return { ...extraction, ...resolution, coverageVerified: true, traces: [...traces, ...(resolution.traces ?? [resolution.trace])], engineVersion: ENGINE_VERSION };
-};
-
-export const interpretStockClarification = async ({ sourceText, action }) => {
-  const result = await jsonCall('clarify', `Interpretá la respuesta a una pregunta pendiente sobre UN producto.
-Devolvé {kind:"existing"|"new"|"correction"|"unrelated",productId?:string,correctedAction?:object,evidence?:string}.
-existing solo si el usuario identifica inequívocamente un candidato ofrecido. Un "sí" con varios candidatos no alcanza. new solo si pide crear otro producto. Una orden independiente es unrelated: nunca la fusiones con este ítem.
-Para correction, devolvé correctedAction completo con type add_stock, productName y los campos corregidos (size, productType, productModel, qty, price, fieldEvidence). Conservá los campos anteriores que no corrigió. Las cantidades y precios corregidos necesitan citas LITERALES de la respuesta en fieldEvidence. No inventes atributos. evidence debe ser una cita literal de la respuesta.`, { sourceText, action }, { maxTokens: 1024 });
-  const data = result.json;
-  if (!result.ok || !['existing', 'new', 'correction'].includes(data?.kind) || typeof data.evidence !== 'string' || !data.evidence.trim() || !sourceText.includes(data.evidence)) return { kind: 'unrelated' };
-  if (data.kind === 'existing' && !action.resolution.candidateIds?.includes(data.productId)) return { kind: 'unrelated' };
-  return { ...data, trace: result.trace };
 };

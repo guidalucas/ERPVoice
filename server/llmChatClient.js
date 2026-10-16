@@ -298,7 +298,10 @@ const tryProvider = async (provider, messages, options, retries) => {
           error: error instanceof Error ? error.message : String(error),
           model,
         };
-        console.warn(`[LLM] ${provider.id}/${model} network error`, lastFailure.error);
+        console.warn(`[LLM] ${provider.id}/${model} network error`, {
+          reason: lastFailure.reason,
+          status: lastFailure.status,
+        });
         break;
       }
 
@@ -352,7 +355,11 @@ const tryProvider = async (provider, messages, options, retries) => {
           continue;
         }
 
-        console.warn(`[LLM] ${provider.id}/${model} HTTP ${response.status}`, errorText.slice(0, 300));
+        console.warn(`[LLM] ${provider.id}/${model} HTTP ${response.status}`, {
+          reason: lastFailure.reason,
+          status: lastFailure.status,
+          rateLimit: lastFailure.rateLimit,
+        });
         break;
       }
 
@@ -380,15 +387,16 @@ const tryProvider = async (provider, messages, options, retries) => {
       if (!parsed.ok) {
         lastFailure = { reason: 'invalid_model_json', status: response.status, model, error: parsed.error };
         console.warn(`[LLM] ${provider.id}/${model} JSON no parseable`, {
-          error: parsed.error,
-          contentPreview: String(parsed.raw || content).slice(0, 400),
+          reason: lastFailure.reason,
+          status: lastFailure.status,
         });
         break;
       }
 
       if (parsed.recovered) {
         console.warn(`[LLM] ${provider.id}/${model} JSON recuperado de texto extra`, {
-          contentPreview: String(content).slice(0, 200),
+          reason: 'recovered_model_json',
+          status: response.status,
         });
       }
 

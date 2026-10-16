@@ -195,6 +195,7 @@ try {
   let failRecovery = false;
   let failExtract = false;
   let failResolve = false;
+  let failClarify = false;
   const modelInputs = [];
   globalThis.fetch = async (_url, request) => {
     calls++;
@@ -204,6 +205,7 @@ try {
     modelInputs.push({ stage, input });
     if (stage.includes('Etapa: extract.') && failExtract) return new Response('Fallo simulado', { status: 400 });
     if (stage.includes('Etapa: resolve.') && failResolve) return new Response('Fallo simulado', { status: 400 });
+    if (stage.includes('Etapa: clarify.') && failClarify) return new Response('Fallo simulado', { status: 400 });
     const extracted = extractionOverride ?? [{ type: 'add_stock', productName: 'Taladro Makita', qty: 2, evidence: 'Taladro Makita', fieldEvidence: { qty: 'dos' } }];
     const content = stage.includes('Etapa: extract.') && misclassifyExtract ? { kind: 'other', actions: [] }
       : stage.includes('Etapa: repair_extract.') && failRecovery ? { actions: [] }
@@ -571,6 +573,95 @@ try {
     semanticClarification = { kind: 'existing', productId: drillB.id, evidence: answer };
     const selected = await message('natural-answer', answer); assert.equal(selected.batchStatus, 'applied');
     semanticClarification = null;
+  });
+  await check('fallo de aclaración conserva pregunta/respuesta y reintento aplica una sola vez sin extraer de nuevo', async () => {
+    const source = 'Ingresaron dos Taladro Makita';
+    const answer = 'El que tiene trece milímetros, ya lo tengo.';
+    const before = (await db.getStateSnapshotStrict(owner)).products.find((product) => product.id === drillB.id).stockAvailable;
+    await message('choice-fail-source', source);
+    const original = await db.getVoiceStockBatchByMessage(owner, 'choice-fail-source');
+    assert.ok(original.payload.pendingQuestion.id);
+    const extractCount = modelInputs.filter(({ stage }) => stage.includes('Etapa: extract.')).length;
+    try {
+      failClarify = true;
+      const held = await message('choice-fail-answer', answer);
+      assert.equal(held.batchStatus, 'awaiting_choice');
+      assert.match(held.replyText, /Conservé tu respuesta/);
+      const saved = await db.getVoiceStockBatchByMessage(owner, 'choice-fail-source');
+      assert.equal(saved.sourceText, source);
+      assert.deepEqual(saved.payload.actions, original.payload.actions);
+      assert.deepEqual(saved.payload.pendingQuestion, original.payload.pendingQuestion);
+      assert.deepEqual(saved.payload.pendingChoiceReply, { questionId: original.payload.pendingQuestion.id,
+        itemId: original.payload.actions[0].itemId, messageId: 'choice-fail-answer', text: answer });
+      assert.equal(saved.payload.interpreterError.kind, 'unavailable');
+      const afterFailureCalls = calls;
+      assert.equal((await message('choice-fail-answer', answer)).replyText, held.replyText);
+      assert.equal(calls, afterFailureCalls);
+      assert.equal((await db.getStateSnapshotStrict(owner)).products.find((product) => product.id === drillB.id).stockAvailable, before);
+      failClarify = false;
+      semanticClarification = { kind: 'existing', productId: drillB.id, evidence: answer };
+      const result = await message('choice-fail-retry', 'reintentar');
+      assert.equal(result.batchStatus, 'applied');
+      assert.equal(modelInputs.at(-1).input.sourceText, answer);
+      assert.equal(modelInputs.filter(({ stage }) => stage.includes('Etapa: extract.')).length, extractCount);
+      const applied = await db.getVoiceStockBatchByMessage(owner, 'choice-fail-source');
+      assert.equal(applied.payload.pendingChoiceReply, null);
+      assert.equal(applied.payload.clarifications.at(-1).answerMessageId, 'choice-fail-answer');
+      assert.equal(applied.payload.clarifications.at(-1).questionId, original.payload.pendingQuestion.id);
+      await message('choice-fail-retry', 'reintentar');
+      assert.equal((await db.getStateSnapshotStrict(owner)).products.find((product) => product.id === drillB.id).stockAvailable, before + 2);
+      assert.equal((await sql.query('SELECT item_id FROM inventory_movements WHERE owner_phone=$1 AND operation_id=$2', [owner, applied.id])).rowCount, 1);
+    } finally { failClarify = false; semanticClarification = null; }
+  });
+  await check('respuesta inválida se retiene sin aceptar IDs inventados ni reutilizar una pregunta vencida', async () => {
+    const answer = 'Usá el de trece milímetros.';
+    await message('choice-invalid-source', 'Ingresaron dos Taladro Makita');
+    try {
+      semanticClarification = { kind: 'existing', productId: 'invented-candidate', evidence: answer };
+      const held = await message('choice-invalid-answer', answer);
+      assert.equal(held.batchStatus, 'awaiting_choice');
+      let saved = await db.getVoiceStockBatchByMessage(owner, 'choice-invalid-source');
+      assert.equal(saved.payload.interpreterError.kind, 'invalid');
+      const oldQuestionId = saved.payload.pendingQuestion.id;
+      semanticClarification = null;
+      const unrelated = await message('choice-unrelated-answer', '¿A qué hora abre el local?');
+      assert.equal(unrelated.batchStatus, 'awaiting_choice');
+      saved = await db.getVoiceStockBatchByMessage(owner, 'choice-invalid-source');
+      assert.equal(saved.payload.pendingChoiceReply.text, answer);
+      await db.updateVoiceStockBatch(saved.id, { expectedVersion: saved.version, payload: {
+        ...saved.payload, pendingQuestion: { ...saved.payload.pendingQuestion, id: 'question-replaced' },
+      } });
+      const beforeCalls = calls;
+      const stale = await message('choice-invalid-retry', 'reintentar');
+      assert.equal(stale.batchStatus, 'awaiting_choice');
+      assert.match(stale.replyText, /pregunta pendiente cambió/);
+      assert.equal(calls, beforeCalls);
+      assert.notEqual(oldQuestionId, 'question-replaced');
+    } finally { semanticClarification = null; await message('choice-invalid-cancel', 'cancelar'); }
+  });
+  await check('fallo al resolver una corrección conserva el parche y reintenta sin reconstruir la lista', async () => {
+    await message('choice-correction-fail-source', 'Ingresaron dos Taladro Makita');
+    const initial = await db.getVoiceStockBatchByMessage(owner, 'choice-correction-fail-source');
+    const answer = 'En realidad son tres, medida 17 mm.';
+    try {
+      semanticClarification = { kind: 'correction', evidence: answer, correctedAction: { type: 'add_stock',
+        productName: 'Taladro Makita', size: '17 mm', qty: 3,
+        fieldEvidence: { qty: 'son tres', attributes: ['medida 17 mm'] } } };
+      resolutionKind = 'new'; failResolve = true;
+      assert.equal((await message('choice-correction-fail-answer', answer)).batchStatus, 'awaiting_choice');
+      const held = await db.getVoiceStockBatchByMessage(owner, 'choice-correction-fail-source');
+      assert.deepEqual(held.payload.actions, initial.payload.actions);
+      assert.equal(held.payload.interpreterError.kind, 'unavailable');
+      assert.equal(held.payload.pendingChoiceReply.text, answer);
+      const extractCount = modelInputs.filter(({ stage }) => stage.includes('Etapa: extract.')).length;
+      failResolve = false;
+      assert.equal((await message('choice-correction-fail-retry', 'reintentar')).batchStatus, 'applied');
+      assert.equal(modelInputs.filter(({ stage }) => stage.includes('Etapa: extract.')).length, extractCount);
+      const applied = await db.getVoiceStockBatchByMessage(owner, 'choice-correction-fail-source');
+      assert.equal(applied.payload.actions[0].itemId, initial.payload.actions[0].itemId);
+      assert.equal(applied.payload.pendingChoiceReply, null);
+      assert.equal((await db.getStateSnapshotStrict(owner)).products.find((product) => product.name === 'Taladro Makita' && product.size === '17 mm').stockAvailable, 3);
+    } finally { semanticClarification = null; resolutionKind = 'ambiguous'; failResolve = false; }
   });
   await check('corrección de un solo ítem vuelve a auditar y conserva los demás datos', async () => {
     await message('item-correct-source', 'Ingresaron dos Taladro Makita');
