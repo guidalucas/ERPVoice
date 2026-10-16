@@ -614,6 +614,23 @@ try {
     assert.deepEqual(events.find((event) => event.id === 'history-owner').parseContext?.missingFields, ['productMatch']);
     assert.equal(events.some((event) => event.id === 'history-other'), false);
   });
+  await check('borrado por variante faltante usa ID y valida el estado actual', async () => {
+    const missing = await db.createProductRecord({ name: 'Prueba Variante Ausente', stockAvailable: 1 }, owner);
+    const sized = await db.createProductRecord({ name: 'Prueba Variante Ausente', size: 'L', stockAvailable: 1 }, owner);
+    const selection = { field: 'size', operator: 'missing' };
+    await assert.rejects(
+      db.applyActionsToDatabase([
+        { type: 'delete_product', productName: missing.name, productId: missing.id, selection },
+        { type: 'delete_product', productName: sized.name, productId: sized.id, selection },
+      ], 'Borrado desactualizado', owner),
+      /ya tiene talle o medida/,
+    );
+    assert.ok((await db.getStateSnapshotStrict(owner)).products.some((product) => product.id === missing.id));
+    await db.applyActionsToDatabase([{ type: 'delete_product', productName: missing.name, productId: missing.id, selection }], 'Borrado sin variante', owner);
+    const products = (await db.getStateSnapshotStrict(owner)).products;
+    assert.equal(products.some((product) => product.id === missing.id), false);
+    assert.equal(products.some((product) => product.id === sized.id), true);
+  });
   console.log(`PostgreSQL integration: ${checks} checks passed.`);
 } finally {
   globalThis.fetch = originalFetch;

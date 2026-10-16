@@ -1,4 +1,5 @@
 import { productMatchKey } from './productIdentity.js';
+import { VARIANT_KEYWORD_ALT } from './businessCategories.js';
 
 const MAX_CATALOG_PRODUCTS = 30;
 const MAX_CATALOG_CLIENTS = 25;
@@ -72,6 +73,8 @@ const QUERY_EXTRA_STOPWORDS = new Set([
   'decime',
   'che',
   'hola',
+  'sin',
+  'stock',
   'borra',
   'borrar',
   'elimina',
@@ -247,11 +250,20 @@ const cloneActionWithProduct = (action, product) => ({
 
 export const hasBulkSelection = (sourceText) => /\b(?:todos?|todas?)\b/.test(normalizeText(sourceText || ''));
 
+export const missingVariantSelectionFromText = (sourceText) => {
+  const text = normalizeText(sourceText || '');
+  const variant = `(?:${VARIANT_KEYWORD_ALT})`;
+  const missing = new RegExp(`\\b(?:sin\\s+${variant}|no\\s+(?:tiene|tienen|posee|poseen)\\s+${variant}|${variant}\\s+(?:sin\\s+definir|no\\s+definid[ao]s?))\\b`);
+  return missing.test(text) ? { field: 'size', operator: 'missing' } : null;
+};
+
 const isBulkDelete = (action, sourceText) => action?.type === 'delete_product' &&
   action.productName !== '*' &&
-  (action.allMatches === true || hasBulkSelection(sourceText));
+  (action.selection?.operator === 'missing' || action.allMatches === true || hasBulkSelection(sourceText));
 
 const groundBulkDelete = (action, products, sourceText) => {
+  const selection = action.selection?.field === 'size' && action.selection?.operator === 'missing'
+    ? action.selection : missingVariantSelectionFromText(sourceText);
   const normalizedSource = normalizeText(sourceText);
   const mentionsValue = (value) => new RegExp(
     `(?:^|[^\\p{L}\\p{N}])${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[^\\p{L}\\p{N}])`, 'u',
@@ -261,24 +273,31 @@ const groundBulkDelete = (action, products, sourceText) => {
   ))];
   const parsedSize = normalizeText(action.size || '');
   const specifiedSize = parsedSize && mentionsValue(parsedSize) ? parsedSize : null;
-  const size = specifiedSize || (mentionedSizes.length === 1 ? mentionedSizes[0] : null);
+  const size = selection ? null : specifiedSize || (mentionedSizes.length === 1 ? mentionedSizes[0] : null);
   const sizeTokens = new Set(products.map((product) => normalizeText(product.size || '')).filter(Boolean));
   const tokens = catalogTokensFromText(sourceText, products).filter((token) => !sizeTokens.has(token));
-  const withinSize = size ? products.filter((product) => sizeOf(product) === size) : products;
-  if (!tokens.length || (!specifiedSize && mentionedSizes.length > 1)) {
+  const withinSize = products.filter((product) =>
+    (!size || sizeOf(product) === size) && (!selection || !sizeOf(product)),
+  );
+  if ((!tokens.length && !selection) || (!selection && !specifiedSize && mentionedSizes.length > 1)) {
     return { actions: [], ambiguous: true, candidates: withinSize.map((product) => product.name) };
   }
 
-  const matching = withinSize.filter((product) => productHasQueryTokens(product, tokens));
+  const matching = withinSize.filter((product) => !tokens.length || productHasQueryTokens(product, tokens));
   if (!matching.length) return { actions: [], ambiguous: false, noMatch: true };
+  if (selection && matching.some((product) => !product.id)) {
+    return { actions: [], ambiguous: true, candidates: matching.map((product) => product.name) };
+  }
   const names = matching.map((product) => normalizeText(product.name));
-  if (new Set(names).size !== names.length) {
+  if (new Set(names).size !== names.length && matching.some((product) => !product.id)) {
     return { actions: [], ambiguous: true, candidates: matching.map((product) => product.name) };
   }
   return {
     actions: matching.map((product) => ({
       type: 'delete_product',
       productName: product.name,
+      ...(product.id ? { productId: product.id } : {}),
+      ...(selection ? { selection } : {}),
       productType: product.productType || undefined,
       productModel: product.productModel || undefined,
       size: product.size || undefined,
@@ -639,7 +658,7 @@ export const groundActionsAgainstCatalog = (actions, catalog, sourceText) => {
   let requiresConfirmation = false;
 
   for (const action of actions) {
-    if (!action || !MATCH_ACTIONS.has(action.type) || !action.productName) {
+    if (!action || !MATCH_ACTIONS.has(action.type) || (!action.productName && !action.selection)) {
       next.push(action);
       continue;
     }
@@ -690,6 +709,7 @@ export const groundActionsAgainstCatalog = (actions, catalog, sourceText) => {
   for (const action of next) {
     const key = JSON.stringify({
       type: action.type,
+      productId: action.productId,
       productName: action.productName,
       size: action.size,
       qty: action.type === 'add_stock' ? undefined : action.qty,

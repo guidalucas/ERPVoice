@@ -2307,7 +2307,16 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
         if (action.productName === '*') {
           nextProducts.length = 0;
         } else {
-          const product = resolveProductFlexible(nextProducts, action);
+          const product = typeof action.productId === 'string' && action.productId.trim()
+            ? nextProducts.find((entry) => entry.id === action.productId)
+            : resolveProductFlexible(nextProducts, action);
+          if (action.productId && !product) {
+            throw new Error('El inventario cambió antes de aplicar la selección. Volvé a pedir la operación.');
+          }
+          if (action.selection?.field === 'size' && action.selection?.operator === 'missing' &&
+            normalizeNullableString(product?.size)) {
+            throw new Error('Una variante seleccionada ya tiene talle o medida. Volvé a pedir la operación.');
+          }
           if (product) {
             const productIndex = nextProducts.findIndex((entry) => entry.id === product.id);
             if (productIndex >= 0) {

@@ -6,7 +6,7 @@ import {
   formatVariantRef,
   getBusinessCategoryPreset,
 } from './businessCategories.js';
-import { formatCatalogPromptSection, groundActionsAgainstCatalog, hasBulkSelection, hasProductMatchHold } from './voiceCatalogContext.js';
+import { formatCatalogPromptSection, groundActionsAgainstCatalog, hasBulkSelection, hasProductMatchHold, missingVariantSelectionFromText } from './voiceCatalogContext.js';
 import {
   UNUSABLE_AUDIO_REPLY,
   appendTranscriptionOptions,
@@ -257,7 +257,7 @@ Convertí la frase del usuario en JSON con esta estructura:
     { "type": "update_product", "productName": string, "productType"?: string, "productModel"?: string, "size"?: string, "price"?: number, "stockAvailable"?: number },
     { "type": "update_pedido", "productName": string, "qty"?: number, "size"?: string, "estado"?: "pendiente" | "conseguido" | "descartado", "clientName"?: string },
     { "type": "delete_pedido", "productName": string, "clientName"?: string },
-    { "type": "delete_product", "productName": string }
+    { "type": "delete_product", "productName"?: string, "selection"?: { "field": "size", "operator": "missing" } }
   ],
   "missingFields"?: string[],
   "suggestedPhrases"?: string[]
@@ -278,6 +278,7 @@ Reglas:
 - "N mil" = N*1000. Price solo es plata, nunca gramos/ml/kg.
 - Ingreso / carga / compré / entraron / recibí = add_stock. En un listado, "vale/cuesta" es price del ingreso, NO update_product. qty 1 si no hay cantidad.
 - "eliminá / borrala / no existe / está de más / la de X / la que se llama X" = delete_product. Si hay inventario, usá el nombre exacto. Si el modelo tiene varias variantes y no dijo cuál, NO borres: missingFields ["productMatch"] y suggestedPhrases con cada SKU candidato.
+- Para borrar todos los productos que carecen de variante (sin talle/número/medida), usá delete_product con selection {"field":"size","operator":"missing"}. El sistema selecciona los registros reales del inventario.
 - "borrá el pedido de X" = delete_pedido. "conseguido/descartado" sobre un pedido = update_pedido.
 - Consulta de stock = query_stock (sin mutar). Consulta de pedidos = query_pedidos. Preguntas como "¿qué me pidió Juan?", "¿qué pedidos hay pendientes?", "mostrame los pedidos de María" son query_pedidos, NUNCA client_order.
 - Si pide todo el inventario / todos los productos / listado completo: query_stock con productName "*". Nunca uses "all" ni un producto inventado. Si pide agrupado por talle/número, groupBy: "size".
@@ -1056,10 +1057,15 @@ const parseAction = (value) => {
     };
   }
 
-  if (value.type === 'delete_product' && typeof value.productName === 'string' && value.productName.trim()) {
+  if (value.type === 'delete_product') {
+    const productName = typeof value.productName === 'string' ? value.productName.trim() : '';
+    const selection = value.selection?.field === 'size' && value.selection?.operator === 'missing'
+      ? { field: 'size', operator: 'missing' } : null;
+    if (!productName && !selection) return null;
     return {
       type: 'delete_product',
-      productName: value.productName.trim(),
+      ...(productName ? { productName } : {}),
+      ...(selection ? { selection } : {}),
       productType: typeof value.productType === 'string' ? value.productType : undefined,
       productModel: typeof value.productModel === 'string' ? value.productModel : undefined,
       size: typeof value.size === 'string' ? value.size : undefined,
@@ -1907,6 +1913,11 @@ const parseLocalText = (text, conversationTurns = [], catalog = null, preset = g
     return finish(buildPayload(text, [deleteAll], { intent: 'delete_product' }));
   }
 
+  const missingVariant = missingVariantSelectionFromText(text);
+  if (missingVariant && hasBulkSelection(text) && looksLikeDeleteProducts(text)) {
+    return finish(buildPayload(text, [{ type: 'delete_product', selection: missingVariant }], { intent: 'delete_product' }));
+  }
+
   const pendingBulkDelete = resolvePendingBulkDelete(text, conversationTurns);
   if (pendingBulkDelete) return finish(pendingBulkDelete);
 
@@ -2113,6 +2124,11 @@ const parseVoiceTextWithModel = async (
   const deleteAll = tryParseDeleteAllProductsAction(text);
   if (deleteAll) {
     return finish(buildPayload(text, [deleteAll], { intent: 'delete_product' }));
+  }
+
+  const missingVariant = missingVariantSelectionFromText(text);
+  if (missingVariant && hasBulkSelection(text) && looksLikeDeleteProducts(text)) {
+    return finish(buildPayload(text, [{ type: 'delete_product', selection: missingVariant }], { intent: 'delete_product' }));
   }
 
   const pendingBulkDelete = resolvePendingBulkDelete(text, conversationTurns);
