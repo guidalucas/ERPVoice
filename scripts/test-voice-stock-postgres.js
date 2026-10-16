@@ -349,16 +349,16 @@ try {
       if (createdId) await db.deleteProductRecord(createdId, owner);
     }
   });
-  await check('un único SKU coincidente aplica stock sin pedir una opción', async () => {
+  await check('un único SKU con variante explícita aplica stock sin pedir una opción', async () => {
     const product = await db.createProductRecord({ name: 'Taladro Bosch 18V', size: '10 mm', stockAvailable: 0 }, owner);
-    extractionOverride = [{ type: 'add_stock', productName: 'Taladro Bosch 18V', qty: 2,
-      evidence: 'Taladro Bosch 18V', fieldEvidence: { qty: 'dos' } }];
+    extractionOverride = [{ type: 'add_stock', productName: 'Taladro Bosch 18V', size: '10 mm', qty: 2,
+      evidence: 'Taladro Bosch 18V de 10 mm', fieldEvidence: { qty: 'dos' } }];
     const beforeCalls = modelInputs.length;
     try {
-      const result = await message('unique-sku-source', 'Ingresaron dos Taladro Bosch 18V');
+      const result = await message('unique-sku-source', 'Ingresaron dos Taladro Bosch 18V de 10 mm');
       assert.equal(result.batchStatus, 'applied');
       assert.equal(result.actions[0].resolution.productId, product.id);
-      assert.equal(result.actions[0].resolution.matchScore, 94);
+      assert.equal(result.actions[0].resolution.matchScore, 100);
       assert.equal((await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.id === product.id).stockAvailable, 2);
       assert.equal(modelInputs.slice(beforeCalls).some((entry) => entry.stage.includes('Etapa: resolve.')), false);
     } finally { extractionOverride = null; }

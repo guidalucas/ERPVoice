@@ -1,5 +1,6 @@
 import { completeChatJson } from './llmChatClient.js';
 import { normalizeProductMetadata, productBaseName, productMatchKey } from './productIdentity.js';
+import { canonicalIdentityText } from './inventoryDomain.js';
 
 export const ENGINE_VERSION = 'stock-batch-v4';
 export const normalizeIdentity = (value) => String(value ?? '').toLowerCase().normalize('NFD')
@@ -12,8 +13,10 @@ export const hasExplicitStockSize = (action) => {
 };
 const startsWithStockIntake = (value) => /^(?:carge|cargue|cargamos|cargar|ingrese|ingresamos|agregue|agregamos|sume|sumamos|recibi|recibimos|entraron|llegaron|anota|anote|registra|registre)\b/.test(normalizeIdentity(value));
 export const stockIdentityKey = (item) => {
-  const identity = { productName: item.productName ?? item.name ?? productBaseName(item), size: normalizeProductMetadata(item).size };
-  return [productMatchKey(identity) ?? normalizeIdentity(productBaseName(item)).split(' ').sort().join(' '), normalizeIdentity(identity.size)].join('|');
+  const identity = { ...item, productName: item.productName ?? item.name ?? productBaseName(item), size: normalizeProductMetadata(item).size };
+  // Search-token equality is not SKU identity. Preserve direction, word order,
+  // punctuation and repeated values; uncertain aliases require a choice.
+  return [canonicalIdentityText(productBaseName(identity)), canonicalIdentityText(String(identity.size ?? ''))].join('|');
 };
 export const productFingerprint = (item) => JSON.stringify([item.name, item.productType ?? '', item.productModel ?? '', item.size ?? '']);
 export const isSameSku = (action, product) => stockIdentityKey(action) === stockIdentityKey(product);
@@ -29,7 +32,7 @@ export const explicitIdentityConflict = (action, product) => {
 };
 
 // This is an evidence score, not a probability from the model. An exact normalized
-// identity scores 100; a missing size can score 94 only with one catalog variant.
+// identity scores 100; 94 is a retrieval hint and never authorizes an omitted variant.
 export const stockMatchScore = (action, product, products = []) => {
   if (explicitIdentityConflict(action, product)) return 0;
   const attributes = action.identityAttributes && typeof action.identityAttributes === 'object' && !Array.isArray(action.identityAttributes)
@@ -538,7 +541,7 @@ export const resolveStockDraft = async ({ actions, catalog }) => {
     const compatible = candidates.find((entry) => entry.itemId === action.itemId).products
       .filter((product) => !explicitIdentityConflict(action, product));
     const strong = compatible.map((product) => ({ product, score: stockMatchScore(action, product, products) }))
-      .filter(({ score }) => score >= 94);
+      .filter(({ score }) => score === 100);
     if (strong.length === 1) confidentById.set(action.itemId, strong[0]);
   }
   const unresolved = actions.filter((action) => !confidentById.has(action.itemId));

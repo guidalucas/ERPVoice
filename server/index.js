@@ -1,4 +1,5 @@
 import { holdUnverifiedStockMessage, processStockBatchMessage } from './voiceStockWorkflow.js';
+import { createMetaWebhookSignatureMiddleware, hasMetaWebhookAppSecret } from './metaWebhookSecurity.js';
 import express from 'express';
 import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
@@ -229,6 +230,10 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/api/meta-webhook', express.json({
+  inflate: false,
+  verify: (req, _res, body) => { req.rawBody = Buffer.from(body); },
+}));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -239,7 +244,11 @@ app.get('/', (_req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'meta-webhook', port });
+  res.json({ ok: true, service: 'meta-webhook', port,
+    deployment: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT_SHA || null,
+    operationContractVersion: 1,
+    metaWebhookReady: hasMetaWebhookAppSecret(process.env.META_APP_SECRET),
+  });
 });
 
 app.post('/api/auth/wa-login', async (req, res) => {
@@ -1179,7 +1188,7 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
   }
 };
 
-app.post('/api/meta-webhook', handleMetaWebhook);
+app.post('/api/meta-webhook', createMetaWebhookSignatureMiddleware(), handleMetaWebhook);
 
 setInterval(() => {
   dispatchPendingMetaReplies().catch((error) => {
