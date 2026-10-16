@@ -4,9 +4,35 @@ import {
   updateVoiceStockBatch, applyResolvedVoiceStockBatch, getStateSnapshotStrict as getStateSnapshot, getVoiceStockBatchMode,
   saveVoiceStockShadowRun,
 } from './postgresDatabase.js';
-import { prepareStockDraft, normalizeIdentity, needsDistinctIdentity, productFingerprint, ENGINE_VERSION, interpretStockClarification, validateStockDraft, auditStockDraft, resolveStockDraft } from './voiceStockEngine.js';
+import { prepareStockDraft, normalizeIdentity, hasExplicitStockSize, needsDistinctIdentity, productFingerprint, ENGINE_VERSION, interpretStockClarification, validateStockDraft, auditStockDraft, resolveStockDraft } from './voiceStockEngine.js';
 
 const pendingItem = (batch) => batch.payload.actions?.find((action) => action.resolution?.kind === 'ambiguous');
+const choiceWithSize = (sourceText) => sourceText.trim().match(
+  /^(?:(?:opci[oó]n|n[uú]mero)\s+)?(\d+)\s+(?:(?:en\s+)?(?:talle|talla|medida|tama[ñn]o|n[uú]mero|variante)\s+|en\s+)([\p{L}\p{N}/.-]+(?:\s+[\p{L}\p{N}/.-]+){0,2})$/iu,
+);
+const statedSize = (sourceText) => choiceWithSize(sourceText)?.[2]?.trim().toUpperCase()
+  ?? sourceText.trim().match(/\b(?:talle|talla|medida|tama[ñn]o|n[uú]mero|variante)\s+([\p{L}\p{N}/.-]+(?:\s+[\p{L}\p{N}/.-]+){0,2})$/iu)?.[1]?.trim().toUpperCase();
+const missingClothingSizes = (batch) => batch.businessCategory === 'indumentaria'
+  ? (batch.payload.actions ?? []).filter((action) => !hasExplicitStockSize(action)) : [];
+const clothingSizeReply = (actions) => `Antes de aplicar este ingreso de indumentaria necesito el talle de:\n${actions.map((action, index) =>
+  `${index + 1}. ${action.productName}`).join('\n')}\nRespondé “todas son talle L” si comparten talle, o “1 S, 2 M” si son distintos. También podés escribir “cancelar”.`;
+const parseClothingSizes = (sourceText, count) => {
+  const value = normalizeIdentity(sourceText);
+  const all = value.match(/^(?:todas?|todos?|las|los)\s+(?:son\s+|en\s+)?(?:talle\s+|talla\s+|medida\s+)?([a-z0-9]{1,8})$/);
+  if (all) return new Map(Array.from({ length: count }, (_, index) => [index, all[1].toUpperCase()]));
+  const single = count === 1 && value.match(/^(?:(?:es|en|talle|talla|medida)\s+)?([a-z0-9]{1,8})$/);
+  if (single) return new Map([[0, single[1].toUpperCase()]]);
+  const parts = sourceText.trim().split(/[,;\n]+/).map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  const parsed = new Map();
+  for (const part of parts) {
+    const match = part.match(/^(\d+)\s+(?:(?:en\s+)?(?:talle|talla|medida)\s+|en\s+)?([\p{L}\p{N}]{1,8})$/iu);
+    const index = Number(match?.[1]) - 1;
+    if (!match || index < 0 || index >= count || parsed.has(index)) return null;
+    parsed.set(index, match[2].toUpperCase());
+  }
+  return parsed;
+};
 export const stockChoiceReply = (action) => {
   const options = (action.resolution?.candidateIds ?? []).map((id, index) => {
     const product = action.candidates?.find((entry) => entry.id === id);
@@ -14,7 +40,7 @@ export const stockChoiceReply = (action) => {
   });
   options.push(`${options.length + 1}. Cargar como producto nuevo`);
   if (action.needsDifferentiator) return `“${action.productName}” ya existe con esos mismos datos. Indicá qué cambia para crear otro producto (por ejemplo “nombre: …”), elegí una opción existente o escribí “cancelar”.\n${options.join('\n')}`;
-  return `Dijiste “${action.evidence}” (${action.qty} u.${action.price != null ? `, $${action.price.toLocaleString('es-AR')} c/u` : ''}).\n${options.join('\n')}\nRespondé el número, el nombre, “nuevo” o “cancelar”.`;
+  return `Dijiste “${action.evidence}” (${action.qty} u.${action.price != null ? `, $${action.price.toLocaleString('es-AR')} c/u` : ''}).\nEncontré estas opciones parecidas; comprobá también sus atributos y medida.\n${options.join('\n')}\nRespondé el número, el nombre, “nuevo” o “cancelar”. Si querés otra medida, escribí por ejemplo “1 en talle L”.`;
 };
 
 const asResult = (batch, replyText = batch.replyText) => ({ replyText, actions: batch.payload.appliedActions ?? batch.payload.actions ?? [], batchId: batch.id, batchStatus: batch.status });
@@ -30,6 +56,15 @@ const saveTransition = async (batch, messageId, payload, status, replyText = nul
 });
 
 const finish = async (batch, ownerPhone, messageId) => {
+  const missingSizes = missingClothingSizes(batch);
+  if (missingSizes.length) {
+    const reply = clothingSizeReply(missingSizes);
+    const payload = { ...batch.payload,
+      sizeRequiredItemIds: [...new Set([...(batch.payload.sizeRequiredItemIds ?? []), ...missingSizes.map((action) => action.itemId)])],
+      missingSizeItemIds: missingSizes.map((action) => action.itemId) };
+    const saved = await saveTransition(batch, messageId, payload, 'awaiting_correction', reply);
+    return saved ? asResult(saved) : concurrentResult(batch, ownerPhone);
+  }
   const pending = pendingItem(batch);
   if (pending) {
     const reply = stockChoiceReply(pending);
@@ -117,6 +152,67 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
     // A ready batch is recovered independently; the new incoming message still gets handled.
     return processStockBatchMessage({ sourceText, businessCategory, ownerPhone, senderPhone, messageId });
   }
+  if (active?.status === 'awaiting_correction' && active.payload.missingSizeItemIds?.length) {
+    const actions = active.payload.actions.map((action) => ({ ...action }));
+    const missing = active.payload.missingSizeItemIds.map((id) => actions.find((action) => action.itemId === id)).filter(Boolean);
+    const sizes = parseClothingSizes(sourceText, missing.length);
+    if (!sizes?.size) {
+      const reply = `No pude vincular los talles con los productos pendientes.\n${clothingSizeReply(missing)}`;
+      const saved = await saveTransition(active, messageId, active.payload, 'awaiting_correction', reply);
+      return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+    }
+    for (const [index, size] of sizes) {
+      const action = actions.find((entry) => entry.itemId === missing[index].itemId);
+      action.size = size;
+      action.clarificationEvidence = { text: sourceText, messageId };
+    }
+    const combined = `${active.payload.evidenceSourceText ?? active.sourceText}\n${sourceText}`;
+    const remaining = actions.filter((action) => active.payload.sizeRequiredItemIds.includes(action.itemId) && !hasExplicitStockSize(action));
+    if (remaining.length) {
+      const reply = clothingSizeReply(remaining);
+      const saved = await saveTransition(active, messageId, { ...active.payload, actions, evidenceSourceText: combined,
+        missingSizeItemIds: remaining.map((action) => action.itemId),
+        sizeClarifications: [...(active.payload.sizeClarifications ?? []), { messageId, text: sourceText, assignments: [...sizes] }],
+      }, 'awaiting_correction', reply);
+      return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+    }
+    const required = new Set(active.payload.sizeRequiredItemIds);
+    const rerun = await resolveStockDraft({ sourceText: combined, actions: actions.filter((action) => required.has(action.itemId)), catalog });
+    if (!rerun.ok) {
+      const reply = 'Guardé los talles, pero no pude verificar las variantes del catálogo. Escribí “reintentar” o “cancelar”.';
+      const saved = await saveTransition(active, messageId, { ...active.payload, actions, evidenceSourceText: combined,
+        missingSizeItemIds: [], sizeResolutionPending: true, resolutionError: rerun.reason }, 'awaiting_correction', reply);
+      return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+    }
+    const byId = new Map(rerun.actions.map((action) => [action.itemId, action]));
+    const revised = actions.map((action) => byId.get(action.itemId) ?? action);
+    const saved = await saveTransition(active, messageId, { ...active.payload, actions: revised, evidenceSourceText: combined,
+      missingSizeItemIds: [], sizeRequiredItemIds: [], sizeResolutionPending: false, resolutionError: null,
+      traces: [...(active.payload.traces ?? []), ...(rerun.traces ?? [])],
+      sizeClarifications: [...(active.payload.sizeClarifications ?? []), { messageId, text: sourceText, assignments: [...sizes] }],
+    }, 'ready');
+    return saved ? finish(saved, ownerPhone, messageId) : concurrentResult(active, ownerPhone);
+  }
+  if (active?.status === 'awaiting_correction' && active.payload.sizeResolutionPending
+    && /^(reintentar|reintenta|volver a intentar)$/.test(text)) {
+    const required = new Set(active.payload.sizeRequiredItemIds ?? []);
+    const rerun = await resolveStockDraft({
+      sourceText: active.payload.evidenceSourceText ?? active.sourceText,
+      actions: active.payload.actions.filter((action) => required.has(action.itemId)), catalog,
+    });
+    if (!rerun.ok) {
+      const reply = 'Todavía no pude verificar las variantes del catálogo. Conservé el lote y los talles; escribí “reintentar” o “cancelar”.';
+      const saved = await saveTransition(active, messageId, { ...active.payload, resolutionError: rerun.reason }, 'awaiting_correction', reply);
+      return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+    }
+    const byId = new Map(rerun.actions.map((action) => [action.itemId, action]));
+    const actions = active.payload.actions.map((action) => byId.get(action.itemId) ?? action);
+    const saved = await saveTransition(active, messageId, { ...active.payload, actions,
+      sizeRequiredItemIds: [], sizeResolutionPending: false, resolutionError: null,
+      traces: [...(active.payload.traces ?? []), ...(rerun.traces ?? [])],
+    }, 'ready');
+    return saved ? finish(saved, ownerPhone, messageId) : concurrentResult(active, ownerPhone);
+  }
   if (active?.status === 'awaiting_choice') {
     const actions = active.payload.actions.map((action) => ({ ...action }));
     const item = actions.find((action) => action.resolution.kind === 'ambiguous');
@@ -124,10 +220,13 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
     let resolution = null;
     let clarificationTrace = null;
     const numeric = text.match(/^(?:(?:opcion|numero) )?(\d+)$/);
-    if (/^(nuevo|nueva|es nuevo|es nueva|producto nuevo|cargar como nuevo|ninguno|ninguna)$/.test(text) || Number(numeric?.[1]) === ids.length + 1) resolution = { kind: 'new' };
+    const sizedChoice = choiceWithSize(sourceText);
+    const selectedNumber = numeric?.[1] ?? sizedChoice?.[1];
+    const requestedSize = statedSize(sourceText);
+    if (/^(nuevo|nueva|es nuevo|es nueva|producto nuevo|cargar como nuevo|ninguno|ninguna)$/.test(text) || Number(selectedNumber) === ids.length + 1) resolution = { kind: 'new' };
     else {
       const named = ids.filter((id) => normalizeIdentity(item.candidates?.find((entry) => entry.id === id)?.name) === text);
-      const id = numeric ? ids[Number(numeric[1]) - 1] : named.length === 1 ? named[0] : null;
+      const id = selectedNumber ? ids[Number(selectedNumber) - 1] : named.length === 1 ? named[0] : null;
       if (id) {
         const current = catalog.products.find((entry) => entry.id === id);
         const offered = item.candidates?.find((entry) => entry.id === id);
@@ -135,7 +234,7 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
       }
     }
     const newName = sourceText.match(/^(?:nombre|diferencia)\s*:\s*(.{3,200})$/i)?.[1]?.trim();
-    if (!resolution && !numeric && !newName) {
+    if (!resolution && !selectedNumber && !newName) {
       const semantic = await interpretStockClarification({ sourceText, action: item });
       clarificationTrace = semantic.trace ?? null;
       if (semantic.kind === 'new') resolution = { kind: 'new' };
@@ -164,6 +263,30 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
         }
       }
     }
+    if (resolution?.kind === 'existing' && requestedSize) {
+      const selected = catalog.products.find((product) => product.id === resolution.productId);
+      if (selected && normalizeIdentity(selected.size) !== normalizeIdentity(requestedSize)) {
+        const corrected = { ...item, size: requestedSize,
+          clarificationEvidence: { text: sourceText, messageId } };
+        const combined = `${active.payload.evidenceSourceText ?? active.sourceText}\n${sourceText}`;
+        const valid = validateStockDraft(combined, [corrected]);
+        const rerun = valid.ok ? await resolveStockDraft({ sourceText: combined, actions: [corrected], catalog }) : { ok: false };
+        if (rerun.ok) {
+          const revised = actions.map((action) => action.itemId === item.itemId ? rerun.actions[0] : action);
+          const saved = await saveTransition(active, messageId, { ...active.payload, actions: revised, evidenceSourceText: combined,
+            traces: [...(active.payload.traces ?? []), ...(clarificationTrace ? [clarificationTrace] : []), ...(rerun.traces ?? [])],
+            clarifications: [...(active.payload.clarifications ?? []), { messageId, itemId: item.itemId, text: sourceText,
+              requestedSize, selectedProductId: selected.id, resolution: rerun.actions[0].resolution }],
+          }, revised.some((action) => action.resolution.kind === 'ambiguous') ? 'awaiting_choice' : 'ready');
+          return saved ? finish(saved, ownerPhone, messageId) : concurrentResult(active, ownerPhone);
+        }
+        const reply = 'Entendí la medida indicada, pero no pude verificar la variante. Conservé el lote sin aplicarlo; respondé con la medida otra vez o escribí “cancelar”.';
+        const saved = await saveTransition(active, messageId, { ...active.payload, actions }, 'awaiting_choice', reply);
+        return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+      }
+      item.size = requestedSize;
+    }
+    if (resolution?.kind === 'new' && requestedSize) item.size = requestedSize;
     if (newName) {
       item.productName = newName; item.productType = undefined; item.productModel = undefined;
       item.clarificationEvidence = { text: sourceText, messageId };
@@ -178,8 +301,12 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
       return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
     }
     item.resolution = resolution;
+    if (requestedSize) item.clarificationEvidence = { text: sourceText, messageId };
     const status = actions.some((entry) => entry.resolution.kind === 'ambiguous') ? 'awaiting_choice' : 'ready';
-    const payload = { ...active.payload, actions, traces: [...(active.payload.traces ?? []), ...(clarificationTrace ? [clarificationTrace] : [])], clarifications: [...(active.payload.clarifications ?? []), { messageId, itemId: item.itemId, text: sourceText, resolution }] };
+    const payload = { ...active.payload, actions,
+      evidenceSourceText: requestedSize ? `${active.payload.evidenceSourceText ?? active.sourceText}\n${sourceText}` : active.payload.evidenceSourceText,
+      traces: [...(active.payload.traces ?? []), ...(clarificationTrace ? [clarificationTrace] : [])],
+      clarifications: [...(active.payload.clarifications ?? []), { messageId, itemId: item.itemId, text: sourceText, resolution }] };
     const saved = await saveTransition(active, messageId, payload, status);
     return saved ? finish(saved, ownerPhone, messageId) : concurrentResult(active, ownerPhone);
   }

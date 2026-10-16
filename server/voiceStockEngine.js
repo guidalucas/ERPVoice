@@ -1,9 +1,15 @@
 import { completeChatJson } from './llmChatClient.js';
 import { normalizeProductMetadata, productBaseName, productMatchKey } from './productIdentity.js';
 
-export const ENGINE_VERSION = 'stock-batch-v3';
+export const ENGINE_VERSION = 'stock-batch-v4';
 export const normalizeIdentity = (value) => String(value ?? '').toLowerCase().normalize('NFD')
   .replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9]+/g, ' ').trim();
+export const hasExplicitStockSize = (action) => {
+  if (!action?.size) return false;
+  const quoted = [action.evidence, action.clarificationEvidence?.text, action.fieldEvidence?.size,
+    ...(action.fieldEvidence?.attributes ?? [])].filter((value) => typeof value === 'string').join(' ');
+  return ` ${normalizeIdentity(quoted)} `.includes(` ${normalizeIdentity(action.size)} `);
+};
 const startsWithStockIntake = (value) => /^(?:carge|cargue|cargamos|cargar|ingrese|ingresamos|agregue|agregamos|sume|sumamos|recibi|recibimos|entraron|llegaron|anota|anote|registra|registre)\b/.test(normalizeIdentity(value));
 export const stockIdentityKey = (item) => {
   const identity = { productName: item.productName ?? item.name ?? productBaseName(item), size: normalizeProductMetadata(item).size };
