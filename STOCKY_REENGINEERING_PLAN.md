@@ -16,7 +16,7 @@
 | H0 / P0 | Identidad conservadora reutilizable; autenticidad POST Meta; versión de despliegue. Engine, security, index. | Dirección/orden no colisionan; firma válida/tampered/missing; GET intacto; regresiones relevantes. | Implementado y verificado localmente |
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
-| H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1/H3.2 verificados para elección SKU y recarga panel; resto pendiente |
+| H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.3 verificados para ingresos; intérprete universal y reemplazo completo pendientes |
 | H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Pendiente |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
@@ -53,10 +53,11 @@
 
 ## Próximo paso exacto
 
-H3.3: extender preguntas/patches persistentes a atributos faltantes del lote activo,
-sin reconstruir los ítems ya extraídos; conservar sus IDs ante reordenamientos.
-Antes de ampliar recuperación a operaciones legacy, cerrar su idempotencia en panel:
-el recibo universal actual cubre ingresos. No abrir conjuntos ni optimización LLM todavía.
+H3.4: hacer que el reemplazo explícito de lista conserve IDs solo por correspondencia
+inequívoca y asigne IDs nuevos a ítems nuevos; probar reordenamiento y respuestas viejas.
+Después, cerrar la idempotencia del panel para mutaciones legacy al migrarlas al contrato
+universal (ventas/reservas primero). El recibo universal actual cubre ingresos.
+No abrir conjuntos ni optimización LLM antes de completar estos contratos.
 
 ## Registro de hitos
 
@@ -132,3 +133,32 @@ el recibo universal actual cubre ingresos. No abrir conjuntos ni optimización L
   siguen ligadas al lote activo; citas anteriores sin recibo persistido se retienen.
   La recuperación exactamente una vez en panel está probada para ingresos; otras
   mutaciones todavía usan el escritor legacy y requieren migración/idempotencia en H4.
+- H3.3: stockDraftPatches interpreta confirmación, cambios de campos y eliminación
+  explícita sobre preguntas/ítems ofrecidos. Contrato cerrado con citas por campo, sin
+  introducir SKU/IDs de catálogo ni acciones nuevas. Ítems intactos y sus IDs se conservan.
+- H3.3: validación conserva IDs existentes (también al reordenar) y rechaza duplicados;
+  se generan IDs sin colisionar. Preguntas genéricas se persisten como conjuntos ligados
+  a su fuente. Respuestas citadas siguen el mismo aislamiento que las elecciones SKU.
+- H3.3: parche se guarda antes de auditar/resolver, con historia y fuente original. Una
+  interrupción retoma esa etapa; retry del catálogo reutiliza auditoría solo con hash
+  canónico idéntico de acciones/fuente. Reemplazar lista invalida ese permiso anterior.
+  Cambios semánticos invalidan decisiones derivadas de referencia/repetición.
+- H3.3 verificado: 74 checks PG/HTTP, 50 del motor y 27 de suite pura/seguridad
+  (incluye 51 casos de patch). Cantidad/medida parcial, quitar solo un ítem, recuperación
+  tras guardar, fallo de proveedor/catálogo, auditoría obsoleta, referencias anteriores y
+  opción inválida seguida de una válida tienen verificación de estado persistido.
+- Alcance H3 restante: el intérprete de ingresos aún conserva extracción/enriquecimiento/
+  auditoría históricos; no se midió calidad, costo ni latencia con proveedores reales.
+  Añadir ítems por aclaración requiere hoy reemplazo explícito; no simula soporte genérico.
+  La sincronización entre dispositivos y el modal manual tras recarga siguen pendientes.
+
+## Continuación sin repetir investigación
+
+- Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
+  H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
+- Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
+  `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
+- Frontend: `npm run test:inventory-ui` y `npm run test:panel-draft-recovery`.
+  Edge local; APIs/proveedores simulados. Ninguna de estas pruebas valida IA real.
+- Producción: falta verificar configuración privada, backup/restauración recuperable,
+  ejecutar migración controlada, comprobar SHA/readiness y piloto aislado. No desplegado.

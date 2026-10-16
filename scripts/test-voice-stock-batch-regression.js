@@ -50,6 +50,14 @@ const prepare = (text = clarifiedText, actions = incidentActions, catalog = inci
   return prepareStockDraft({ sourceText: text, businessCategory: 'general', catalog });
 };
 try {
+  await run('validar y reordenar conserva IDs existentes sin colisionar con los nuevos', async () => {
+    const source = 'Aceite Aurora. Arroz Norte.';
+    const a = { type: 'add_stock', productName: 'Aceite Aurora', qty: 1, evidence: 'Aceite Aurora', itemId: 'stable-aurora' };
+    const b = { type: 'add_stock', productName: 'Arroz Norte', qty: 1, evidence: 'Arroz Norte', itemId: 'stable-norte' };
+    assert.deepEqual(validateStockDraft(source, [b, a]).actions.map((action) => action.itemId), ['stable-norte', 'stable-aurora']);
+    assert.equal(validateStockDraft(source, [a, { ...b, itemId: a.itemId }]).reason, 'invalid_or_duplicate_item_id');
+    assert.equal(validateStockDraft(source, [{ ...a, itemId: 'item-2' }, { ...b, itemId: undefined }]).actions[1].itemId, 'item-2-new');
+  });
   await run('la identidad no confunde roles numéricos ni dirección', async () => {
     const action = { type: 'add_stock', productName: 'Convertidor de 12 V a 24 V', qty: 1 };
     const product = { id: 'reverse', name: 'Convertidor de 24 V a 12 V' };

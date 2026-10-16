@@ -2591,7 +2591,8 @@ export const updateVoiceStockBatch = async (batchId, updates) => {
       await client.query(`INSERT INTO meta_reply_outbox (event_id, recipient, reply_text, stock_batch_id, question_id)
         VALUES ($1, $2, $3, $4, $5) ON CONFLICT (event_id) DO NOTHING`,
       [payload.replyMessageId ?? row.source_message_id, row.sender_phone, updates.replyText, row.id,
-        row.status === 'awaiting_choice' ? payload.pendingQuestion?.id ?? null : null]);
+        row.status === 'awaiting_choice' ? payload.pendingQuestion?.id ?? null
+          : row.status === 'awaiting_correction' ? payload.pendingDraftQuestionSetId ?? null : null]);
     }
     return rowToVoiceStockBatch(row);
   });

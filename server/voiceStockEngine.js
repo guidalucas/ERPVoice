@@ -209,6 +209,14 @@ export const groundStockDraft = (sourceText, actions, sourceSpans = buildSourceS
 
 export const validateStockDraft = (sourceText, actions) => {
   if (!Array.isArray(actions) || !actions.length || actions.length > 100) return { ok: false, reason: 'empty_or_oversized_draft' };
+  const itemIds = new Set();
+  for (const action of actions) {
+    if (action?.itemId === undefined) continue;
+    if (typeof action.itemId !== 'string' || !action.itemId.trim() || action.itemId.length > 200 || itemIds.has(action.itemId)) {
+      return { ok: false, reason: 'invalid_or_duplicate_item_id' };
+    }
+    itemIds.add(action.itemId);
+  }
   const validated = [];
   for (const [index, input] of actions.entries()) {
     const invalidField = input?.type !== 'add_stock' ? 'type'
@@ -224,8 +232,14 @@ export const validateStockDraft = (sourceText, actions) => {
     if (input.price != null && (typeof refs.price !== 'string' || !refs.price || !sourceText.includes(refs.price))) return { ok: false, reason: 'unsupported_price', itemIndex: index };
     if (input.qty !== 1 && (typeof refs.qty !== 'string' || !refs.qty || !sourceText.includes(refs.qty))) return { ok: false, reason: 'unsupported_quantity', itemIndex: index };
     if (refs.attributes != null && (!Array.isArray(refs.attributes) || refs.attributes.some((quote) => typeof quote !== 'string' || !sourceText.includes(quote)))) return { ok: false, reason: 'unsupported_attribute', itemIndex: index };
+    let itemId = input.itemId;
+    if (!itemId) {
+      itemId = `item-${index + 1}`;
+      while (itemIds.has(itemId)) itemId += '-new';
+      itemIds.add(itemId);
+    }
     validated.push({
-      ...input, itemId: `item-${index + 1}`, evidenceStart: sourceText.indexOf(input.evidence),
+      ...input, itemId, evidenceStart: sourceText.indexOf(input.evidence),
       evidenceEnd: sourceText.indexOf(input.evidence) + input.evidence.length,
     });
   }

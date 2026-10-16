@@ -196,6 +196,9 @@ try {
   let failExtract = false;
   let failResolve = false;
   let failClarify = false;
+  let failDraftPatch = false;
+  let draftPatchOverride = null;
+  let auditOverride = null;
   const modelInputs = [];
   globalThis.fetch = async (_url, request) => {
     calls++;
@@ -206,16 +209,18 @@ try {
     if (stage.includes('Etapa: extract.') && failExtract) return new Response('Fallo simulado', { status: 400 });
     if (stage.includes('Etapa: resolve.') && failResolve) return new Response('Fallo simulado', { status: 400 });
     if (stage.includes('Etapa: clarify.') && failClarify) return new Response('Fallo simulado', { status: 400 });
+    if (stage.includes('Etapa: draft_patch.') && failDraftPatch) return new Response('Fallo simulado', { status: 400 });
     const extracted = extractionOverride ?? [{ type: 'add_stock', productName: 'Taladro Makita', qty: 2, evidence: 'Taladro Makita', fieldEvidence: { qty: 'dos' } }];
     const content = stage.includes('Etapa: extract.') && misclassifyExtract ? { kind: 'other', actions: [] }
       : stage.includes('Etapa: repair_extract.') && failRecovery ? { actions: [] }
+      : stage.includes('draft_patch') ? (typeof draftPatchOverride === 'function' ? draftPatchOverride(input) : draftPatchOverride ?? { kind: 'needs_clarification' })
       : stage.includes('clarify') ? (semanticClarification ?? { kind: 'unrelated' })
-      : stage.includes('enrich_attributes') ? { items: input.actions.map((action, index) => enrichmentOverride?.[index] ?? ({
+      : stage.includes('enrich_attributes') ? { items: input.actions.map((action, index) => enrichmentOverride?.[index] ? { ...enrichmentOverride[index], itemId: action.itemId } : ({
         itemId: action.itemId, productName: action.productName, productType: action.productType,
         productModel: action.productModel, size: action.size, attributeQuotes: [],
       })) }
       : stage.includes('extract') ? { kind: 'stock_intake', sourceText: useSavedContext ? input.clarificationContext?.sourceText : undefined, actions: extracted }
-      : stage.includes('audit') ? { coverageComplete: auditComplete, issues: auditComplete ? [] : [{
+      : stage.includes('audit') ? auditOverride ? auditOverride(input) : { coverageComplete: auditComplete, issues: auditComplete ? [] : [{
         kind: 'clarification', detail: 'Una referencia puede ser otra unidad.',
         evidenceSpanId: input.sourceSpans.at(-1).id,
         question: `¿“${input.sourceSpans.at(-1).text}” es otro producto o una referencia al primero?`,
@@ -478,11 +483,14 @@ try {
     const original = 'Ingresaron dos Taladro Makita. Hay otra mención dudosa.';
     const held = await message('audit-hold', original); assert.equal(held.batchStatus, 'awaiting_correction');
     auditComplete = true;
-    const corrected = await message('audit-corrected', 'Ingresaron dos Taladro Makita'); assert.equal(corrected.batchStatus, 'awaiting_choice');
+    const answer = 'La otra mención era una referencia, no otra unidad.';
+    draftPatchOverride = (input) => ({ kind: 'confirm', questionId: input.questions[0].id, evidence: answer });
+    const corrected = await message('audit-corrected', answer); assert.equal(corrected.batchStatus, 'awaiting_choice');
     await message('audit-select', '2');
     const saved = await db.getVoiceStockBatchByMessage(owner, 'audit-hold');
-    assert.equal(saved.sourceText, original); assert.equal(saved.payload.corrections[0].messageId, 'audit-corrected');
+    assert.equal(saved.sourceText, original); assert.equal(saved.payload.draftPatches[0].messageId, 'audit-corrected');
     assert.equal(saved.status, 'applied');
+    draftPatchOverride = null;
   });
   await check('respuesta breve a una duda conserva toda la lista y aplica una sola vez', async () => {
     const source = 'Ingresó Aceite Aurora y Arroz Norte. El anterior es importado.';
@@ -493,16 +501,19 @@ try {
     assert.doesNotMatch(held.replyText, /lista completa|evidencia|caracteres/);
     auditComplete = true; useSavedContext = true; resolutionKind = 'new';
     const answer = 'Es una referencia al primero, no es otra unidad.';
+    draftPatchOverride = (input) => ({ kind: 'confirm', questionId: input.questions[0].id, evidence: answer });
+    const extractCount = modelInputs.filter(({ stage }) => stage.includes('Etapa: extract.')).length;
     const answered = await message('brief-answer', answer); assert.equal(answered.batchStatus, 'applied');
     const saved = await db.getVoiceStockBatchByMessage(owner, 'brief-source');
     assert.equal(saved.sourceText, source); assert.equal(saved.payload.evidenceSourceText, `${source}\n${answer}`);
     assert.equal(saved.payload.actions.length, 2);
-    const extractionInput = modelInputs.findLast((entry) => entry.stage.includes('Etapa: extract.')).input;
-    assert.equal(extractionInput.sourceText, answer); assert.equal(extractionInput.clarificationContext.sourceText, source);
+    const patchInput = modelInputs.findLast((entry) => entry.stage.includes('Etapa: draft_patch.')).input;
+    assert.equal(patchInput.sourceText, answer);
+    assert.equal(modelInputs.filter(({ stage }) => stage.includes('Etapa: extract.')).length, extractCount);
     const beforeReplay = calls; await message('brief-answer', answer); assert.equal(calls, beforeReplay);
     const products = (await db.getStateSnapshotStrict(owner)).products;
     for (const name of ['Aceite Aurora', 'Arroz Norte']) assert.equal(products.find((product) => product.name === name).stockAvailable, 1);
-    extractionOverride = null; useSavedContext = false; resolutionKind = 'ambiguous';
+    extractionOverride = null; useSavedContext = false; resolutionKind = 'ambiguous'; draftPatchOverride = null;
   });
   await check('respuesta parcial no sustituye el lote pendiente ni aplica stock', async () => {
     const source = 'Ingresó Aceite Aurora. Ingresó Arroz Norte. Ingresó Sal Sol. Ingresó Azúcar Luna.';
@@ -531,7 +542,9 @@ try {
     const held = await message('provider-source', source);
     assert.equal(held.batchStatus, 'awaiting_correction');
     const before = await db.getStateSnapshotStrict(owner);
-    failExtract = true;
+    failDraftPatch = true;
+    draftPatchOverride = (input) => ({ kind: 'confirm', questionId: input.questions[0].id, evidence: answer });
+    const extractCount = modelInputs.filter(({ stage }) => stage.includes('Etapa: extract.')).length;
     const failed = await message('provider-answer', answer);
     assert.equal(failed.batchStatus, 'awaiting_correction');
     assert.equal(failed.actions.length, 2);
@@ -540,13 +553,165 @@ try {
     assert.equal(saved.payload.pendingCorrectionText, answer);
     assert.equal(saved.payload.clarificationsNeeded.length, 1);
     assert.deepEqual((await db.getStateSnapshotStrict(owner)).products, before.products);
-    failExtract = false; auditComplete = true; resolutionKind = 'new';
+    failDraftPatch = false; auditComplete = true; resolutionKind = 'new';
     const retried = await message('provider-retry', 'reintentar');
     assert.equal(retried.batchStatus, 'applied');
-    const lastExtract = modelInputs.findLast((entry) => entry.stage.includes('Etapa: extract.')).input;
-    assert.equal(lastExtract.sourceText, answer);
-    assert.equal(lastExtract.clarificationContext.sourceText, source);
-    extractionOverride = null; resolutionKind = 'ambiguous';
+    const lastPatch = modelInputs.findLast((entry) => entry.stage.includes('Etapa: draft_patch.')).input;
+    assert.equal(lastPatch.sourceText, answer);
+    assert.equal(modelInputs.filter(({ stage }) => stage.includes('Etapa: extract.')).length, extractCount);
+    extractionOverride = null; resolutionKind = 'ambiguous'; draftPatchOverride = null;
+  });
+  await check('parche de cantidad/medida persiste con IDs y retry de catálogo no repite IA ni auditoría', async () => {
+    const names = ['Caja Delta', 'Botella Lima', 'Tornillo Cobre'];
+    const source = names.map((name) => `Ingresó ${name}.`).join(' ');
+    extractionOverride = names.map((name) => ({ type: 'add_stock', productName: name, qty: 1, evidence: name, fieldEvidence: {} }));
+    auditComplete = false;
+    await message('patch-fields-source', source);
+    const original = await db.getVoiceStockBatchByMessage(owner, 'patch-fields-source');
+    assert.equal(original.payload.pendingDraftQuestions.length, 1);
+    await db.finishMetaReply('patch-fields-source', null, 'wamid.patch-fields-question');
+    const before = await db.getStateSnapshotStrict(owner);
+    const answer = 'Son tres del último, medida 5 cm.';
+    draftPatchOverride = (input) => ({ kind: 'patch', questionId: input.questions[0].id, changes: [{
+      type: 'set_fields', itemId: input.actions.at(-1).itemId, fields: { qty: 3, size: '5 cm' },
+      evidence: { qty: 'Son tres', size: 'medida 5 cm' },
+    }] });
+    try {
+      auditComplete = true; failResolve = true; resolutionKind = 'new';
+      const held = await message('patch-fields-answer', answer, 'wamid.patch-fields-question');
+      assert.equal(held.batchStatus, 'awaiting_correction');
+      const saved = await db.getVoiceStockBatchByMessage(owner, 'patch-fields-source');
+      assert.deepEqual(saved.payload.actions.map((item) => item.itemId), original.payload.actions.map((item) => item.itemId));
+      assert.deepEqual(saved.payload.actions.slice(0, 2), original.payload.actions.slice(0, 2));
+      assert.equal(saved.payload.actions[2].qty, 3); assert.equal(saved.payload.actions[2].size, '5 cm');
+      assert.equal(saved.payload.pendingDraftPatch.auditVerified, true);
+      assert.equal(saved.payload.draftPatches.length, 1); assert.equal(saved.sourceText, source);
+      assert.deepEqual((await db.getStateSnapshotStrict(owner)).products, before.products);
+      const stageCounts = () => Object.fromEntries(['extract', 'draft_patch', 'audit'].map((stage) =>
+        [stage, modelInputs.filter((entry) => entry.stage.includes(`Etapa: ${stage}.`)).length]));
+      const counts = stageCounts();
+      failResolve = false; failDraftPatch = true; failExtract = true;
+      assert.equal((await message('patch-fields-retry', 'reintentar')).batchStatus, 'applied');
+      assert.deepEqual(stageCounts(), counts);
+      const state = await db.getStateSnapshotStrict(owner);
+      assert.equal(state.products.find((product) => product.name === names[0]).stockAvailable, 1);
+      assert.equal(state.products.find((product) => product.name === names[1]).stockAvailable, 1);
+      const changed = state.products.find((product) => product.name === names[2]);
+      assert.equal(changed.stockAvailable, 3); assert.equal(changed.size, '5 cm');
+      const applied = await db.getVoiceStockBatchByMessage(owner, 'patch-fields-source');
+      assert.equal(applied.payload.pendingDraftPatch, null);
+      assert.deepEqual(applied.payload.actions.map((item) => item.itemId), original.payload.actions.map((item) => item.itemId));
+    } finally { extractionOverride = null; draftPatchOverride = null; failResolve = false; failDraftPatch = false; failExtract = false; resolutionKind = 'ambiguous'; auditComplete = true; }
+  });
+  await check('recuperación tras guardar un parche continúa auditoría sin reinterpretar el mensaje', async () => {
+    const item = { ...action('Parche recuperado tras interrupción'), itemId: 'persistent-custom-id' };
+    const source = 'Ingresaron dos Parche recuperado tras interrupción';
+    const batch = await createBatch([item], { status: 'awaiting_correction', sourceText: source, replyText: 'Pregunta anterior', payload: {
+      engineVersion: 'stock-batch-v5', actions: [{ ...item, resolution: undefined }], initialActions: [item], coverageVerified: false,
+      evidenceSourceText: source, pendingDraftPatch: { messageId: 'patch-resume-answer', auditVerified: false },
+      handledMessages: [{ messageId: 'patch-resume-answer', replyText: null }], replyMessageId: 'patch-resume-answer',
+    } });
+    const beforeExtract = modelInputs.filter(({ stage }) => /Etapa: (extract|draft_patch)\./.test(stage)).length;
+    resolutionKind = 'new';
+    try {
+      assert.equal((await message('patch-resume-answer', 'Este texto no debe reinterpretarse')).batchStatus, 'applied');
+      assert.equal(modelInputs.filter(({ stage }) => /Etapa: (extract|draft_patch)\./.test(stage)).length, beforeExtract);
+      const saved = await db.getVoiceStockBatchByMessage(owner, batch.sourceMessageId);
+      assert.equal(saved.payload.actions[0].itemId, 'persistent-custom-id');
+      assert.equal((await db.getStateSnapshotStrict(owner)).products.find((product) => product.name === item.productName).stockAvailable, 2);
+    } finally { resolutionKind = 'ambiguous'; }
+  });
+  await check('quitar un ítem explícito no elimina ni renumera los demás', async () => {
+    const names = ['Abrazadera Cedro', 'Tuerca Sauce'];
+    extractionOverride = names.map((name) => ({ type: 'add_stock', productName: name, qty: 1, evidence: name, fieldEvidence: {} }));
+    auditComplete = false;
+    await message('patch-remove-source', 'Ingresó Abrazadera Cedro. Ingresó Tuerca Sauce.');
+    const original = await db.getVoiceStockBatchByMessage(owner, 'patch-remove-source');
+    const answer = 'El segundo no ingresó, sacalo del lote.';
+    draftPatchOverride = (input) => ({ kind: 'patch', questionId: input.questions[0].id,
+      changes: [{ type: 'remove_item', itemId: input.actions[1].itemId, evidence: answer }] });
+    try {
+      auditComplete = true; resolutionKind = 'new';
+      assert.equal((await message('patch-remove-answer', answer)).batchStatus, 'applied');
+      const applied = await db.getVoiceStockBatchByMessage(owner, 'patch-remove-source');
+      assert.deepEqual(applied.payload.actions.map((item) => item.itemId), [original.payload.actions[0].itemId]);
+      assert.equal(applied.payload.initialActions.length, 2);
+      const products = (await db.getStateSnapshotStrict(owner)).products;
+      assert.equal(products.find((product) => product.name === names[0]).stockAvailable, 1);
+      assert.equal(products.some((product) => product.name === names[1]), false);
+    } finally { extractionOverride = null; draftPatchOverride = null; resolutionKind = 'ambiguous'; auditComplete = true; }
+  });
+  await check('lista completa reemplazada no hereda auditoría ni parche de la lista anterior', async () => {
+    extractionOverride = [{ type: 'add_stock', productName: 'Borrador Magnolia', qty: 1, evidence: 'Borrador Magnolia', fieldEvidence: {} }];
+    auditComplete = false;
+    await message('patch-replace-source', 'Ingresó Borrador Magnolia.');
+    const answer = 'La mención era correcta.';
+    draftPatchOverride = (input) => ({ kind: 'confirm', questionId: input.questions[0].id, evidence: answer });
+    try {
+      auditComplete = true; failResolve = true;
+      await message('patch-replace-answer', answer);
+      let saved = await db.getVoiceStockBatchByMessage(owner, 'patch-replace-source');
+      assert.equal(saved.payload.pendingDraftPatch.auditVerified, true);
+      assert.ok(saved.payload.pendingDraftPatch.auditFingerprint);
+      extractionOverride = [{ type: 'add_stock', productName: 'Reemplazo sin verificar', qty: 1, evidence: 'Reemplazo sin verificar', fieldEvidence: {} }];
+      auditComplete = false; failResolve = false;
+      const replaced = await message('patch-replace-list', 'Lista completa corregida: ingresó Reemplazo sin verificar.');
+      assert.equal(replaced.batchStatus, 'awaiting_correction');
+      saved = await db.getVoiceStockBatchByMessage(owner, 'patch-replace-source');
+      assert.equal(saved.payload.pendingDraftPatch, null);
+      assert.equal(saved.payload.pendingDraftAnswer, null);
+      draftPatchOverride = null;
+      const retried = await message('patch-replace-retry', 'reintentar');
+      assert.equal(retried.batchStatus, 'awaiting_correction');
+      assert.equal((await db.getStateSnapshotStrict(owner)).products.some((product) => ['Reemplazo sin verificar', 'Borrador Magnolia'].includes(product.name)), false);
+    } finally { extractionOverride = null; draftPatchOverride = null; failResolve = false; auditComplete = true; await message('patch-replace-cancel', 'cancelar'); }
+  });
+  await check('marca de auditoría no se reutiliza si cambia el contenido persistido', async () => {
+    extractionOverride = [{ type: 'add_stock', productName: 'Contenido Auditado', qty: 1, evidence: 'Contenido Auditado', fieldEvidence: {} }];
+    auditComplete = false;
+    await message('patch-hash-source', 'Ingresó Contenido Auditado.');
+    const answer = 'La mención era correcta.';
+    draftPatchOverride = (input) => ({ kind: 'confirm', questionId: input.questions[0].id, evidence: answer });
+    try {
+      auditComplete = true; failResolve = true;
+      await message('patch-hash-answer', answer);
+      const saved = await db.getVoiceStockBatchByMessage(owner, 'patch-hash-source');
+      assert.equal(saved.payload.pendingDraftPatch.auditVerified, true);
+      await db.updateVoiceStockBatch(saved.id, { expectedVersion: saved.version,
+        payload: { ...saved.payload, evidenceSourceText: `${saved.payload.evidenceSourceText}\n¿Falta otro producto?` } });
+      const audits = modelInputs.filter(({ stage }) => stage.includes('Etapa: audit.')).length;
+      auditComplete = false; failResolve = false;
+      assert.equal((await message('patch-hash-retry', 'reintentar')).batchStatus, 'awaiting_correction');
+      assert.equal(modelInputs.filter(({ stage }) => stage.includes('Etapa: audit.')).length, audits + 1);
+      assert.equal((await db.getStateSnapshotStrict(owner)).products.some((product) => product.name === 'Contenido Auditado'), false);
+    } finally { extractionOverride = null; draftPatchOverride = null; auditComplete = true; failResolve = false; await message('patch-hash-cancel', 'cancelar'); }
+  });
+  await check('decisiones de referencia anteriores no suprimen una nueva duda después de editar identidad', async () => {
+    const reference = 'El anterior es otra unidad.';
+    const source = `Ingresó Arandela Olmo. ${reference}`;
+    const item = { type: 'add_stock', itemId: 'reference-item-stable', productName: 'Arandela Olmo', qty: 1,
+      evidence: 'Arandela Olmo', fieldEvidence: {}, resolvedReferences: [reference], repeatClarification: { kind: 'distinct', text: reference } };
+    const question = `¿“${reference}” corrige el producto anterior o indica otra unidad?`;
+    const batch = await createBatch([item], { status: 'awaiting_correction', sourceText: source, payload: {
+      engineVersion: 'stock-batch-v5', actions: [item], initialActions: [item], evidenceSourceText: source, coverageVerified: false,
+      clarificationsNeeded: [{ kind: 'clarification', evidence: reference, question }],
+    } });
+    const answer = 'El nombre correcto es Arandela Olmo 2.';
+    draftPatchOverride = (input) => ({ kind: 'patch', questionId: input.questions[0].id, changes: [{
+      type: 'set_fields', itemId: item.itemId, fields: { productName: 'Arandela Olmo 2' }, evidence: { productName: answer },
+    }] });
+    auditOverride = (input) => ({ coverageComplete: false, verifiedItemIds: input.actions.map((action) => action.itemId),
+      issues: [{ kind: 'clarification', detail: 'Referencia todavía ambigua', question,
+        evidenceSpanId: input.sourceSpans.find((span) => span.text === reference).id }] });
+    try {
+      assert.equal((await message('patch-stale-reference-answer', answer)).batchStatus, 'awaiting_correction');
+      const saved = await db.getVoiceStockBatchByMessage(owner, batch.sourceMessageId);
+      assert.equal(saved.payload.actions[0].resolvedReferences, undefined);
+      assert.equal(saved.payload.actions[0].repeatClarification, undefined);
+      assert.equal(saved.payload.coverageVerified, false);
+      assert.equal(saved.payload.clarificationsNeeded.length, 1);
+      assert.equal((await db.getStateSnapshotStrict(owner)).products.some((product) => product.name === 'Arandela Olmo 2'), false);
+    } finally { draftPatchOverride = null; auditOverride = null; await message('patch-stale-reference-cancel', 'cancelar'); }
   });
   await check('borrar un candidato no cambia el significado de los números ofrecidos', async () => {
     const beforeDelete = await message('deleted-source', 'Ingresaron dos Taladro Makita');
@@ -566,6 +731,20 @@ try {
     const named = await message('new-name', 'nombre: Taladro Makita edición naranja'); assert.equal(named.batchStatus, 'applied');
     const product = (await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.name === 'Taladro Makita edición naranja');
     assert.equal(product.stockAvailable, 2);
+  });
+  await check('elección con medida inválida y nombre indistinguible conservan la pregunta para responder después', async () => {
+    for (const [index, answer] of ['99 en talle L', 'nombre: Taladro Makita'].entries()) {
+      const sourceId = `invalid-choice-hold-${index}`;
+      await message(sourceId, 'Ingresaron dos Taladro Makita');
+      const original = await db.getVoiceStockBatchByMessage(owner, sourceId);
+      const held = await message(`${sourceId}-invalid`, answer);
+      assert.equal(held.batchStatus, 'awaiting_choice');
+      const saved = await db.getVoiceStockBatchByMessage(owner, sourceId);
+      assert.equal(saved.payload.actions[0].resolution.kind, 'ambiguous');
+      assert.deepEqual(saved.payload.actions[0].resolution.candidateIds, original.payload.actions[0].resolution.candidateIds);
+      assert.equal(saved.payload.actions[0].size, original.payload.actions[0].size);
+      assert.equal((await message(`${sourceId}-valid`, '1')).batchStatus, 'applied');
+    }
   });
   await check('elección semántica en lenguaje natural usa únicamente un candidato ofrecido', async () => {
     await message('natural-source', 'Ingresaron dos Taladro Makita');
