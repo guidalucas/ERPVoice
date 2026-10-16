@@ -43,7 +43,9 @@ const finish = async (batch, ownerPhone, messageId) => {
     if (/^(08|40|53|57)/.test(String(error.code ?? '')) || /timeout|connection|ECONN/i.test(error.message)) throw error;
     const latest = await getVoiceStockBatchByMessage(ownerPhone, batch.sourceMessageId);
     if (latest.status === 'applied') return asResult(latest);
-    const reply = 'No pude aplicar el lote completo. Revisá los datos del inventario y reenviame la lista corregida. El lote conserva todos sus productos.';
+    const reply = error.code === 'STOCK_REFERENCE_UNVERIFIED'
+      ? 'Conservé el lote y no apliqué cambios: una referencia al producto anterior podría duplicar stock. Escribí “reintentar” para revisar el mensaje guardado, sin reenviar el audio, o “cancelar”.'
+      : 'No pude aplicar el lote completo. Revisá los datos del inventario y reenviame la lista corregida. El lote conserva todos sus productos.';
     const saved = await saveTransition(latest, messageId, { ...latest.payload, applyError: error.message }, 'awaiting_correction', reply);
     return saved ? asResult(saved) : concurrentResult(batch, ownerPhone);
   }

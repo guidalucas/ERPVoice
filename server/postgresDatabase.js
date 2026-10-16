@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { Pool } from 'pg';
 import { normalizePhone, getWhatsAppVariants } from './phone.js';
 import { productBaseName, productMatchKey, normalizeProductMetadata } from './productIdentity.js';
-import { validateStockDraft, needsDistinctIdentity, productFingerprint } from './voiceStockEngine.js';
+import { validateStockDraft, needsDistinctIdentity, productFingerprint, stockReferenceIssues } from './voiceStockEngine.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -2534,6 +2534,13 @@ export const applyResolvedVoiceStockBatch = async (batchId, ownerPhone) => {
       new Set(actions.map((action) => action.itemId)).size !== actions.length || actions.some((action) => !action.itemId) ||
       actions.some((action) => !['existing', 'new'].includes(action.resolution?.kind))) {
       throw new Error('El lote tiene productos sin resolución final.');
+    }
+    if (stockReferenceIssues(actions, batch.payload.evidenceSourceText ?? batch.sourceText).length
+      || actions.some((action) => /^anterior$/i.test(String(action.productModel ?? '').trim())
+        || /\b(?:la|el|las|los)\s+anterior(?:es)?\b/i.test(action.productName))) {
+      const error = new Error('Una referencia al producto anterior podría duplicar stock.');
+      error.code = 'STOCK_REFERENCE_UNVERIFIED';
+      throw error;
     }
 
     // Serialize with the legacy state writer, which still replaces tenant rows.
