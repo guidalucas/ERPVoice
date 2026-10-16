@@ -313,6 +313,7 @@ const rowToMetaEvent = (row) => ({
   replyText: row.reply_text,
   error: row.error,
   actions: parseJsonValue(row.actions_json),
+  parseContext: parseJsonValue(row.parse_context_json),
   processed: Boolean(row.processed),
 });
 
@@ -446,6 +447,7 @@ const initializeDatabase = async () => {
       reply_text TEXT,
       error TEXT,
       actions_json JSONB,
+      parse_context_json JSONB,
       processed BOOLEAN NOT NULL DEFAULT FALSE
     );
 
@@ -493,6 +495,7 @@ const initializeDatabase = async () => {
     ALTER TABLE meta_message_claims ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     ALTER TABLE meta_message_claims ADD COLUMN IF NOT EXISTS last_error TEXT;
     ALTER TABLE meta_events ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
+    ALTER TABLE meta_events ADD COLUMN IF NOT EXISTS parse_context_json JSONB;
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS owner_phone TEXT NOT NULL DEFAULT '__default__';
     ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS proveedor_id TEXT;
     ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS business_name TEXT;
@@ -2847,8 +2850,8 @@ export const saveMetaEvent = async (event) => {
 
   const result = await getPool().query(
     `
-      INSERT INTO meta_events (id, at, from_number, owner_phone, body, num_media, kind, source_text, transcript, reply_text, error, actions_json, processed)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)
+      INSERT INTO meta_events (id, at, from_number, owner_phone, body, num_media, kind, source_text, transcript, reply_text, error, actions_json, parse_context_json, processed)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14)
       RETURNING *
     `,
     [
@@ -2864,6 +2867,7 @@ export const saveMetaEvent = async (event) => {
       event.replyText ?? null,
       event.error ?? null,
       toJsonbParam(event.actionsJson),
+      toJsonbParam(event.parseContextJson),
       Boolean(event.processed),
     ],
   );

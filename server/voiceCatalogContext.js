@@ -72,6 +72,14 @@ const QUERY_EXTRA_STOPWORDS = new Set([
   'decime',
   'che',
   'hola',
+  'borra',
+  'borrar',
+  'elimina',
+  'eliminar',
+  'saca',
+  'sacar',
+  'quita',
+  'quitar',
 ]);
 
 const MATCH_ACTIONS = new Set([
@@ -236,6 +244,48 @@ const cloneActionWithProduct = (action, product) => ({
   productModel: product.productModel || action.productModel,
   size: product.size || action.size,
 });
+
+export const hasBulkSelection = (sourceText) => /\b(?:todos?|todas?)\b/.test(normalizeText(sourceText || ''));
+
+const isBulkDelete = (action, sourceText) => action?.type === 'delete_product' &&
+  action.productName !== '*' &&
+  (action.allMatches === true || hasBulkSelection(sourceText));
+
+const groundBulkDelete = (action, products, sourceText) => {
+  const normalizedSource = normalizeText(sourceText);
+  const mentionsValue = (value) => new RegExp(
+    `(?:^|[^\\p{L}\\p{N}])${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[^\\p{L}\\p{N}])`, 'u',
+  ).test(normalizedSource);
+  const mentionedSizes = [...new Set(products.map((product) => normalizeText(product.size || '')).filter((size) =>
+    size && mentionsValue(size),
+  ))];
+  const parsedSize = normalizeText(action.size || '');
+  const specifiedSize = parsedSize && mentionsValue(parsedSize) ? parsedSize : null;
+  const size = specifiedSize || (mentionedSizes.length === 1 ? mentionedSizes[0] : null);
+  const sizeTokens = new Set(products.map((product) => normalizeText(product.size || '')).filter(Boolean));
+  const tokens = catalogTokensFromText(sourceText, products).filter((token) => !sizeTokens.has(token));
+  const withinSize = size ? products.filter((product) => sizeOf(product) === size) : products;
+  if (!tokens.length || (!specifiedSize && mentionedSizes.length > 1)) {
+    return { actions: [], ambiguous: true, candidates: withinSize.map((product) => product.name) };
+  }
+
+  const matching = withinSize.filter((product) => productHasQueryTokens(product, tokens));
+  if (!matching.length) return { actions: [], ambiguous: false, noMatch: true };
+  const names = matching.map((product) => normalizeText(product.name));
+  if (new Set(names).size !== names.length) {
+    return { actions: [], ambiguous: true, candidates: matching.map((product) => product.name) };
+  }
+  return {
+    actions: matching.map((product) => ({
+      type: 'delete_product',
+      productName: product.name,
+      productType: product.productType || undefined,
+      productModel: product.productModel || undefined,
+      size: product.size || undefined,
+    })),
+    ambiguous: false,
+  };
+};
 
 export const selectCatalogForPrompt = (catalog, text) => {
   const products = Array.isArray(catalog?.products) ? catalog.products : [];
@@ -464,7 +514,8 @@ const groundQueryStockAction = (action, products, sourceText) => {
   return { actions: [canonical], ambiguous: false };
 };
 
-const groundOneAction = (action, products, sourceText) => {
+const groundOneAction = (action, products, sourceText, bulkDelete = false) => {
+  if (bulkDelete) return groundBulkDelete(action, products, sourceText);
   if (action.type === 'query_stock') {
     return groundQueryStockAction(action, products, sourceText);
   }
@@ -567,13 +618,19 @@ const groundOneAction = (action, products, sourceText) => {
 
 export const groundActionsAgainstCatalog = (actions, catalog, sourceText) => {
   const products = Array.isArray(catalog?.products) ? catalog.products : [];
-  if (!products.length || !Array.isArray(actions) || !actions.length) {
+  if (!Array.isArray(actions) || !actions.length) {
     return {
       actions: actions || [],
       requiresConfirmation: false,
       missingFields: [],
       suggestedPhrases: [],
     };
+  }
+
+  if (!products.length) {
+    return actions.some((action) => isBulkDelete(action, sourceText))
+      ? { actions: [], requiresConfirmation: false, missingFields: ['scopeNotFound'], suggestedPhrases: [] }
+      : { actions, requiresConfirmation: false, missingFields: [], suggestedPhrases: [] };
   }
 
   const next = [];
@@ -606,7 +663,14 @@ export const groundActionsAgainstCatalog = (actions, catalog, sourceText) => {
       continue;
     }
 
-    const grounded = groundOneAction(action, products, sourceText);
+    const grounded = groundOneAction(
+      action, products, sourceText,
+      isBulkDelete(action, sourceText) && (actions.length === 1 || action.allMatches === true),
+    );
+    if (grounded.noMatch) {
+      missingFields.push('scopeNotFound');
+      continue;
+    }
     if (grounded.ambiguous) {
       requiresConfirmation = true;
       missingFields.push('productMatch');

@@ -603,11 +603,15 @@ try {
     assert.equal((await sql.query('SELECT event_id FROM meta_reply_outbox WHERE event_id = $1', [options.messageId])).rowCount, 1);
   });
   await check('historial del remitente queda limitado al negocio actual', async () => {
-    const base = { at: new Date().toISOString(), fromNumber: owner, sourceText: 'listado anterior', processed: true };
+    const base = {
+      at: new Date().toISOString(), fromNumber: owner, sourceText: 'listado anterior', processed: true,
+      parseContextJson: JSON.stringify({ intent: 'delete_product', missingFields: ['productMatch'] }),
+    };
     await db.saveMetaEvent({ ...base, id: 'history-owner', ownerPhone: owner });
     await db.saveMetaEvent({ ...base, id: 'history-other', ownerPhone: other });
     const events = await db.getMetaEvents(20, owner, { senderPhone: owner });
     assert.ok(events.some((event) => event.id === 'history-owner'));
+    assert.deepEqual(events.find((event) => event.id === 'history-owner').parseContext?.missingFields, ['productMatch']);
     assert.equal(events.some((event) => event.id === 'history-other'), false);
   });
   console.log(`PostgreSQL integration: ${checks} checks passed.`);

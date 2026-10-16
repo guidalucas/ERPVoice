@@ -1085,6 +1085,10 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
         replyText: result.replyText,
         error: null,
         actionsJson: result.parsed ? JSON.stringify(result.parsed.actions ?? []) : null,
+        parseContextJson: result.parsed ? JSON.stringify({
+          intent: result.parsed.intent,
+          missingFields: result.parsed.missingFields ?? [],
+        }) : null,
         processed: Boolean(result.parsed?.actions?.length),
       };
 

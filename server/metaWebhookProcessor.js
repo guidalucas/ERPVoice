@@ -6,7 +6,7 @@ import {
   formatVariantRef,
   getBusinessCategoryPreset,
 } from './businessCategories.js';
-import { formatCatalogPromptSection, groundActionsAgainstCatalog, hasProductMatchHold } from './voiceCatalogContext.js';
+import { formatCatalogPromptSection, groundActionsAgainstCatalog, hasBulkSelection, hasProductMatchHold } from './voiceCatalogContext.js';
 import {
   UNUSABLE_AUDIO_REPLY,
   appendTranscriptionOptions,
@@ -690,6 +690,17 @@ const buildPayload = (sourceText, actions, options = {}) => {
   };
 };
 
+const resolvePendingBulkDelete = (text, conversationTurns) => {
+  if (!hasBulkSelection(text)) return null;
+  const previous = conversationTurns.slice(-2);
+  if (
+    previous.length !== 2 || previous[0]?.role !== 'user' || previous[1]?.role !== 'assistant' ||
+    !(previous[0].intent === 'delete_product' || previous[0].actions?.some((action) => action.type === 'delete_product')) ||
+    !previous[1].missingFields?.includes('productMatch')
+  ) return null;
+  return buildPayload(text, [{ type: 'delete_product', productName: text }], { intent: 'delete_product' });
+};
+
 const REPEAT_MATCH_STOPWORDS = new Set([
   'camiseta', 'camisetas', 'tenemos', 'tengo', 'ingreso', 'ingresaron',
   'tambien', 'talle', 'talla', 'version', 'jugador', 'otra', 'otro', 'mas',
@@ -827,13 +838,19 @@ const withCatalogGrounding = (payload, catalog, originalText) => {
     sizedActions.every((action) => action.type === 'add_stock' && action.size) &&
     !grounded.missingFields?.includes('productMatch') &&
     suggestionsOnlyOtherSizes;
+  const resolvedBulkDelete =
+    sizedActions.length === 1 && sizedActions[0].type === 'delete_product' &&
+    hasBulkSelection(originalText || payload.sourceText) &&
+    grounded.actions.length > 0 &&
+    !grounded.missingFields?.includes('productMatch') &&
+    !grounded.missingFields?.includes('scopeNotFound');
   const modelMissingFields = (payload.missingFields || []).filter((field) =>
-    !(staleVariantHold && field === 'productMatch'),
+    !((staleVariantHold || resolvedBulkDelete) && field === 'productMatch'),
   );
   const missingFields = [...new Set([...modelMissingFields, ...(grounded.missingFields || [])])];
   const suggestedPhrases = grounded.suggestedPhrases?.length
     ? grounded.suggestedPhrases
-    : staleVariantHold ? undefined : payload.suggestedPhrases;
+    : staleVariantHold || resolvedBulkDelete ? undefined : payload.suggestedPhrases;
 
   return {
     ...payload,
@@ -1890,6 +1907,9 @@ const parseLocalText = (text, conversationTurns = [], catalog = null, preset = g
     return finish(buildPayload(text, [deleteAll], { intent: 'delete_product' }));
   }
 
+  const pendingBulkDelete = resolvePendingBulkDelete(text, conversationTurns);
+  if (pendingBulkDelete) return finish(pendingBulkDelete);
+
   const listAll = tryParseListAllStockQuery(text);
   if (listAll) {
     return finish(buildPayload(text, [listAll], { intent: 'query_stock' }));
@@ -1981,6 +2001,7 @@ export const buildConversationTurnsFromEvents = (events, { excludeMessageId = nu
         role: 'user',
         text: userText,
         actions,
+        intent: event.parseContext?.intent,
       });
     }
 
@@ -1994,6 +2015,7 @@ export const buildConversationTurnsFromEvents = (events, { excludeMessageId = nu
         role: 'assistant',
         text: truncateText(replyText, MAX_CONTEXT_REPLY_CHARS),
         actions,
+        missingFields: Array.isArray(event.parseContext?.missingFields) ? event.parseContext.missingFields : [],
       });
     }
   }
@@ -2092,6 +2114,9 @@ const parseVoiceTextWithModel = async (
   if (deleteAll) {
     return finish(buildPayload(text, [deleteAll], { intent: 'delete_product' }));
   }
+
+  const pendingBulkDelete = resolvePendingBulkDelete(text, conversationTurns);
+  if (pendingBulkDelete) return finish(pendingBulkDelete);
 
   const listAll = tryParseListAllStockQuery(text);
   if (listAll) {
@@ -2455,6 +2480,10 @@ const formatAction = (action, preset = getBusinessCategoryPreset('general')) => 
 
 const buildReplyText = ({ transcript, parsed, preset }) => {
   const resolvedPreset = preset ?? getBusinessCategoryPreset('general');
+
+  if (parsed?.missingFields?.includes('scopeNotFound')) {
+    return '⚠️ No encontré productos que coincidan con el pedido en el inventario. No apliqué cambios.';
+  }
 
   if (!parsed?.actions?.length) {
     return transcript
