@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { runInventoryCoreChecks } from './inventory-core-postgres-checks.js';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -47,6 +48,7 @@ try {
   await db.closeDatabase();
   await db.migrateDatabase();
   sql = new Client({ connectionString: connection }); await sql.connect();
+  await runInventoryCoreChecks({ db, sql, check });
 
   await check('migración repetible y RLS', async () => {
     const rows = await sql.query("SELECT relrowsecurity FROM pg_class WHERE relname IN ('voice_stock_batches', 'meta_reply_outbox', 'voice_stock_batch_settings')");

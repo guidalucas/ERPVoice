@@ -18,6 +18,7 @@ import {
   deleteProveedorRecord,
   deletePedidoRecord,
   applyActionsToDatabase,
+  executeInventoryOperation,
   answerStockQuery,
   findMetaEventById,
   claimMetaMessage,
@@ -862,6 +863,21 @@ app.get('/api/meta-webhook', (req, res) => {
   }
 
   res.sendStatus(403);
+});
+
+app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
+  try {
+    const result = await executeInventoryOperation(req.body, {
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:receive'],
+    });
+    res.json(result);
+  } catch (error) {
+    const status = ['FORBIDDEN', 'BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
+      : ['INVALID_OPERATION_PLAN', 'BUSINESS_SCOPE_REQUIRED', 'UNSUPPORTED_OPERATION'].includes(error.code) ? 400
+        : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude guardar la operación.' : error.message,
+      code: error.name === 'InventoryOperationError' ? error.code : 'INVENTORY_UNAVAILABLE' });
+  }
 });
 
 app.post('/api/state/apply', authenticateRequest, async (req, res) => {

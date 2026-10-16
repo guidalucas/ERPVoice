@@ -4,6 +4,8 @@ import { Pool } from 'pg';
 import { normalizePhone, getWhatsAppVariants } from './phone.js';
 import { productBaseName, productMatchKey, normalizeProductMetadata } from './productIdentity.js';
 import { validateStockDraft, hasExplicitStockSize, needsDistinctIdentity, productFingerprint, stockReferenceIssues, explicitIdentityConflict } from './voiceStockEngine.js';
+import { INVENTORY_SCHEMA_SQL, executeInventoryPlanInTransaction } from './inventoryPostgres.js';
+import { validateOperationPlan } from './inventoryOperations.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -259,6 +261,11 @@ const rowToProduct = (row) => normalizeProductMetadata({
   stockAvailable: Number(row.stock_available ?? 0),
   stockReserved: Number(row.stock_reserved ?? 0),
   price: Number(row.price ?? 0),
+  attributes: row.attributes_json ?? {},
+  unit: row.inventory_unit ?? 'unit',
+  status: row.inventory_status ?? 'active',
+  revision: Number(row.inventory_revision ?? 0),
+  priceCurrency: row.price_currency ?? 'XXX',
 });
 
 const rowToClient = (row) => ({
@@ -544,6 +551,8 @@ const initializeDatabase = async () => {
     CREATE INDEX IF NOT EXISTS idx_auth_wa_expires_at ON auth_wa_challenges (expires_at);
     CREATE INDEX IF NOT EXISTS idx_auth_wa_status ON auth_wa_challenges (status);
 
+    ${INVENTORY_SCHEMA_SQL}
+
     DO $$
     DECLARE
       tbl text;
@@ -555,6 +564,8 @@ const initializeDatabase = async () => {
         'pedidos',
         'transactions',
         'voice_stock_batches',
+        'inventory_operations',
+        'inventory_movements',
         'meta_message_claims',
         'meta_reply_outbox',
         'voice_stock_batch_settings',
@@ -643,7 +654,7 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null) =>
   const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
 
   const productsRows = await queryRows(
-    'SELECT id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price FROM products WHERE owner_phone = ANY($1) ORDER BY name ASC',
+    'SELECT * FROM products WHERE owner_phone = ANY($1) ORDER BY name ASC',
     [ownerPhoneVariants],
     client,
   );
@@ -1503,8 +1514,9 @@ const replaceStateTables = async (client, ownerPhone, products, clients, proveed
   for (const product of products) {
     await client.query(
       `
-        INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price,
+          attributes_json, inventory_unit, inventory_status, inventory_revision, price_currency)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14)
       `,
       [
         product.id,
@@ -1516,6 +1528,8 @@ const replaceStateTables = async (client, ownerPhone, products, clients, proveed
         product.stockAvailable,
         product.stockReserved,
         product.price,
+        JSON.stringify(product.attributes ?? {}), product.unit ?? 'unit', product.status ?? 'active',
+        product.revision ?? 0, product.priceCurrency ?? 'XXX',
       ],
     );
   }
@@ -2131,6 +2145,14 @@ export const deletePedidoRecord = async (pedidoId, ownerPhone = DEFAULT_OWNER_PH
   const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
   const result = await getPool().query('DELETE FROM pedidos WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [pedidoId, ownerPhoneVariants]);
   return result.rowCount > 0;
+};
+
+export const executeInventoryOperation = async (plan, context) => {
+  const normalized = validateOperationPlan(plan, context);
+  await ensureReady();
+  return withTransaction((client) => executeInventoryPlanInTransaction(client, normalized, {
+    ...context, ownerPhoneVariants: getOwnerPhoneVariants(context.businessId),
+  }));
 };
 
 export const getStateSnapshot = async (ownerPhone = DEFAULT_OWNER_PHONE) => {
