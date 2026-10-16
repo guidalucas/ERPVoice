@@ -7,6 +7,7 @@ import {
 } from './postgresDatabase.js';
 import { prepareStockDraft, normalizeIdentity, hasExplicitStockSize, needsDistinctIdentity, productFingerprint, ENGINE_VERSION, interpretStockClarification, validateStockDraft, auditStockDraft, resolveStockDraft } from './voiceStockEngine.js';
 import { interpretStockDraftPatch, invalidateDraftItem } from './stockDraftPatches.js';
+import { reconcileDraftItemIds } from './stockDraftIdentity.js';
 
 const pendingItem = (batch) => batch.payload.actions?.find((action) => action.resolution?.kind === 'ambiguous');
 const canonicalJson = (value) => Array.isArray(value) ? value.map(canonicalJson)
@@ -530,6 +531,9 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
     return null;
   }
   const status = draft.ok ? 'ready' : 'awaiting_correction';
+  if (active && replacesDraft && draft.actions?.length) {
+    draft.actions = reconcileDraftItemIds(active.payload.actions ?? [], draft.actions);
+  }
   const payload = draftPayload(draft, messageId, active?.payload, retrySaved ? savedSource : sourceText);
   if (draft.ok || (draft.sourceText && draft.sourceText !== savedSource)) delete payload.pendingCorrectionText;
   else if (active && !retrySaved && !draft.ok) payload.pendingCorrectionText = sourceText;

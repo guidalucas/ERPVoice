@@ -686,6 +686,40 @@ try {
       assert.equal((await db.getStateSnapshotStrict(owner)).products.some((product) => product.name === 'Contenido Auditado'), false);
     } finally { extractionOverride = null; draftPatchOverride = null; auditComplete = true; failResolve = false; await message('patch-hash-cancel', 'cancelar'); }
   });
+  await check('reemplazo reordenado conserva IDs inequívocos y da ID nuevo a otro producto sin aceptar preguntas anteriores', async () => {
+    const names = ['Convertidor de 12 V a 24 V', 'Convertidor de 24 V a 12 V', 'Caja Sauce'];
+    const source = names.map((name) => `Ingresó ${name}.`).join(' ');
+    const extracted = (name, qty = 1) => ({ type: 'add_stock', productName: name, qty, evidence: name,
+      fieldEvidence: qty === 1 ? {} : { qty: 'tres' } });
+    extractionOverride = names.map((name) => extracted(name)); auditComplete = false;
+    await message('replacement-ids-source', source);
+    const initial = await db.getVoiceStockBatchByMessage(owner, 'replacement-ids-source');
+    const oldIds = new Map(initial.payload.actions.map((item) => [item.productName, item.itemId]));
+    await db.finishMetaReply('replacement-ids-source', null, 'wamid.replacement-old-question');
+    extractionOverride = [extracted(names[1], 3), extracted('Frasco Olivo'), extracted(names[2]), extracted(names[0])];
+    const full = `Lista completa corregida: ingresaron tres ${names[1]}. Ingresó Frasco Olivo. Ingresó ${names[2]}. Ingresó ${names[0]}.`;
+    try {
+      assert.equal((await message('replacement-ids-list', full)).batchStatus, 'awaiting_correction');
+      const replaced = await db.getVoiceStockBatchByMessage(owner, 'replacement-ids-source');
+      for (const item of replaced.payload.actions.filter((item) => oldIds.has(item.productName))) assert.equal(item.itemId, oldIds.get(item.productName));
+      assert.equal([...oldIds.values()].includes(replaced.payload.actions.find((item) => item.productName === 'Frasco Olivo').itemId), false);
+      const beforeCalls = calls;
+      assert.equal((await message('replacement-ids-late', '1', 'wamid.replacement-old-question')).batchStatus, 'awaiting_correction');
+      assert.equal(calls, beforeCalls);
+      assert.equal((await db.getStateSnapshotStrict(owner)).products.some((product) => names.includes(product.name) || product.name === 'Frasco Olivo'), false);
+      const answer = 'Confirmo que es la lista corregida.';
+      draftPatchOverride = (input) => ({ kind: 'confirm', questionId: input.questions[0].id, evidence: answer });
+      auditComplete = true; resolutionKind = 'new';
+      assert.equal((await message('replacement-ids-confirm', answer)).batchStatus, 'applied');
+      const products = (await db.getStateSnapshotStrict(owner)).products;
+      assert.equal(products.find((product) => product.name === names[0]).stockAvailable, 1);
+      assert.equal(products.find((product) => product.name === names[1]).stockAvailable, 3);
+      assert.equal(products.find((product) => product.name === names[2]).stockAvailable, 1);
+      assert.equal(products.find((product) => product.name === 'Frasco Olivo').stockAvailable, 1);
+      const final = await db.getVoiceStockBatchByMessage(owner, 'replacement-ids-source');
+      assert.deepEqual(final.payload.actions.map((item) => item.itemId), replaced.payload.actions.map((item) => item.itemId));
+    } finally { extractionOverride = null; draftPatchOverride = null; auditComplete = true; resolutionKind = 'ambiguous'; }
+  });
   await check('decisiones de referencia anteriores no suprimen una nueva duda después de editar identidad', async () => {
     const reference = 'El anterior es otra unidad.';
     const source = `Ingresó Arandela Olmo. ${reference}`;

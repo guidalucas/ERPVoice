@@ -16,7 +16,7 @@
 | H0 / P0 | Identidad conservadora reutilizable; autenticidad POST Meta; versión de despliegue. Engine, security, index. | Dirección/orden no colisionan; firma válida/tampered/missing; GET intacto; regresiones relevantes. | Implementado y verificado localmente |
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
-| H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.3 verificados para ingresos; intérprete universal y reemplazo completo pendientes |
+| H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
 | H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Pendiente |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
@@ -53,11 +53,14 @@
 
 ## Próximo paso exacto
 
-H3.4: hacer que el reemplazo explícito de lista conserve IDs solo por correspondencia
-inequívoca y asigne IDs nuevos a ítems nuevos; probar reordenamiento y respuestas viejas.
-Después, cerrar la idempotencia del panel para mutaciones legacy al migrarlas al contrato
-universal (ventas/reservas primero). El recibo universal actual cubre ingresos.
-No abrir conjuntos ni optimización LLM antes de completar estos contratos.
+H4.0 / integridad pendiente: migrar primero ventas/reservas al contrato y núcleo compartido,
+con SKU explícito, stock insuficiente, permisos, deltas, recibo/replay y transacción compatible.
+Revisar normalizePlan/planInventoryReceipt en inventoryOperations y el branch legacy de
+applyActionsToDatabase; NO resolver otra vez por nombre ni reutilizar precios de compra
+como política de venta. Agregar HTTP/panel retry después de commit y rollback multiítem.
+Conservar bloqueo de tabla hasta retirar el reemplazo legacy completo.
+El intérprete universal y los esquemas configurables siguen pendientes; no abrir conjuntos
+ni optimización LLM antes de cerrar la integridad de estas mutaciones.
 
 ## Registro de hitos
 
@@ -128,8 +131,8 @@ No abrir conjuntos ni optimización LLM antes de completar estos contratos.
   aislamiento, respuesta inválida, confirmación concurrente y recuperación de cuota.
   Revisión independiente detectó dos ventanas (ready/cancel y rotación Q1→Q2), corregidas
   y cubiertas por regresiones; segunda revisión sin hallazgos en ese alcance.
-- H3 sigue parcial: preguntas genéricas, IDs tras reextracción completa, sincronización
-  del borrador entre dispositivos e intérprete universal pendientes. Respuestas sin cita
+- Al cerrar H3.2 quedaban preguntas genéricas e IDs tras reextracción (abordados después).
+  Siguen pendientes sincronización del borrador entre dispositivos e intérprete universal. Respuestas sin cita
   siguen ligadas al lote activo; citas anteriores sin recibo persistido se retienen.
   La recuperación exactamente una vez en panel está probada para ingresos; otras
   mutaciones todavía usan el escritor legacy y requieren migración/idempotencia en H4.
@@ -151,6 +154,17 @@ No abrir conjuntos ni optimización LLM antes de completar estos contratos.
   auditoría históricos; no se midió calidad, costo ni latencia con proveedores reales.
   Añadir ítems por aclaración requiere hoy reemplazo explícito; no simula soporte genérico.
   La sincronización entre dispositivos y el modal manual tras recarga siguen pendientes.
+- H3.4: reemplazo explícito reconcilia IDs por identidad completa conservadora y única
+  en ambas listas; cantidades/precios pueden cambiar sin reasignar el ítem. Ítems nuevos,
+  identidades duplicadas o no verificables reciben UUID nuevos, sin reutilizar IDs viejos.
+  Dirección numérica, unidad y atributos participan; índices de extracción no son identidad.
+- H3.4 verificado: 75 checks PG/HTTP y 28 en suite pura; reemplazo reordenado con dos
+  convertidores opuestos, un ítem nuevo, cantidad modificada y respuesta a pregunta anterior.
+  Stock y movimientos corresponden a los ítems correctos; preguntas viejas no se ejecutan.
+- Cierre de regresiones: audio largo y borrados aprobados de nuevo. River se ejecutó
+  nuevamente: conserva los dos fallos de normalización preexistentes ("Camiseta Camisetas
+  River" / modelo "Camisetas River"); obtiene los tres SKU esperados, pero el script falla.
+  No se cambiaron sus expectativas ni se presenta la suite histórica completa como verde.
 
 ## Continuación sin repetir investigación
 
