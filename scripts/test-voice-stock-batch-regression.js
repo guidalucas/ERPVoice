@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { prepareStockDraft, validateStockDraft, retrieveStockCandidates, literalizeStockDraftQuotes, buildSourceSpans, groundStockDraft } from '../server/voiceStockEngine.js';
+import { prepareStockDraft, validateStockDraft, retrieveStockCandidates, literalizeStockDraftQuotes, buildSourceSpans, groundStockDraft, stockMatchScore, stockReferenceIssues } from '../server/voiceStockEngine.js';
 import { stockDraftFailureReply } from '../server/voiceStockWorkflow.js';
 import { incidentText, clarifiedText, incidentActions, incidentCatalog, ambiguousMention, genericCases } from './fixtures/voice-stock-corpus.js';
 
@@ -94,6 +94,32 @@ try {
     assert.equal(draft.reason, 'coverage_incomplete');
     assert.match(draft.clarifications[0].question, /¿“la anterior” corrige/);
     assert.equal(requests.some((body) => body.messages[0].content.includes('Etapa: resolve.')), false);
+  });
+  await run('trece acciones del audio real se reparan antes de resolver el catálogo', async () => {
+    const extra = { ...incidentActions[1], productName: 'Camiseta de Independiente', productModel: 'anterior', evidence: ambiguousMention };
+    const phantom = { ...incidentActions[0], productName: 'Camiseta del Manchester City', productModel: 'anterior', size: undefined, evidence: ambiguousMention };
+    const thirteen = [incidentActions[0], extra, phantom, ...incidentActions.slice(1)];
+    const draft = await prepare(incidentText, thirteen, incidentCatalog, { coverageActions: incidentActions });
+    assert.equal(draft.ok, true);
+    assert.equal(draft.actions.length, 11);
+    assert.ok(requests.some((body) => body.messages[0].content.includes('Etapa: repair_coverage.')));
+  });
+  await run('si el modelo insiste en los trece productos no se aplica el lote', async () => {
+    const extra = { ...incidentActions[1], productName: 'Camiseta de Independiente', productModel: 'anterior', evidence: ambiguousMention };
+    const phantom = { ...incidentActions[0], productName: 'Camiseta del Manchester City', productModel: 'anterior', size: undefined, evidence: ambiguousMention };
+    const thirteen = [incidentActions[0], extra, phantom, ...incidentActions.slice(1)];
+    const draft = await prepare(incidentText, thirteen, incidentCatalog);
+    assert.equal(draft.ok, false);
+    assert.equal(draft.actions.length, 13);
+    assert.equal(draft.reason, 'coverage_incomplete');
+    assert.equal(requests.some((body) => body.messages[0].content.includes('Etapa: resolve.')), false);
+  });
+  await run('una cita corta no oculta la reformulación dentro de su oración', async () => {
+    const partial = { ...incidentActions[1], productName: 'Camiseta de Independiente',
+      evidence: 'Cargé la camiseta de Independiente' };
+    const validated = validateStockDraft(incidentText, [incidentActions[0], partial, ...incidentActions.slice(1)]);
+    assert.equal(validated.ok, true);
+    assert.ok(stockReferenceIssues(validated.actions, incidentText).some((issue) => issue.code === 'underspecified_repeat'));
   });
   await run('una aclaración parcial no reemplaza el listado guardado ni llega a resolver', async () => {
     const answer = 'La suplente del Manchester City 2025 talle L es versión jugador. La camiseta de Independiente suplente 2026 sí va. Cargá el resto.';
@@ -344,10 +370,45 @@ try {
     const draft = await prepare(fixture.text, fixture.actions, { products }, { resolutionKind: 'existing', productId: relevant.id });
     assert.equal(draft.actions[0].resolution.productId, relevant.id);
   });
-  await run('SKU indistinguible no se crea como nuevo', async () => {
+  await run('SKU indistinguible se carga sobre el producto existente sin preguntar', async () => {
     const fixture = genericCases[0];
     const draft = await prepare(fixture.text, fixture.actions, { products: [{ id: 'exact', name: 'Taladro Bosch 18V', productType: 'Taladro', productModel: 'Bosch 18V', size: '10 mm' }] });
-    assert.equal(draft.actions[0].resolution.kind, 'ambiguous'); assert.deepEqual(draft.actions[0].resolution.candidateIds, ['exact']);
+    assert.equal(draft.actions[0].resolution.kind, 'existing');
+    assert.equal(draft.actions[0].resolution.productId, 'exact');
+    assert.equal(draft.actions[0].resolution.matchScore, 100);
+    assert.equal(requests.some((body) => body.messages[0].content.includes('Etapa: resolve.')), false);
+  });
+  await run('una sola variante compatible permite inferir talle omitido; dos variantes requieren elección', async () => {
+    const source = 'Cargué la camiseta de Racing titular 2026 en versión jugador.';
+    const actions = [{ type: 'add_stock', productName: 'Camiseta de Racing titular 2026 en versión jugador',
+      productType: 'Camiseta', productModel: 'titular', qty: 1, evidence: source, fieldEvidence: {} }];
+    const candidate = { id: 'racing-s', name: 'Camiseta Racing titular 2026 versión jugador',
+      productType: 'Camiseta', productModel: 'Racing titular 2026 versión jugador', size: 'S' };
+    const single = await prepare(source, actions, { products: [candidate] });
+    assert.equal(single.actions[0].resolution.kind, 'existing');
+    assert.equal(single.actions[0].resolution.matchScore, 94);
+    assert.equal(stockMatchScore(single.actions[0], candidate, [candidate]), 94);
+    const another = { ...candidate, id: 'racing-m', size: 'M' };
+    const multiple = await prepare(source, actions, { products: [candidate, another] },
+      { resolutionKind: 'existing', productId: candidate.id });
+    assert.equal(multiple.actions[0].resolution.kind, 'ambiguous');
+    assert.deepEqual(multiple.actions[0].resolution.candidateIds, [candidate.id, another.id]);
+    const unsized = { ...candidate, id: 'racing-unsized', size: undefined };
+    assert.equal(stockMatchScore(actions[0], unsized, [unsized, candidate]), 0);
+    const globalPlayer = { ...actions[0], productName: 'Camiseta de Racing titular 2026',
+      identityAttributes: { version: 'jugador' }, fieldEvidence: { attributes: ['Todas son versión jugador'] } };
+    const withoutVersion = { ...candidate, name: 'Camiseta Racing titular 2026', productModel: 'Racing titular 2026' };
+    assert.equal(stockMatchScore(globalPlayer, withoutVersion, [withoutVersion]), 0);
+    assert.equal(stockMatchScore({ ...actions[0], fieldEvidence: { attributes: ['Todas son versión jugador'] } }, candidate, [candidate]), 0);
+  });
+  await run('un año explícitamente distinto no alcanza el umbral de coincidencia', async () => {
+    const source = 'Cargué la camiseta de Racing titular 2025 en versión jugador.';
+    const actions = [{ type: 'add_stock', productName: 'Camiseta de Racing titular 2025 en versión jugador',
+      qty: 1, evidence: source, fieldEvidence: {} }];
+    const product = { id: 'racing-2026', name: 'Camiseta Racing titular 2026 versión jugador' };
+    assert.equal(stockMatchScore(actions[0], product, [product]), 0);
+    const draft = await prepare(source, actions, { products: [product] });
+    assert.equal(draft.actions[0].resolution.kind, 'new');
   });
   await run('ID fuera de candidatos y variante explícita incompatible nunca son existing', async () => {
     const fixture = genericCases[0];

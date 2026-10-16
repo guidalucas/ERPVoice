@@ -1,20 +1,47 @@
 import { completeChatJson } from './llmChatClient.js';
-import { productBaseName } from './productIdentity.js';
+import { normalizeProductMetadata, productBaseName, productMatchKey } from './productIdentity.js';
 
 export const ENGINE_VERSION = 'stock-batch-v2';
 export const normalizeIdentity = (value) => String(value ?? '').toLowerCase().normalize('NFD')
   .replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const startsWithStockIntake = (value) => /^(?:carge|cargue|cargamos|cargar|ingrese|ingresamos|agregue|agregamos|sume|sumamos|recibi|recibimos|entraron|llegaron|anota|anote|registra|registre)\b/.test(normalizeIdentity(value));
-export const stockIdentityKey = (item) => [normalizeIdentity(productBaseName(item)).split(' ').sort().join(' '), normalizeIdentity(item.size)].join('|');
+export const stockIdentityKey = (item) => {
+  const identity = { productName: item.productName ?? item.name ?? productBaseName(item), size: normalizeProductMetadata(item).size };
+  return [productMatchKey(identity) ?? normalizeIdentity(productBaseName(item)).split(' ').sort().join(' '), normalizeIdentity(identity.size)].join('|');
+};
 export const productFingerprint = (item) => JSON.stringify([item.name, item.productType ?? '', item.productModel ?? '', item.size ?? '']);
 export const isSameSku = (action, product) => stockIdentityKey(action) === stockIdentityKey(product);
 export const needsDistinctIdentity = (action, product) => stockIdentityKey(action).split('|')[0] === stockIdentityKey(product).split('|')[0]
-  && (!action.size || normalizeIdentity(action.size) === normalizeIdentity(product.size));
+  && (!normalizeProductMetadata(action).size || normalizeIdentity(normalizeProductMetadata(action).size) === normalizeIdentity(normalizeProductMetadata(product).size));
 export const explicitIdentityConflict = (action, product) => {
-  if (action.size && product.size && normalizeIdentity(action.size) !== normalizeIdentity(product.size)) return true;
+  const actionSize = normalizeProductMetadata(action).size;
+  const productSize = normalizeProductMetadata(product).size;
+  if (actionSize && productSize && normalizeIdentity(actionSize) !== normalizeIdentity(productSize)) return true;
   const wanted = new Set(normalizeIdentity(action.productName).split(' ').filter((token) => /^\d/.test(token)));
   const stored = new Set(normalizeIdentity(product.name).split(' ').filter((token) => /^\d/.test(token)));
   return wanted.size > 0 && stored.size > 0 && ![...wanted].every((token) => stored.has(token));
+};
+
+// This is an evidence score, not a probability from the model. An exact normalized
+// identity scores 100; a missing size can score 94 only with one catalog variant.
+export const stockMatchScore = (action, product, products = []) => {
+  if (explicitIdentityConflict(action, product)) return 0;
+  const attributes = action.identityAttributes && typeof action.identityAttributes === 'object' && !Array.isArray(action.identityAttributes)
+    ? Object.entries(action.identityAttributes).filter(([key, value]) => !/id$/i.test(key) && (typeof value === 'string' || typeof value === 'number'))
+      .flatMap(([, value]) => normalizeIdentity(value).split(' ').filter(Boolean)) : [];
+  if (action.fieldEvidence?.attributes?.length && !attributes.length) return 0;
+  const candidateWords = new Set(normalizeIdentity([product.name, product.productType, product.productModel, product.size].filter(Boolean).join(' ')).split(' '));
+  if (attributes.some((word) => !candidateWords.has(word))) return 0;
+  const [wantedBase, wantedSize] = stockIdentityKey(action).split('|');
+  const [storedBase, storedSize] = stockIdentityKey(product).split('|');
+  if (!wantedBase || wantedBase !== storedBase) return 0;
+  if (wantedSize === storedSize) {
+    if (!wantedSize && products.filter((entry) => stockIdentityKey(entry).split('|')[0] === wantedBase).length > 1) return 0;
+    return 100;
+  }
+  if (wantedSize || !storedSize) return 0;
+  const sameBase = products.filter((entry) => stockIdentityKey(entry).split('|')[0] === wantedBase);
+  return sameBase.length === 1 && sameBase[0].id === product.id ? 94 : 0;
 };
 
 const jsonCall = async (stage, instruction, data, { maxTokens = 8192 } = {}) => {
@@ -189,6 +216,46 @@ export const validateStockDraft = (sourceText, actions) => {
   return { ok: true, actions: validated };
 };
 
+const previousReference = /\b(?:la|el|las|los)\s+anterior(?:es)?\b[^.!?;\n]*/i;
+const referenceFiller = new Set(['anterior', 'anteriore', 'version', 'jugador', 'fan', 'titular', 'suplente', 'de', 'del', 'la', 'el', 'las', 'los', 'en']);
+const identityWords = (action) => new Set((productMatchKey({ productName: action.productName, size: action.size }) ?? '').split(' ').filter(Boolean));
+
+// A sentence that corrects a previous item can mention it again without adding a
+// unit. The model's own coverage verdict cannot authorize that duplicate.
+export const stockReferenceIssues = (actions, sourceText = '') => {
+  const issues = [];
+  const spans = buildSourceSpans(sourceText);
+  const startOf = (action) => Number.isSafeInteger(action.evidenceStart) ? action.evidenceStart
+    : sourceText.indexOf(String(action.evidence ?? ''));
+  for (const [index, action] of actions.entries()) {
+    const actionStart = startOf(action);
+    const clause = spans.find((span) => actionStart >= span.start && actionStart < span.end)?.text ?? String(action.evidence ?? '');
+    const reference = clause.match(previousReference)?.[0];
+    if (!reference) continue;
+    const targetWords = new Set(normalizeIdentity(reference).split(' ').filter((word) => word.length > 2 && !referenceFiller.has(word)));
+    const actionWords = identityWords(action);
+    const earlier = actions.slice(0, index).find((prior) => startOf(prior) >= 0 && startOf(prior) < startOf(action)
+      && [...targetWords].some((word) => actionWords.has(word) && identityWords(prior).has(word)));
+    if (earlier) issues.push({ kind: 'repairable', code: 'duplicate_previous_reference', evidence: action.evidence,
+      detail: `La referencia al producto anterior en ${action.itemId} parece repetir ${earlier.itemId}. Conservá la corrección, sin sumar otra unidad salvo que el texto lo ordene expresamente.` });
+
+    const words = [...actionWords].filter((word) => word.length > 3 && !referenceFiller.has(word)
+      && !normalizeIdentity(action.productType).split(' ').includes(word));
+    const later = actions.slice(index + 1).find((next) => {
+      if (normalizeIdentity(action.productType) && normalizeIdentity(next.productType)
+        && normalizeIdentity(action.productType) !== normalizeIdentity(next.productType)) return false;
+      const nextWords = identityWords(next);
+      return words.length > 0 && words.every((word) => nextWords.has(word))
+        && [...actionWords].every((word) => nextWords.has(word)) && nextWords.size > actionWords.size;
+    });
+    if (later && !/\b(?:otra|otro|adicional|segunda|segundo)\b/i.test(action.evidence)) {
+      issues.push({ kind: 'repairable', code: 'underspecified_repeat', evidence: action.evidence,
+        detail: `${action.itemId} tiene un nombre parcial que puede repetirse como ${later.itemId}. Inferí si es una reformulación; no sumes dos unidades sin una orden adicional explícita.` });
+    }
+  }
+  return issues;
+};
+
 export const extractStockDraft = async ({ sourceText, businessCategory, clarificationContext = null, forceStockIntake = false }) => {
   const replacement = Boolean(clarificationContext && /^(?:lista completa(?: corregida)?|reemplazo (?:la lista completa|el listado completo)|esta es la lista completa|este es el listado completo)\b/.test(normalizeIdentity(sourceText)));
   const spanSource = [!replacement && clarificationContext?.sourceText, sourceText].filter(Boolean).join('\n');
@@ -254,8 +321,9 @@ clarification solo si hay dos interpretaciones materiales del texto que no se pu
     const span = sourceSpans.find((entry) => entry.id === Number(issue.evidenceSpanId));
     return { ...issue, evidence: span?.text };
   }) : [];
+  issues.push(...stockReferenceIssues(actions, sourceText));
   for (const action of actions) {
-    const reference = String(action.productName).match(/\b(?:la|el|las|los)\s+anterior(?:es)?\b/i)?.[0];
+    const reference = `${action.productName} ${action.productModel ?? ''}`.match(/\b(?:la|el|las|los)?\s*anterior(?:es)?\b/i)?.[0]?.trim();
     if (!reference) continue;
     if (issues.some((issue) => issue?.kind === 'clarification' && typeof issue.evidence === 'string'
       && (action.evidence.includes(issue.evidence) || issue.evidence.includes(action.evidence)))) continue;
@@ -275,7 +343,10 @@ clarification solo si hay dos interpretaciones materiales del texto que no se pu
 export const retrieveStockCandidates = (action, products, limit = 12) => {
   const typeTokens = new Set(normalizeIdentity(action.productType).split(' '));
   const wanted = new Set(normalizeIdentity(action.productName).split(' ').filter((word) => word.length > 2 && !typeTokens.has(word) && !/^\d+$/.test(word)));
-  return products.map((product) => ({ product, score: isSameSku(action, product) ? 10000 : normalizeIdentity(product.name).split(' ').filter((word) => wanted.has(word)).length }))
+  const wantedBase = stockIdentityKey(action).split('|')[0];
+  return products.map((product) => ({ product, score: isSameSku(action, product) ? 10000
+    : stockIdentityKey(product).split('|')[0] === wantedBase ? 9000
+      : normalizeIdentity(product.name).split(' ').filter((word) => wanted.has(word)).length }))
     .filter(({ score }) => score > 0).sort((a, b) => b.score - a.score).slice(0, limit).map(({ product }) => product);
 };
 
@@ -284,13 +355,22 @@ export const resolveStockDraft = async ({ actions, catalog }) => {
   const candidates = actions.map((action) => ({ itemId: action.itemId, products: retrieveStockCandidates(action, products).map(({ id, name, productType, productModel, size }) => ({ id, name, productType, productModel, size })) }));
   const traces = [];
   const byId = new Map();
+  const confidentById = new Map();
+  for (const action of actions) {
+    const compatible = candidates.find((entry) => entry.itemId === action.itemId).products
+      .filter((product) => !explicitIdentityConflict(action, product));
+    const strong = compatible.map((product) => ({ product, score: stockMatchScore(action, product, products) }))
+      .filter(({ score }) => score >= 94);
+    if (strong.length === 1) confidentById.set(action.itemId, strong[0]);
+  }
+  const unresolved = actions.filter((action) => !confidentById.has(action.itemId));
   // Keep each request small; split it again if a provider rejects its size or truncates JSON.
   const resolveGroup = async (start, end) => {
-    const group = actions.slice(start, end);
+    const group = unresolved.slice(start, end);
     const result = await jsonCall('resolve', `Compará cada ítem con sus candidatos. La similitud solo recuperó candidatos; no prueba identidad. Devolvé {items:[{itemId,kind:"existing"|"new"|"ambiguous",productId?:string,candidateIds?:string[],reason:string}]}.
 Para existing usá un productId candidato. Para ambiguous, incluí solo los IDs de hasta tres variantes compatibles. Para new no incluyas candidateIds. reason debe ser breve. Si la acción y su evidencia distinguen explícitamente otra marca, modelo, año, medida o presentación, es new. Si falta un atributo para distinguir variantes compatibles, es ambiguous. No propongas productos ajenos por compartir categoría o año. Solo usá IDs de candidatos del ítem.`, {
       actions: group.map(({ itemId, productName, productType, productModel, size, evidence, fieldEvidence }) => ({ itemId, productName, productType, productModel, size, evidence, attributes: fieldEvidence?.attributes })),
-      candidates: candidates.slice(start, end),
+      candidates: group.map((action) => candidates.find((entry) => entry.itemId === action.itemId)),
     }, { maxTokens: 1536 });
     traces.push(result.trace);
     const items = result.json?.items;
@@ -306,20 +386,26 @@ Para existing usá un productId candidato. Para ambiguous, incluí solo los IDs 
     for (const item of result.json.items) byId.set(item.itemId, item);
     return true;
   };
-  for (let start = 0; start < actions.length; start += 3) {
-    if (!await resolveGroup(start, Math.min(start + 3, actions.length))) return { ok: false, reason: 'resolver_unavailable', traces, trace: traces.at(-1) };
+  for (let start = 0; start < unresolved.length; start += 3) {
+    if (!await resolveGroup(start, Math.min(start + 3, unresolved.length))) return { ok: false, reason: 'resolver_unavailable', traces, trace: traces.at(-1) };
   }
   const resolved = [];
   for (const action of actions) {
+    const confident = confidentById.get(action.itemId);
+    if (confident) {
+      resolved.push({ ...action, resolution: { kind: 'existing', productId: confident.product.id,
+        fingerprint: productFingerprint(confident.product), matchScore: confident.score,
+        reason: 'Identidad normalizada única en el catálogo.' },
+      candidates: candidates.find((entry) => entry.itemId === action.itemId).products.map((product) => ({ ...product, fingerprint: productFingerprint(product) })) });
+      continue;
+    }
     const item = byId.get(action.itemId);
     if (!item || !['existing', 'new', 'ambiguous'].includes(item.kind) || (item.candidateIds != null && !Array.isArray(item.candidateIds))) return { ok: false, reason: 'invalid_resolution', traces, trace: traces.at(-1) };
     const allowed = candidates.find((entry) => entry.itemId === action.itemId).products.filter((product) => !explicitIdentityConflict(action, product));
     const selected = allowed.find((product) => product.id === item.productId);
     const exact = products.filter((product) => needsDistinctIdentity(action, product));
     let resolution;
-    if (item.kind === 'existing' && selected && isSameSku(action, selected) && (action.size || !selected.size)) {
-      resolution = { kind: 'existing', productId: selected.id, fingerprint: productFingerprint(selected) };
-    } else if (item.kind === 'new' && !exact.length) {
+    if (item.kind === 'new' && !exact.length) {
       resolution = { kind: 'new' };
     } else {
       const ids = new Set([...(item.candidateIds ?? []), ...(selected ? [selected.id] : []), ...exact.map((product) => product.id)]);

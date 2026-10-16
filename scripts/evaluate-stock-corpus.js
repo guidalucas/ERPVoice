@@ -31,6 +31,7 @@ if (!process.argv.includes('--live') || !hasAnyLlmApiKey()) {
     if (fixture.id === 'incident-after-history' && draft.sourceText !== incidentText) errors.push('El ingreso absorbió mensajes anteriores.');
     if (fixture.id.startsWith('incident')) {
       if (actions.length < 11) errors.push(`La extracción tiene menos de once menciones identificables: ${actions.length}.`);
+      if (actions.length > 12 || (draft.ok && actions.length !== 11)) errors.push(`El dictado produjo ${actions.length} acciones; puede duplicar una referencia o un producto.`);
       if (!actions.some((action) => /argentina/.test(normalizeIdentity(action.productName)) && /tercera/.test(normalizeIdentity(action.productName)))) errors.push('Falta Argentina tercera.');
       if (!actions.some((action) => /boca/.test(normalizeIdentity(action.productName)))) errors.push('Falta Boca.');
       if (actions.some((action) => /chelsea/.test(normalizeIdentity(action.productName)))) errors.push('Chelsea no está en el dictado.');

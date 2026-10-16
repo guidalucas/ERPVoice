@@ -81,6 +81,15 @@ try {
     await assert.rejects(db.applyResolvedVoiceStockBatch(unverified.id, owner));
     await db.updateVoiceStockBatch(unverified.id, { expectedVersion: unverified.version, status: 'cancelled' });
   });
+  await check('un lote antiguo con una referencia duplicada tampoco puede aplicarse', async () => {
+    const prior = action('Taladro Bosch 18V');
+    const duplicate = { ...action('Taladro Bosch 18V'), itemId: 'item-2',
+      evidence: 'el anterior Taladro Bosch 18V', productModel: 'anterior' };
+    const batch = await createBatch([prior, duplicate]);
+    await assert.rejects(db.applyResolvedVoiceStockBatch(batch.id, owner), { code: 'STOCK_REFERENCE_UNVERIFIED' });
+    assert.equal((await db.getStateSnapshotStrict(owner)).products.some((entry) => entry.name === prior.productName), false);
+    await db.updateVoiceStockBatch(batch.id, { expectedVersion: batch.version, status: 'cancelled' });
+  });
   await check('rollback completo si un segundo ítem es inválido', async () => {
     const batch = await createBatch([action('Primero válido'), { ...action('Segundo inválido'), itemId: 'item-2', qty: 1.5 }]);
     await assert.rejects(db.applyResolvedVoiceStockBatch(batch.id, owner));
@@ -153,7 +162,7 @@ try {
 
   // Real workflow, fake model; all writes still use the real PostgreSQL transaction.
   process.env.GEMINI_API_KEY = 'test'; process.env.LLM_PROVIDER = 'gemini'; process.env.LLM_DISABLE_FALLBACK = '1';
-  const drillA = await db.createProductRecord({ name: 'Taladro Makita', size: '10 mm', stockAvailable: 0 }, owner);
+  let drillA = await db.createProductRecord({ name: 'Taladro Makita', size: '10 mm', stockAvailable: 0 }, owner);
   const drillB = await db.createProductRecord({ name: 'Taladro Makita', size: '13 mm', stockAvailable: 0 }, owner);
   let calls = 0;
   let auditComplete = true;
@@ -182,6 +191,20 @@ try {
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
   };
   const message = (messageId, sourceText) => processStockBatchMessage({ ownerPhone: owner, senderPhone: owner, messageId, sourceText, businessCategory: 'ferreteria', conversationTurns: [] });
+  await check('un único SKU coincidente aplica stock sin pedir una opción', async () => {
+    const product = await db.createProductRecord({ name: 'Taladro Bosch 18V', size: '10 mm', stockAvailable: 0 }, owner);
+    extractionOverride = [{ type: 'add_stock', productName: 'Taladro Bosch 18V', qty: 2,
+      evidence: 'Taladro Bosch 18V', fieldEvidence: { qty: 'dos' } }];
+    const beforeCalls = modelInputs.length;
+    try {
+      const result = await message('unique-sku-source', 'Ingresaron dos Taladro Bosch 18V');
+      assert.equal(result.batchStatus, 'applied');
+      assert.equal(result.actions[0].resolution.productId, product.id);
+      assert.equal(result.actions[0].resolution.matchScore, 94);
+      assert.equal((await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.id === product.id).stockAvailable, 2);
+      assert.equal(modelInputs.slice(beforeCalls).some((entry) => entry.stage.includes('Etapa: resolve.')), false);
+    } finally { extractionOverride = null; }
+  });
   await check('clasificación other de una carga explícita se repara y no pasa al parser anterior', async () => {
     misclassifyExtract = true;
     const first = await message('misclassified-source', 'Cargé dos Taladro Makita');
@@ -345,6 +368,7 @@ try {
     const saved = await db.getVoiceStockBatchByMessage(owner, 'deleted-source');
     assert.deepEqual(saved.payload.actions[0].resolution.candidateIds, offeredIds);
     await message('deleted-cancel', 'cancelar');
+    drillA = await db.createProductRecord({ name: 'Taladro Makita', size: '10 mm', stockAvailable: 0 }, owner);
   });
   await check('nuevo indistinguible pide diferencia y usa la aclaración literal', async () => {
     await message('new-source', 'Ingresaron dos Taladro Makita');
