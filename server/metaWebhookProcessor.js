@@ -2542,6 +2542,7 @@ const extractMetaMessages = (body) => {
           entryId: entry?.id ?? null,
           fromNumber: typeof message?.from === 'string' ? message.from : null,
           messageId: typeof message?.id === 'string' ? message.id : null,
+          replyToMessageId: typeof message?.context?.id === 'string' ? message.context.id : null,
           messageType: typeof message?.type === 'string' ? message.type : 'unknown',
           textBody: typeof message?.text?.body === 'string' ? message.text.body.trim() : '',
           audioId: typeof message?.audio?.id === 'string' ? message.audio.id : null,
@@ -2702,7 +2703,11 @@ export const sendMetaReply = async ({ to, text }) => {
     });
 
     if (response.ok) {
-      return { sent: true, recipientUsed: recipient };
+      // Sending succeeded even if the provider omitted its receipt. Without an ID,
+      // quoted replies will be held for an explicit answer rather than guessed.
+      const receipt = await response.json().catch(() => null);
+      return { sent: true, recipientUsed: recipient,
+        messageId: typeof receipt?.messages?.[0]?.id === 'string' ? receipt.messages[0].id : null };
     }
 
     const errorText = await response.text();

@@ -3,6 +3,7 @@ import {
   createVoiceStockBatch, getActiveVoiceStockBatch, getVoiceStockBatchByMessage,
   updateVoiceStockBatch, applyResolvedVoiceStockBatch, getStateSnapshotStrict as getStateSnapshot, getVoiceStockBatchMode,
   saveVoiceStockShadowRun,
+  getMetaReplyQuestion,
 } from './postgresDatabase.js';
 import { prepareStockDraft, normalizeIdentity, hasExplicitStockSize, needsDistinctIdentity, productFingerprint, ENGINE_VERSION, interpretStockClarification, validateStockDraft, auditStockDraft, resolveStockDraft } from './voiceStockEngine.js';
 
@@ -57,10 +58,17 @@ const concurrentResult = async (batch, ownerPhone) => {
   return asResult(latest ?? batch, latest?.replyText ?? 'Ya estoy procesando otra respuesta para ese lote.');
 };
 
-const saveTransition = async (batch, messageId, payload, status, replyText = null) => updateVoiceStockBatch(batch.id, {
-  expectedVersion: batch.version, status, replyText,
-  payload: { ...payload, replyMessageId: messageId, handledMessages: [...(payload.handledMessages ?? []).filter((entry) => entry.messageId !== messageId), { messageId, replyText }] },
-});
+const saveTransition = async (batch, messageId, payload, status, replyText = null) => {
+  const next = { ...batch, payload };
+  const pending = status === 'awaiting_choice' ? pendingItem(next) : null;
+  // Persist question rotation in the same CAS as the actions it describes. A crash
+  // before finish() sends the next prompt must never leave Q1 attached to item 2.
+  return updateVoiceStockBatch(batch.id, {
+    expectedVersion: batch.version, status, replyText,
+    payload: { ...payload, ...(pending ? { pendingQuestion: questionForItem(next, pending) } : {}),
+      replyMessageId: messageId, handledMessages: [...(payload.handledMessages ?? []).filter((entry) => entry.messageId !== messageId), { messageId, replyText }] },
+  });
+};
 
 const finish = async (batch, ownerPhone, messageId) => {
   const missingSizes = missingClothingSizes(batch);
@@ -131,7 +139,7 @@ export const holdUnverifiedStockMessage = async ({ sourceText, businessCategory,
   return asResult(batch);
 };
 
-export const processStockBatchMessage = async ({ sourceText, businessCategory, ownerPhone, senderPhone, messageId }) => {
+export const processStockBatchMessage = async ({ sourceText, businessCategory, ownerPhone, senderPhone, messageId, replyToMessageId = null }) => {
   const replay = await getVoiceStockBatchByMessage(ownerPhone, messageId);
   if (replay) {
     if (replay.status === 'ready') return finish(replay, ownerPhone, replay.payload.replyMessageId ?? messageId);
@@ -144,6 +152,26 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
     return asResult(replay, prior?.replyText ?? replay.replyText);
   }
   const active = await getActiveVoiceStockBatch(ownerPhone, senderPhone);
+  if (active?.status === 'ready') {
+    await finish(active, ownerPhone, active.payload.replyMessageId ?? active.sourceMessageId);
+    // Recover the committed ready decision before interpreting a later command.
+    return processStockBatchMessage({ sourceText, businessCategory, ownerPhone, senderPhone, messageId, replyToMessageId });
+  }
+  if (replyToMessageId) {
+    const quoted = await getMetaReplyQuestion(replyToMessageId, ownerPhone, senderPhone);
+    const pending = active && pendingItem(active);
+    const currentQuestion = pending ? questionForItem(active, pending) : null;
+    if (!active && quoted) return { actions: [], batchId: quoted.batchId, batchStatus: 'ignored_reply',
+      replyText: 'Esa respuesta cita una pregunta de un lote cerrado. No cambié el inventario. Enviá una nueva operación para continuar.' };
+    if (active && (quoted?.batchId !== active.id
+      || quoted?.questionId !== currentQuestion?.id || active.status !== 'awaiting_choice')) {
+      const reply = 'Esa respuesta no corresponde a la pregunta pendiente. Conservé el lote sin cambios; respondé la pregunta actual sin citar mensajes anteriores.';
+      const saved = await saveTransition(active, messageId, { ...active.payload,
+        ignoredReplies: [...(active.payload.ignoredReplies ?? []), { messageId, replyToMessageId, text: sourceText }],
+      }, active.status, reply);
+      return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+    }
+  }
   const retryChoice = active?.status === 'awaiting_choice' && /^(reintentar|reintenta|volver a intentar)$/.test(normalizeIdentity(sourceText))
     && active.payload.pendingChoiceReply;
   let answerMessageId = messageId;
@@ -168,11 +196,6 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
     const reply = 'Conservé tu borrador anterior. Escribí “reintentar” para verificar el mensaje guardado con el nuevo flujo, o “cancelar”.';
     const saved = await saveTransition(active, messageId, active.payload, 'awaiting_correction', reply);
     return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
-  }
-  if (active?.status === 'ready') {
-    await finish(active, ownerPhone, active.payload.replyMessageId ?? active.sourceMessageId);
-    // A ready batch is recovered independently; the new incoming message still gets handled.
-    return processStockBatchMessage({ sourceText, businessCategory, ownerPhone, senderPhone, messageId });
   }
   if (active?.status === 'awaiting_correction' && active.payload.missingSizeItemIds?.length) {
     const actions = active.payload.actions.map((action) => ({ ...action }));

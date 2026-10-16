@@ -16,7 +16,7 @@
 | H0 / P0 | Identidad conservadora reutilizable; autenticidad POST Meta; versión de despliegue. Engine, security, index. | Dirección/orden no colisionan; firma válida/tampered/missing; GET intacto; regresiones relevantes. | Implementado y verificado localmente |
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
-| H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1 verificado para elección SKU; resto pendiente |
+| H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1/H3.2 verificados para elección SKU y recarga panel; resto pendiente |
 | H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Pendiente |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
@@ -53,10 +53,10 @@
 
 ## Próximo paso exacto
 
-H3.2: extender preguntas/patches persistentes a atributos faltantes del lote activo,
-sin reconstruir los ítems ya extraídos. Vincular respuestas citadas al ID de pregunta;
-preservar IDs ante reordenamientos y recargas del panel. No abrir ventas/conjuntos
-antes de verificar estos contratos.
+H3.3: extender preguntas/patches persistentes a atributos faltantes del lote activo,
+sin reconstruir los ítems ya extraídos; conservar sus IDs ante reordenamientos.
+Antes de ampliar recuperación a operaciones legacy, cerrar su idempotencia en panel:
+el recibo universal actual cubre ingresos. No abrir conjuntos ni optimización LLM todavía.
 
 ## Registro de hitos
 
@@ -101,8 +101,7 @@ antes de verificar estos contratos.
 - Pendientes externos: configurar secretos, backup/restauración y revisar migración BIGINT
   antes de desplegar; evaluar proveedores reales y verificar SHA efectivo. No se desplegó.
 - Riesgos restantes: escritor legacy aún requiere bloqueo de tabla; matcher histórico fuera
-  de ingresos; identidad/familias y esquemas configurables completos pendientes; persistencia
-  del borrador del panel entre recargas aún pendiente de H3.
+  de ingresos; identidad/familias y esquemas configurables completos pendientes.
 - H3.1: intérprete de aclaración SKU separado del motor; resultados existing/new/correction/
   unrelated, unavailable e invalid distinguen intención, contrato y fallos del proveedor.
   IDs fuera de candidatos, mutaciones ocultas y cantidades inválidas se rechazan.
@@ -115,5 +114,21 @@ antes de verificar estos contratos.
 - H3.1 verificado: 63 checks PG/HTTP; motor 49; suite pura/seguridad/auth/intérprete/logs 26
   (incluye 18 checks internos de aclaración y 4 escenarios de logs); audio largo y borrados
   aprobados. Build/UI del H2 siguen siendo la última validación frontend, sin cambios aquí.
-- H3 sigue parcial: respuestas tardías citadas de Meta, preguntas genéricas, IDs tras
-  reextracción completa, borradores panel tras recarga e intérprete universal pendientes.
+- H3.2: outbox conserva snapshot lote/pregunta y todos los wamid aceptados por Meta.
+  context.id se valida contra pregunta actual, ítem, negocio y remitente. Preguntas rotan
+  en el mismo CAS que sus acciones; se recupera ready antes de interpretar comandos nuevos.
+  Respuestas citadas atrasadas/desconocidas no resuelven otro ítem ni cancelan otro lote.
+- H3.2: borrador del panel en sessionStorage versionado, separado por negocio/actor
+  autenticados; sobrevive recarga de la pestaña con el mismo operationId. Confirmación
+  espera snapshot válido; fallos, consultas y parsing incompleto conservan el borrador.
+  Respuesta anterior no borra propuesta nueva; almacenamiento lleno impide enviar hasta
+  poder guardar. Cancelación explícita borra. No sincroniza dispositivos ni pestañas cerradas.
+- H3.2 verificado: 67 checks PG/HTTP; build y Edge con recarga/503/replay, cancelación,
+  aislamiento, respuesta inválida, confirmación concurrente y recuperación de cuota.
+  Revisión independiente detectó dos ventanas (ready/cancel y rotación Q1→Q2), corregidas
+  y cubiertas por regresiones; segunda revisión sin hallazgos en ese alcance.
+- H3 sigue parcial: preguntas genéricas, IDs tras reextracción completa, sincronización
+  del borrador entre dispositivos e intérprete universal pendientes. Respuestas sin cita
+  siguen ligadas al lote activo; citas anteriores sin recibo persistido se retienen.
+  La recuperación exactamente una vez en panel está probada para ingresos; otras
+  mutaciones todavía usan el escritor legacy y requieren migración/idempotencia en H4.

@@ -957,7 +957,7 @@ const dispatchPendingMetaReplies = async () => {
     try {
       const result = await sendMetaReply({ to: item.recipient, text: item.reply_text });
       if (result?.sent) {
-        await finishMetaReply(item.event_id);
+        await finishMetaReply(item.event_id, null, result.messageId);
       } else {
         await finishMetaReply(item.event_id, result?.reason ?? 'send_failed');
       }
@@ -1054,6 +1054,7 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       processStockText: async ({ sourceText, businessCategory, metaMessage }) => processStockBatchMessage({
         sourceText, businessCategory, ownerPhone: await resolveTenant(metaMessage.fromNumber),
         senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId(),
+        replyToMessageId: metaMessage.replyToMessageId,
       }),
       resolveBusinessCategory: async (fromNumber) => {
         try {

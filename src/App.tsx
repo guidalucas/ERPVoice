@@ -60,7 +60,7 @@ function AppGate() {
   }
 
   return (
-    <AppStoreProvider key={session.tenantPhone}>
+    <AppStoreProvider key={JSON.stringify([session.tenantPhone, session.phoneNumber])}>
       <MetaSyncBridge />
       <Shell />
     </AppStoreProvider>

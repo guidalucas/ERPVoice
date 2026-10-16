@@ -349,7 +349,6 @@ export const useChatBot = () => {
 
     if (!parsed) {
       addChatMessage(createChatMessage('bot', 'No pude interpretar el audio o el texto. Probá de nuevo.'));
-      clearPendingProposal();
       setDraftText('');
       setIsProcessing(false);
       return;
@@ -360,7 +359,6 @@ export const useChatBot = () => {
 
     if (resolvedMissingFields.length) {
       addChatMessage(createChatMessage('bot', buildMissingFieldsMessage(resolvedMissingFields)));
-      clearPendingProposal();
       setDraftText('');
       setIsProcessing(false);
       return;
@@ -368,7 +366,6 @@ export const useChatBot = () => {
 
     if (!enrichedParsed.actions.length) {
       addChatMessage(createChatMessage('bot', buildBotMessage(0)));
-      clearPendingProposal();
       setDraftText('');
       setIsProcessing(false);
       return;
@@ -404,7 +401,6 @@ export const useChatBot = () => {
     }
 
     if (!mutationActions.length) {
-      clearPendingProposal();
       setDraftText('');
       setIsProcessing(false);
       return;

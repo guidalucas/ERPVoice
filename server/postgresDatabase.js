@@ -432,6 +432,10 @@ const initializeDatabase = async () => {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       sent_at TIMESTAMPTZ
     );
+    ALTER TABLE meta_reply_outbox ADD COLUMN IF NOT EXISTS stock_batch_id TEXT;
+    ALTER TABLE meta_reply_outbox ADD COLUMN IF NOT EXISTS question_id TEXT;
+    ALTER TABLE meta_reply_outbox ADD COLUMN IF NOT EXISTS provider_message_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+    CREATE INDEX IF NOT EXISTS meta_reply_provider_ids_idx ON meta_reply_outbox USING GIN (provider_message_ids);
 
     CREATE TABLE IF NOT EXISTS voice_stock_batch_settings (
       owner_phone TEXT PRIMARY KEY,
@@ -2584,8 +2588,10 @@ export const updateVoiceStockBatch = async (batchId, updates) => {
     );
     if (row && updates.replyText) {
       const payload = parseJsonValue(row.payload_json);
-      await client.query(`INSERT INTO meta_reply_outbox (event_id, recipient, reply_text) VALUES ($1, $2, $3)
-        ON CONFLICT (event_id) DO NOTHING`, [payload.replyMessageId ?? row.source_message_id, row.sender_phone, updates.replyText]);
+      await client.query(`INSERT INTO meta_reply_outbox (event_id, recipient, reply_text, stock_batch_id, question_id)
+        VALUES ($1, $2, $3, $4, $5) ON CONFLICT (event_id) DO NOTHING`,
+      [payload.replyMessageId ?? row.source_message_id, row.sender_phone, updates.replyText, row.id,
+        row.status === 'awaiting_choice' ? payload.pendingQuestion?.id ?? null : null]);
     }
     return rowToVoiceStockBatch(row);
   });
@@ -2815,18 +2821,35 @@ export const claimPendingMetaReplies = async (limit = 20) => {
   });
 };
 
-export const finishMetaReply = async (eventId, error = null) => {
+export const finishMetaReply = async (eventId, error = null, providerMessageId = null) => {
   await ensureReady();
   await getPool().query(
     `UPDATE meta_reply_outbox
      SET status = CASE WHEN $2::text IS NULL THEN 'sent' ELSE 'pending' END,
          sent_at = CASE WHEN $2::text IS NULL THEN NOW() ELSE sent_at END,
          last_error = $2,
+         provider_message_ids = CASE WHEN $2::text IS NULL AND $3::text IS NOT NULL
+           AND NOT provider_message_ids @> jsonb_build_array($3::text)
+           THEN provider_message_ids || jsonb_build_array($3::text) ELSE provider_message_ids END,
          next_attempt_at = CASE WHEN $2::text IS NULL THEN next_attempt_at
            ELSE NOW() + LEAST(60, GREATEST(1, attempts * 2)) * INTERVAL '1 minute' END
      WHERE event_id = $1`,
-    [String(eventId), error ? String(error).slice(0, 500) : null],
+    [String(eventId), error ? String(error).slice(0, 500) : null,
+      typeof providerMessageId === 'string' && providerMessageId.trim() ? providerMessageId : null],
   );
+};
+
+// Bind an inbound quoted reply to the immutable question snapshot that was sent,
+// rather than resolving its text against whichever question is current now.
+export const getMetaReplyQuestion = async (providerMessageId, ownerPhone, senderPhone) => {
+  await ensureReady();
+  const row = await queryRow(`SELECT reply.stock_batch_id, reply.question_id
+    FROM meta_reply_outbox AS reply JOIN voice_stock_batches AS batch ON batch.id = reply.stock_batch_id
+    WHERE reply.provider_message_ids @> $1::jsonb AND batch.owner_phone = $2
+      AND batch.sender_phone = $3 AND reply.recipient = $3 AND reply.question_id IS NOT NULL
+    ORDER BY reply.created_at DESC LIMIT 1`,
+  [JSON.stringify([String(providerMessageId)]), normalizeOwnerPhone(ownerPhone), normalizePhone(senderPhone)]);
+  return row ? { batchId: row.stock_batch_id, questionId: row.question_id } : null;
 };
 
 const defaultVoiceStockBatchMode = () => {

@@ -3,6 +3,8 @@ import type { AppState, ChatMessage, ParsedVoicePayload, Product, Client, Pedido
 import { initialAppState } from '../domain/mockDb';
 import { applyConfirmedActions } from '../services/transactionService';
 import { requestJson } from '../services/apiClient';
+import { useAuth } from './AuthStore';
+import { clearStoredProposal, pendingProposalKey, persistPendingProposal, restorePendingProposal } from '../services/pendingProposalStorage';
 
 type PersistedSnapshot = {
   products: Product[];
@@ -49,7 +51,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         pendingProposal: action.proposal && state.pendingProposal !== action.proposal ? state.pendingProposal : null,
       };
     case 'APPLY_EXTERNAL_PROPOSAL':
-      return applyConfirmedActions(state, action.payload.actions, action.payload.sourceText);
+      return { ...applyConfirmedActions(state, action.payload.actions, action.payload.sourceText), pendingProposal: state.pendingProposal };
     case 'HYDRATE_PERSISTED_STATE':
       return {
         ...state,
@@ -67,7 +69,13 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
 const createId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 
 export function AppStoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialAppState);
+  const { session } = useAuth();
+  if (!session) throw new Error('AppStoreProvider requires an authenticated session');
+  const storageKey = pendingProposalKey(session.tenantPhone, session.phoneNumber);
+  const [state, dispatch] = useReducer(appReducer, storageKey, (key) => ({
+    ...initialAppState,
+    pendingProposal: restorePendingProposal(key),
+  }));
   const pendingProposalRef = useRef(state.pendingProposal);
   const confirmationRef = useRef<Promise<void> | null>(null);
 
@@ -82,8 +90,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       return Promise.resolve();
     }
 
-    const confirmation = (async () => {
+    const confirmation = Promise.resolve().then(async () => {
       try {
+        // Do not send an unrecoverable operation if storage is blocked or full.
+        if (!persistPendingProposal(storageKey, proposal)) {
+          throw new Error('No se pudo guardar la propuesta para reintentar. Revisá el almacenamiento del navegador.');
+        }
         const snapshot = await requestJson<PersistedSnapshot>('/api/state/apply', {
           method: 'POST',
           body: JSON.stringify({
@@ -101,14 +113,15 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'CLEAR_PENDING_PROPOSAL', proposal });
         if (pendingProposalRef.current === proposal) {
           pendingProposalRef.current = null;
+          clearStoredProposal(storageKey, proposal.operationId);
         }
       } finally {
         confirmationRef.current = null;
       }
-    })();
+    });
     confirmationRef.current = confirmation;
     return confirmation;
-  }, []);
+  }, [storageKey]);
 
   const addChatMessage = useCallback((message: ChatMessage) => {
     dispatch({ type: 'ADD_CHAT_MESSAGE', message });
@@ -117,16 +130,18 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const setPendingProposal = useCallback((payload: ParsedVoicePayload | null) => {
     const proposal = payload ? { ...payload, operationId: payload.operationId ?? crypto.randomUUID() } : null;
     pendingProposalRef.current = proposal;
+    if (proposal) persistPendingProposal(storageKey, proposal);
+    else clearStoredProposal(storageKey);
     dispatch({ type: 'SET_PENDING_PROPOSAL', payload: proposal });
-  }, []);
+  }, [storageKey]);
 
   const clearPendingProposal = useCallback(() => {
     pendingProposalRef.current = null;
+    clearStoredProposal(storageKey);
     dispatch({ type: 'CLEAR_PENDING_PROPOSAL' });
-  }, []);
+  }, [storageKey]);
 
   const applyExternalProposal = useCallback((payload: ParsedVoicePayload) => {
-    pendingProposalRef.current = null;
     dispatch({ type: 'APPLY_EXTERNAL_PROPOSAL', payload });
   }, []);
 

@@ -13,7 +13,7 @@ import { Client } from 'pg';
 import * as db from '../server/postgresDatabase.js';
 import { productFingerprint } from '../server/voiceStockEngine.js';
 import { holdUnverifiedStockMessage, processStockBatchMessage } from '../server/voiceStockWorkflow.js';
-import { processMetaWebhook } from '../server/metaWebhookProcessor.js';
+import { processMetaWebhook, sendMetaReply } from '../server/metaWebhookProcessor.js';
 import { incidentText, incidentActions, ambiguousMention } from './fixtures/voice-stock-corpus.js';
 
 const socket = net.createServer();
@@ -223,7 +223,7 @@ try {
       : { items: input.actions.map((item) => ({ itemId: item.itemId, kind: resolutionKind, candidateIds: [drillA.id, drillB.id], reason: 'Falta medida.' })) };
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
   };
-  const message = (messageId, sourceText) => processStockBatchMessage({ ownerPhone: owner, senderPhone: owner, messageId, sourceText, businessCategory: 'ferreteria', conversationTurns: [] });
+  const message = (messageId, sourceText, replyToMessageId = null) => processStockBatchMessage({ ownerPhone: owner, senderPhone: owner, messageId, sourceText, replyToMessageId, businessCategory: 'ferreteria', conversationTurns: [] });
   const clothingMessage = (messageId, sourceText) => processStockBatchMessage({ ownerPhone: owner, senderPhone: owner, messageId, sourceText, businessCategory: 'indumentaria', conversationTurns: [] });
   await check('el dictado real aplica once camisetas una sola vez con variante y precio', async () => {
     const names = [
@@ -672,6 +672,115 @@ try {
     const product = (await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.name === 'Taladro Makita' && entry.size === '14 mm');
     assert.equal(product.stockAvailable, 3);
     semanticClarification = null; resolutionKind = 'ambiguous';
+  });
+  await check('respuesta citada se vincula a pregunta/negocio/remitente y nunca contesta otra pregunta', async () => {
+    const first = await message('quoted-first-source', 'Ingresaron dos Taladro Makita');
+    const original = await db.getVoiceStockBatchByMessage(owner, 'quoted-first-source');
+    const questionId = original.payload.pendingQuestion.id;
+    const queued = (await sql.query('SELECT stock_batch_id,question_id FROM meta_reply_outbox WHERE event_id=$1', ['quoted-first-source'])).rows[0];
+    assert.deepEqual(queued, { stock_batch_id: first.batchId, question_id: questionId });
+    // All IDs returned by retransmissions remain bound to the original question.
+    await db.finishMetaReply('quoted-first-source', null, 'wamid.question-first');
+    await db.finishMetaReply('quoted-first-source', null, 'wamid.question-first-retry');
+    await db.finishMetaReply('quoted-first-source', null, 'wamid.question-first');
+    assert.equal((await sql.query('SELECT jsonb_array_length(provider_message_ids) AS count FROM meta_reply_outbox WHERE event_id=$1', ['quoted-first-source'])).rows[0].count, 2);
+    assert.deepEqual(await db.getMetaReplyQuestion('wamid.question-first', owner, owner), { batchId: first.batchId, questionId });
+    assert.equal(await db.getMetaReplyQuestion('wamid.question-first', other, owner), null);
+    assert.equal(await db.getMetaReplyQuestion('wamid.question-first', owner, other), null);
+    const beforeCalls = calls;
+    assert.equal((await message('quoted-first-answer', '1', 'wamid.question-first-retry')).batchStatus, 'applied');
+    assert.equal(calls, beforeCalls);
+    await message('quoted-second-source', 'Ingresaron dos Taladro Makita');
+    const second = await db.getVoiceStockBatchByMessage(owner, 'quoted-second-source');
+    assert.notEqual(second.payload.pendingQuestion.id, questionId);
+    const before = await db.getStateSnapshotStrict(owner);
+    const late = await message('quoted-late-answer', '1', 'wamid.question-first');
+    assert.equal(late.batchStatus, 'awaiting_choice');
+    assert.match(late.replyText, /no corresponde/);
+    const held = await db.getVoiceStockBatchByMessage(owner, 'quoted-second-source');
+    assert.deepEqual(held.payload.actions, second.payload.actions);
+    assert.equal(held.payload.pendingQuestion.id, second.payload.pendingQuestion.id);
+    assert.deepEqual((await db.getStateSnapshotStrict(owner)).products, before.products);
+    assert.equal((await message('quoted-unknown-answer', 'cancelar', 'wamid.unknown')).batchStatus, 'awaiting_choice');
+    await message('quoted-second-cancel', 'cancelar');
+    const closed = await message('quoted-closed-answer', '1', 'wamid.question-first');
+    assert.equal(closed.batchStatus, 'ignored_reply');
+    assert.deepEqual(closed.actions, []);
+    assert.deepEqual((await db.getStateSnapshotStrict(owner)).products, before.products);
+  });
+  await check('webhook conserva context.id y envío devuelve wamid sin repetir un envío aceptado', async () => {
+    const quotedId = 'wamid.transport-reply';
+    let received;
+    const results = await processMetaWebhook({ object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [
+      { id: 'transport-quoted-inbound', from: owner, type: 'text', text: { body: '1' }, context: { id: quotedId } },
+    ] } }] }] }, { processStockText: async ({ metaMessage }) => {
+      received = metaMessage.replyToMessageId;
+      return { actions: [], replyText: 'Pregunta vinculada', batchStatus: 'awaiting_choice' };
+    } });
+    assert.equal(received, quotedId);
+    assert.equal(results[0].replyToMessageId, quotedId);
+    const previous = { META_ACCESS_TOKEN: process.env.META_ACCESS_TOKEN, META_PHONE_NUMBER_ID: process.env.META_PHONE_NUMBER_ID };
+    const modelFetch = globalThis.fetch;
+    try {
+      process.env.META_ACCESS_TOKEN = 'test-not-real'; process.env.META_PHONE_NUMBER_ID = 'test-phone';
+      let sends = 0;
+      globalThis.fetch = async () => { sends++; return new Response(JSON.stringify({ messages: [{ id: quotedId }] }), { status: 200 }); };
+      assert.equal((await sendMetaReply({ to: owner, text: 'Pregunta' })).messageId, quotedId);
+      assert.equal(sends, 1);
+      globalThis.fetch = async () => { sends++; return new Response('missing receipt', { status: 200 }); };
+      const accepted = await sendMetaReply({ to: owner, text: 'Pregunta' });
+      assert.equal(accepted.sent, true); assert.equal(accepted.messageId, null); assert.equal(sends, 2);
+    } finally {
+      globalThis.fetch = modelFetch;
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
+  });
+  await check('dos preguntas del mismo lote tienen IDs distintos y un reply tardío no elige el siguiente ítem', async () => {
+    const catalog = await db.getStateSnapshotStrict(owner);
+    const candidates = catalog.products.filter((product) => [drillA.id, drillB.id].includes(product.id))
+      .map((product) => ({ ...product, fingerprint: productFingerprint(product) }));
+    const makeItem = (itemId) => ({ ...action('Taladro Makita', { kind: 'ambiguous', candidateIds: [drillA.id, drillB.id] }), itemId, candidates });
+    const batch = await createBatch([makeItem('stable-first'), makeItem('stable-second')], { payload: {
+      engineVersion: 'stock-batch-v5', actions: [makeItem('stable-first'), makeItem('stable-second')],
+      coverageVerified: true, evidenceSourceText: 'Ingresaron dos Taladro Makita y dos Taladro Makita',
+    } });
+    await message(batch.sourceMessageId, batch.sourceText);
+    let saved = await db.getVoiceStockBatchByMessage(owner, batch.sourceMessageId);
+    const firstQuestion = saved.payload.pendingQuestion.id;
+    const firstQuestionSnapshot = saved.payload.pendingQuestion;
+    await db.finishMetaReply(batch.sourceMessageId, null, 'wamid.same-batch-first');
+    assert.equal((await message('same-batch-first-answer', '1', 'wamid.same-batch-first')).batchStatus, 'awaiting_choice');
+    saved = await db.getVoiceStockBatchByMessage(owner, batch.sourceMessageId);
+    assert.notEqual(saved.payload.pendingQuestion.id, firstQuestion);
+    assert.equal(saved.payload.pendingQuestion.itemId, 'stable-second');
+    await db.finishMetaReply('same-batch-first-answer', null, 'wamid.same-batch-second');
+    // Reproduce an interrupted transition from a previous build: actions advanced,
+    // but the persisted question still points to item 1. The gate must repair it.
+    await db.updateVoiceStockBatch(saved.id, { expectedVersion: saved.version,
+      payload: { ...saved.payload, pendingQuestion: firstQuestionSnapshot } });
+    const before = await db.getStateSnapshotStrict(owner);
+    const callsBefore = calls;
+    assert.equal((await message('same-batch-late-answer', '2', 'wamid.same-batch-first')).batchStatus, 'awaiting_choice');
+    assert.equal(calls, callsBefore);
+    assert.deepEqual((await db.getStateSnapshotStrict(owner)).products, before.products);
+    const repaired = await db.getVoiceStockBatchByMessage(owner, batch.sourceMessageId);
+    assert.notEqual(repaired.payload.pendingQuestion.id, firstQuestion);
+    assert.equal(repaired.payload.pendingQuestion.itemId, 'stable-second');
+    await db.finishMetaReply('same-batch-late-answer', null, 'wamid.same-batch-repaired');
+    assert.equal((await message('same-batch-second-answer', '1', 'wamid.same-batch-repaired')).batchStatus, 'applied');
+    const applied = await db.getVoiceStockBatchByMessage(owner, batch.sourceMessageId);
+    assert.deepEqual(applied.payload.actions.map((item) => item.itemId), ['stable-first', 'stable-second']);
+    assert.equal((await db.getStateSnapshotStrict(owner)).products.find((product) => product.id === drillA.id).stockAvailable,
+      before.products.find((product) => product.id === drillA.id).stockAvailable + 4);
+  });
+  await check('cancelación citada de otro lote no cancela una decisión ready recuperable', async () => {
+    const batch = await createBatch([action('Recuperación antes de respuesta tardía')]);
+    const result = await message('ready-late-cancel', 'cancelar', 'wamid.question-first');
+    assert.equal(result.batchStatus, 'ignored_reply');
+    assert.equal((await db.getVoiceStockBatchByMessage(owner, batch.sourceMessageId)).status, 'applied');
+    assert.equal((await db.getStateSnapshotStrict(owner)).products.find((product) => product.name === 'Recuperación antes de respuesta tardía').stockAvailable, 2);
   });
   await check('sombra conserva comparación y no modifica inventario', async () => {
     await db.setVoiceStockBatchMode(owner, 'shadow');
