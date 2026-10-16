@@ -1,6 +1,6 @@
 export const incidentText = 'Cargé la camiseta suplente del Manchester City 2025 en talle L. Cargé la camiseta de Independiente, la anterior del Manchester City en versión jugador. Todas estas que te voy a mencionar son en versión jugador. Camiseta de Independiente suplente 2026 en versión jugador. Camiseta de Racing titular, 2026 en versión jugador. Camiseta de River 2025 en versión jugador, la titular también. Camiseta de Argentina, tercera equipación, 2025. Camiseta de Barcelona 2025 titular, en versión jugador también obvio. Tercera camiseta de Boca, tercera equipación en versión jugador. Camiseta de Italia 2025 en versión jugador titular también. Camiseta de la Roma 2025 titular en versión jugador. Camiseta del Real Madrid en versión jugador titular. Camiseta del Barcelona 2025 en versión jugador, la titular, mangas largas, todas las anteriores valen 65.000, esta manga larga vale 70.000.';
-// The original contains an under-specified Independiente mention before the explicit
-// Independiente 2026. The auditor must clarify whether this is another item or a correction.
+// The first Independiente mention is completed by the later Independiente 2026 item;
+// "la anterior" updates Manchester City without adding a second unit.
 export const ambiguousMention = 'Cargé la camiseta de Independiente, la anterior del Manchester City en versión jugador.';
 export const clarifiedText = incidentText.replace(ambiguousMention, 'La anterior del Manchester City en versión jugador.');
 const specifications = [

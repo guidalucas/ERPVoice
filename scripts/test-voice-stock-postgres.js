@@ -12,6 +12,7 @@ import * as db from '../server/postgresDatabase.js';
 import { productFingerprint } from '../server/voiceStockEngine.js';
 import { holdUnverifiedStockMessage, processStockBatchMessage } from '../server/voiceStockWorkflow.js';
 import { processMetaWebhook } from '../server/metaWebhookProcessor.js';
+import { incidentText, incidentActions, ambiguousMention } from './fixtures/voice-stock-corpus.js';
 
 const socket = net.createServer();
 await new Promise((resolve) => socket.listen(0, '127.0.0.1', resolve));
@@ -169,6 +170,7 @@ try {
   let semanticClarification = null;
   let resolutionKind = 'ambiguous';
   let extractionOverride = null;
+  let enrichmentOverride = null;
   let useSavedContext = false;
   let misclassifyExtract = false;
   let failRecovery = false;
@@ -185,12 +187,64 @@ try {
     const content = stage.includes('Etapa: extract.') && misclassifyExtract ? { kind: 'other', actions: [] }
       : stage.includes('Etapa: repair_extract.') && failRecovery ? { actions: [] }
       : stage.includes('clarify') ? (semanticClarification ?? { kind: 'unrelated' })
+      : stage.includes('enrich_attributes') ? { items: input.actions.map((action, index) => enrichmentOverride?.[index] ?? ({
+        itemId: action.itemId, productName: action.productName, productType: action.productType,
+        productModel: action.productModel, size: action.size, attributeQuotes: [],
+      })) }
       : stage.includes('extract') ? { kind: 'stock_intake', sourceText: useSavedContext ? input.clarificationContext?.sourceText : undefined, actions: extracted }
-      : stage.includes('audit') ? { coverageComplete: auditComplete, issues: auditComplete ? [] : [{ kind: 'clarification', detail: 'Una referencia puede ser otra unidad.', evidence: extracted[0].evidence, question: '¿La segunda mención es otro producto o una referencia al primero?' }], verifiedItemIds: input.actions.map((item) => item.itemId) }
+      : stage.includes('audit') ? { coverageComplete: auditComplete, issues: auditComplete ? [] : [{
+        kind: 'clarification', detail: 'Una referencia puede ser otra unidad.',
+        evidenceSpanId: input.sourceSpans.at(-1).id,
+        question: `¿“${input.sourceSpans.at(-1).text}” es otro producto o una referencia al primero?`,
+      }], verifiedItemIds: input.actions.map((item) => item.itemId) }
       : { items: input.actions.map((item) => ({ itemId: item.itemId, kind: resolutionKind, candidateIds: [drillA.id, drillB.id], reason: 'Falta medida.' })) };
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
   };
   const message = (messageId, sourceText) => processStockBatchMessage({ ownerPhone: owner, senderPhone: owner, messageId, sourceText, businessCategory: 'ferreteria', conversationTurns: [] });
+  await check('el dictado real aplica once camisetas una sola vez con variante y precio', async () => {
+    const names = [
+      ['Camiseta suplente del Manchester City 2025', undefined], ['Camiseta de Independiente suplente 2026', 'suplente'],
+      ['Camiseta de Racing titular, 2026', 'titular'], ['Camiseta de River 2025', 'titular'],
+      ['Camiseta de Argentina, tercera equipación, 2025', 'tercera equipación'], ['Camiseta de Barcelona 2025 titular', 'titular'],
+      ['Tercera camiseta de Boca', 'tercera equipación'], ['Camiseta de Italia 2025', 'titular'],
+      ['Camiseta de la Roma 2025 titular', 'titular'], ['Camiseta del Real Madrid', 'titular'],
+      ['Camiseta del Barcelona 2025 titular, mangas largas', 'titular'],
+    ];
+    const actions = incidentActions.map((action, index) => ({ ...action, productName: names[index][0], productModel: names[index][1] }));
+    extractionOverride = [actions[0],
+      { ...actions[1], productName: 'Camiseta de Independiente', productModel: undefined, evidence: ambiguousMention },
+      { ...actions[0], productName: 'Camiseta del Manchester City', productModel: 'anterior', size: undefined, evidence: ambiguousMention },
+      ...actions.slice(1)];
+    enrichmentOverride = incidentActions.map((action, index) => ({
+      itemId: `item-${index + 1}`, productName: action.productName, productType: action.productType,
+      productModel: action.productModel, size: action.size,
+      attributeQuotes: index === 0 ? [ambiguousMention] : ['Todas estas que te voy a mencionar son en versión jugador.'],
+    }));
+    resolutionKind = 'new';
+    let createdIds = [];
+    try {
+      const result = await message('incident-source', incidentText);
+      assert.equal(result.batchStatus, 'applied');
+      assert.equal(result.actions.length, 11);
+      assert.equal(result.actions.reduce((sum, action) => sum + action.price, 0), 720000);
+      const saved = await db.getVoiceStockBatchByMessage(owner, 'incident-source');
+      assert.equal(saved.payload.appliedActions.length, 11);
+      const state = await db.getStateSnapshotStrict(owner);
+      const created = result.actions.map((action) => state.products.find((product) => product.id === action.resolvedProductId));
+      createdIds = created.map((product) => product.id);
+      assert.equal(created.every((product) => product.stockAvailable === 1 && /versión jugador/i.test(product.name)), true);
+      assert.equal(created.filter((product) => /Barcelona/i.test(product.name) && /2025/i.test(product.name)
+        && /titular/i.test(product.name)).length, 2);
+      assert.equal(created.filter((product) => /Manchester City/i.test(product.name)).length, 1);
+      assert.equal(created.find((product) => /mangas largas/i.test(product.name)).price, 70000);
+      await message('incident-source', incidentText);
+      const rows = await sql.query('SELECT COUNT(*)::integer AS total FROM transactions WHERE batch_id = $1', [result.batchId]);
+      assert.equal(rows.rows[0].total, 11);
+    } finally {
+      extractionOverride = null; enrichmentOverride = null; resolutionKind = 'ambiguous';
+      for (const id of createdIds) await db.deleteProductRecord(id, owner);
+    }
+  });
   await check('un único SKU coincidente aplica stock sin pedir una opción', async () => {
     const product = await db.createProductRecord({ name: 'Taladro Bosch 18V', size: '10 mm', stockAvailable: 0 }, owner);
     extractionOverride = [{ type: 'add_stock', productName: 'Taladro Bosch 18V', qty: 2,
@@ -299,7 +353,7 @@ try {
     extractionOverride = ['Aceite Aurora', 'Arroz Norte'].map((name) => ({ type: 'add_stock', productName: name, qty: 1, evidence: name, fieldEvidence: {} }));
     auditComplete = false;
     const held = await message('brief-source', source);
-    assert.equal(held.batchStatus, 'awaiting_correction'); assert.match(held.replyText, /¿La segunda mención/);
+    assert.equal(held.batchStatus, 'awaiting_correction'); assert.match(held.replyText, /¿“El anterior/);
     assert.doesNotMatch(held.replyText, /lista completa|evidencia|caracteres/);
     auditComplete = true; useSavedContext = true; resolutionKind = 'new';
     const answer = 'Es una referencia al primero, no es otra unidad.';
