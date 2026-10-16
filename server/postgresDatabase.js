@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { Pool } from 'pg';
 import { normalizePhone, getWhatsAppVariants } from './phone.js';
 import { productBaseName, productMatchKey, normalizeProductMetadata } from './productIdentity.js';
-import { validateStockDraft, needsDistinctIdentity, productFingerprint, stockReferenceIssues } from './voiceStockEngine.js';
+import { validateStockDraft, hasExplicitStockSize, needsDistinctIdentity, productFingerprint, stockReferenceIssues, explicitIdentityConflict } from './voiceStockEngine.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -2535,6 +2535,9 @@ export const applyResolvedVoiceStockBatch = async (batchId, ownerPhone) => {
       actions.some((action) => !['existing', 'new'].includes(action.resolution?.kind))) {
       throw new Error('El lote tiene productos sin resolución final.');
     }
+    if (batch.businessCategory === 'indumentaria' && actions.some((action) => !hasExplicitStockSize(action))) {
+      throw new Error('Falta confirmar el talle de uno o más productos de indumentaria.');
+    }
     if (stockReferenceIssues(actions, batch.payload.evidenceSourceText ?? batch.sourceText).length
       || actions.some((action) => /^anterior$/i.test(String(action.productModel ?? '').trim())
         || /\b(?:la|el|las|los)\s+anterior(?:es)?\b/i.test(action.productName))) {
@@ -2561,6 +2564,7 @@ export const applyResolvedVoiceStockBatch = async (batchId, ownerPhone) => {
         product = nextProducts.find((entry) => entry.id === action.resolution.productId);
         if (!product) throw new Error(`El producto elegido ya no está disponible: ${action.productName}.`);
         if (!action.resolution.fingerprint || action.resolution.fingerprint !== productFingerprint(product)) throw new Error(`El producto elegido cambió: ${action.productName}.`);
+        if (explicitIdentityConflict(action, product)) throw new Error(`La variante elegida no coincide con la medida o los datos de ${action.productName}.`);
         if (Number.isFinite(Number(action.price)) && Number(action.price) > 0 && !product.price) {
           product.price = Math.trunc(Number(action.price));
         }

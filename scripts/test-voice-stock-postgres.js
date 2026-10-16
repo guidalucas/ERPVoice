@@ -165,6 +165,19 @@ try {
   process.env.GEMINI_API_KEY = 'test'; process.env.LLM_PROVIDER = 'gemini'; process.env.LLM_DISABLE_FALLBACK = '1';
   let drillA = await db.createProductRecord({ name: 'Taladro Makita', size: '10 mm', stockAvailable: 0 }, owner);
   const drillB = await db.createProductRecord({ name: 'Taladro Makita', size: '13 mm', stockAvailable: 0 }, owner);
+  await check('la transacción rechaza un producto existente con medida distinta', async () => {
+    const batch = await createBatch([{ ...action('Taladro Makita', {
+      kind: 'existing', productId: drillB.id, fingerprint: productFingerprint(drillB), userConfirmed: true,
+    }), size: 'L' }]);
+    await assert.rejects(db.applyResolvedVoiceStockBatch(batch.id, owner), /variante elegida no coincide/);
+    assert.equal((await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.id === drillB.id).stockAvailable, 0);
+    await db.updateVoiceStockBatch(batch.id, { expectedVersion: batch.version, status: 'cancelled' });
+  });
+  await check('la transacción de indumentaria rechaza un lote sin talle explícito', async () => {
+    const batch = await createBatch([action('Camiseta Aurora')], { businessCategory: 'indumentaria' });
+    await assert.rejects(db.applyResolvedVoiceStockBatch(batch.id, owner), /Falta confirmar el talle/);
+    await db.updateVoiceStockBatch(batch.id, { expectedVersion: batch.version, status: 'cancelled' });
+  });
   let calls = 0;
   let auditComplete = true;
   let semanticClarification = null;
@@ -175,6 +188,7 @@ try {
   let misclassifyExtract = false;
   let failRecovery = false;
   let failExtract = false;
+  let failResolve = false;
   const modelInputs = [];
   globalThis.fetch = async (_url, request) => {
     calls++;
@@ -183,6 +197,7 @@ try {
     const input = JSON.parse(body.messages[1].content.split('\nDATOS:\n')[1]);
     modelInputs.push({ stage, input });
     if (stage.includes('Etapa: extract.') && failExtract) return new Response('Fallo simulado', { status: 400 });
+    if (stage.includes('Etapa: resolve.') && failResolve) return new Response('Fallo simulado', { status: 400 });
     const extracted = extractionOverride ?? [{ type: 'add_stock', productName: 'Taladro Makita', qty: 2, evidence: 'Taladro Makita', fieldEvidence: { qty: 'dos' } }];
     const content = stage.includes('Etapa: extract.') && misclassifyExtract ? { kind: 'other', actions: [] }
       : stage.includes('Etapa: repair_extract.') && failRecovery ? { actions: [] }
@@ -201,6 +216,7 @@ try {
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
   };
   const message = (messageId, sourceText) => processStockBatchMessage({ ownerPhone: owner, senderPhone: owner, messageId, sourceText, businessCategory: 'ferreteria', conversationTurns: [] });
+  const clothingMessage = (messageId, sourceText) => processStockBatchMessage({ ownerPhone: owner, senderPhone: owner, messageId, sourceText, businessCategory: 'indumentaria', conversationTurns: [] });
   await check('el dictado real aplica once camisetas una sola vez con variante y precio', async () => {
     const names = [
       ['Camiseta suplente del Manchester City 2025', undefined], ['Camiseta de Independiente suplente 2026', 'suplente'],
@@ -223,9 +239,13 @@ try {
     resolutionKind = 'new';
     let createdIds = [];
     try {
-      const result = await message('incident-source', incidentText);
+      const held = await clothingMessage('incident-source', incidentText);
+      assert.equal(held.batchStatus, 'awaiting_correction');
+      assert.match(held.replyText, /talle/);
+      const result = await clothingMessage('incident-sizes', 'todas son talle L');
       assert.equal(result.batchStatus, 'applied');
       assert.equal(result.actions.length, 11);
+      assert.equal(result.actions.every((entry) => entry.size === 'L'), true);
       assert.equal(result.actions.reduce((sum, action) => sum + action.price, 0), 720000);
       const saved = await db.getVoiceStockBatchByMessage(owner, 'incident-source');
       assert.equal(saved.payload.appliedActions.length, 11);
@@ -237,12 +257,96 @@ try {
         && /titular/i.test(product.name)).length, 2);
       assert.equal(created.filter((product) => /Manchester City/i.test(product.name)).length, 1);
       assert.equal(created.find((product) => /mangas largas/i.test(product.name)).price, 70000);
-      await message('incident-source', incidentText);
+      await clothingMessage('incident-source', incidentText);
       const rows = await sql.query('SELECT COUNT(*)::integer AS total FROM transactions WHERE batch_id = $1', [result.batchId]);
       assert.equal(rows.rows[0].total, 11);
     } finally {
       extractionOverride = null; enrichmentOverride = null; resolutionKind = 'ambiguous';
       for (const id of createdIds) await db.deleteProductRecord(id, owner);
+    }
+  });
+  await check('indumentaria exige talles y todas son talle L completa el lote', async () => {
+    extractionOverride = [
+      { type: 'add_stock', productName: 'Camiseta Aurora', size: 'L', qty: 1,
+        evidence: 'Camiseta Aurora talle L', fieldEvidence: {} },
+      { type: 'add_stock', productName: 'Camiseta Boreal', qty: 1,
+        evidence: 'Camiseta Boreal', fieldEvidence: {} },
+      { type: 'add_stock', productName: 'Camiseta Prisma', qty: 1,
+        evidence: 'Camiseta Prisma', fieldEvidence: {} },
+    ];
+    resolutionKind = 'new';
+    const createdIds = [];
+    try {
+      const source = 'Cargué una Camiseta Aurora talle L. Camiseta Boreal. Camiseta Prisma.';
+      const held = await clothingMessage('clothing-sizes-source', source);
+      assert.equal(held.batchStatus, 'awaiting_correction');
+      assert.match(held.replyText, /Camiseta Boreal/);
+      assert.match(held.replyText, /Camiseta Prisma/);
+      assert.doesNotMatch(held.replyText, /1\. Camiseta Aurora/);
+      const before = await db.getStateSnapshotStrict(owner);
+      assert.equal(before.products.some((product) => ['Camiseta Aurora', 'Camiseta Boreal', 'Camiseta Prisma'].includes(product.name)), false);
+      const applied = await clothingMessage('clothing-sizes-answer', 'todas son talle L');
+      assert.equal(applied.batchStatus, 'applied');
+      assert.equal(applied.actions.every((entry) => entry.size === 'L'), true);
+      const after = await db.getStateSnapshotStrict(owner);
+      for (const name of ['Camiseta Aurora', 'Camiseta Boreal', 'Camiseta Prisma']) {
+        const product = after.products.find((entry) => entry.name === name && entry.size === 'L');
+        assert.equal(product.stockAvailable, 1);
+        createdIds.push(product.id);
+      }
+    } finally {
+      extractionOverride = null; resolutionKind = 'ambiguous';
+      for (const id of createdIds) await db.deleteProductRecord(id, owner);
+    }
+  });
+  await check('los talles parciales conservan el borrador hasta completar todos', async () => {
+    extractionOverride = ['Campera Nube', 'Campera Sol'].map((name) => ({
+      type: 'add_stock', productName: name, qty: 1, evidence: name, fieldEvidence: {},
+    }));
+    resolutionKind = 'new';
+    const createdIds = [];
+    try {
+      const held = await clothingMessage('partial-sizes-source', 'Cargué una Campera Nube. Campera Sol.');
+      assert.equal(held.batchStatus, 'awaiting_correction');
+      const partial = await clothingMessage('partial-sizes-first', '1 S');
+      assert.equal(partial.batchStatus, 'awaiting_correction');
+      assert.match(partial.replyText, /Campera Sol/);
+      assert.doesNotMatch(partial.replyText, /Campera Nube/);
+      assert.equal((await db.getStateSnapshotStrict(owner)).products.some((entry) => entry.name === 'Campera Nube'), false);
+      const applied = await clothingMessage('partial-sizes-second', '1 M');
+      assert.equal(applied.batchStatus, 'applied');
+      const products = (await db.getStateSnapshotStrict(owner)).products;
+      for (const [name, size] of [['Campera Nube', 'S'], ['Campera Sol', 'M']]) {
+        const product = products.find((entry) => entry.name === name && entry.size === size);
+        assert.equal(product.stockAvailable, 1);
+        createdIds.push(product.id);
+      }
+    } finally {
+      extractionOverride = null; resolutionKind = 'ambiguous';
+      for (const id of createdIds) await db.deleteProductRecord(id, owner);
+    }
+  });
+  await check('si falla el catálogo después de responder talles, reintentar conserva las respuestas', async () => {
+    extractionOverride = [{ type: 'add_stock', productName: 'Campera Reintento', qty: 1,
+      evidence: 'Campera Reintento', fieldEvidence: {} }];
+    resolutionKind = 'new';
+    let createdId;
+    try {
+      const held = await clothingMessage('retry-size-source', 'Cargué una Campera Reintento.');
+      assert.equal(held.batchStatus, 'awaiting_correction');
+      failResolve = true;
+      const failed = await clothingMessage('retry-size-answer', 'todas son talle L');
+      assert.equal(failed.batchStatus, 'awaiting_correction');
+      assert.match(failed.replyText, /Guardé los talles/);
+      failResolve = false;
+      const retried = await clothingMessage('retry-size-retry', 'reintentar');
+      assert.equal(retried.batchStatus, 'applied');
+      const product = (await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.name === 'Campera Reintento' && entry.size === 'L');
+      assert.equal(product.stockAvailable, 1);
+      createdId = product.id;
+    } finally {
+      extractionOverride = null; resolutionKind = 'ambiguous'; failResolve = false;
+      if (createdId) await db.deleteProductRecord(createdId, owner);
     }
   });
   await check('un único SKU coincidente aplica stock sin pedir una opción', async () => {
@@ -308,6 +412,30 @@ try {
     await message('dialog-answer', '2'); await message('dialog-source', 'Ingresaron dos Taladro Makita');
     assert.equal(calls, before);
     assert.equal((await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.id === drillB.id).stockAvailable, 2);
+  });
+  await check('una opción M respondida 1 EN L crea o elige L sin incrementar M', async () => {
+    const before = (await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.id === drillA.id).stockAvailable;
+    const asked = await message('size-choice-source', 'Ingresaron dos Taladro Makita');
+    assert.equal(asked.batchStatus, 'awaiting_choice');
+    resolutionKind = 'new';
+    try {
+      const applied = await message('size-choice-answer', '1 EN L');
+      assert.equal(applied.batchStatus, 'applied');
+      assert.equal(applied.actions[0].size, 'L');
+      const products = (await db.getStateSnapshotStrict(owner)).products;
+      assert.equal(products.find((entry) => entry.id === drillA.id).stockAvailable, before);
+      assert.equal(products.find((entry) => entry.name === 'Taladro Makita' && entry.size === 'L').stockAvailable, 2);
+    } finally { resolutionKind = 'ambiguous'; }
+  });
+  await check('1 en talle L reutiliza la variante L existente', async () => {
+    const beforeM = (await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.id === drillA.id).stockAvailable;
+    const first = await message('size-repeat-source', 'Ingresaron dos Taladro Makita');
+    assert.equal(first.batchStatus, 'awaiting_choice');
+    const selected = await message('size-repeat-answer', '1 en talle L');
+    assert.equal(selected.batchStatus, 'applied');
+    const products = (await db.getStateSnapshotStrict(owner)).products;
+    assert.equal(products.find((entry) => entry.id === drillA.id).stockAvailable, beforeM);
+    assert.equal(products.find((entry) => entry.name === 'Taladro Makita' && entry.size === 'L').stockAvailable, 4);
   });
   await check('dos aclaraciones simultáneas del diálogo aplican una sola decisión', async () => {
     const before = (await db.getStateSnapshotStrict(owner)).products.filter((entry) => [drillA.id, drillB.id].includes(entry.id)).reduce((sum, item) => sum + item.stockAvailable, 0);
