@@ -282,6 +282,7 @@ Reglas:
 - "borrá el pedido de X" = delete_pedido. "conseguido/descartado" sobre un pedido = update_pedido.
 - Consulta de stock = query_stock (sin mutar). Consulta de pedidos = query_pedidos. Preguntas como "¿qué me pidió Juan?", "¿qué pedidos hay pendientes?", "mostrame los pedidos de María" son query_pedidos, NUNCA client_order.
 - Si pide todo el inventario / todos los productos / listado completo: query_stock con productName "*". Nunca uses "all" ni un producto inventado. Si pide agrupado por talle/número, groupBy: "size".
+- Si pide un talle/variante puntual ("camisetas talle L", "todas las L"): query_stock CON size. No listes otras variantes.
 - Consultas de familia ("¿cuánto hay de esta marca?", "¿qué modelos de esta categoría tengo?"): query_stock con productModel genérico. NO elijas un SKU del inventario; el sistema lista todos los matches.
 - client_order es SOLO cuando el usuario ANOTA un pedido nuevo: "Juan me pidió un taladro", "anotame que María quiere un mate".
 - Pago recibido = payment_received. Reserva "para X" = reserve_stock + clientName.
@@ -1102,6 +1103,12 @@ const wantsStockGroupedBySize = (text) =>
     normalizeText(text),
   );
 
+const parseExplicitSizeFilter = (text) => {
+  const normalized = normalizeText(text);
+  const match = normalized.match(new RegExp(`(?:${VARIANT_KEYWORD_ALT})\\s+([a-z0-9]{1,8})\\b`, 'i'));
+  return match ? String(match[1]).toUpperCase() : null;
+};
+
 const tryParseListAllStockQuery = (fragment) => {
   const n = normalizeText(fragment).replace(/\s+/g, ' ').trim();
   if (!n) {
@@ -1111,6 +1118,9 @@ const tryParseListAllStockQuery = (fragment) => {
     return null;
   }
   if (/\bpedidos?\b/.test(n) && !/\bproductos?\b/.test(n)) {
+    return null;
+  }
+  if (/\b(camisetas?|buzos?|shorts?|remeras?|pantalones?|camperas?)\b/.test(n)) {
     return null;
   }
 
@@ -1128,9 +1138,11 @@ const tryParseListAllStockQuery = (fragment) => {
     return null;
   }
 
+  const size = parseExplicitSizeFilter(fragment);
   return {
     type: 'query_stock',
     productName: '*',
+    ...(size ? { size } : {}),
     ...(wantsStockGroupedBySize(n) ? { groupBy: 'size' } : {}),
   };
 };
@@ -1139,6 +1151,7 @@ const cleanQueryProductText = (value) =>
   String(value ?? '')
     .replace(/^(?:de\s+)/i, '')
     .replace(/^(?:stock\s+(?:de\s+)?)/i, '')
+    .replace(/^(?:todas?|todos?)\s+(?:las?|los?|el|la)\s+/i, '')
     .replace(/^(?:las?|los?|el|la)\s+/i, '')
     .replace(new RegExp(`\\s+y\\s+(?:qu[eé]\\s+)?(?:${VARIANT_KEYWORD_ALT})(?:\\s+(?:tengo|hay|quedan))?$`, 'iu'), '')
     .replace(/\s+(?:me\s+)?(?:quedan|queda|tengo|tenes|hay)(?:\s+(?:disponible|disponibles))?$/iu, '')
@@ -1209,6 +1222,7 @@ const tryParseQueryStockAction = (fragment) => {
       continue;
     }
 
+    const size = productDescriptor.size || parseExplicitSizeFilter(cleaned);
     return {
       type: 'query_stock',
       productName: composeProductName({
@@ -1218,6 +1232,7 @@ const tryParseQueryStockAction = (fragment) => {
       }),
       productType: productDescriptor.productType,
       productModel: productDescriptor.productModel,
+      ...(size ? { size } : {}),
     };
   }
 
@@ -1654,6 +1669,30 @@ const findLastActionOfType = (conversationTurns, type) => {
   return null;
 };
 
+const tryResolveQuerySizeFollowUp = (text, conversationTurns = []) => {
+  const lastQuery = findLastActionOfType(conversationTurns, 'query_stock');
+  if (!lastQuery) {
+    return null;
+  }
+
+  const size = parseExplicitSizeFilter(text);
+  const normalized = normalizeText(text);
+  if (!size || /\b(?:carge|cargue|vendi|ingreso|ingresaron|borra|elimina)\b/.test(normalized)) {
+    return null;
+  }
+
+  const refineSize = /(?:solo|solamente|te pedi|te pediste|no todas|no todo|las talle|las talla|talle|talla|talles)/.test(normalized);
+  if (!refineSize) {
+    return null;
+  }
+
+  return buildPayload(
+    text,
+    [{ ...lastQuery, type: 'query_stock', size }],
+    { intent: 'query_stock', confidence: 0.9, requiresConfirmation: false },
+  );
+};
+
 const tryResolveQueryStockFollowUp = (text, conversationTurns = []) => {
   const cleaned = String(text ?? '')
     .replace(/\s+/g, ' ')
@@ -1936,6 +1975,11 @@ const parseLocalText = (text, conversationTurns = [], catalog = null, preset = g
     return finish(buildPayload(text, [localQueryStock], { intent: 'query_stock', requiresConfirmation: false }));
   }
 
+  const sizeFollowUp = tryResolveQuerySizeFollowUp(text, conversationTurns);
+  if (sizeFollowUp) {
+    return finish(sizeFollowUp);
+  }
+
   const followUp = tryResolveQueryStockFollowUp(text, conversationTurns);
   if (followUp) {
     return finish(followUp);
@@ -2149,6 +2193,11 @@ const parseVoiceTextWithModel = async (
     return finish(buildPayload(text, [localQueryStock], { intent: 'query_stock', requiresConfirmation: false }));
   }
 
+  const sizeFollowUp = tryResolveQuerySizeFollowUp(text, conversationTurns);
+  if (sizeFollowUp) {
+    return finish(sizeFollowUp);
+  }
+
   if (!hasAnyLlmApiKey()) {
     console.warn('[MetaWebhook] parseVoiceText falling back to local parser: missing GEMINI_API_KEY / VITE_VOICE_MODEL_API_KEY');
     return parseLocalText(text, conversationTurns, catalog, preset);
@@ -2228,17 +2277,39 @@ const parseVoiceTextWithModel = async (
       }
     }
 
+    const sizeFromText = parseExplicitSizeFilter(text);
+    for (const action of normalizedActions) {
+      if (action.type === 'query_stock' && sizeFromText && !action.size) {
+        action.size = sizeFromText;
+      }
+    }
+
     const queryStockOverride = tryParseQueryStockAction(text);
     if (queryStockOverride) {
       const hasMutation = normalizedActions.some((action) => MUTATING_ACTION_TYPES.has(action.type));
+      const llmQuery = normalizedActions.find((action) => action.type === 'query_stock');
       const llmPinnedSku = normalizedActions.some(
         (action) =>
           action.type === 'query_stock' &&
           /^\d{2,4}$/.test(normalizeText(String(action.productModel ?? '')).replace(/\s+/g, '')) &&
           !/\d{2,4}/.test(normalizeText(text)),
       );
-      if (!hasMutation && (llmPinnedSku || !normalizedActions.some((action) => action.type === 'query_stock'))) {
+      const localMoreSpecific = Boolean(
+        queryStockOverride.size
+        && llmQuery
+        && isListAllStockName(llmQuery.productName)
+        && (queryStockOverride.productType || queryStockOverride.productModel),
+      );
+      if (!hasMutation && (llmPinnedSku || localMoreSpecific || !llmQuery)) {
         return finish(buildPayload(text, [queryStockOverride], { intent: 'query_stock', requiresConfirmation: false }));
+      }
+    }
+
+    const sizeFollowUp = tryResolveQuerySizeFollowUp(text, conversationTurns);
+    if (sizeFollowUp && !normalizedActions.some((action) => MUTATING_ACTION_TYPES.has(action.type))) {
+      const llmQuery = normalizedActions.find((action) => action.type === 'query_stock');
+      if (!llmQuery?.size) {
+        return finish(sizeFollowUp);
       }
     }
 

@@ -1,4 +1,5 @@
 import { parseLocalText } from '../server/metaWebhookProcessor.js';
+import { parseClothingSizes } from '../server/voiceStockWorkflow.js';
 import { groundActionsAgainstCatalog } from '../server/voiceCatalogContext.js';
 import { answerStockQuery, matchProductsForQuery } from '../server/postgresDatabase.js';
 
@@ -334,6 +335,36 @@ if (mostrameMatches.length === 3) {
   pass('parser local: "mostrame las camisetas de river" lista las 3');
 } else {
   fail(`mostrame: ${JSON.stringify(mostrame?.actions?.[0])} matches=${namesOf(mostrameMatches).join(' | ')}`);
+}
+
+const talleL = parseLocalText('mostrame todas las camisetas talle L', [], {
+  products: [
+    ...riverCatalog.products,
+    { id: 'rl', name: 'Camiseta River Titular L', productType: 'Camiseta', productModel: 'River Titular', size: 'L', stockAvailable: 2, stockReserved: 0 },
+    { id: 'bl', name: 'Camiseta Boca Titular L', productType: 'Camiseta', productModel: 'Boca Titular', size: 'L', stockAvailable: 1, stockReserved: 0 },
+  ],
+});
+if (talleL?.actions?.[0]?.size === 'L' && talleL.actions[0].productType === 'Camiseta' && talleL.actions[0].productName !== '*') {
+  pass('parser local: "mostrame todas las camisetas talle L" pide camisetas talle L, no todo el inventario');
+} else {
+  fail(`talle L: ${JSON.stringify(talleL?.actions?.[0])}`);
+}
+
+const sizeFollowUp = parseLocalText('TE PEDI LAS TALLE L, NO TODAS', [{
+  role: 'assistant',
+  actions: [{ type: 'query_stock', productName: '*', productType: 'Camiseta' }],
+}], riverCatalog);
+if (sizeFollowUp?.actions?.[0]?.type === 'query_stock' && sizeFollowUp.actions[0].size === 'L') {
+  pass('parser local: "te pedí las talle L" reaplica la consulta anterior filtrada por L');
+} else {
+  fail(`size follow-up: ${JSON.stringify(sizeFollowUp?.actions?.[0])}`);
+}
+
+const pluralSizes = parseClothingSizes('todas son talles L', 10);
+if (pluralSizes?.size === 10 && [...pluralSizes.values()].every((size) => size === 'L')) {
+  pass('ingreso: "todas son talles L" asigna L a todos los pendientes');
+} else {
+  fail(`talles plural: ${JSON.stringify(pluralSizes && [...pluralSizes.entries()])}`);
 }
 
 console.log('\n--- Respuesta ---\n');

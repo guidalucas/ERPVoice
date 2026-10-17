@@ -6,6 +6,7 @@ import {
   getMetaReplyQuestion,
 } from './postgresDatabase.js';
 import { prepareStockDraft, normalizeIdentity, hasExplicitStockSize, needsDistinctIdentity, productFingerprint, ENGINE_VERSION, interpretStockClarification, validateStockDraft, auditStockDraft, resolveStockDraft } from './voiceStockEngine.js';
+import { clothingSizeMap, interpretClothingSizes } from './stockClarificationInterpreter.js';
 import { interpretStockDraftPatch, invalidateDraftItem } from './stockDraftPatches.js';
 import { reconcileDraftItemIds } from './stockDraftIdentity.js';
 
@@ -48,11 +49,11 @@ const missingClothingSizes = (batch) => batch.businessCategory === 'indumentaria
   ? (batch.payload.actions ?? []).filter((action) => !hasExplicitStockSize(action)) : [];
 const clothingSizeReply = (actions) => `Antes de aplicar este ingreso de indumentaria necesito el talle de:\n${actions.map((action, index) =>
   `${index + 1}. ${action.productName}`).join('\n')}\nRespondé “todas son talle L” si comparten talle, o “1 S, 2 M” si son distintos. También podés escribir “cancelar”.`;
-const parseClothingSizes = (sourceText, count) => {
+export const parseClothingSizes = (sourceText, count) => {
   const value = normalizeIdentity(sourceText);
-  const all = value.match(/^(?:todas?|todos?|las|los)\s+(?:son\s+|en\s+)?(?:talle\s+|talla\s+|medida\s+)?([a-z0-9]{1,8})$/);
+  const all = value.match(/^(?:todas?|todos?|las|los)\s+(?:son\s+|en\s+)?(?:talles?\s+|tallas?\s+|medidas?\s+)?([a-z0-9]{1,8})$/);
   if (all) return new Map(Array.from({ length: count }, (_, index) => [index, all[1].toUpperCase()]));
-  const single = count === 1 && value.match(/^(?:(?:es|en|talle|talla|medida)\s+)?([a-z0-9]{1,8})$/);
+  const single = count === 1 && value.match(/^(?:(?:es|en|talles?|tallas?|medidas?)\s+)?([a-z0-9]{1,8})$/);
   if (single) return new Map([[0, single[1].toUpperCase()]]);
   const parts = sourceText.trim().split(/[,;\n]+/).map((part) => part.trim()).filter(Boolean);
   if (!parts.length) return null;
@@ -275,10 +276,29 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
   if (active?.status === 'awaiting_correction' && active.payload.missingSizeItemIds?.length) {
     const actions = active.payload.actions.map((action) => ({ ...action }));
     const missing = active.payload.missingSizeItemIds.map((id) => actions.find((action) => action.itemId === id)).filter(Boolean);
-    const sizes = parseClothingSizes(sourceText, missing.length);
+    let sizes = parseClothingSizes(sourceText, missing.length);
+    let sizeTrace = null;
+    if (!sizes?.size) {
+      const interpreted = await interpretClothingSizes({ sourceText, items: missing });
+      sizeTrace = interpreted.trace;
+      console.log('[VoiceStockBatch] stage', interpreted.trace);
+      if (interpreted.kind === 'unavailable') {
+        const reply = 'Conservé el lote. No pude verificar los talles; escribí “reintentar” o “cancelar”.';
+        const saved = await saveTransition(active, messageId, {
+          ...active.payload,
+          pendingCorrectionText: sourceText,
+          traces: [...(active.payload.traces ?? []), interpreted.trace].filter(Boolean),
+        }, 'awaiting_correction', reply);
+        return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+      }
+      sizes = clothingSizeMap(interpreted, missing.length);
+    }
     if (!sizes?.size) {
       const reply = `No pude vincular los talles con los productos pendientes.\n${clothingSizeReply(missing)}`;
-      const saved = await saveTransition(active, messageId, active.payload, 'awaiting_correction', reply);
+      const saved = await saveTransition(active, messageId, {
+        ...active.payload,
+        traces: [...(active.payload.traces ?? []), sizeTrace].filter(Boolean),
+      }, 'awaiting_correction', reply);
       return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
     }
     for (const [index, size] of sizes) {
@@ -295,6 +315,7 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
       const saved = await saveTransition(active, messageId, { ...active.payload, actions, evidenceSourceText: combined,
         missingSizeItemIds: remaining.map((action) => action.itemId),
         sizeClarifications: [...(active.payload.sizeClarifications ?? []), { messageId, text: sourceText, assignments: [...sizes] }],
+        traces: [...(active.payload.traces ?? []), sizeTrace].filter(Boolean),
       }, 'awaiting_correction', reply);
       return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
     }
@@ -310,7 +331,7 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
     const revised = actions.map((action) => byId.get(action.itemId) ?? action);
     const saved = await saveTransition(active, messageId, { ...active.payload, actions: revised, evidenceSourceText: combined,
       missingSizeItemIds: [], sizeRequiredItemIds: [], sizeResolutionPending: false, resolutionError: null,
-      traces: [...(active.payload.traces ?? []), ...(rerun.traces ?? [])],
+      traces: [...(active.payload.traces ?? []), sizeTrace, ...(rerun.traces ?? [])].filter(Boolean),
       sizeClarifications: [...(active.payload.sizeClarifications ?? []), { messageId, text: sourceText, assignments: [...sizes] }],
     }, 'ready');
     return saved ? finish(saved, ownerPhone, messageId) : concurrentResult(active, ownerPhone);

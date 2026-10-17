@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { interpretStockClarification } from '../server/stockClarificationInterpreter.js';
+import { clothingSizeMap, interpretClothingSizes, interpretStockClarification } from '../server/stockClarificationInterpreter.js';
 
 const originalFetch = globalThis.fetch;
 const envChanges = { GEMINI_API_KEY: 'clarification-test-key', GEMINI_MODEL_NAME: 'gemini-3.1-flash-lite',
@@ -37,7 +37,7 @@ try {
     calls++;
     if (networkFailure) throw new Error('simulated transport failure');
     const body = JSON.parse(request.body);
-    assert.match(body.messages[0].content, /Etapa: clarify\./);
+    assert.match(body.messages[0].content, /Etapa: (?:clarify|size_clarify)\./);
     assert.equal(body.temperature, 0);
     assert.equal(body.max_tokens, 1024);
     assert.equal(body.model, 'gemini-3.1-flash-lite');
@@ -94,6 +94,26 @@ try {
   await run('unrelated cannot mutate', { kind: 'unrelated', correctedAction }, 'invalid');
   await run('valid unrelated', { kind: 'unrelated' }, 'unrelated', '¿A qué hora abre el local?');
   await run('array schema rejected', [{ kind: 'unrelated' }], 'invalid');
+
+  const items = [{ productName: 'Camiseta Independiente' }, { productName: 'Camiseta Racing' }];
+  const sizeRun = async (name, data, expected, sourceText = 'todas son talles L') => {
+    responseData = data;
+    rawContent = undefined;
+    responseStatus = 200;
+    const result = await interpretClothingSizes({ sourceText, items });
+    assert.equal(result.kind, expected, name);
+    assert.equal(result.trace.stage, 'size_clarify');
+    assert.equal(result.trace.ok, !['invalid', 'unavailable'].includes(expected));
+    passed++;
+    console.log(`PASS ${name}`);
+    return result;
+  };
+  const allSizes = await sizeRun('plural talles as all L', { kind: 'all', size: 'L', evidence: 'talles L' }, 'all');
+  assert.deepEqual([...clothingSizeMap(allSizes, 2).values()], ['L', 'L']);
+  await sizeRun('size assignments', { kind: 'assignments', evidence: '1 S', assignments: [{ index: 1, size: 'S' }, { index: 2, size: 'M' }] }, 'assignments', '1 S, 2 M');
+  await sizeRun('ungrounded size evidence rejected', { kind: 'all', size: 'L', evidence: 'talle XL' }, 'invalid');
+  await sizeRun('unrelated size answer', { kind: 'unrelated' }, 'unrelated', '¿A qué hora abre?');
+
   process.env.GEMINI_API_KEY = '';
   const beforeMissingKey = calls;
   const missingKey = await interpretStockClarification({ sourceText: 'La primera', action });
