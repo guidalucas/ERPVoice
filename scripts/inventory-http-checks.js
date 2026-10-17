@@ -518,6 +518,80 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
         assert.equal((await sql.query(`SELECT 1 FROM ${table} WHERE id=$1`, [created.json.id])).rowCount, 0);
       }
     });
+    await run('party deletion requires reviewed revisions and returns immutable receipts after removal', async () => {
+      for (const [collection, table, kind] of [['/api/clients', 'clients', 'client'], ['/api/proveedores', 'proveedores', 'supplier']]) {
+        const created = await request(collection, { body: { operationId: `http-delete-party-seed-${kind}`, name: `HTTP baja ${kind}` } });
+        assert.equal(created.status, 201);
+        const route = `${collection}/${created.json.id}`, body = { operationId: `http-delete-party-${kind}`, expectedRevision: created.json.metadataRevision, ...(kind === 'client' ? { expectedAccountRevision: created.json.accountRevision } : {}), reason: 'Baja revisada por HTTP' };
+        assert.equal((await request(route, { method: 'DELETE', body, auth: false })).status, 401);
+        const missing = await request(route, { method: 'DELETE' });
+        assert.equal(missing.status, 400); assert.equal(missing.json.code, 'OPERATION_ID_REQUIRED');
+        for (const extra of [{ expectedRevision: undefined }, { reason: '' }, { ownerPhone: 'foreign' }]) {
+          const invalid = await request(route, { method: 'DELETE', body: { ...body, ...extra } });
+          assert.equal(invalid.status, 400); assert.equal(invalid.json.code, 'INVALID_PARTY_OPERATION');
+        }
+        const stale = await request(route, { method: 'DELETE', body: { ...body, expectedRevision: 1 } });
+        assert.equal(stale.status, 409); assert.equal(stale.json.code, 'PARTY_REVISION_MISMATCH');
+        if (kind === 'client') {
+          const staleAccount = await request(route, { method: 'DELETE', body: { ...body, expectedAccountRevision: 1 } });
+          assert.equal(staleAccount.status, 409); assert.equal(staleAccount.json.code, 'ACCOUNT_REVISION_MISMATCH');
+        }
+        const foreign = await request(route, { method: 'DELETE', body, headers: { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000555' })}` } });
+        assert.equal(foreign.status, 404); assert.equal(foreign.json.code, 'PARTY_NOT_FOUND');
+        const [one, two] = await Promise.all([request(route, { method: 'DELETE', body }), request(route, { method: 'DELETE', body })]);
+        assert.equal(one.status, 200); assert.deepEqual(one.json, two.json);
+        assert.deepEqual(one.json.items[0].party, created.json); assert.equal(one.json.items[0].deleted, true); assert.equal(one.json.items[0].type, `${kind}.delete`);
+        assert.equal((await sql.query(`SELECT 1 FROM ${table} WHERE owner_phone=$1 AND id=$2`, [owner, created.json.id])).rowCount, 0);
+        assert.deepEqual((await request(route, { method: 'DELETE', body })).json, one.json);
+        const conflict = await request(route, { method: 'DELETE', body: { ...body, reason: 'Otra intención de baja' } });
+        assert.equal(conflict.status, 409); assert.equal(conflict.json.code, 'IDEMPOTENCY_CONFLICT');
+      }
+    });
+    await run('supplier merge validates closed reviewed input and replays a frozen receipt with current snapshot', async () => {
+      const keep = await db.createProveedorRecord({ operationId: 'http-supplier-merge-keep', name: 'HTTP Proveedor Conservar', notas: 'Nota conservar' }, owner);
+      const source = await db.createProveedorRecord({ operationId: 'http-supplier-merge-source', name: 'HTTP Proveedor Quitar', notas: 'Nota quitar' }, owner);
+      const foreignSupplier = await db.createProveedorRecord({ operationId: 'http-supplier-merge-foreign', name: 'HTTP Proveedor Ajeno' }, '59899000555');
+      const client = await createFixtureClient({ name: 'HTTP Cliente Fusión Proveedor' }, owner);
+      const pedido = await db.createPedidoRecord({ operationId: 'http-supplier-merge-order', clienteId: client.id, proveedorId: source.id, producto: 'Pedido HTTP fusión proveedor', qty: 2 }, owner);
+      const body = { keepId: keep.id, mergeId: source.id, operationId: 'http-supplier-merge', expectedKeepRevision: keep.metadataRevision, expectedMergeRevision: source.metadataRevision, reason: 'Fusión revisada por HTTP' };
+      assert.equal((await request('/api/proveedores/merge', { body, auth: false })).status, 401);
+      const noId = await request('/api/proveedores/merge', { body: { ...body, operationId: undefined } });
+      assert.equal(noId.status, 400); assert.equal(noId.json.code, 'OPERATION_ID_REQUIRED');
+      for (const extra of [{ expectedKeepRevision: undefined }, { reason: '' }, { ownerPhone: 'foreign' }]) {
+        const invalid = await request('/api/proveedores/merge', { body: { ...body, ...extra } });
+        assert.equal(invalid.status, 400); assert.equal(invalid.json.code, 'INVALID_PARTY_OPERATION');
+      }
+      const stale = await request('/api/proveedores/merge', { body: { ...body, expectedMergeRevision: 1 } });
+      assert.equal(stale.status, 409); assert.equal(stale.json.code, 'PARTY_REVISION_MISMATCH');
+      const foreign = await request('/api/proveedores/merge', { body: { ...body, mergeId: foreignSupplier.id } });
+      assert.equal(foreign.status, 404); assert.equal(foreign.json.code, 'PARTY_NOT_FOUND');
+      const [one, two] = await Promise.all([request('/api/proveedores/merge', { body }), request('/api/proveedores/merge', { body })]);
+      assert.equal(one.status, 200); assert.deepEqual(one.json.operationResult, two.json.operationResult);
+      const item = one.json.operationResult.items[0];
+      assert.equal(item.party.metadataRevision, 1); assert.equal(item.party.notas, 'Nota conservar\nNota quitar'); assert.deepEqual(item.removedParty, source);
+      assert.deepEqual(item.affectedOrders, [{ id: pedido.id, revision: pedido.revision + 1, proveedorId: keep.id }]);
+      const actual = (await sql.query('SELECT proveedor_id,revision FROM pedidos WHERE owner_phone=$1 AND id=$2', [owner, pedido.id])).rows[0];
+      assert.deepEqual(actual, { proveedor_id: keep.id, revision: pedido.revision + 1 });
+      const changed = await request(`/api/proveedores/${keep.id}`, { method: 'PUT', body: { operationId: 'http-merged-supplier-edit', expectedRevision: 1, notas: 'Nota actual HTTP' } });
+      assert.equal(changed.status, 200);
+      const replay = await request('/api/proveedores/merge', { body });
+      assert.equal(replay.status, 200); assert.deepEqual(replay.json.operationResult, one.json.operationResult); assert.deepEqual(replay.json.proveedores.find(({ id }) => id === keep.id), changed.json);
+      const conflict = await request('/api/proveedores/merge', { body: { ...body, reason: 'Otra fusión' } });
+      assert.equal(conflict.status, 409); assert.equal(conflict.json.code, 'IDEMPOTENCY_CONFLICT');
+    });
+    await run('client merge requires current metadata revisions as well as financial revisions', async () => {
+      const keep = await createFixtureClient({ name: 'HTTP Cliente Merge Conserva' }, owner), source = await createFixtureClient({ name: 'HTTP Cliente Merge Origen' }, owner);
+      const body = { keepId: keep.id, mergeId: source.id, operationId: 'http-client-merge-meta', expectedKeepRevision: 0, expectedMergeRevision: 0, expectedKeepMetadataRevision: 0, expectedMergeMetadataRevision: 0 };
+      const missing = await request('/api/clients/merge', { body: { ...body, expectedKeepMetadataRevision: undefined } });
+      assert.equal(missing.status, 400); assert.equal(missing.json.code, 'INVALID_ACCOUNT_OPERATION');
+      const changed = await request(`/api/clients/${source.id}`, { method: 'PUT', body: { operationId: 'http-client-before-merge-edit', expectedRevision: 0, notas: 'Nota nueva antes de fusión' } });
+      assert.equal(changed.status, 200);
+      const stale = await request('/api/clients/merge', { body });
+      assert.equal(stale.status, 409); assert.equal(stale.json.code, 'PARTY_REVISION_MISMATCH');
+      const applied = await request('/api/clients/merge', { body: { ...body, expectedMergeMetadataRevision: 1 } });
+      assert.equal(applied.status, 200); assert.equal(applied.json.operationResult.client.metadataRevision, 1);
+      assert.deepEqual((await request('/api/clients/merge', { body: { ...body, expectedMergeMetadataRevision: 1 } })).json.operationResult, applied.json.operationResult);
+    });
     await run('accounts HTTP validates explicit money/client scope, immutable receipts and closed debt writers',async()=>{
       const customer=await createFixtureClient({name:'HTTP cuentas'},owner);
       const charge={contractVersion:1,businessId:owner,operationId:'http-account-charge',actions:[{itemId:'one',type:'account.charge',target:{kind:'existing',clientId:customer.id},amount:{value:10,unit:'legacy-money'},reason:'Cargo explícito'}]};
@@ -531,7 +605,8 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const excess=await request('/api/accounts/operations',{body:{...payment,operationId:'http-account-excess',actions:[{...payment.actions[0],amount:{value:8,unit:'legacy-money'}}]}});
       assert.equal(excess.status,409);assert.equal(excess.json.code,'PAYMENT_EXCEEDS_DEBT');
       assert.equal((await request(`/api/clients/${customer.id}`,{method:'PUT',body:{debt:0}})).json.code,'ACCOUNT_OPERATION_REQUIRED');
-      assert.equal((await request(`/api/clients/${customer.id}`,{method:'DELETE'})).json.code,'CLIENT_HAS_BALANCE');
+      const deleteCustomer = (await sql.query('SELECT metadata_revision,account_revision FROM clients WHERE owner_phone=$1 AND id=$2',[owner,customer.id])).rows[0];
+      assert.equal((await request(`/api/clients/${customer.id}`,{method:'DELETE',body:{operationId:'http-account-blocked-delete',expectedRevision:Number(deleteCustomer.metadata_revision),expectedAccountRevision:Number(deleteCustomer.account_revision),reason:'Baja explícita'}})).json.code,'CLIENT_HAS_BALANCE');
       const foreign=await request('/api/accounts/operations',{body:{...charge,businessId:'59899000515'},headers:{Authorization:`Bearer ${issueJwt({phoneNumber:'59899000515'})}`}});
       assert.equal(foreign.status,404);assert.equal(foreign.json.code,'CLIENT_NOT_FOUND');
     });

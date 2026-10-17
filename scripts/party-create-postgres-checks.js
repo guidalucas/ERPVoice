@@ -55,9 +55,9 @@ export async function runPartyCreateChecks({ db, sql, check }) {
       const input = { operationId: id(), name: `Alta original ${table}`, notas: 'Nota original' };
       const [original, concurrent] = await Promise.all([create(input, a), create(input, a)]);
       assert.deepEqual(original, concurrent);
-      await update(original.id, { operationId: id(), expectedRevision: original.metadataRevision, name: 'Nombre posterior', notas: 'Nota posterior' }, a);
+      const edited = await update(original.id, { operationId: id(), expectedRevision: original.metadataRevision, name: 'Nombre posterior', notas: 'Nota posterior' }, a);
       assert.deepEqual(await create(input, a), original);
-      await remove(original.id, a);
+      await remove(original.id, a, { operationId: id(), expectedRevision: edited.metadataRevision, ...(table === 'clients' ? { expectedAccountRevision: edited.accountRevision } : {}), reason: 'Baja para verificar replay de alta' });
       const before = await state();
       assert.deepEqual(await create(input, a), original);
       assert.deepEqual(await state(), before);

@@ -35,14 +35,15 @@ export async function runAccountChecks({ db, sql, check }) {
         await assert.rejects(run(plan([action(client.id, 'account.adjust', 0, { target: { kind: 'existing', clientId: client.id, expectedRevision: Number(before.account_revision) } })])), { code: 'ACCOUNT_REVISION_MISMATCH' });
     });
     await check('account transfer conserves balances and client merges/deletions cannot discard debt', async () => {
-        await assert.rejects(db.deleteClientRecord(client.id, a), { code: 'CLIENT_HAS_BALANCE' });
+        const deleteTarget = await row(client.id);
+        await assert.rejects(db.deleteClientRecord(client.id, a, { operationId: id(), expectedRevision: Number(deleteTarget.metadata_revision), expectedAccountRevision: Number(deleteTarget.account_revision), reason: 'Baja explícita de prueba' }), { code: 'CLIENT_HAS_BALANCE' });
         await assert.rejects(db.mergeClientRecords(other.id, client.id, a), { code: 'OPERATION_ID_REQUIRED' });
         const source = await row(client.id), target = await row(other.id);
         const transfer = plan([action(client.id, 'account.transfer', 10, { target: { kind: 'existing', clientId: client.id, expectedRevision: Number(source.account_revision) }, destination: { clientId: other.id, expectedRevision: Number(target.account_revision) } })]);
         const receipt = await run(transfer);
         assert.equal(receipt.items[0].balance, 10);
         assert.equal(receipt.items[0].destinationBalance, 10);
-        const mergeInput={operationId:id(),expectedKeepRevision:Number(target.account_revision)+1,expectedMergeRevision:Number(source.account_revision)+1};
+        const mergeInput={operationId:id(),expectedKeepRevision:Number(target.account_revision)+1,expectedMergeRevision:Number(source.account_revision)+1,expectedKeepMetadataRevision:Number(target.metadata_revision),expectedMergeMetadataRevision:Number(source.metadata_revision)};
         const merged=await db.mergeClientRecords(other.id, client.id, a,mergeInput);
         assert.equal(merged.operationResult.client.debt,20);
         assert.equal(merged.operationResult.accountResult.items[0].amount,10);
@@ -106,7 +107,7 @@ export async function runAccountChecks({ db, sql, check }) {
         const keep=await createFixtureClient({name:'Merge rollback keeper'},a),source=await createFixtureClient({name:'Merge rollback source'},a);
         await run(plan([action(keep.id,'account.charge',7),action(source.id,'account.charge',5,{itemId:'two'})]));
         const pedido=await db.createPedidoRecord({operationId:id(),clienteId:source.id,producto:'Merge pending order'},a);
-        const before=[await row(keep.id),await row(source.id)],input={operationId:id(),expectedKeepRevision:1,expectedMergeRevision:1};
+        const before=[await row(keep.id),await row(source.id)],input={operationId:id(),expectedKeepRevision:1,expectedMergeRevision:1,expectedKeepMetadataRevision:keep.metadataRevision,expectedMergeMetadataRevision:source.metadataRevision};
         await sql.query(`CREATE FUNCTION reject_client_merge_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.id='${source.id}' THEN RAISE EXCEPTION 'merge delete failure'; END IF; RETURN OLD; END $$;
           CREATE TRIGGER reject_client_merge_delete BEFORE DELETE ON clients FOR EACH ROW EXECUTE FUNCTION reject_client_merge_delete();`);
         try{await assert.rejects(db.mergeClientRecords(keep.id,source.id,a,input),/merge delete failure/);}finally{await sql.query('DROP TRIGGER reject_client_merge_delete ON clients; DROP FUNCTION reject_client_merge_delete()');}

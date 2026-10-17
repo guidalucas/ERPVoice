@@ -29,6 +29,8 @@ export function ProveedoresPanel() {
   const [mergeOpen, setMergeOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mergeAttemptRef = useRef<{ keepId: string; mergeId: string; metadata: Parameters<typeof mergeProveedorRecords>[2] } | null>(null);
+  const deleteAttemptRef = useRef<{ id: string; body: Parameters<typeof deleteProveedorRecord>[1] } | null>(null);
   const busyRef = useRef(false);
 
   const pedidosByProveedor = useMemo(() => {
@@ -126,35 +128,69 @@ export function ProveedoresPanel() {
   };
 
   const handleMerge = async () => {
-    if (busyRef.current) return;
-    if (!mergeKeepId || !mergeOtherId || mergeKeepId === mergeOtherId) {
-      return;
+    if (busyRef.current || !mergeKeepId || !mergeOtherId || mergeKeepId === mergeOtherId) return;
+    let attempt = mergeAttemptRef.current;
+    if (!attempt) {
+      const keep = proveedores.find((entry) => entry.id === mergeKeepId);
+      const source = proveedores.find((entry) => entry.id === mergeOtherId);
+      if (!keep || !source || typeof keep.metadataRevision !== 'number' || !Number.isSafeInteger(keep.metadataRevision) || keep.metadataRevision < 0
+        || typeof source.metadataRevision !== 'number' || !Number.isSafeInteger(source.metadataRevision) || source.metadataRevision < 0) {
+        setError('Faltan revisiones. Actualizá la página y revisá los proveedores antes de fusionar.'); return;
+      }
+      attempt = { keepId: keep.id, mergeId: source.id, metadata: {
+        operationId: crypto.randomUUID(),
+        expectedKeepRevision: keep.metadataRevision, expectedMergeRevision: source.metadataRevision,
+        reason: 'Fusión explícita de proveedores desde el panel.',
+      } };
+      mergeAttemptRef.current = attempt;
     }
-    busyRef.current = true;
-    setSaving(true); setError(null);
+    busyRef.current = true; setSaving(true); setError(null);
     try {
-      await mergeProveedorRecords(mergeKeepId, mergeOtherId);
-      setMergeKeepId('');
-      setMergeOtherId('');
-    } catch (error) {
-      setError(toUserFacingError(error, 'No pude fusionar los proveedores.'));
-    } finally {
-      busyRef.current = false;
-      setSaving(false);
-    }
+      await mergeProveedorRecords(attempt.keepId, attempt.mergeId, attempt.metadata);
+      mergeAttemptRef.current = null; setMergeKeepId(''); setMergeOtherId('');
+    } catch (error) { setError(toUserFacingError(error, 'No pude fusionar los proveedores.')); }
+    finally { busyRef.current = false; setSaving(false); }
   };
 
-  const handleDelete = async (proveedorId: string) => {
+  const submitDelete = async (attempt: NonNullable<typeof deleteAttemptRef.current>) => {
     if (busyRef.current) return;
     busyRef.current = true; setSaving(true); setError(null);
-    try { await deleteProveedorRecord(proveedorId); }
-    catch (error) { setError(toUserFacingError(error, 'No pude eliminar el proveedor.')); }
+    try {
+      await deleteProveedorRecord(attempt.id, attempt.body);
+      deleteAttemptRef.current = null;
+    } catch (error) { setError(toUserFacingError(error, 'No pude eliminar el proveedor.')); }
     finally { busyRef.current = false; setSaving(false); }
+  };
+
+  const handleDelete = async (proveedor: (typeof proveedores)[number]) => {
+    if (busyRef.current) return;
+    const prior = deleteAttemptRef.current;
+    if (prior) { if (prior.id === proveedor.id) await submitDelete(prior); return; }
+    if (typeof proveedor.metadataRevision !== 'number' || !Number.isSafeInteger(proveedor.metadataRevision) || proveedor.metadataRevision < 0) {
+      setError('Falta la revisión. Actualizá la página y revisá el registro antes de eliminarlo.'); return;
+    }
+    const attempt = { id: proveedor.id, body: {
+      operationId: crypto.randomUUID(), expectedRevision: proveedor.metadataRevision,
+
+      reason: 'Eliminación explícita de proveedor desde el panel.',
+    } };
+    deleteAttemptRef.current = attempt;
+    await submitDelete(attempt);
   };
 
   return (
     <div className="space-y-4">
       {error && <p role="alert" className="erp-panel text-rose-700 dark:text-rose-200">{error}</p>}
+      {deleteAttemptRef.current && (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="erp-button-primary" disabled={saving} onClick={() => {
+            const attempt = deleteAttemptRef.current; if (attempt) void submitDelete(attempt);
+          }}>Reintentar eliminación</button>
+          <button type="button" className="erp-button-secondary" disabled={saving} onClick={() => {
+            deleteAttemptRef.current = null; setError(null);
+          }}>Revisar eliminación</button>
+        </div>
+      )}
       {(editAttemptRef.current || editReviewRequired) && (
         <div className="flex flex-wrap gap-2">
           {editAttemptRef.current && <button type="button" className="erp-button-primary" disabled={saving} onClick={() => {
@@ -163,9 +199,18 @@ export function ProveedoresPanel() {
           <button type="button" className="erp-button-secondary" disabled={saving} onClick={discardEdit}>Revisar proveedores actuales</button>
         </div>
       )}
+      {mergeAttemptRef.current && (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="erp-button-primary" disabled={saving} onClick={() => void handleMerge()}>Reintentar fusión</button>
+          <button type="button" className="erp-button-secondary" disabled={saving} onClick={() => {
+            mergeAttemptRef.current = null; setError(null); setMergeKeepId(''); setMergeOtherId('');
+          }}>Revisar proveedores actuales</button>
+        </div>
+      )}
       <article className="erp-panel">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h3 className="type-title text-xl text-[color:var(--text)]">Proveedores</h3>
+          <div><h3 className="type-title text-xl text-[color:var(--text)]">Proveedores</h3>
+            <p className="mt-1 text-sm text-[color:var(--muted)]">Eliminar un proveedor desvincula sus pedidos, sin eliminarlos.</p></div>
           <button type="button" className="erp-button-primary min-h-11" disabled={saving} onClick={() => setFormOpen((open) => !open)}>
             {formOpen ? 'Cerrar' : 'Nuevo proveedor'}
           </button>
@@ -216,7 +261,7 @@ export function ProveedoresPanel() {
                       <button
                         type="button"
                         className="erp-button-danger min-h-11 px-3 text-sm"
-                        disabled={saving} onClick={() => void handleDelete(proveedor.id)}
+                        disabled={saving} onClick={() => void handleDelete(proveedor)}
                       >
                         Eliminar
                       </button>
@@ -273,13 +318,13 @@ export function ProveedoresPanel() {
           >
             <div>
               <h3 className="type-title text-lg text-[color:var(--text)]">Fusionar duplicados</h3>
-              <p className="mt-1 text-sm text-[color:var(--muted)]">Opcional · los pedidos del segundo pasan al que conservás.</p>
+              <p className="mt-1 text-sm text-[color:var(--muted)]">Opcional · todos los pedidos del segundo pasan al que conservás y se unen las notas.</p>
             </div>
             <span className="erp-toggle-link text-sm">{mergeOpen ? 'Ocultar' : 'Mostrar'}</span>
           </button>
           {mergeOpen && (
             <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-              <select className="erp-input min-h-11" value={mergeKeepId} onChange={(event) => setMergeKeepId(event.target.value)}>
+              <select aria-label="Proveedor que se conserva" disabled={saving || Boolean(mergeAttemptRef.current)} className="erp-input min-h-11" value={mergeKeepId} onChange={(event) => { mergeAttemptRef.current = null; setMergeKeepId(event.target.value); }}>
                 <option value="">Conservar…</option>
                 {proveedores.map((proveedor) => (
                   <option key={proveedor.id} value={proveedor.id}>
@@ -287,7 +332,7 @@ export function ProveedoresPanel() {
                   </option>
                 ))}
               </select>
-              <select className="erp-input min-h-11" value={mergeOtherId} onChange={(event) => setMergeOtherId(event.target.value)}>
+              <select aria-label="Proveedor que se fusiona" disabled={saving || Boolean(mergeAttemptRef.current)} className="erp-input min-h-11" value={mergeOtherId} onChange={(event) => { mergeAttemptRef.current = null; setMergeOtherId(event.target.value); }}>
                 <option value="">Fusionar y eliminar…</option>
                 {proveedores
                   .filter((proveedor) => proveedor.id !== mergeKeepId)

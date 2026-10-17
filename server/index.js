@@ -2,6 +2,7 @@ import { holdUnverifiedStockMessage, processStockBatchMessage } from './voiceSto
 import { createMetaWebhookSignatureMiddleware, hasMetaWebhookAppSecret } from './metaWebhookSecurity.js';
 import express from 'express';
 import dotenv from 'dotenv';
+import { InventoryOperationError } from './inventoryOperations.js';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { getBusinessCategoryPreset } from './businessCategories.js';
 import { hasProductMatchHold } from './voiceCatalogContext.js';
@@ -673,27 +674,19 @@ app.put('/api/clients/:id', authenticateRequest, async (req, res) => {
 });
 
 app.delete('/api/clients/:id', authenticateRequest, async (req, res) => {
-  try {
-    const clientPhone = tenantPhoneOf(req);
-    const deleted = await deleteClientRecord(req.params.id, clientPhone);
-
-    if (!deleted) {
-      res.status(404).json({ error: 'Cliente no encontrado' });
-      return;
-    }
-
-    res.status(204).send();
-  } catch (error) {
-    accountHttpError(res,error);
-  }
+  try { res.json(await deleteClientRecord(req.params.id,tenantPhoneOf(req),req.body,{actorId:authPhoneOf(req)})); }
+  catch (error) { partyHttpError(res,error); }
 });
 
 app.post('/api/clients/merge', authenticateRequest, async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || Object.keys(req.body).some((key) => !['keepId','mergeId','operationId','expectedKeepRevision','expectedMergeRevision','expectedKeepMetadataRevision','expectedMergeMetadataRevision'].includes(key)))
+      throw new InventoryOperationError('INVALID_ACCOUNT_OPERATION','La fusión contiene campos inválidos.');
     const clientPhone = tenantPhoneOf(req);
     const snapshot = await mergeClientRecords(req.body?.keepId, req.body?.mergeId, clientPhone, {
       operationId:req.body?.operationId,expectedKeepRevision:req.body?.expectedKeepRevision,
       expectedMergeRevision:req.body?.expectedMergeRevision,actorId:authPhoneOf(req),
+      expectedKeepMetadataRevision:req.body?.expectedKeepMetadataRevision,expectedMergeMetadataRevision:req.body?.expectedMergeMetadataRevision,
     });
 
     if (!snapshot) {
@@ -721,35 +714,15 @@ app.put('/api/proveedores/:id', authenticateRequest, async (req, res) => {
 });
 
 app.delete('/api/proveedores/:id', authenticateRequest, async (req, res) => {
-  try {
-    const clientPhone = tenantPhoneOf(req);
-    const deleted = await deleteProveedorRecord(req.params.id, clientPhone);
-
-    if (!deleted) {
-      res.status(404).json({ error: 'Proveedor no encontrado' });
-      return;
-    }
-
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+  try { res.json(await deleteProveedorRecord(req.params.id,tenantPhoneOf(req),req.body,{actorId:authPhoneOf(req)})); }
+  catch (error) { partyHttpError(res,error); }
 });
 
 app.post('/api/proveedores/merge', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const snapshot = await mergeProveedorRecords(req.body?.keepId, req.body?.mergeId, clientPhone);
-
-    if (!snapshot) {
-      res.status(400).json({ error: 'No se pudieron fusionar los proveedores' });
-      return;
-    }
-
-    res.json(snapshot);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+    const {keepId,mergeId,...input} = req.body ?? {};
+    res.json(await mergeProveedorRecords(keepId,mergeId,tenantPhoneOf(req),input,{actorId:authPhoneOf(req)}));
+  } catch (error) { partyHttpError(res,error); }
 });
 
 const orderHttpError = (res, error) => {

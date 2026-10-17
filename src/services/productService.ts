@@ -168,16 +168,20 @@ export const updateClient = async (clientId: string, client: PartyUpdateInput) =
     body: JSON.stringify(client),
   });
 
-export const deleteClient = async (clientId: string) =>
-  requestJson<void>(`/api/clients/${clientId}`, {
+export type PartyDeleteRequest = { operationId: string; expectedRevision: number; reason: string };
+export type ClientDeleteRequest = PartyDeleteRequest & { expectedAccountRevision: number };
+
+export const deleteClient = async (clientId: string, metadata: ClientDeleteRequest) =>
+  requestJson<unknown>(`/api/clients/${clientId}`, {
     method: 'DELETE',
+    body: JSON.stringify(metadata),
   });
 
-export type ClientMergeRequest = { operationId: string; expectedKeepRevision: number; expectedMergeRevision: number };
+export type ClientMergeRequest = { operationId: string; expectedKeepRevision: number; expectedMergeRevision: number; expectedKeepMetadataRevision: number; expectedMergeMetadataRevision: number };
 export const mergeClients = async (keepId: string, mergeId: string, metadata: ClientMergeRequest) =>
   requestJson<PersistedState>('/api/clients/merge', {
     method: 'POST',
-    body: JSON.stringify({ keepId, mergeId, operationId:metadata.operationId, expectedKeepRevision:metadata.expectedKeepRevision, expectedMergeRevision:metadata.expectedMergeRevision }),
+    body: JSON.stringify({ keepId, mergeId, ...metadata }),
   });
 
 export const createProveedor = async (proveedor: ProveedorCreateInput) =>
@@ -192,15 +196,17 @@ export const updateProveedor = async (proveedorId: string, proveedor: PartyUpdat
     body: JSON.stringify(proveedor),
   });
 
-export const deleteProveedor = async (proveedorId: string) =>
-  requestJson<void>(`/api/proveedores/${proveedorId}`, {
+export const deleteProveedor = async (proveedorId: string, metadata: PartyDeleteRequest) =>
+  requestJson<unknown>(`/api/proveedores/${proveedorId}`, {
     method: 'DELETE',
+    body: JSON.stringify(metadata),
   });
 
-export const mergeProveedores = async (keepId: string, mergeId: string) =>
+export type ProveedorMergeRequest = { operationId: string; expectedKeepRevision: number; expectedMergeRevision: number; reason: string };
+export const mergeProveedores = async (keepId: string, mergeId: string, metadata: ProveedorMergeRequest) =>
   requestJson<PersistedState>('/api/proveedores/merge', {
     method: 'POST',
-    body: JSON.stringify({ keepId, mergeId }),
+    body: JSON.stringify({ keepId, mergeId, ...metadata }),
   });
 
 export const createPedido = async (pedido: PedidoInput) =>

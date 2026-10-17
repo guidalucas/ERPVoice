@@ -42,22 +42,37 @@ export function normalizePartyPlan(input) {
   result.actions = Array.from({ length: plan.actions.length }, (_, index) => {
     const descriptor = Object.getOwnPropertyDescriptor(plan.actions, String(index));
     if (!descriptor || !Object.hasOwn(descriptor, 'value')) invalid();
-    const action = record(descriptor.value, ['itemId', 'type', 'name', 'notas', 'target', 'changes']);
-    if (!['client.create', 'supplier.create', 'client.update', 'supplier.update'].includes(action.type)) invalid();
+    const action = record(descriptor.value, ['itemId', 'type', 'name', 'notas', 'target', 'changes', 'destination', 'reason']);
+    if (!['client.create', 'supplier.create', 'client.update', 'supplier.update','client.delete','supplier.delete','supplier.merge'].includes(action.type)) invalid();
     const itemId = text(action.itemId, 180);
     if (seen.has(itemId)) invalid();
     seen.add(itemId);
     if (action.type.endsWith('.create')) {
-      if (Object.hasOwn(action,'target') || Object.hasOwn(action,'changes')) invalid();
+      if (['target','changes','destination','reason'].some((key) => Object.hasOwn(action,key))) invalid();
       return { itemId, type: action.type, name: nameOf(action.name), notas: action.notas === undefined ? null : notesOf(action.notas) };
     }
     if (Object.hasOwn(action,'name') || Object.hasOwn(action,'notas')) invalid();
-    const target = record(action.target, ['kind','partyId','expectedRevision']);
+    const deletingClient = action.type === 'client.delete';
+    const target = record(action.target, ['kind','partyId','expectedRevision',...(deletingClient ? ['expectedAccountRevision'] : [])]);
     if (target.kind !== 'existing') invalid();
     const normalizedTarget = {kind:'existing',partyId:text(target.partyId,180),expectedRevision:revisionOf(target.expectedRevision)};
     const key = JSON.stringify([action.type.split('.')[0],normalizedTarget.partyId]);
     if (targets.has(key)) invalid();
     targets.add(key);
+    if (!action.type.endsWith('.update')) {
+      if (Object.hasOwn(action,'changes')) invalid();
+      if (deletingClient) normalizedTarget.expectedAccountRevision = revisionOf(target.expectedAccountRevision);
+      const normalized = {itemId,type:action.type,target:normalizedTarget,reason:text(action.reason,1000)};
+      if (action.type === 'supplier.merge') {
+        const destination = record(action.destination,['partyId','expectedRevision']);
+        normalized.destination = {partyId:text(destination.partyId,180),expectedRevision:revisionOf(destination.expectedRevision)};
+        const destinationKey = JSON.stringify(['supplier',normalized.destination.partyId]);
+        if (targets.has(destinationKey)) invalid();
+        targets.add(destinationKey);
+      } else if (Object.hasOwn(action,'destination')) invalid();
+      return normalized;
+    }
+    if (Object.hasOwn(action,'reason') || Object.hasOwn(action,'destination')) invalid();
     const changes = record(action.changes,['name','notas']), normalizedChanges = {};
     if (!Object.keys(changes).length) invalid();
     if (Object.hasOwn(changes,'name')) normalizedChanges.name = nameOf(changes.name);
@@ -79,6 +94,7 @@ export function validatePartyPlan(input, context) {
   const plan = normalizePartyPlan(input);
   if (plan.businessId !== context.businessId) fail('BUSINESS_SCOPE_MISMATCH', 'El plan no pertenece al negocio autorizado.');
   if (plan.operationId.startsWith('order-party:') && !context.internalOrderBatch) fail('FORBIDDEN', 'ID reservado para los participantes de un pedido.');
+  if (plan.operationId.startsWith('client-merge-party:') && !context.internalClientMerge) fail('FORBIDDEN', 'ID reservado para los metadatos de una fusión.');
   for (const action of plan.actions) {
     const [kind, verb] = action.type.split('.');
     if (![...context.permissions].includes(`${kind === 'client' ? 'clients' : 'suppliers'}:${verb}`)) fail('FORBIDDEN', 'No tenés permiso para esta operación.');
@@ -133,6 +149,48 @@ export function planPartyUpdate(action, current) {
   return {...current,...action.changes,metadataRevision:current.metadataRevision + 1};
 }
 
-export const partyResultActions = (result) => result.items.map(({ itemId, type, party }) => ({ type, itemId,
+export function partyDeleteToPlan(kind, partyId, input, businessId) {
+  const operationId = input && typeof input === 'object' ? Object.getOwnPropertyDescriptor(input,'operationId') : null;
+  if (!operationId || (Object.hasOwn(operationId,'value') && (typeof operationId.value !== 'string' || !operationId.value.trim() || operationId.value.length > 180)))
+    fail('OPERATION_ID_REQUIRED','La operación requiere un ID estable para reintentar.');
+  const body = record(input,['operationId','expectedRevision','reason',...(kind === 'client' ? ['expectedAccountRevision'] : [])]);
+  if (typeof body.operationId !== 'string' || !body.operationId.trim() || body.operationId.length > 180)
+    fail('OPERATION_ID_REQUIRED', 'La baja requiere un ID estable para reintentar.');
+  return normalizePartyPlan({contractVersion:1,businessId,operationId:body.operationId,actions:[{itemId:'party-1',type:`${kind}.delete`,
+    target:{kind:'existing',partyId,expectedRevision:body.expectedRevision,...(kind === 'client' ? {expectedAccountRevision:body.expectedAccountRevision} : {})},reason:body.reason}]});
+}
+
+export function supplierMergeToPlan(keepId, mergeId, input, businessId) {
+  const operationId = input && typeof input === 'object' ? Object.getOwnPropertyDescriptor(input,'operationId') : null;
+  if (!operationId || (Object.hasOwn(operationId,'value') && (typeof operationId.value !== 'string' || !operationId.value.trim() || operationId.value.length > 180)))
+    fail('OPERATION_ID_REQUIRED','La operación requiere un ID estable para reintentar.');
+  const body = record(input,['operationId','expectedKeepRevision','expectedMergeRevision','reason']);
+  if (typeof body.operationId !== 'string' || !body.operationId.trim() || body.operationId.length > 180)
+    fail('OPERATION_ID_REQUIRED', 'La fusión requiere un ID estable para reintentar.');
+  return normalizePartyPlan({contractVersion:1,businessId,operationId:body.operationId,actions:[{itemId:'party-1',type:'supplier.merge',
+    target:{kind:'existing',partyId:mergeId,expectedRevision:body.expectedMergeRevision},
+    destination:{partyId:keepId,expectedRevision:body.expectedKeepRevision},reason:body.reason}]});
+}
+
+export function planPartyDelete(action, current, linkedOrders) {
+  planPartyUpdate({...action,changes:{}},current);
+  if (action.type === 'client.delete') {
+    if (current.accountRevision !== action.target.expectedAccountRevision) fail('ACCOUNT_REVISION_MISMATCH','El saldo del cliente cambió. Revisá su cuenta antes de eliminarlo.');
+    if (current.debt !== 0) fail('CLIENT_HAS_BALANCE','El cliente tiene saldo. Resolvé o transferí la deuda antes de eliminarlo.');
+    if (linkedOrders.length) fail('CLIENT_HAS_ORDERS','El cliente tiene pedidos. Resolvelos explícitamente antes de eliminarlo.');
+  }
+  return current;
+}
+
+export function planSupplierMerge(action, source, keep) {
+  planPartyUpdate({...action,changes:{}},source);
+  const next = planPartyUpdate({target:action.destination,changes:{}},keep);
+  next.notas = [keep.notas,source.notas].filter(Boolean).join('\n').trim() || null;
+  if (next.notas && next.notas.length > 8000) invalid();
+  return next;
+}
+
+export const partyResultActions = (result) => result.items.map(({ itemId, type, party, removedParty, affectedOrders, reason }) => ({ type, itemId,
   ...(type.startsWith('client.') ? { clientId: party.id, clientName: party.name } : { proveedorId: party.id, proveedorName: party.name }),
-  notas: party.notas, metadataRevision: party.metadataRevision }));
+  notas: party.notas, metadataRevision: party.metadataRevision,
+  ...(removedParty ? {removedProveedorId:removedParty.id} : {}),...(affectedOrders ? {affectedOrders} : {}),...(reason ? {reason} : {}) }));

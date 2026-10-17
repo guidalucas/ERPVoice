@@ -34,7 +34,7 @@ export async function runOrderChecks({ db, sql, check }) {
   await check('achieved creation and deletion share inventory receipt and deletion replay survives the row', async () => {
     const product = await seed('delete',0), achieved = await create(product,{ estado:'conseguido' });
     assert.equal(Number((await row(product)).stock_available),5);
-    await assert.rejects(db.deleteClientRecord(client.id,a),{ code:'CLIENT_HAS_ORDERS' });
+    await assert.rejects(db.deleteClientRecord(client.id,a,{operationId:id('delete-client'),expectedRevision:client.metadataRevision,expectedAccountRevision:client.accountRevision,reason:'Baja de cliente con pedidos'}),{ code:'CLIENT_HAS_ORDERS' });
     const input = { operationId:id('delete'),expectedRevision:achieved.revision };
     const deleted = await db.deletePedidoRecord(achieved.id,a,input);
     assert.equal(deleted.deleted,true); assert.equal(deleted.inventoryResult.items[0].type,'stock.withdraw');
@@ -105,12 +105,12 @@ export async function runOrderChecks({ db, sql, check }) {
     const product = await seed('indirect'), supplier = await createFixtureProveedor({name:'Proveedor revisión pedidos'},a);
     const pedido = await create(product,{estado:'conseguido',proveedorId:supplier.id});
     const before = await row(product);
-    await db.deleteProveedorRecord(supplier.id,a);
+    await db.deleteProveedorRecord(supplier.id,a,{operationId:id('delete-supplier'),expectedRevision:supplier.metadataRevision,reason:'Desvincular proveedor explícitamente'});
     const withoutSupplier = await order(pedido); assert.equal(withoutSupplier.revision,pedido.revision+1); assert.equal(withoutSupplier.proveedorId,null);
     assert.deepEqual(withoutSupplier.stockPosting,pedido.stockPosting);
     await assert.rejects(update(pedido,{estado:'pendiente'}),{code:'ORDER_REVISION_MISMATCH'});
     const keep = await createFixtureClient({name:'Cliente conserva pedidos'},a);
-    await db.mergeClientRecords(keep.id,client.id,a,{operationId:id('client-merge'),expectedKeepRevision:0,expectedMergeRevision:0});
+    await db.mergeClientRecords(keep.id,client.id,a,{operationId:id('client-merge'),expectedKeepRevision:0,expectedMergeRevision:0,expectedKeepMetadataRevision:keep.metadataRevision,expectedMergeMetadataRevision:client.metadataRevision});
     const moved = await order(pedido); assert.equal(moved.clienteId,keep.id); assert.equal(moved.revision,withoutSupplier.revision+1);
     assert.deepEqual(moved.stockPosting,pedido.stockPosting); assert.deepEqual(await row(product),before);
   });

@@ -2,6 +2,7 @@ import { runOrderReconciliationChecks } from './order-reconciliation-postgres-ch
 import { runAccountChecks } from './account-postgres-checks.js';
 import { runPartyCreateChecks } from './party-create-postgres-checks.js';
 import { runPartyEditChecks } from './party-edit-postgres-checks.js';
+import { runPartyDeleteMergeChecks } from './party-delete-merge-postgres-checks.js';
 import { runOrderChecks } from './order-postgres-checks.js';
 import assert from 'node:assert/strict';
 import { runInventoryCoreChecks } from './inventory-core-postgres-checks.js';
@@ -78,6 +79,7 @@ try {
   await runInventoryCreateChecks({ db, sql, check });
   await runPartyCreateChecks({ db, sql, check });
   await runPartyEditChecks({ db, sql, check });
+  await runPartyDeleteMergeChecks({ db, sql, check });
   await runAccountChecks({ db, sql, check });
   await runOrderChecks({ db, sql, check });
   await runOrderReconciliationChecks({ db, sql, check });

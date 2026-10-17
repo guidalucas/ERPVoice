@@ -103,8 +103,8 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const deleteClientRecord = async (clientId: string) => {
-    await deleteClient(clientId);
+  const deleteClientRecord = async (clientId: string, metadata: Parameters<typeof deleteClient>[1]) => {
+    await deleteClient(clientId, metadata);
     await refreshState();
   };
 
@@ -124,13 +124,13 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const deleteProveedorRecord = async (proveedorId: string) => {
-    await deleteProveedor(proveedorId);
+  const deleteProveedorRecord = async (proveedorId: string, metadata: Parameters<typeof deleteProveedor>[1]) => {
+    await deleteProveedor(proveedorId, metadata);
     await refreshState();
   };
 
-  const mergeProveedorRecords = async (keepId: string, mergeId: string) => {
-    const snapshot = await mergeProveedores(keepId, mergeId);
+  const mergeProveedorRecords = async (keepId: string, mergeId: string, metadata: Parameters<typeof mergeProveedores>[2]) => {
+    const snapshot = await mergeProveedores(keepId, mergeId, metadata);
     hydrateFromSnapshot(snapshot);
   };
 

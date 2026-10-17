@@ -23,6 +23,7 @@ export function ClientesPanel() {
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mergeAttemptRef = useRef<{ keepId: string; mergeId: string; metadata: Parameters<typeof mergeClientRecords>[2] } | null>(null);
+  const deleteAttemptRef = useRef<{ id: string; body: Parameters<typeof deleteClientRecord>[1] } | null>(null);
   const busyRef = useRef(false);
 
   const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
@@ -120,44 +121,72 @@ export function ClientesPanel() {
   };
 
   const handleMerge = async () => {
-    if (busyRef.current) return;
-    if (!mergeKeepId || !mergeOtherId || mergeKeepId === mergeOtherId) {
-      return;
-    }
-    busyRef.current = true; setSaving(true);
-    setError(null);
-    try {
-      const prior = mergeAttemptRef.current;
-      const attempt = prior?.keepId === mergeKeepId && prior.mergeId === mergeOtherId ? prior : {
-        keepId: mergeKeepId, mergeId: mergeOtherId,
-        metadata: { operationId: crypto.randomUUID(), expectedKeepRevision: clients.find((c) => c.id === mergeKeepId)?.accountRevision ?? 0,
-          expectedMergeRevision: clients.find((c) => c.id === mergeOtherId)?.accountRevision ?? 0 },
-      };
+    if (busyRef.current || !mergeKeepId || !mergeOtherId || mergeKeepId === mergeOtherId) return;
+    let attempt = mergeAttemptRef.current;
+    if (!attempt) {
+      const keep = clients.find((entry) => entry.id === mergeKeepId);
+      const source = clients.find((entry) => entry.id === mergeOtherId);
+      if (!keep || !source || typeof keep.metadataRevision !== 'number' || !Number.isSafeInteger(keep.metadataRevision) || keep.metadataRevision < 0
+        || typeof source.metadataRevision !== 'number' || !Number.isSafeInteger(source.metadataRevision) || source.metadataRevision < 0
+        || typeof keep.accountRevision !== 'number' || !Number.isSafeInteger(keep.accountRevision) || keep.accountRevision < 0
+        || typeof source.accountRevision !== 'number' || !Number.isSafeInteger(source.accountRevision) || source.accountRevision < 0) {
+        setError('Faltan revisiones. Actualizá la página y revisá los clientes antes de fusionar.'); return;
+      }
+      attempt = { keepId: keep.id, mergeId: source.id, metadata: {
+        operationId: crypto.randomUUID(),
+        expectedKeepRevision: keep.accountRevision, expectedMergeRevision: source.accountRevision,
+        expectedKeepMetadataRevision: keep.metadataRevision, expectedMergeMetadataRevision: source.metadataRevision,
+      } };
       mergeAttemptRef.current = attempt;
-      await mergeClientRecords(attempt.keepId, attempt.mergeId, attempt.metadata);
-      mergeAttemptRef.current = null;
-      setMergeKeepId('');
-      setMergeOtherId('');
-    } catch (error) {
-      setError(toUserFacingError(error,'No pude fusionar los clientes.'));
-    } finally {
-      busyRef.current = false;
-      setSaving(false);
     }
+    busyRef.current = true; setSaving(true); setError(null);
+    try {
+      await mergeClientRecords(attempt.keepId, attempt.mergeId, attempt.metadata);
+      mergeAttemptRef.current = null; setMergeKeepId(''); setMergeOtherId('');
+    } catch (error) { setError(toUserFacingError(error, 'No pude fusionar los clientes.')); }
+    finally { busyRef.current = false; setSaving(false); }
   };
 
-  const handleDelete = async (clientId: string) => {
+  const submitDelete = async (attempt: NonNullable<typeof deleteAttemptRef.current>) => {
     if (busyRef.current) return;
-    busyRef.current = true;
-    setError(null); setSaving(true);
-    try { await deleteClientRecord(clientId); }
-    catch (error) { setError(toUserFacingError(error,'No pude eliminar el cliente.')); }
+    busyRef.current = true; setSaving(true); setError(null);
+    try {
+      await deleteClientRecord(attempt.id, attempt.body);
+      deleteAttemptRef.current = null;
+    } catch (error) { setError(toUserFacingError(error, 'No pude eliminar el cliente.')); }
     finally { busyRef.current = false; setSaving(false); }
+  };
+
+  const handleDelete = async (client: (typeof clients)[number]) => {
+    if (busyRef.current) return;
+    const prior = deleteAttemptRef.current;
+    if (prior) { if (prior.id === client.id) await submitDelete(prior); return; }
+    if (typeof client.metadataRevision !== 'number' || !Number.isSafeInteger(client.metadataRevision) || client.metadataRevision < 0
+      || typeof client.accountRevision !== 'number' || !Number.isSafeInteger(client.accountRevision) || client.accountRevision < 0) {
+      setError('Falta la revisión. Actualizá la página y revisá el registro antes de eliminarlo.'); return;
+    }
+    const attempt = { id: client.id, body: {
+      operationId: crypto.randomUUID(), expectedRevision: client.metadataRevision,
+      expectedAccountRevision: client.accountRevision,
+      reason: 'Eliminación explícita de cliente desde el panel.',
+    } };
+    deleteAttemptRef.current = attempt;
+    await submitDelete(attempt);
   };
 
   return (
     <div className="space-y-4">
       {error && <p role="alert" className="erp-panel text-rose-700 dark:text-rose-200">{error}</p>}
+      {deleteAttemptRef.current && (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="erp-button-primary" disabled={saving} onClick={() => {
+            const attempt = deleteAttemptRef.current; if (attempt) void submitDelete(attempt);
+          }}>Reintentar eliminación</button>
+          <button type="button" className="erp-button-secondary" disabled={saving} onClick={() => {
+            deleteAttemptRef.current = null; setError(null);
+          }}>Revisar eliminación</button>
+        </div>
+      )}
       {(editAttemptRef.current || editReviewRequired) && (
         <div className="flex flex-wrap gap-2">
           {editAttemptRef.current && <button type="button" className="erp-button-primary" disabled={saving} onClick={() => {
@@ -166,7 +195,7 @@ export function ClientesPanel() {
           <button type="button" className="erp-button-secondary" disabled={saving} onClick={discardEdit}>Revisar clientes actuales</button>
         </div>
       )}
-      {error && mergeAttemptRef.current && (
+      {mergeAttemptRef.current && (
         <div className="flex gap-2">
           <button type="button" className="erp-button-primary" disabled={saving} onClick={() => void handleMerge()}>Reintentar fusión</button>
           <button type="button" className="erp-button-secondary" disabled={saving} onClick={() => {
@@ -241,7 +270,7 @@ export function ClientesPanel() {
                         type="button"
                         className="erp-button-danger min-h-11 px-3 text-sm"
                         disabled={saving}
-                        onClick={() => void handleDelete(client.id)}
+                        onClick={() => void handleDelete(client)}
                       >
                         Eliminar
                       </button>
@@ -304,7 +333,7 @@ export function ClientesPanel() {
           </button>
           {mergeOpen && (
             <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-              <select aria-label="Cliente que se conserva" disabled={saving} className="erp-input min-h-11" value={mergeKeepId} onChange={(event) => { mergeAttemptRef.current = null; setMergeKeepId(event.target.value); }}>
+              <select aria-label="Cliente que se conserva" disabled={saving || Boolean(mergeAttemptRef.current)} className="erp-input min-h-11" value={mergeKeepId} onChange={(event) => { mergeAttemptRef.current = null; setMergeKeepId(event.target.value); }}>
                 <option value="">Conservar…</option>
                 {clients.map((client) => (
                   <option key={client.id} value={client.id}>
@@ -312,7 +341,7 @@ export function ClientesPanel() {
                   </option>
                 ))}
               </select>
-              <select aria-label="Cliente que se fusiona" disabled={saving} className="erp-input min-h-11" value={mergeOtherId} onChange={(event) => { mergeAttemptRef.current = null; setMergeOtherId(event.target.value); }}>
+              <select aria-label="Cliente que se fusiona" disabled={saving || Boolean(mergeAttemptRef.current)} className="erp-input min-h-11" value={mergeOtherId} onChange={(event) => { mergeAttemptRef.current = null; setMergeOtherId(event.target.value); }}>
                 <option value="">Fusionar y eliminar…</option>
                 {clients
                   .filter((client) => client.id !== mergeKeepId)

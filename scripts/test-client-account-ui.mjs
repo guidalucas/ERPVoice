@@ -5,7 +5,7 @@ import {chromium} from 'playwright';
 
 const browser=await chromium.launch(process.platform==='win32'?{channel:'msedge',headless:true}:{headless:true});
 const page=await browser.newPage({viewport:{width:1440,height:900}});
-const clients=[{id:'keep',name:'Cliente conservado',debt:5,accountRevision:1},{id:'source',name:'Cliente fusionado',debt:7,accountRevision:2}];
+const clients=[{id:'keep',name:'Cliente conservado',debt:5,accountRevision:1,metadataRevision:0},{id:'source',name:'Cliente fusionado',debt:7,accountRevision:2,metadataRevision:0}];
 const attempts=[],receipts=new Map(),pageErrors=[];
 let mode='lost',release;
 page.on('pageerror',(error)=>pageErrors.push(error.message));
@@ -48,7 +48,7 @@ try{
   await page.getByRole('button',{name:'Reintentar fusión',exact:true}).waitFor({state:'hidden'});
   assert.deepEqual(attempts[0],attempts[1]);assert.equal(clients[0].debt,12);
   await page.getByRole('button',{name:'Eliminar',exact:true}).click();await page.getByRole('alert').getByText(/El cliente tiene saldo/).waitFor();
-  clients.push({id:'second',name:'Segundo cliente',debt:4,accountRevision:0});
+  clients.push({id:'second',name:'Segundo cliente',debt:4,accountRevision:0,metadataRevision:0});
   await page.getByRole('heading',{name:'Fusionar duplicados'}).waitFor({timeout:12000});
   if(await page.getByRole('button',{name:/Fusionar duplicados/}).getAttribute('aria-expanded')==='false')await page.getByRole('button',{name:/Fusionar duplicados/}).click();
   await page.getByLabel('Cliente que se conserva').selectOption('keep');await page.getByLabel('Cliente que se fusiona').selectOption('second');

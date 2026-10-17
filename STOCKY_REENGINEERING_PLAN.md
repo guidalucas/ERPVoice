@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.4e1b, altas y edición de metadatos con recibos/revisiones.
+- Último alcance integrado: H4.4e1c, CRUD de clientes/proveedores y fusiones transaccionales.
 
 ## Hitos y dependencias
 
@@ -18,7 +18,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Hasta H4.4e1b verificado; baja/fusión de metadatos siguiente |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.4e1c verificado; conversación de conjuntos e intérprete universal pendientes |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -54,12 +54,12 @@
 
 ## Próximo paso exacto
 
-H4.4e1c: migrar bajas de clientes/proveedores y fusión de proveedores al contrato party v1.
-Exigir operationId/revisiones, guardar recibos tras borrado y actualizar formularios con
-retry alcanzable si la entidad desaparece. Mantener guards saldo/pedidos de clientes;
-proveedores deben informar exactamente los pedidos desligados/movidos y avanzar revisión.
-Extender fusión existente de clientes para revisar también metadatos antes de unir notas.
-Altas y PUT ya migrados; no rediseñar pedidos/cuentas ni reabrir e1a/b.
+H4.5a: entrada universal de planes por contrato v1 y despacho a los ejecutores existentes,
+con autorización y rechazo atómico de composiciones todavía no soportadas. Reutilizar
+normalizadores de stock/cuenta/party; nunca duplicar Inventory Engine. Agregar API común
+para planes homogéneos, probar todos los dominios/ámbitos/replay y documentar que aún no
+es el intérprete universal ni composición entre dominios. Luego H4.2b conversación de
+conjuntos, H4.5b intérprete desacoplado/composición y H4.6 familias configurables.
 El escritor local ya fue retirado; no reintroducir fallback optimista ni simulaciones.
 H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
 El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
@@ -449,13 +449,34 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   triggers de divergencia y recibo fallido, replay después de otra edición/baja y merge.
   Motor permanece en 50 regresiones de e1a. No desplegado ni evaluado con LLM real.
 
+- H4.4e1c (2026-10-17): bajas client.delete/supplier.delete y supplier.merge por party v1,
+  IDs/motivo/revisiones obligatorios y recibos que sobreviven al borrado. Cliente exige
+  también accountRevision vigente, saldo cero y ausencia de pedidos. Proveedor se elimina
+  desligando pedidos o se fusiona trasladándolos y uniendo notas, sin tocar stock/postings.
+  Los recibos enumeran exactamente IDs, vínculo y revisiones resultantes de los pedidos.
+- H4.4e1c: movePartyOrders verifica RETURNING completo contra el estado previo (incluidas
+  fechas/qty/posting), permitiendo solo vínculo+revisión. Fusión de clientes ahora verifica
+  metadatos y saldos; conserva replay de recibos históricos con hash original. Transfiere
+  saldo por accountPostgres, mueve pedidos por helper verificado y cambia notas/baja origen
+  por partyPostgres con childreceipt reservado. Falla cualquiera: rollback de todo/outbox.
+  Solo partyPostgres escribe entidades/metadatos; solo accountPostgres cambia sus saldos.
+- H4.4e1c: panel conserva cuerpos/IDs/revisiones de bajas/fusiones tras 503 o refresco
+  fallido, mantiene retry fuera de las tarjetas borradas y exige revisar para nuevo intento.
+  Explica que baja proveedor conserva pedidos sin vínculo y fusión une notas/traslada pedidos.
+  Cuenta+metadatos se capturan juntos al fusionar clientes; controles bloquean doble envío.
+- H4.4e1c verificado: 198 checks PG/HTTP, 54 tests puros; build y Edge party-delete-merge-ui,
+  party-create-ui, party-edit-ui y client-account-ui aprobados. Incluye competencia/replay,
+  guards financieros/pedidos, IDs ajenos, revisiones vencidas, legacy replay y fallos SQL de
+  recibo/fechas/qty/posting con rollback total. Revisión independiente enfocada sin hallazgos.
+  Sin despliegue/LLM real; fusión limita notas a 8000 caracteres, nunca las trunca.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
 - H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
 - H4.4a `844b29b`; H4.4b `bf812ee` (incluye checkpoint parcial `600373f`); H4.4c `ba251e6`.
-- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a `f34ea14`; e1b: ver git log.
+- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a `f34ea14`; e1b `848632c`; e1c: ver git log.
   No volver a diseñar la política de aprovisionamiento/conciliación.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
@@ -466,6 +487,8 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   Edge local; APIs/proveedores simulados. Ninguna de estas pruebas valida IA real.
 - Altas: `npm run test:inventory-create-ui`; contrato y rollback incluidos en suites pura/PG.
 - Pedidos: `npm run test:order-ui`; transacciones/HTTP/Meta en test:voice-stock-postgres.
+- Metadatos: `npm run test:party-create-ui`, `npm run test:party-edit-ui` y
+  `npm run test:party-delete-merge-ui`; PG/HTTP incluidos en suite compartida.
 - Cuentas: `npm run test:client-account-ui`; contratos/dominio en test:inventory y PG/HTTP/Meta
   en test:voice-stock-postgres. Edge usa API simulada, no valida proveedores reales.
 - Producción: falta verificar configuración privada, backup/restauración recuperable,

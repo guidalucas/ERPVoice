@@ -19,7 +19,7 @@ import { operationRequestDigest } from './operationHash.js';
 import { validateAccountPlan } from './accountOperations.js';
 import { mergeClientsInTransaction } from './clientMergePostgres.js';
 import { PARTY_SCHEMA_SQL, executePartyPlanInTransaction, partyRowToEntity } from './partyPostgres.js';
-import { partyCreationToPlan, partyUpdateToPlan, validatePartyPlan } from './partyOperations.js';
+import { partyCreationToPlan, partyUpdateToPlan, partyDeleteToPlan, supplierMergeToPlan, validatePartyPlan } from './partyOperations.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -1331,20 +1331,14 @@ const updatePartyRecord = async (kind, partyId, input, ownerPhone, options) => {
 export const updateClientRecord = async (id, input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) =>
   updatePartyRecord('client', id, input, ownerPhone, options);
 
-export const deleteClientRecord = async (clientId, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  await ensureReady();
-  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
-
-  return withTransaction(async (client) => {
-    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
-    const account = await queryRow('SELECT debt FROM clients WHERE id=$1 AND owner_phone=ANY($2) FOR UPDATE',[clientId,ownerPhoneVariants],client);
-    if (account && Number(account.debt) !== 0) throw new InventoryOperationError('CLIENT_HAS_BALANCE', 'El cliente tiene saldo. Resolvé o transferí la deuda antes de eliminarlo.');
-    const linked = await client.query('SELECT id FROM pedidos WHERE cliente_id=$1 AND owner_phone=ANY($2) FOR UPDATE', [clientId, ownerPhoneVariants]);
-    if (linked.rowCount) throw new InventoryOperationError('CLIENT_HAS_ORDERS', 'El cliente tiene pedidos. Resolvelos explícitamente antes de eliminarlo.');
-    const result = await client.query('DELETE FROM clients WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [clientId, ownerPhoneVariants]);
-    return result.rowCount > 0;
-  });
+const deletePartyRecord = async (kind, partyId, input, ownerPhone, options) => {
+  const businessId = normalizeOwnerPhone(ownerPhone);
+  return executePartyOperation(partyDeleteToPlan(kind,partyId,input,businessId),{
+    businessId,actorId:options.actorId ?? businessId,permissions:[kind === 'client' ? 'clients:delete' : 'suppliers:delete'] });
 };
+
+export const deleteClientRecord = async (id, ownerPhone = DEFAULT_OWNER_PHONE, input = {}, options = {}) =>
+  deletePartyRecord('client',id,input,ownerPhone,options);
 
 export const mergeClientRecords = async (keepId, mergeId, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
   await ensureReady();
@@ -1363,62 +1357,17 @@ export const createProveedorRecord = async (input, ownerPhone = DEFAULT_OWNER_PH
 export const updateProveedorRecord = async (id, input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) =>
   updatePartyRecord('supplier', id, input, ownerPhone, options);
 
-export const deleteProveedorRecord = async (proveedorId, ownerPhone = DEFAULT_OWNER_PHONE) => {
+export const deleteProveedorRecord = async (id, ownerPhone = DEFAULT_OWNER_PHONE, input = {}, options = {}) =>
+  deletePartyRecord('supplier',id,input,ownerPhone,options);
+
+export const mergeProveedorRecords = async (keepId,mergeId,ownerPhone = DEFAULT_OWNER_PHONE,input = {},options = {}) => {
+  const businessId = normalizeOwnerPhone(ownerPhone);
+  const context = {businessId,actorId:options.actorId ?? businessId,permissions:['suppliers:merge'],ownerPhoneVariants:getOwnerPhoneVariants(businessId)};
+  const plan = validatePartyPlan(supplierMergeToPlan(keepId,mergeId,input,businessId),context);
   await ensureReady();
-  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
-
   return withTransaction(async (client) => {
-    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
-    await client.query('UPDATE pedidos SET proveedor_id = NULL, revision=revision+1 WHERE proveedor_id = $1 AND owner_phone = ANY($2)', [
-      proveedorId,
-      ownerPhoneVariants,
-    ]);
-    const result = await client.query('DELETE FROM proveedores WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [
-      proveedorId,
-      ownerPhoneVariants,
-    ]);
-    return result.rowCount > 0;
-  });
-};
-
-export const mergeProveedorRecords = async (keepId, mergeId, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  await ensureReady();
-  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
-
-  if (!keepId || !mergeId || keepId === mergeId) {
-    return null;
-  }
-
-  return withTransaction(async (client) => {
-    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
-    const keep = await queryRow(
-      'SELECT * FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)',
-      [keepId, ownerPhoneVariants],
-      client,
-    );
-    const merge = await queryRow(
-      'SELECT * FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)',
-      [mergeId, ownerPhoneVariants],
-      client,
-    );
-
-    if (!keep || !merge) {
-      return null;
-    }
-
-    await client.query(
-      'UPDATE pedidos SET proveedor_id = $1, revision=revision+1 WHERE proveedor_id = $2 AND owner_phone = ANY($3)',
-      [keepId, mergeId, ownerPhoneVariants],
-    );
-
-    const keepProveedor = rowToProveedor(keep);
-    const mergeProveedor = rowToProveedor(merge);
-    const mergedNotas = [keepProveedor.notas, mergeProveedor.notas].filter(Boolean).join('\n').trim() || null;
-
-    await client.query('UPDATE proveedores SET notas = $1, metadata_revision=metadata_revision+1 WHERE id = $2', [mergedNotas, keepId]);
-    await client.query('DELETE FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)', [mergeId, ownerPhoneVariants]);
-
-    return queryAllState(normalizeOwnerPhone(ownerPhone), client);
+    const operationResult = await executePartyPlanInTransaction(client,plan,context);
+    return {...await queryAllState(businessId,client),operationResult};
   });
 };
 

@@ -100,9 +100,9 @@ export async function runPartyEditChecks({ db, sql, check }) {
       const input = { operationId: id(), expectedRevision: 0, name: 'Recibo Editado', notas: null };
       const edited = await edit(party.id, input, a);
       assert.equal(edited.metadataRevision, 1); assert.equal(edited.notas, null);
-      await edit(party.id, { operationId: id(), expectedRevision: 1, notas: 'Nota posterior' }, a);
+      const later = await edit(party.id, { operationId: id(), expectedRevision: 1, notas: 'Nota posterior' }, a);
       assert.deepEqual(await edit(party.id, input, a), edited);
-      await remove(party.id, a);
+      await remove(party.id, a, { operationId: id(), expectedRevision: later.metadataRevision, ...(!supplier ? { expectedAccountRevision: later.accountRevision } : {}), reason: 'Baja posterior a edición' });
       const before = await state();
       assert.deepEqual(await edit(party.id, input, a), edited); assert.deepEqual(await state(), before);
       assert.equal(await row(party, supplier), undefined);
@@ -111,7 +111,7 @@ export async function runPartyEditChecks({ db, sql, check }) {
 
   await check('client merge invalidates metadata revisions captured before the merge', async () => {
     const keep = await create('Conservar revisión metadata'), source = await create('Origen revisión metadata');
-    await db.mergeClientRecords(keep.id, source.id, a, { operationId: id(), expectedKeepRevision: 0, expectedMergeRevision: 0 });
+    await db.mergeClientRecords(keep.id, source.id, a, { operationId: id(), expectedKeepRevision: 0, expectedMergeRevision: 0, expectedKeepMetadataRevision: keep.metadataRevision, expectedMergeMetadataRevision: source.metadataRevision });
     assert.equal(Number((await row(keep)).metadata_revision), 1);
     const before = await state();
     await assert.rejects(db.updateClientRecord(keep.id, { operationId: id(), expectedRevision: keep.metadataRevision, notas: 'Borrador anterior a merge' }, a), { code: 'PARTY_REVISION_MISMATCH' });
