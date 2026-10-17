@@ -157,6 +157,7 @@ export function validateOperationPlan(plan, context) {
   if (!context || typeof context.businessId !== 'string' || !context.businessId.trim() || context.businessId === '__default__' || typeof context.actorId !== 'string' || !context.actorId.trim()) fail('BUSINESS_SCOPE_REQUIRED', 'Explicit business and actor context is required');
   if (!(Array.isArray(context.permissions) || context.permissions instanceof Set)) fail('FORBIDDEN', 'Inventory permissions are required');
   const normalized = normalizePlan(plan);
+  if (normalized.operationId.startsWith('universal-child:') && !context.internalUniversalOperation) fail('FORBIDDEN','Universal child operation IDs are reserved for the universal executor');
   if (normalized.operationId.startsWith('order-stock:') && !context.internalOrderOperation) fail('FORBIDDEN', 'Order inventory operation IDs are reserved for the order executor');
   if (normalized.businessId !== context.businessId) fail('BUSINESS_SCOPE_MISMATCH', 'Operation business differs from authenticated business');
   for (const action of normalized.actions) {

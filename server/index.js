@@ -22,6 +22,7 @@ import {
   deletePedidoRecord,
   applyActionsToDatabase,
   executeInventoryOperation,
+  executeUniversalOperation,
   executeAccountOperation,
   executeOrderOperation,
   answerStockQuery,
@@ -776,6 +777,25 @@ app.get('/api/meta-webhook', (req, res) => {
   }
 
   res.sendStatus(403);
+});
+
+app.post('/api/operations', authenticateRequest, async (req,res) => {
+  try {
+    const result = await executeUniversalOperation(req.body, {
+      businessId:tenantPhoneOf(req),actorId:authPhoneOf(req),permissions:[
+        'inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
+        'accounts:charge','accounts:payment','accounts:adjust','accounts:transfer',
+        'clients:create','clients:update','clients:delete','suppliers:create','suppliers:update','suppliers:delete','suppliers:merge',
+      ],
+    });
+    res.json(result);
+  } catch (error) {
+    const known = error.name === 'InventoryOperationError';
+    const status = !known ? 500 : ['FORBIDDEN','BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
+      : ['INVALID_OPERATION_PLAN','INVALID_ACCOUNT_OPERATION','INVALID_PARTY_OPERATION','BUSINESS_SCOPE_REQUIRED','UNSUPPORTED_OPERATION','OPERATION_ID_REQUIRED','MIXED_OPERATION_PLAN_UNSUPPORTED'].includes(error.code) ? 400
+      : ['CLIENT_NOT_FOUND','PARTY_NOT_FOUND','SKU_NOT_FOUND'].includes(error.code) ? 404 : 409;
+    res.status(status).json({error:known ? error.message : 'No pude guardar la operación.',code:known ? error.code : 'OPERATION_UNAVAILABLE'});
+  }
 });
 
 app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {

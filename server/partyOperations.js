@@ -92,6 +92,7 @@ export function validatePartyPlan(input, context) {
     || typeof context.actorId !== 'string' || !context.actorId.trim()) fail('BUSINESS_SCOPE_REQUIRED', 'Falta el negocio/actor autorizado.');
   if (!(Array.isArray(context.permissions) || context.permissions instanceof Set)) fail('FORBIDDEN', 'Faltan permisos de alta.');
   const plan = normalizePartyPlan(input);
+  if (plan.operationId.startsWith('universal-child:') && !context.internalUniversalOperation) fail('FORBIDDEN','Los IDs internos universales están reservados al ejecutor universal.');
   if (plan.businessId !== context.businessId) fail('BUSINESS_SCOPE_MISMATCH', 'El plan no pertenece al negocio autorizado.');
   if (plan.operationId.startsWith('order-party:') && !context.internalOrderBatch) fail('FORBIDDEN', 'ID reservado para los participantes de un pedido.');
   if (plan.operationId.startsWith('client-merge-party:') && !context.internalClientMerge) fail('FORBIDDEN', 'ID reservado para los metadatos de una fusión.');

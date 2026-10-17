@@ -105,6 +105,80 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(invalid.status, 400); assert.equal(invalid.json.code, 'INVALID_OPERATION_PLAN');
       assert.equal((await ledger('http-foreign')).length, 0); assert.equal((await ledger('http-invalid')).length, 0);
     });
+    await run('universal endpoint authenticates business scope and rejects malformed, unsupported and mixed plans', async () => {
+      const body = plan('http-universal-contract', [{ itemId: 'party', type: 'client.create', name: 'HTTP Universal Contrato' }]);
+      const before = (await sql.query('SELECT * FROM universal_operations WHERE owner_phone=$1 ORDER BY operation_id', [owner])).rows;
+      assert.equal((await request('/api/operations', { body, auth: false })).status, 401);
+      const foreign = await request('/api/operations', { body: { ...body, businessId: '59899000565' } });
+      assert.equal(foreign.status, 403); assert.equal(foreign.json.code, 'BUSINESS_SCOPE_MISMATCH');
+      const missing = await request('/api/operations', { body: { ...body, operationId: undefined } });
+      assert.equal(missing.status, 400); assert.equal(missing.json.code, 'OPERATION_ID_REQUIRED');
+      for (const extra of [{ contractVersion: 2 }, { ownerPhone: 'foreign' }, { actions: [] }, { actions: [{ itemId: 'unknown', type: 'client_order' }] }, { actions: [{ itemId: 'merge', type: 'client.merge' }] }]) {
+        const invalid = await request('/api/operations', { body: { ...body, ...extra } });
+        assert.equal(invalid.status, 400); assert.equal(invalid.json.code, 'INVALID_OPERATION_PLAN');
+      }
+      const mixed = await request('/api/operations', { body: { ...body, actions: [...body.actions, fresh] } });
+      assert.equal(mixed.status, 400); assert.equal(mixed.json.code, 'MIXED_OPERATION_PLAN_UNSUPPORTED');
+      assert.deepEqual((await sql.query('SELECT * FROM universal_operations WHERE owner_phone=$1 ORDER BY operation_id', [owner])).rows, before);
+      assert.equal((await sql.query("SELECT 1 FROM clients WHERE owner_phone=$1 AND name='HTTP Universal Contrato'", [owner])).rowCount, 0);
+    });
+    await run('universal inventory applies once, freezes receipt after later sale and conflicts across domains', async () => {
+      const body = plan('http-universal-inventory', [{ ...fresh, target: { kind: 'new', sku: { name: 'HTTP Universal SKU', unit: 'unit' } } }]);
+      const [one, two] = await Promise.all([request('/api/operations', { body }), request('/api/operations', { body })]);
+      assert.equal(one.status, 200); assert.deepEqual(one.json, two.json); assert.equal(one.json.domain, 'inventory'); assert.equal(one.json.operationId, body.operationId);
+      const child = one.json.domainResult, productId = child.items[0].skuId;
+      assert.ok(child.operationId.startsWith('universal-child:')); assert.equal((await ledger(child.operationId)).length, 1); assert.equal(Number((await stock(productId))[0].stock_available), 3);
+      const stored = (await sql.query('SELECT result_json FROM universal_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, body.operationId])).rows;
+      assert.equal(stored.length, 1); assert.deepEqual(stored[0].result_json, one.json);
+      const sale = await request('/api/operations', { body: plan('http-universal-sale', [{ itemId: 'sell', type: 'stock.sell', target: { kind: 'existing', skuId: productId }, quantity: { value: 1, unit: 'unit' } }]) });
+      assert.equal(sale.status, 200); assert.equal(Number((await stock(productId))[0].stock_available), 2);
+      assert.deepEqual((await request('/api/operations', { body })).json, one.json);
+      const collision = await request('/api/operations', { body: plan(body.operationId, [{ itemId: 'party', type: 'client.create', name: 'Conflicto universal dominio' }]) });
+      assert.equal(collision.status, 409); assert.equal(collision.json.code, 'IDEMPOTENCY_CONFLICT');
+      const unknown = await request('/api/operations', { body: { ...body, operationId: 'http-universal-unknown-field', actions: [{ ...body.actions[0], ownerPhone: 'foreign' }] } });
+      assert.equal(unknown.status, 400);
+      const stale = await request('/api/operations', { body: plan('http-universal-stale-sku', [{ itemId: 'edit', type: 'sku.update', target: { kind: 'existing', skuId: productId, expectedRevision: 0 }, changes: { price: 0 }, reason: 'Ficha anterior a venta' }]) });
+      assert.equal(stale.status, 409); assert.equal(stale.json.code, 'REVISION_MISMATCH');
+    });
+    await run('universal party and account receipts preserve explicit targets, stale guards and replay after deletion', async () => {
+      const body = plan('http-universal-parties', [{ itemId: 'client', type: 'client.create', name: 'HTTP Cliente Universal' }, { itemId: 'supplier', type: 'supplier.create', name: 'HTTP Proveedor Universal' }]);
+      const created = await request('/api/operations', { body }); assert.equal(created.status, 200); assert.equal(created.json.domain, 'parties');
+      const client = created.json.domainResult.items[0].party;
+      const editBody = plan('http-universal-party-edit', [{ itemId: 'edit', type: 'client.update', target: { kind: 'existing', partyId: client.id, expectedRevision: 0 }, changes: { notas: 'Nota universal editada' } }]);
+      const edited = await request('/api/operations', { body: editBody }); assert.equal(edited.status, 200); assert.equal(edited.json.domainResult.items[0].party.metadataRevision, 1);
+      const stale = await request('/api/operations', { body: { ...editBody, operationId: 'http-universal-party-stale' } });
+      assert.equal(stale.status, 409); assert.equal(stale.json.code, 'PARTY_REVISION_MISMATCH');
+      const removed = await request('/api/operations', { body: plan('http-universal-party-delete', [{ itemId: 'delete', type: 'client.delete', target: { kind: 'existing', partyId: client.id, expectedRevision: 1, expectedAccountRevision: 0 }, reason: 'Baja universal explícita' }]) });
+      assert.equal(removed.status, 200); assert.equal(removed.json.domainResult.items[0].deleted, true);
+      assert.deepEqual((await request('/api/operations', { body })).json, created.json);
+      assert.deepEqual((await request('/api/operations', { body: editBody })).json, edited.json);
+      assert.equal((await sql.query('SELECT 1 FROM clients WHERE id=$1', [client.id])).rowCount, 0);
+      const accountClient = await createFixtureClient({ name: 'HTTP Cuenta Universal' }, owner);
+      const charge = plan('http-universal-account-charge', [{ itemId: 'money', type: 'account.charge', target: { kind: 'existing', clientId: accountClient.id }, amount: { value: 10, unit: 'legacy-money' }, reason: 'Cargo universal revisado' }]);
+      const applied = await request('/api/operations', { body: charge }); assert.equal(applied.status, 200); assert.equal(applied.json.domain, 'accounts'); assert.equal(applied.json.domainResult.items[0].balance, 10);
+      const paid = await request('/api/operations', { body: { ...charge, operationId: 'http-universal-account-payment', actions: [{ ...charge.actions[0], type: 'account.payment', amount: { value: 3, unit: 'legacy-money' } }] } });
+      assert.equal(paid.status, 200); assert.equal(paid.json.domainResult.items[0].balance, 7);
+      assert.deepEqual((await request('/api/operations', { body: charge })).json, applied.json);
+      const accountRow = (await sql.query('SELECT debt,account_revision FROM clients WHERE owner_phone=$1 AND id=$2', [owner, accountClient.id])).rows[0];
+      assert.equal(Number(accountRow.debt), 7); assert.equal(Number(accountRow.account_revision), 2);
+      const staleAccount = await request('/api/operations', { body: { ...charge, operationId: 'http-universal-account-stale', actions: [{ ...charge.actions[0], type: 'account.adjust', target: { ...charge.actions[0].target, expectedRevision: 0 } }] } });
+      assert.equal(staleAccount.status, 409); assert.equal(staleAccount.json.code, 'ACCOUNT_REVISION_MISMATCH');
+      const conflict = await request('/api/operations', { body: { ...charge, actions: [{ ...charge.actions[0], amount: { value: 11, unit: 'legacy-money' } }] } });
+      assert.equal(conflict.status, 409); assert.equal(conflict.json.code, 'IDEMPOTENCY_CONFLICT');
+    });
+    await run('universal inventory preserves reviewed selection boundaries and forbids public stock withdrawal', async () => {
+      const products = await Promise.all(['A', 'B'].map((suffix) => createHttpFixtureProduct({ name: `HTTP universal selección ${suffix}`, stockAvailable: 4 }, owner)));
+      const target = (product) => ({ kind: 'existing', skuId: product.id, expectedRevision: product.revision, expectedFingerprint: product.identityFingerprint });
+      const changes = products.map((product, index) => ({ itemId: `edit-${index}`, type: 'sku.update', target: target(product), changes: { price: 0 }, reason: 'Sin selección confirmada' }));
+      const bypass = await request('/api/operations', { body: plan('http-universal-selection-bypass', changes) });
+      assert.equal(bypass.status, 409); assert.equal(bypass.json.code, 'SELECTION_REQUIRED');
+      const archive = await request('/api/operations', { body: plan('http-universal-archive-bypass', [{ itemId: 'archive', type: 'sku.deactivate', target: target(products[0]), reason: 'Sin selección confirmada' }]) });
+      assert.equal(archive.status, 409); assert.equal(archive.json.code, 'SELECTION_REQUIRED');
+      const withdrawal = await request('/api/operations', { body: plan('http-universal-withdraw-forbidden', [{ itemId: 'withdraw', type: 'stock.withdraw', target: { kind: 'existing', skuId: products[0].id }, quantity: { value: 1, unit: 'unit' }, reason: 'Sin permiso público de retiro' }]) });
+      assert.equal(withdrawal.status, 403); assert.equal(withdrawal.json.code, 'FORBIDDEN');
+      for (const product of products) assert.equal(Number((await stock(product.id))[0].stock_available), 4);
+      assert.equal((await sql.query('SELECT 1 FROM universal_operations WHERE owner_phone=$1 AND operation_id=ANY($2)', [owner, ['http-universal-selection-bypass', 'http-universal-archive-bypass', 'http-universal-withdraw-forbidden']])).rowCount, 0);
+    });
     await run('canonical receive persists exact stock and replay creates no duplicate', async () => {
       const body = plan('http-receive', [fresh]);
       const response = await request('/api/inventory/operations', { body });

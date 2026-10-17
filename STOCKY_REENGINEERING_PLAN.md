@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.4e1c, CRUD de clientes/proveedores y fusiones transaccionales.
+- Último alcance integrado: H4.5a, entrada común de planes con despacho/recibo universal.
 
 ## Hitos y dependencias
 
@@ -54,12 +54,11 @@
 
 ## Próximo paso exacto
 
-H4.5a: entrada universal de planes por contrato v1 y despacho a los ejecutores existentes,
-con autorización y rechazo atómico de composiciones todavía no soportadas. Reutilizar
-normalizadores de stock/cuenta/party; nunca duplicar Inventory Engine. Agregar API común
-para planes homogéneos, probar todos los dominios/ámbitos/replay y documentar que aún no
-es el intérprete universal ni composición entre dominios. Luego H4.2b conversación de
-conjuntos, H4.5b intérprete desacoplado/composición y H4.6 familias configurables.
+H4.2b1: ampliar selecciones congeladas a stock.adjust, reutilizando el planner y la
+confirmación existentes. Mostrar antes/después por SKU y unidad, aplicar solo balances
+revisados con motivo, rechazar revisión vencida y rollback integral. Integrar ajuste de
+conjunto desde el panel con preview sin escritura y retry estable; probar PG/HTTP/Edge.
+Después H4.2b conversación de conjuntos, H4.5b intérprete desacoplado/composición y H4.6.
 El escritor local ya fue retirado; no reintroducir fallback optimista ni simulaciones.
 H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
 El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
@@ -458,7 +457,7 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   fechas/qty/posting), permitiendo solo vínculo+revisión. Fusión de clientes ahora verifica
   metadatos y saldos; conserva replay de recibos históricos con hash original. Transfiere
   saldo por accountPostgres, mueve pedidos por helper verificado y cambia notas/baja origen
-  por partyPostgres con childreceipt reservado. Falla cualquiera: rollback de todo/outbox.
+  por partyPostgres con childreceipt reservado. Falla cualquiera: rollback de toda la transacción.
   Solo partyPostgres escribe entidades/metadatos; solo accountPostgres cambia sus saldos.
 - H4.4e1c: panel conserva cuerpos/IDs/revisiones de bajas/fusiones tras 503 o refresco
   fallido, mantiene retry fuera de las tarjetas borradas y exige revisar para nuevo intento.
@@ -470,13 +469,36 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   recibo/fechas/qty/posting con rollback total. Revisión independiente enfocada sin hallazgos.
   Sin despliegue/LLM real; fusión limita notas a 8000 caracteres, nunca las trunca.
 
+- H4.5a (2026-10-17): POST /api/operations acepta OperationPlan v1 homogéneo de inventario,
+  cuentas o entidades. universalOperations selecciona dominio y reutiliza sus validadores;
+  universalPostgres solo orquesta adaptadores existentes, sin lógica de stock/cuenta nueva.
+  universal_operations guarda padre/plan/hash/actor/recibo; childreceipts universal-child
+  son internos y se escriben en la misma transacción. Reutilizar ID entre dominios por esta
+  entrada produce conflicto. Proyección de eventos desenvuelve el recibo de dominio.
+- H4.5a: autorización antes de replay, tenant por backend, IDs internos no invocables desde
+  rutas de dominio y mismo orden de locks. Plan mixto/acción desconocida se rechaza antes
+  de escribir; guard de selección revisada conserva restricciones previas. HTTP no habilita
+  stock.withdraw. Inventario registra historia por callback compartido; cuentas/party ya
+  la registran dentro de sus adaptadores. Las rutas anteriores siguen siendo compatibles.
+- H4.5a seguridad: registradas también order_operations, account_operations/account_movements
+  e inventory_selections en RLS/revocación a roles cliente, junto a universal_operations.
+  Migración repetida conserva datos; lectura/backend continúan con su rol autorizado.
+- H4.5a verificado: 215 checks PG/HTTP y 57 tests puros, build aprobado; tres dominios,
+  root/child receipts concurrentes, cambios/borrado posteriores, colisiones, aislamiento,
+  permisos, selección obligatoria y fallo SQL padre que revierte efectos/ledger/historia.
+  Revisión independiente sin hallazgos concretos. Edge de CRUD sigue aprobado en e1c.
+- H4.5a límites: entrada común no equivale a intérprete universal terminado. No compone
+  dominios ni pedidos/client.merge en un solo plan; canales/parser aún usan adapters
+  compatibles. Idempotencia raíz global aplica a esta entrada, no reconcilia IDs ya usados
+  en endpoints históricos de dominios distintos. No desplegado ni probado con LLM real.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
 - H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
 - H4.4a `844b29b`; H4.4b `bf812ee` (incluye checkpoint parcial `600373f`); H4.4c `ba251e6`.
-- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a `f34ea14`; e1b `848632c`; e1c: ver git log.
+- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a `f34ea14`; e1b `848632c`; e1c `ffa7809`; H4.5a: ver git log.
   No volver a diseñar la política de aprovisionamiento/conciliación.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.

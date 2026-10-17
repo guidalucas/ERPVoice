@@ -80,6 +80,8 @@ export function validateAccountPlan(input, context) {
     if (!(Array.isArray(context.permissions) || context.permissions instanceof Set))
         fail('FORBIDDEN', 'Faltan permisos de cuenta.');
     const plan = normalizeAccountPlan(input);
+    if (plan.operationId.startsWith('universal-child:') && !context.internalUniversalOperation)
+        fail('FORBIDDEN','Los IDs internos universales están reservados al ejecutor universal.');
     if ((plan.operationId.startsWith('client-merge:') || plan.operationId.startsWith('client-merge-transfer:')) && !context.internalClientMerge)
         fail('FORBIDDEN', 'Los IDs internos de fusión están reservados al ejecutor de clientes.');
     if (plan.businessId !== context.businessId)

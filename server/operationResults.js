@@ -5,6 +5,7 @@ import { partyResultActions } from './partyOperations.js';
 
 /** Channels project applied facts from receipts, independently of the proposed commands. */
 export function operationResultActions(result, originalActions = []) {
+  if (result.domainResult) return operationResultActions(result.domainResult,originalActions);
   if (result.kind === 'client.merge') return [{type:'client_merge',clientId:result.client.id,clientName:result.client.name,removedClientId:result.removedClientId,balance:result.client.debt},
     ...(result.accountResult ? accountResultActions(result.accountResult) : [])];
   if (Array.isArray(result.receipts)) return result.receipts.flatMap((receipt) => operationResultActions(receipt));

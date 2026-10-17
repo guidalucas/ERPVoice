@@ -18,6 +18,8 @@ import { ACCOUNT_SCHEMA_SQL, executeAccountPlanInTransaction } from './accountPo
 import { operationRequestDigest } from './operationHash.js';
 import { validateAccountPlan } from './accountOperations.js';
 import { mergeClientsInTransaction } from './clientMergePostgres.js';
+import { UNIVERSAL_SCHEMA_SQL, executeUniversalPlanInTransaction } from './universalPostgres.js';
+import { prepareUniversalOperation } from './universalOperations.js';
 import { PARTY_SCHEMA_SQL, executePartyPlanInTransaction, partyRowToEntity } from './partyPostgres.js';
 import { partyCreationToPlan, partyUpdateToPlan, partyDeleteToPlan, supplierMergeToPlan, validatePartyPlan } from './partyOperations.js';
 
@@ -541,6 +543,7 @@ const initializeDatabase = async () => {
     ${ORDER_SCHEMA_SQL}
     ${ACCOUNT_SCHEMA_SQL}
     ${PARTY_SCHEMA_SQL}
+    ${UNIVERSAL_SCHEMA_SQL}
 
     DO $$
     DECLARE
@@ -555,6 +558,11 @@ const initializeDatabase = async () => {
         'voice_stock_batches',
         'inventory_operations',
         'party_operations',
+        'universal_operations',
+        'order_operations',
+        'account_operations',
+        'account_movements',
+        'inventory_selections',
         'inventory_movements',
         'meta_message_claims',
         'meta_reply_outbox',
@@ -1389,6 +1397,14 @@ export const updatePedidoRecord = async (pedidoId, input, ownerPhone = DEFAULT_O
 
 export const deletePedidoRecord = async (pedidoId, ownerPhone = DEFAULT_OWNER_PHONE, input = {}, options = {}) =>
   executeOrderOperation('delete', pedidoId, input, ownerPhone, options);
+
+export const executeUniversalOperation = async (input, context) => {
+  const {plan} = prepareUniversalOperation(input,context);
+  await ensureReady();
+  return withTransaction((client) => executeUniversalPlanInTransaction(client,plan,{
+    ...context,ownerPhoneVariants:getOwnerPhoneVariants(context.businessId),
+  },persistInventoryTransactions));
+};
 
 export const executeInventoryOperation = async (plan, context) => {
   const normalized = validateOperationPlan(plan, context);
