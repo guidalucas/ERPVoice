@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { interpretUniversalIntent } from '../server/universalIntentInterpreter.js';
 import { inventoryProductFingerprint } from '../server/inventoryOperations.js';
+import { normalizeFamilyPublication } from '../server/productFamilySchemas.js';
 
 const sourceText='Ingresá 3 unidades, cargá 5 a la cuenta y cambiá el nombre del cliente. Actualizá el pedido.';
 const catalog={products:[{id:'sku',name:'Producto',unit:'unit',revision:7,stockAvailable:4,stockReserved:1}],clients:[{id:'client',name:'Cliente',accountRevision:9,metadataRevision:4}],proveedores:[{id:'supplier',name:'Proveedor',metadataRevision:6}],pedidos:[{id:'order',revision:8}]};
@@ -215,6 +216,74 @@ test('invalid prior revision/context/evidence/history makes no provider calls',a
   assert.equal(calls,0);
   const history=`${previous.plan.source.text}\nRespuesta intermedia.\n${reply}`;
   assert.equal((await revise(previous,null,reply,{complete,sourceText:history})).kind,'ready');assert.equal(calls,1);
+});
+
+const voltageAttribute=value=>({state:'known',type:'number',value,unit:'v'});
+const familySchema=(version,values=[110,220])=>({familyId:'electrical',version,schema:normalizeFamilyPublication({operationId:'publish',familyId:'electrical',expectedVersion:version-1,schema:{name:'Componentes eléctricos',unit:'unit',attributes:{voltaje:{type:'number',required:true,unit:'v',values}}}}).schema});
+const familyReceipt=()=>({itemId:'new-family',type:'stock.receive',target:{kind:'new',sku:{name:'Conector nuevo',unit:'unit',family:{id:'electrical',version:1},attributes:{voltaje:voltageAttribute(220)}}},quantity:{value:3,unit:'unit'}});
+
+test('offered family schema enables new products with pinned version and projects family on existing products',async()=>{
+  const familySchemas=[familySchema(1),familySchema(2,[12])];
+  const familyCatalog={...catalog,familySchemas,products:[{...catalog.products[0],family:{id:'electrical',version:1},attributes:{voltaje:voltageAttribute(220)}}]};
+  const original=structuredClone(familyCatalog);
+  const action=familyReceipt();
+  const result=await invoke(proposal([action]),{catalog:familyCatalog,complete:async options=>{
+    const data=JSON.parse(options.messages[1].content);
+    assert.deepEqual(data.catalog.familySchemas,familySchemas);
+    assert.deepEqual(data.catalog.products[0].family,{id:'electrical',version:1});
+    assert.equal(data.catalog.familySchemas[0].id,undefined);
+    return {ok:true,json:proposal([action])};
+  }});
+  assert.equal(result.kind,'ready');
+  assert.deepEqual(result.plan.actions[0].target.sku.family,{id:'electrical',version:1});
+  assert.deepEqual(familyCatalog,original);
+  const create={...action,type:'sku.create',initialStock:{available:0,reserved:0},reason:'Alta explícita'};delete create.quantity;
+  assert.equal((await invoke(proposal([create]),{catalog:familyCatalog,context:{...context,permissions:[...context.permissions,'inventory:create']}})).kind,'ready');
+});
+
+test('new family SKU rejects unoffered versions and invalid required attributes/types/units/enums',async()=>{
+  const familyCatalog={...catalog,familySchemas:[familySchema(1)]};
+  for(const mutate of [
+    action=>action.target.sku.family.id='invented',action=>action.target.sku.family.version=2,
+    action=>action.target.sku.family.extra='forged',action=>action.target.sku.family.version=0,
+    action=>action.target.sku.attributes={},
+    action=>action.target.sku.attributes.voltaje={state:'unknown',type:'number',unit:'v'},
+    action=>action.target.sku.attributes.voltaje={state:'known',type:'text',value:'220',unit:'v'},
+    action=>action.target.sku.attributes.voltaje.unit='kv',action=>action.target.sku.attributes.voltaje.value=12,
+    action=>{action.target.sku.unit='kg';action.quantity.unit='kg';},
+  ]) {const action=familyReceipt();mutate(action);assert.equal((await invoke(proposal([action]),{catalog:familyCatalog})).kind,'invalid');}
+  assert.equal((await invoke(proposal([familyReceipt()]))).kind,'invalid');
+});
+
+test('SKU metadata validates current family and explicit version upgrades with closed references',async()=>{
+  const familyCatalog={...catalog,familySchemas:[familySchema(1),familySchema(2,[12])],products:[{...catalog.products[0],family:{id:'electrical',version:1},attributes:{voltaje:voltageAttribute(220)}}]};
+  const action={itemId:'metadata',type:'sku.update',target:{kind:'existing',skuId:'sku'},changes:{price:0},reason:'Cambio explícito'};
+  const unchanged=await invoke(proposal([action]),{catalog:familyCatalog});assert.equal(unchanged.kind,'ready');
+  assert.equal(Object.hasOwn(unchanged.plan.actions[0].changes,'family'),false);
+  const invalidAttributes={...action,changes:{attributes:{voltaje:voltageAttribute(12)}}};
+  assert.equal((await invoke(proposal([invalidAttributes]),{catalog:familyCatalog})).kind,'invalid');
+  const upgrade={...action,changes:{family:{id:'electrical',version:2},attributes:{voltaje:voltageAttribute(12)}}};
+  const changed=await invoke(proposal([upgrade]),{catalog:familyCatalog});assert.equal(changed.kind,'ready');
+  assert.deepEqual(changed.plan.actions[0].changes.family,{id:'electrical',version:2});
+  for(const family of [{id:'electrical',version:3},{id:'electrical',version:2,expectedRevision:1},null]) assert.equal((await invoke(proposal([{...upgrade,changes:{...upgrade.changes,family}}]),{catalog:familyCatalog})).kind,'invalid');
+  assert.equal((await invoke(proposal([{...action,changes:{family:{id:'electrical',version:2}}}]),{catalog:familyCatalog})).kind,'invalid');
+  const sequentialCatalog={...familyCatalog,familySchemas:[familySchema(1),familySchema(2,[220])]};
+  const first={...action,itemId:'first',changes:{attributes:{voltaje:voltageAttribute(110)}}};
+  const second={...action,itemId:'second',changes:{family:{id:'electrical',version:2}}};
+  assert.equal((await invoke(proposal([first,second]),{catalog:sequentialCatalog})).kind,'invalid');
+});
+
+test('family catalog references are unique, descriptor-safe and count toward the existing total limit',async()=>{
+  let calls=0;const complete=async()=>{calls++;return {ok:true,json:proposal()};};
+  const entry=familySchema(1);
+  assert.equal((await invoke(null,{complete,catalog:{...catalog,familySchemas:[entry,entry]}})).kind,'invalid');
+  const getter=structuredClone(entry);Object.defineProperty(getter,'version',{enumerable:true,get(){throw Error('getter ran');}});
+  assert.equal((await invoke(null,{complete,catalog:{...catalog,familySchemas:[getter]}})).kind,'invalid');
+  const many=Array.from({length:997},(_,index)=>({...entry,familyId:`family-${index}`}));
+  assert.equal((await invoke(null,{complete,catalog:{...catalog,familySchemas:many}})).kind,'unavailable');
+  assert.equal(calls,0);
+  const legacy=familyReceipt();delete legacy.target.sku.family;delete legacy.target.sku.attributes;
+  assert.equal((await invoke(proposal([legacy]))).kind,'ready');
 });
 
 test('clarification questions resolve conversational references but never become user evidence',async()=>{

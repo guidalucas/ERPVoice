@@ -1,9 +1,18 @@
 import { normalizeProductMetadata, productBaseName } from './productIdentity.js';
 import { productIdentity, inventoryProductFingerprint, InventoryOperationError } from './inventoryOperations.js';
+import { normalizeFamilyReference } from './productFamilySchemas.js';
+
+const requestedFamily = action => {
+  if (action.family===undefined) return undefined;
+  try { return normalizeFamilyReference(action.family); }
+  catch(error) { throw new InventoryOperationError(error.code,error.message); }
+};
+const matchesFamily = (family,product) => !family || (product.family?.id===family.id && product.family?.version===family.version);
 
 const skuFromAction = (action) => {
   const metadata = normalizeProductMetadata(action);
   const sku = { name: productBaseName(metadata), attributes: action.attributes ?? {}, unit: action.unit ?? 'unit' };
+  if (action.family !== undefined) sku.family=requestedFamily(action);
   for (const field of ['productType', 'productModel', 'size']) {
     if (metadata[field] != null) sku[field] = metadata[field];
   }
@@ -19,7 +28,7 @@ const receiveAction = (action, target, itemId) => ({
 export const bindStockConsumptionAction = (action, products) => {
   const sku = skuFromAction(action);
   // Parser IDs/fingerprints are proposals, not server-issued identity authority.
-  const exact = products.filter((product) => productIdentity(product) === productIdentity({ ...sku,
+  const exact = products.filter((product) => matchesFamily(sku.family,product) && productIdentity(product) === productIdentity({ ...sku,
     // Legacy parsers may repeat the full name as a type/model. An absent stored
     // descriptor cannot authorize another identity; keep its authoritative absence.
     productType: product.productType == null ? undefined : sku.productType,
@@ -42,7 +51,7 @@ export const productUpdateActions = (productId, updates, options, prefix = 'item
     ...(options.expectedFingerprint ? { expectedFingerprint: options.expectedFingerprint } : {}) };
   const reason = options.reason ?? 'Actualización confirmada';
   const actions = [];
-  const changes = Object.fromEntries(['name', 'productType', 'productModel', 'size', 'attributes', 'price', 'priceCurrency']
+  const changes = Object.fromEntries(['name', 'productType', 'productModel', 'size', 'attributes', 'price', 'priceCurrency','family']
     .filter((field) => updates[field] !== undefined).map((field) => [field, updates[field]]));
   if (Object.keys(changes).length) actions.push({ itemId: `${prefix}-update`, type: 'sku.update', target, changes, reason });
   const balances = { ...(updates.stockAvailable !== undefined ? { available: updates.stockAvailable } : {}),
@@ -71,13 +80,14 @@ export const confirmedStockActionsToPlan = ({ actions, sourceText, ownerPhone, o
       const explicitId = action.productId ?? action.resolvedProductId;
       if (typeof explicitId !== 'string' || !explicitId.trim() || (action.productId && action.resolvedProductId && action.productId !== action.resolvedProductId)) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Elegí un SKU explícito para actualizar; no apliqué cambios.');
       return productUpdateActions(explicitId, { price: action.price, priceCurrency: action.priceCurrency,
-        stockAvailable: action.stockAvailable, stockReserved: action.stockReserved }, action, `item-${index + 1}`);
+        attributes:action.attributes,family:action.family,stockAvailable: action.stockAvailable, stockReserved: action.stockReserved }, action, `item-${index + 1}`);
     }
     if (action.type === 'sell' || action.type === 'reserve_stock') {
       const explicitId = action.productId ?? action.resolvedProductId;
       if (typeof explicitId !== 'string' || !explicitId.trim()) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Elegí un SKU explícito para vender o reservar; no apliqué cambios.');
       const product = products.find((entry) => entry.id === explicitId);
       if (!product) throw new InventoryOperationError('SKU_NOT_FOUND', 'El SKU seleccionado ya no está disponible.');
+      if (!matchesFamily(requestedFamily(action),product)) throw new InventoryOperationError('SKU_FAMILY_MISMATCH','La familia/version del SKU cambió; revisá su ficha antes de operar.');
       if (action.productId && action.resolvedProductId && action.productId !== action.resolvedProductId) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'La selección contiene IDs de SKU incompatibles.');
       return { itemId: `item-${index + 1}`, type: action.type === 'sell' ? 'stock.sell' : 'stock.reserve',
         target: { kind: 'existing', skuId: product.id,
@@ -89,7 +99,8 @@ export const confirmedStockActionsToPlan = ({ actions, sourceText, ownerPhone, o
     const sku = skuFromAction(action);
     const explicitId = action.productId ?? action.resolvedProductId;
     const exact = explicitId ? products.filter((product) => product.id === explicitId)
-      : products.filter((product) => productIdentity(product) === productIdentity(sku));
+      : products.filter((product) => matchesFamily(sku.family,product) && productIdentity(product) === productIdentity(sku));
+    if (exact.some(product=>!matchesFamily(sku.family,product))) throw new InventoryOperationError('SKU_FAMILY_MISMATCH','La familia/version del SKU cambió; revisá su ficha antes de operar.');
     if (explicitId && !exact.length) throw new InventoryOperationError('SKU_NOT_FOUND', 'El producto confirmado ya no está disponible.');
     if (exact.length > 1) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Hay varios SKU con esa identidad. Elegí un ID.');
     // Omission does not mean "the only variant in the catalog".

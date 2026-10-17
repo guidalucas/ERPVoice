@@ -16,6 +16,10 @@ export function buildUniversalOperationReview(plan,catalog) {
   const maps=Object.fromEntries(['products','clients','proveedores','pedidos'].map(key=>[key,new Map(catalog[key].map(row=>[row.id,row]))]));
   const refs={clienteId:'clients',proveedorId:'proveedores',productId:'products'};
   const fields=(input)=>Object.entries(input).flatMap(([key,value])=>{
+    if (key==='family') {
+      const definition=catalog.familySchemas?.find(row=>row.familyId===value.id && row.version===value.version);
+      return [`Familia: ${definition?.schema.name ?? value.id}; versión ${value.version}.`];
+    }
     if (key==='attributes') return attributeLines(value).map(line=>`Atributo ${line}`);
     if (refs[key]) return [`${labels[key]}: ${value===null ? 'Sin asignar' : maps[refs[key]].get(value)?.name ?? value}`];
     return [`${labels[key] ?? key}: ${valueText(value)}`];
@@ -25,7 +29,7 @@ export function buildUniversalOperationReview(plan,catalog) {
     if (action.type.startsWith('stock.') || action.type.startsWith('sku.')) {
       const current=action.target.kind==='existing' ? maps.products.get(action.target.skuId) : action.target.sku;
       name=current.name;
-      details.push(...fields(Object.fromEntries(['productType','productModel','size','unit'].filter(key=>current[key]!=null).map(key=>[key,current[key]]))));
+      details.push(...fields(Object.fromEntries(['productType','productModel','size','unit','family'].filter(key=>current[key]!=null).map(key=>[key,current[key]]))));
       details.push(...attributeLines(current.attributes ?? {}).map(line=>`Atributo ${line}`));
       if (action.target.kind==='existing') details.push(`Existencias observadas: ${current.stockAvailable} disponibles; ${current.stockReserved} reservadas.`,`Precio de catálogo observado: ${current.price} ${current.priceCurrency}.`);
       if (action.quantity) details.push(`Cantidad: ${action.quantity.value} ${action.quantity.unit}.`);

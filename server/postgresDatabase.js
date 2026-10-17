@@ -23,6 +23,7 @@ import { UNIVERSAL_SCHEMA_SQL, executeUniversalPlanInTransaction } from './unive
 import { prepareUniversalOperation } from './universalOperations.js';
 import { interpretUniversalIntent } from './universalIntentInterpreter.js';
 import { buildUniversalOperationReview } from './universalOperationReview.js';
+import { PRODUCT_FAMILY_SCHEMA_SQL, authorizeProductFamilies, loadProductFamilySchemas, publishProductFamilyInTransaction } from './productFamilyPostgres.js';
 import { UNIVERSAL_CONVERSATION_SCHEMA_SQL, authorizeUniversalConversation, normalizeDraftRequest,
   findDraftCommand, readUniversalDraft, persistUniversalInterpretation,
   confirmUniversalDraftInTransaction, cancelUniversalDraftInTransaction } from './universalConversationPostgres.js';
@@ -279,6 +280,7 @@ const rowToProduct = (row) => {
   status: row.inventory_status ?? 'active',
   revision: Number(row.inventory_revision ?? 0),
   priceCurrency: row.price_currency ?? 'XXX',
+  ...(row.family_id == null ? {} : {family:{id:row.family_id,version:Number(row.family_version)}}),
   };
   return { ...normalizeProductMetadata(product), identityFingerprint: productFingerprint(product) };
 };
@@ -551,6 +553,7 @@ const initializeDatabase = async () => {
     ${PARTY_SCHEMA_SQL}
     ${UNIVERSAL_SCHEMA_SQL}
     ${UNIVERSAL_CONVERSATION_SCHEMA_SQL}
+    ${PRODUCT_FAMILY_SCHEMA_SQL}
     ${META_SELECTION_SCHEMA_SQL}
 
     DO $$
@@ -569,6 +572,8 @@ const initializeDatabase = async () => {
         'universal_operations',
         'universal_drafts',
         'universal_draft_commands',
+        'product_family_schemas',
+        'product_family_operations',
         'order_operations',
         'account_operations',
         'account_movements',
@@ -1428,6 +1433,7 @@ const interpretUniversalDraft = async (text,draftId,context,options,clarificatio
     catalog.clients=(await client.query('SELECT * FROM clients WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToClient);
     catalog.proveedores=(await client.query('SELECT * FROM proveedores WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToProveedor);
     catalog.pedidos=(await client.query('SELECT * FROM pedidos WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToPedido);
+    catalog.familySchemas=await loadProductFamilySchemas(client,owners[0]);
     return catalog;
   });
   const result=await interpretUniversalIntent({sourceText:text,catalog,clarifications,
@@ -1500,6 +1506,15 @@ export const executeInventoryOperation = async (plan, context) => {
   });
 };
 
+export const publishProductFamily = async (input,context) => {
+  authorizeProductFamilies(context,true); await ensureReady();
+  return withTransaction(client=>publishProductFamilyInTransaction(client,input,context));
+};
+export const listProductFamilies = async context => {
+  authorizeProductFamilies(context); await ensureReady();
+  return withTransaction(client=>loadProductFamilySchemas(client,getOwnerPhoneVariants(context.businessId)));
+};
+
 const authorizeInventorySelection = (context, mutationType = 'sku.update') => validateOperationPlan({ contractVersion: 1,
   businessId: context?.businessId, operationId: 'selection-authorization',
   actions: [{ itemId: 'authorization', type: mutationType, target: { kind: 'existing', skuId: 'authorization', expectedRevision: 0 },
@@ -1522,7 +1537,9 @@ const previewInventorySelectionInTransaction = async (client,input,context) => {
     // Keep raw persisted metadata; presentation normalization cannot select another identity.
     const products = rows.rows.map(inventoryRowToProduct);
     const expiresAt = (await client.query("SELECT NOW() + INTERVAL '15 minutes' AS expires_at")).rows[0].expires_at.toISOString();
-    const { preview, plan } = buildSelectionPreview(request, products, { ...context, selectionId: `selection-${crypto.randomUUID()}`, expiresAt });
+    const usesFamilies=products.some(product=>product.family)||request.mutation.changes?.family;
+    const familySchemas=usesFamilies ? await loadProductFamilySchemas(client,getOwnerPhoneVariants(context.businessId)) : [];
+    const { preview, plan } = buildSelectionPreview(request, products, { ...context, familySchemas,selectionId: `selection-${crypto.randomUUID()}`, expiresAt });
     await client.query(`INSERT INTO inventory_selections (owner_phone,selection_id,request_id,actor_id,request_hash,preview_json,plan_json,expires_at)
       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8)`,
     [context.businessId,preview.selectionId,request.requestId,context.actorId,requestHash,JSON.stringify(preview),JSON.stringify(plan),expiresAt]);

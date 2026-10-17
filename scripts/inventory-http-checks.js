@@ -332,6 +332,54 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const reply = await request(`${route}/replies`, { body: { requestId: 'http-draft-after-cancel', text: 'Tres unidades.', version: preview.version } }); assert.equal(reply.status, 409); assert.equal(reply.json.code, 'DRAFT_NOT_PENDING');
       assert.deepEqual((await request(route, { method: 'GET' })).json, cancelled.json);
     });
+    await run('family HTTP publication authenticates, isolates tenants and serializes immutable version receipts', async () => {
+      const schema = { name: 'HTTP Componentes', unit: 'unit', attributes: { voltage: { type: 'number', required: true, unit: 'v', values: [12, 24] }, direction: { type: 'text', required: true, values: ['entrada', 'salida'] } }, allowAdditionalAttributes: false };
+      const body = { operationId: 'http-family-publication', familyId: 'http-family-auth', expectedVersion: 0, schema };
+      assert.equal((await request('/api/inventory/families', { method: 'GET', auth: false })).status, 401);
+      assert.equal((await request('/api/inventory/families', { body, auth: false })).status, 401);
+      const override = await request('/api/inventory/families', { body: { ...body, businessId: '59899000517' } }); assert.equal(override.status, 400); assert.equal(override.json.code, 'INVALID_PRODUCT_SCHEMA');
+      const [one, two] = await Promise.all([request('/api/inventory/families', { body }), request('/api/inventory/families', { body })]);
+      assert.equal(one.status, 200); assert.equal(two.status, 200); assert.deepEqual(one.json, two.json); assert.equal(one.json.family.version, 1);
+      const listed = await request('/api/inventory/families', { method: 'GET' }); assert.equal(listed.status, 200); assert.deepEqual(listed.json.families.find(({ familyId }) => familyId === body.familyId), one.json.family);
+      const foreignHeaders = { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000517' })}` };
+      const foreign = await request('/api/inventory/families', { method: 'GET', headers: foreignHeaders }); assert.equal(foreign.status, 200); assert.equal(foreign.json.families.some(({ familyId }) => familyId === body.familyId), false);
+      const stale = await request('/api/inventory/families', { body: { ...body, operationId: 'http-family-stale-version' } }); assert.equal(stale.status, 409); assert.equal(stale.json.code, 'PRODUCT_SCHEMA_VERSION_MISMATCH');
+      assert.equal((await sql.query('SELECT 1 FROM product_family_schemas WHERE owner_phone=$1 AND family_id=$2', [owner, body.familyId])).rowCount, 1);
+      assert.deepEqual((await sql.query('SELECT result_json FROM product_family_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, body.operationId])).rows[0].result_json, one.json);
+    });
+    await run('family HTTP SKU creation and explicit metadata upgrade preserve schema validation and exact persisted family', async () => {
+      const schema = { name: 'HTTP Electrónica validada', unit: 'unit', attributes: { voltage: { type: 'number', required: true, unit: 'v', values: [12, 24] }, direction: { type: 'text', required: true, values: ['entrada', 'salida'] } }, allowAdditionalAttributes: false };
+      const publication = { operationId: 'http-family-sku-publish', familyId: 'http-family-sku', expectedVersion: 0, schema };
+      const first = await request('/api/inventory/families', { body: publication }); assert.equal(first.status, 200);
+      const attributes = { voltage: { type: 'number', state: 'known', value: 12, unit: 'v' }, direction: { type: 'text', state: 'known', value: 'entrada' } };
+      const action = { itemId: 'create', type: 'sku.create', target: { kind: 'new', sku: { name: 'HTTP Componente familia', unit: 'unit', family: { id: publication.familyId, version: 1 }, attributes } }, initialStock: { available: 3, reserved: 0 }, reason: 'Alta explícita de familia HTTP' };
+      const created = await request('/api/operations', { body: plan('http-family-sku-create', [action]) }); assert.equal(created.status, 200);
+      const item = created.json.domainResult.items[0], skuId = item.skuId; assert.deepEqual(item.product.family, action.target.sku.family);
+      const familyRow = async () => {
+        const row = (await sql.query('SELECT family_id,family_version,inventory_revision FROM products WHERE owner_phone=$1 AND id=$2', [owner, skuId])).rows[0];
+        return { ...row, family_version: Number(row.family_version), inventory_revision: Number(row.inventory_revision) };
+      };
+      assert.deepEqual(await familyRow(), { family_id: publication.familyId, family_version: 1, inventory_revision: 0 });
+      const snapshot = async () => {
+        const result = {};
+        for (const table of ['products', 'inventory_operations', 'inventory_movements', 'transactions', 'universal_operations']) result[table] = (await sql.query(`SELECT * FROM ${table} WHERE owner_phone=$1 ORDER BY 1,2`, [owner])).rows;
+        return result;
+      };
+      const before = await snapshot();
+      for (const [index, extra] of [{ unit: 'box' }, { attributes: { ...attributes, voltage: { ...attributes.voltage, value: 36 } } }].entries()) {
+        const invalid = { ...action, target: { kind: 'new', sku: { ...action.target.sku, name: `HTTP Invalid family ${index}`, ...extra } } };
+        const response = await request('/api/operations', { body: plan(`http-family-invalid-${index}`, [invalid]) }); assert.equal(response.status, 409); assert.equal(response.json.code, 'PRODUCT_SCHEMA_MISMATCH');
+      }
+      const outsider = await request('/api/inventory/families', { body: { ...publication, operationId: 'http-family-foreign-publish', familyId: 'http-family-foreign-only' }, headers: { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000517' })}` } }); assert.equal(outsider.status, 200);
+      const foreignSku = { ...action, target: { kind: 'new', sku: { ...action.target.sku, name: 'HTTP Family foreign SKU', family: { id: 'http-family-foreign-only', version: 1 } } } };
+      const refused = await request('/api/operations', { body: plan('http-family-foreign-sku', [foreignSku]) }); assert.equal(refused.status, 404); assert.equal(refused.json.code, 'PRODUCT_SCHEMA_NOT_FOUND'); assert.deepEqual(await snapshot(), before);
+      const v2 = await request('/api/inventory/families', { body: { ...publication, operationId: 'http-family-sku-v2', expectedVersion: 1, schema: { ...schema, attributes: { ...schema.attributes, certified: { type: 'boolean', required: true } } } } }); assert.equal(v2.status, 200); assert.equal((await familyRow()).family_version, 1);
+      const current = (await db.getStateSnapshotStrict(owner)).products.find(({ id }) => id === skuId);
+      const upgradeBody = { operationId: 'http-family-sku-upgrade', expectedRevision: current.revision, expectedFingerprint: current.identityFingerprint, reason: 'Adopción explícita de contrato v2', family: { id: publication.familyId, version: 2 }, attributes: { ...attributes, certified: { type: 'boolean', state: 'known', value: true } } };
+      const upgraded = await request(`/api/products/${skuId}`, { method: 'PUT', body: upgradeBody }); assert.equal(upgraded.status, 200); assert.deepEqual(await familyRow(), { family_id: publication.familyId, family_version: 2, inventory_revision: 1 });
+      assert.deepEqual((await db.getStateSnapshotStrict(owner)).products.find(({ id }) => id === skuId).family, upgradeBody.family);
+      assert.deepEqual((await request('/api/operations', { body: plan('http-family-sku-create', [action]) })).json, created.json);
+    });
     await run('universal inventory preserves reviewed selection boundaries and forbids public stock withdrawal', async () => {
       const products = await Promise.all(['A', 'B'].map((suffix) => createHttpFixtureProduct({ name: `HTTP universal selección ${suffix}`, stockAvailable: 4 }, owner)));
       const target = (product) => ({ kind: 'existing', skuId: product.id, expectedRevision: product.revision, expectedFingerprint: product.identityFingerprint });

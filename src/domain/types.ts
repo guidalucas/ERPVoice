@@ -6,8 +6,10 @@ export type InventoryAttribute = { unit?: string } & (
 );
 
 export type InventoryAttributes = Record<string, InventoryAttribute>;
+export type ProductFamilyReference = { id: string; version: number };
 
 export interface Product {
+  family?: ProductFamilyReference;
   revision?: number;
   identityFingerprint?: string;
   id: string;

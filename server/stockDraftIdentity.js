@@ -4,7 +4,7 @@ import { productIdentity } from './inventoryOperations.js';
 const identity = (action) => {
   try {
     return productIdentity({ name: action.productName, productType: action.productType,
-      productModel: action.productModel, size: action.size, attributes: action.attributes, unit: action.unit });
+      productModel: action.productModel, size: action.size, attributes: action.attributes, unit: action.unit,family:action.family });
   } catch {
     // An identity that cannot be proven receives a new item ID.
     return null;

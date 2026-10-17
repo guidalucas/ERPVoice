@@ -32,6 +32,7 @@ const createAction = (input, reason, index) => {
   const name = explicitName !== null ? explicitName
     : text([metadata.productType, metadata.productModel].filter(Boolean).join(' '), 'name');
   const sku = { name, unit: Object.hasOwn(input, 'unit') ? input.unit : 'unit', attributes: Object.hasOwn(input, 'attributes') ? input.attributes : {} };
+  if (Object.hasOwn(input,'family')) sku.family=input.family;
   for (const field of ['productType', 'productModel', 'size']) if (metadata[field] != null && metadata[field] !== '') sku[field] = metadata[field];
   return { itemId: `create-${index + 1}`, type: 'sku.create', target: { kind: 'new', sku }, reason,
     initialStock: { available: openingNumber(input, 'stockAvailable'), reserved: openingNumber(input, 'stockReserved') },
@@ -40,8 +41,8 @@ const createAction = (input, reason, index) => {
 
 /** Legacy endpoint adaptation only. Core validation, IDs and persistence remain universal. */
 export function productCreationToPlan(input, businessId, options = {}, model = false) {
-  const productFields = ['name', 'productType', 'productModel', 'size', 'stockAvailable', 'stockReserved', 'price', 'priceCurrency', 'unit', 'attributes', 'operationId', 'reason'];
-  const data = fields(input, model ? ['name', 'productType', 'productModel', 'variants', 'unit', 'attributes', 'priceCurrency', 'operationId', 'reason'] : productFields, 'product creation');
+  const productFields = ['name', 'productType', 'productModel', 'size', 'stockAvailable', 'stockReserved', 'price', 'priceCurrency', 'unit', 'attributes', 'family','operationId', 'reason'];
+  const data = fields(input, model ? ['name', 'productType', 'productModel', 'variants', 'unit', 'attributes', 'family','priceCurrency', 'operationId', 'reason'] : productFields, 'product creation');
   const operationId = options.operationId ?? data.operationId;
   if (typeof operationId !== 'string' || !operationId.trim()) throw new InventoryOperationError('OPERATION_ID_REQUIRED', 'El alta necesita un ID estable para poder reintentarse.');
   const reason = options.reason ?? data.reason ?? (model ? 'Alta de variantes de modelo' : 'Alta manual de SKU');
@@ -54,8 +55,8 @@ export function productCreationToPlan(input, businessId, options = {}, model = f
     actions = Array.from({ length: variants.length }, (_, index) => {
       const property = Object.getOwnPropertyDescriptor(variants, String(index));
       if (!property || !Object.hasOwn(property, 'value')) invalid('variants must contain data properties');
-      const variant = fields(property.value, ['size', 'stockAvailable', 'stockReserved', 'price', 'attributes', 'unit', 'priceCurrency'], 'variant');
-      return createAction({ ...Object.fromEntries(['unit', 'attributes', 'priceCurrency'].filter((key) => Object.hasOwn(data, key)).map((key) => [key, data[key]])),
+      const variant = fields(property.value, ['size', 'stockAvailable', 'stockReserved', 'price', 'attributes', 'family','unit', 'priceCurrency'], 'variant');
+      return createAction({ ...Object.fromEntries(['unit', 'attributes', 'family','priceCurrency'].filter((key) => Object.hasOwn(data, key)).map((key) => [key, data[key]])),
         ...variant, size: text(variant.size, 'size'), name, productType, productModel }, reason, index);
     });
   } else actions = [createAction(data, reason, 0)];

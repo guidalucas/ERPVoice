@@ -23,6 +23,8 @@ import {
   applyActionsToDatabase,
   executeInventoryOperation,
   executeUniversalOperation,
+  publishProductFamily,
+  listProductFamilies,
   prepareUniversalDraft,
   replyUniversalDraft,
   getUniversalDraft,
@@ -653,6 +655,7 @@ app.put('/api/products/:id', authenticateRequest, async (req, res) => {
       price: req.body?.price,
       priceCurrency: req.body?.priceCurrency,
       attributes: req.body?.attributes,
+      family: req.body?.family,
     }, clientPhone, { operationId: req.body?.operationId, expectedRevision: req.body?.expectedRevision,
       expectedFingerprint: req.body?.expectedFingerprint, reason: req.body?.reason, actorId: authPhoneOf(req) });
 
@@ -836,18 +839,18 @@ app.get('/api/meta-webhook', (req, res) => {
 
 const universalRequestContext = (req) => ({
   businessId:tenantPhoneOf(req),actorId:authPhoneOf(req),channel:'panel',permissions:[
-    'inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
+    'inventory:read','inventory:schema','inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
     'accounts:charge','accounts:payment','accounts:adjust','accounts:transfer',
     'clients:create','clients:update','clients:delete','suppliers:create','suppliers:update','suppliers:delete','suppliers:merge',
     'orders:create','orders:update','orders:delete','orders:reconcile',
   ],
 });
 const universalHttpError = (res,error) => {
-  const known = error.name === 'InventoryOperationError';
+  const known = ['InventoryOperationError','ProductFamilySchemaError'].includes(error.name);
   const status = !known ? 500 : ['FORBIDDEN','BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
     : error.code==='INTERPRETATION_UNAVAILABLE' ? 503 : error.code==='INTERPRETATION_INVALID' ? 422
-    : ['INVALID_OPERATION_PLAN','INVALID_ACCOUNT_OPERATION','INVALID_PARTY_OPERATION','INVALID_ORDER_OPERATION','INVALID_DRAFT_REQUEST','BUSINESS_SCOPE_REQUIRED','UNSUPPORTED_OPERATION','OPERATION_ID_REQUIRED','MIXED_OPERATION_PLAN_UNSUPPORTED','UNSUPPORTED_OPERATION_ORDER'].includes(error.code) ? 400
-    : ['CLIENT_NOT_FOUND','PARTY_NOT_FOUND','SKU_NOT_FOUND','ORDER_NOT_FOUND','SUPPLIER_NOT_FOUND','DRAFT_NOT_FOUND'].includes(error.code) ? 404 : 409;
+    : ['INVALID_OPERATION_PLAN','INVALID_ACCOUNT_OPERATION','INVALID_PARTY_OPERATION','INVALID_ORDER_OPERATION','INVALID_DRAFT_REQUEST','INVALID_PRODUCT_SCHEMA','BUSINESS_SCOPE_REQUIRED','UNSUPPORTED_OPERATION','OPERATION_ID_REQUIRED','MIXED_OPERATION_PLAN_UNSUPPORTED','UNSUPPORTED_OPERATION_ORDER'].includes(error.code) ? 400
+    : ['CLIENT_NOT_FOUND','PARTY_NOT_FOUND','SKU_NOT_FOUND','ORDER_NOT_FOUND','SUPPLIER_NOT_FOUND','DRAFT_NOT_FOUND','PRODUCT_SCHEMA_NOT_FOUND'].includes(error.code) ? 404 : 409;
   res.status(status).json({error:known ? error.message : 'No pude guardar la operación.',code:known ? error.code : 'OPERATION_UNAVAILABLE'});
 };
 app.post('/api/operation-drafts', authenticateRequest, async (req,res) => {
@@ -877,6 +880,15 @@ app.post('/api/operations', authenticateRequest, async (req,res) => {
   } catch (error) {
     universalHttpError(res,error);
   }
+});
+
+app.get('/api/inventory/families', authenticateRequest, async (req,res) => {
+  try { res.json({families:await listProductFamilies(universalRequestContext(req))}); }
+  catch(error) { universalHttpError(res,error); }
+});
+app.post('/api/inventory/families', authenticateRequest, async (req,res) => {
+  try { res.json(await publishProductFamily(req.body,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
 });
 
 app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {

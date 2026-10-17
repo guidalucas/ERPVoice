@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { validateOperationPlan, operationDigest, planInventoryOperation, inventoryProductFingerprint, productIdentity, InventoryOperationError } from './inventoryOperations.js';
+import { loadProductFamilySchemas } from './productFamilyPostgres.js';
 
 // Additive metadata; numeric widening preserves the existing integer values.
 export const INVENTORY_SCHEMA_SQL = `
@@ -8,6 +9,14 @@ export const INVENTORY_SCHEMA_SQL = `
   ALTER TABLE products ADD COLUMN IF NOT EXISTS inventory_status TEXT NOT NULL DEFAULT 'active';
   ALTER TABLE products ADD COLUMN IF NOT EXISTS inventory_revision INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE products ADD COLUMN IF NOT EXISTS price_currency TEXT NOT NULL DEFAULT 'XXX';
+  ALTER TABLE products ADD COLUMN IF NOT EXISTS family_id TEXT;
+  ALTER TABLE products ADD COLUMN IF NOT EXISTS family_version BIGINT;
+  DO $$ BEGIN
+    IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='products'::regclass AND conname='products_family_reference_check') THEN
+      ALTER TABLE products ADD CONSTRAINT products_family_reference_check CHECK(
+        (family_id IS NULL AND family_version IS NULL) OR (family_id IS NOT NULL AND family_version IS NOT NULL AND family_version>0));
+    END IF;
+  END $$;
   ALTER TABLE products ALTER COLUMN stock_available TYPE BIGINT;
   ALTER TABLE products ALTER COLUMN stock_reserved TYPE BIGINT;
   ALTER TABLE products ALTER COLUMN price TYPE BIGINT;
@@ -42,6 +51,7 @@ export const inventoryRowToProduct = (row) => ({
   attributes: row.attributes_json, unit: row.inventory_unit, status: row.inventory_status,
   revision: Number(row.inventory_revision), stockAvailable: Number(row.stock_available),
   stockReserved: Number(row.stock_reserved), price: Number(row.price), priceCurrency: row.price_currency,
+  ...(row.family_id == null ? {} : {family:{id:row.family_id,version:Number(row.family_version)}}),
 });
 
 /** Caller owns BEGIN/COMMIT. Batch state, legacy transactions and outbox can share it. */
@@ -63,29 +73,32 @@ export async function executeInventoryPlanInTransaction(client, input, context) 
   const loaded = await client.query('SELECT * FROM products WHERE owner_phone = ANY($1) ORDER BY id FOR UPDATE', [owners]);
   const products = loaded.rows.map(inventoryRowToProduct);
   const existingIds = new Set(products.map((product) => product.id));
-  const effect = planInventoryOperation(plan, products, { createId: () => `sku-${crypto.randomUUID()}` });
+  const usesFamilies=products.some(product=>product.family)||plan.actions.some(action=>action.target.sku?.family||action.changes?.family);
+  const familySchemas=usesFamilies ? await loadProductFamilySchemas(client,owners) : [];
+  const effect = planInventoryOperation(plan, products, { createId: () => `sku-${crypto.randomUUID()}`,familySchemas });
   const persisted = new Map();
   for (const product of effect.changedProducts) {
     const values = [product.id, context.businessId, product.name, product.productType ?? null,
       product.productModel ?? null, product.size ?? null, product.stockAvailable, product.stockReserved,
       product.price, JSON.stringify(product.attributes ?? {}), product.unit ?? 'unit',
-      product.status ?? 'active', product.priceCurrency ?? 'XXX'];
+      product.status ?? 'active', product.priceCurrency ?? 'XXX',product.family?.id ?? null,product.family?.version ?? null];
     const saved = existingIds.has(product.id)
       ? await client.query(`UPDATE products SET owner_phone=$2, stock_available=$3, stock_reserved=$4,
           price=$5, price_currency=$6, inventory_revision=inventory_revision+1,
-          name=$9,product_type=$10,product_model=$11,size=$12,attributes_json=$13::jsonb,inventory_status=$14
+          name=$9,product_type=$10,product_model=$11,size=$12,attributes_json=$13::jsonb,inventory_status=$14,family_id=$15,family_version=$16
           WHERE id=$1 AND owner_phone=ANY($7) AND inventory_revision=$8 RETURNING *`,
         [product.id, context.businessId, product.stockAvailable, product.stockReserved,
           product.price, product.priceCurrency, owners, product.revision, product.name,
-          product.productType ?? null, product.productModel ?? null, product.size ?? null, JSON.stringify(product.attributes ?? {}), product.status ?? 'active'])
+          product.productType ?? null, product.productModel ?? null, product.size ?? null, JSON.stringify(product.attributes ?? {}), product.status ?? 'active',product.family?.id ?? null,product.family?.version ?? null])
       : await client.query(`INSERT INTO products
           (id,owner_phone,name,product_type,product_model,size,stock_available,stock_reserved,price,
-           attributes_json,inventory_unit,inventory_status,price_currency)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13) RETURNING *`, values);
+           attributes_json,inventory_unit,inventory_status,price_currency,family_id,family_version)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15) RETURNING *`, values);
     if (saved.rowCount !== 1) throw new InventoryOperationError('CONCURRENT_INVENTORY_CHANGE', 'El SKU cambió antes de guardar.');
     const actual = inventoryRowToProduct(saved.rows[0]);
     if (actual.stockAvailable !== product.stockAvailable || actual.stockReserved !== product.stockReserved
-      || actual.price !== product.price || actual.priceCurrency !== product.priceCurrency || actual.status !== (product.status ?? 'active') || productIdentity(actual) !== productIdentity(product)) {
+      || actual.price !== product.price || actual.priceCurrency !== product.priceCurrency || actual.status !== (product.status ?? 'active') || productIdentity(actual) !== productIdentity(product)
+      || JSON.stringify(actual.family ?? null)!==JSON.stringify(product.family ?? null)) {
       throw new InventoryOperationError('PERSISTED_EFFECT_MISMATCH', 'El resultado persistido difiere del plan.');
     }
     persisted.set(product.id, actual);
