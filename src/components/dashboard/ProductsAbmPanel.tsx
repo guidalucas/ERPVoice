@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ProductAdjustment } from '../../services/productService';
 import { getVariantWord, type BusinessCategoryPreset } from '../../domain/businessCategories';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
@@ -29,6 +30,8 @@ const emptyVariantDraft = (price = '0'): NewVariantDraft => ({
 });
 
 type ProductRow = {
+  revision?: number;
+  identityFingerprint?: string;
   id: string;
   name: string;
   productType?: string | null;
@@ -236,6 +239,8 @@ function ProductFormModal({
   showReserved,
   requireVariant,
   error,
+  adjustmentReason,
+  onAdjustmentReasonChange,
 }: {
   title: string;
   description?: string;
@@ -250,6 +255,8 @@ function ProductFormModal({
   showReserved: boolean;
   requireVariant: boolean;
   error: string | null;
+  adjustmentReason?: string;
+  onAdjustmentReasonChange?: (reason: string) => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" role="presentation">
@@ -308,6 +315,10 @@ function ProductFormModal({
             </div>
             {!showReserved && <p className="mt-2 text-xs text-[color:var(--muted)]">Podés cargar stock ahora o dejarlo en 0 y registrar un ingreso después.</p>}
           </fieldset>
+          {onAdjustmentReasonChange && <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
+            Motivo del ajuste
+            <input className="erp-input" required value={adjustmentReason ?? ''} onChange={(event) => onAdjustmentReasonChange(event.target.value)} placeholder="Por ejemplo: corrección por conteo físico" />
+          </label>}
         </form>
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
 
@@ -472,6 +483,10 @@ export function ProductsAbmPanel({
   const [newVariants, setNewVariants] = useState<NewVariantDraft[]>(() => [emptyVariantDraft()]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [editSnapshot, setEditSnapshot] = useState<ProductRow | null>(null);
+  const [adjustmentReason, setAdjustmentReason] = useState('');
+  // Keep the exact operation through ambiguous failures, including a failed refresh after success.
+  const editOperation = useRef<{ key: string; adjustment: ProductAdjustment } | null>(null);
   const [addingToGroup, setAddingToGroup] = useState<ProductGroup | null>(null);
   const [editingGroup, setEditingGroup] = useState<ProductGroup | null>(null);
   const [modelDraft, setModelDraft] = useState({ productType: '', productModel: '' });
@@ -677,6 +692,9 @@ export function ProductsAbmPanel({
   };
 
   const openEditForm = (product: ProductRow) => {
+    setEditSnapshot({ ...product });
+    setAdjustmentReason('');
+    editOperation.current = null;
     setEditingProductId(product.id);
     setAddingToGroup(null);
     setFormError(null);
@@ -734,6 +752,15 @@ export function ProductsAbmPanel({
   };
 
   const handleSubmit = async () => {
+    if (saving) return;
+    if (editingProductId && (!editSnapshot || !Number.isSafeInteger(editSnapshot.revision) || (editSnapshot.revision ?? -1) < 0)) {
+      setFormError('Falta la revisión del producto. Actualizá la página y volvé a abrir el formulario. Tu borrador se conserva.');
+      return;
+    }
+    if (editingProductId && !adjustmentReason.trim()) {
+      setFormError('Ingresá el motivo del ajuste.');
+      return;
+    }
     const size = draft.size.trim();
     const quantities = [draft.stockAvailable, draft.stockReserved, draft.price].map(Number);
     if (!editingProductId && preset.useVariants && !size) {
@@ -744,7 +771,7 @@ export function ProductsAbmPanel({
       setFormError('Completá el tipo de producto y el modelo.');
       return;
     }
-    if (quantities.some((value) => !Number.isSafeInteger(value) || value < 0)) {
+    if ([draft.stockAvailable, draft.stockReserved, draft.price].some((value) => !value.trim()) || quantities.some((value) => !Number.isSafeInteger(value) || value < 0)) {
       setFormError('Precio y stock deben ser números enteros mayores o iguales a cero.');
       return;
     }
@@ -771,7 +798,7 @@ export function ProductsAbmPanel({
     try {
       const payload = {
         name: editingProductId && !draft.name.trim()
-          ? products.find((product) => product.id === editingProductId)?.name ?? buildProductName(draft)
+          ? editSnapshot?.name ?? buildProductName(draft)
           : buildProductName(draft),
         productType: draft.productType.trim() || undefined,
         productModel: draft.productModel.trim() || undefined,
@@ -782,9 +809,20 @@ export function ProductsAbmPanel({
       };
 
       if (editingProductId) {
-        await updateProductRecord(editingProductId, preset.useVariants
+        const changes = preset.useVariants
           ? { size: payload.size, stockAvailable: payload.stockAvailable, stockReserved: payload.stockReserved, price: payload.price }
-          : payload);
+          : payload;
+        const reason = adjustmentReason.trim();
+        const key = JSON.stringify({ productId: editingProductId, changes, reason });
+        if (editOperation.current?.key !== key) {
+          editOperation.current = { key, adjustment: {
+            operationId: crypto.randomUUID(),
+            expectedRevision: editSnapshot!.revision!,
+            expectedFingerprint: editSnapshot!.identityFingerprint,
+            reason,
+          } };
+        }
+        await updateProductRecord(editingProductId, changes, editOperation.current.adjustment);
       } else {
         await createProductRecord(payload as ProductRow & { name: string });
       }
@@ -792,7 +830,9 @@ export function ProductsAbmPanel({
       setIsFormOpen(false);
       if (addingToGroup) setExpandedGroups((current) => ({ ...current, [addingToGroup.key]: true }));
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'No se pudo guardar el producto.');
+      setFormError(error instanceof Error && 'status' in error && error.status === 409
+        ? 'El producto cambió desde que abriste el formulario. Tu borrador se conserva. Actualizá la página y volvé a abrir el producto para revisar los valores antes de guardar.'
+        : error instanceof Error ? error.message : 'No se pudo guardar el producto.');
     } finally {
       setSaving(false);
     }
@@ -1036,6 +1076,8 @@ export function ProductsAbmPanel({
             showReserved={Boolean(editingProductId) || !preset.useVariants}
             requireVariant={preset.useVariants && !editingProductId}
             error={formError}
+            adjustmentReason={adjustmentReason}
+            onAdjustmentReasonChange={editingProductId ? (reason) => { setAdjustmentReason(reason); setFormError(null); } : undefined}
           />
         )}
 

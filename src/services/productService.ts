@@ -19,6 +19,13 @@ export type ProductInput = {
   price?: number;
 };
 
+export type ProductAdjustment = {
+  operationId: string;
+  expectedRevision: number;
+  expectedFingerprint?: string;
+  reason: string;
+};
+
 export type ClientInput = {
   name: string;
   notas?: string | null;
@@ -63,10 +70,10 @@ export const createProductModel = async (input: { productType: string; productMo
     body: JSON.stringify(input),
   });
 
-export const updateProduct = async (productId: string, product: Partial<ProductInput>) =>
+export const updateProduct = async (productId: string, product: Partial<ProductInput>, adjustment: ProductAdjustment) =>
   requestJson<Product>(`/api/products/${productId}`, {
     method: 'PUT',
-    body: JSON.stringify(product),
+    body: JSON.stringify({ ...product, ...adjustment }),
   });
 
 export const updateProductModel = async (input: { ids: string[]; name: string; productType: string; productModel: string }) =>

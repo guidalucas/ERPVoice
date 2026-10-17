@@ -21,6 +21,7 @@ import {
   updateProveedor,
 } from '../services/productService';
 import type { Client, ParsedActionUnion, Pedido, PedidoEstado, Product, Proveedor } from '../domain/types';
+import type { ProductAdjustment } from '../services/productService';
 
 export const useInventory = () => {
   const { state, confirmPendingProposal, clearPendingProposal, hydratePersistedState } = useAppStore();
@@ -66,13 +67,16 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const updateProductRecord = async (productId: string, input: Partial<Omit<Product, 'id'>>) => {
+  const updateProductRecord = async (productId: string, input: Partial<Omit<Product, 'id'>>, adjustment: ProductAdjustment) => {
+    if (!Number.isSafeInteger(adjustment.expectedRevision) || adjustment.expectedRevision < 0) {
+      throw new Error('Falta la revisión del producto. Actualizá la página y volvé a abrir el formulario.');
+    }
     await updateProduct(productId, {
       ...input,
       productType: input.productType ?? undefined,
       productModel: input.productModel ?? undefined,
       size: input.size ?? undefined,
-    });
+    }, adjustment);
     await refreshState();
   };
 

@@ -31,8 +31,25 @@ export const bindStockConsumptionAction = (action, products) => {
     expectedFingerprint: product.identityFingerprint ?? inventoryProductFingerprint(product),
     productName: product.name, productType: product.productType ?? undefined, productModel: product.productModel ?? undefined,
     size: product.size ?? undefined, unit: action.unit ?? product.unit ?? 'unit' };
+  if (action.type === 'update_product') bound.expectedRevision = product.revision;
   delete bound.resolvedProductId;
   return bound;
+};
+
+/** Absolute edits retain the revision that the caller actually reviewed. */
+export const productUpdateActions = (productId, updates, options, prefix = 'item-1') => {
+  const target = { kind: 'existing', skuId: productId, expectedRevision: options.expectedRevision,
+    ...(options.expectedFingerprint ? { expectedFingerprint: options.expectedFingerprint } : {}) };
+  const reason = options.reason ?? 'Actualización confirmada';
+  const actions = [];
+  const changes = Object.fromEntries(['name', 'productType', 'productModel', 'size', 'attributes', 'price', 'priceCurrency']
+    .filter((field) => updates[field] !== undefined).map((field) => [field, updates[field]]));
+  if (Object.keys(changes).length) actions.push({ itemId: `${prefix}-update`, type: 'sku.update', target, changes, reason });
+  const balances = { ...(updates.stockAvailable !== undefined ? { available: updates.stockAvailable } : {}),
+    ...(updates.stockReserved !== undefined ? { reserved: updates.stockReserved } : {}) };
+  if (Object.keys(balances).length) actions.push({ itemId: `${prefix}-adjust`, type: 'stock.adjust', target, balances, reason });
+  if (!actions.length) throw new InventoryOperationError('INVALID_OPERATION_PLAN', 'No hay cambios de inventario para aplicar.');
+  return actions;
 };
 
 /** Compatibility boundary only; evidence and conversational decisions stay outside execution. */
@@ -49,7 +66,13 @@ export const resolvedStockBatchToPlan = (batch) => ({
 export const confirmedStockActionsToPlan = ({ actions, sourceText, ownerPhone, operationId, products }) => ({
   contractVersion: 1, operationId, businessId: ownerPhone,
   source: { channel: 'panel', text: sourceText },
-  actions: actions.map((action, index) => {
+  actions: actions.flatMap((action, index) => {
+    if (action.type === 'update_product') {
+      const explicitId = action.productId ?? action.resolvedProductId;
+      if (typeof explicitId !== 'string' || !explicitId.trim() || (action.productId && action.resolvedProductId && action.productId !== action.resolvedProductId)) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Elegí un SKU explícito para actualizar; no apliqué cambios.');
+      return productUpdateActions(explicitId, { price: action.price, priceCurrency: action.priceCurrency,
+        stockAvailable: action.stockAvailable, stockReserved: action.stockReserved }, action, `item-${index + 1}`);
+    }
     if (action.type === 'sell' || action.type === 'reserve_stock') {
       const explicitId = action.productId ?? action.resolvedProductId;
       if (typeof explicitId !== 'string' || !explicitId.trim()) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Elegí un SKU explícito para vender o reservar; no apliqué cambios.');

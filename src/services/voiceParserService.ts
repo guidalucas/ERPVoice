@@ -882,10 +882,10 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
   }
 
   if (value.type === 'update_product' && typeof value.productName === 'string' && value.productName.trim()) {
-    const priceValue = Number.isFinite(Number(value.price)) ? Number(value.price) : amount;
+    const priceValue = value.price != null ? Number(value.price) : amount;
     const stockValue = Number(value.stockAvailable);
-    const hasPrice = Number.isFinite(priceValue) && priceValue > 0;
-    const hasStock = Number.isFinite(stockValue) && stockValue >= 0;
+    const hasPrice = Number.isFinite(priceValue);
+    const hasStock = value.stockAvailable != null && Number.isFinite(stockValue);
     if (!hasPrice && !hasStock) {
       return null;
     }
@@ -893,7 +893,7 @@ const parseAction = (value: unknown): ParsedActionUnion | null => {
       type: 'update_product',
       productName: value.productName.trim(),
       ...(hasPrice ? { price: priceValue } : {}),
-      ...(hasStock ? { stockAvailable: Math.trunc(stockValue) } : {}),
+      ...(hasStock ? { stockAvailable: stockValue } : {}),
     };
   }
 

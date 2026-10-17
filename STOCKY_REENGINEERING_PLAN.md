@@ -17,7 +17,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.0 implementado/verificado; H4.1 siguiente |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.0 y H4.1 implementados/verificados; H4.2 siguiente |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -53,12 +53,12 @@
 
 ## Próximo paso exacto
 
-H4.1: migrar actualizaciones y ajustes al mismo contrato/núcleo. Reutilizar SKU explícito,
-recibo/replay y bloqueo compatible. Definir ajuste absoluto con revisión esperada y motivo
-para impedir sobreescrituras obsoletas. Migrar updateProductRecord y update_product; revisar
-solo esos consumidores y sus contratos. Mantener distinción precio de catálogo/venta.
-Conservar bloqueo de tabla hasta retirar el reemplazo legacy completo. Después H4.2:
-selectores congelados y confirmaciones verificables; luego bajas y demás escritores.
+H4.2: selectores explícitos y conjuntos congelados por negocio, con revisiones/fingerprints
+y confirmación verificable antes de operaciones masivas. Reutilizar acciones `sku.update`
+del núcleo y migrar primero edición de modelo. Rechazar selección obsoleta/completa diferente;
+no recalcular por nombre al confirmar. Luego migrar bajas y demás escritores. Mantener el
+bloqueo de tabla hasta retirar el reemplazo legacy completo. ABM con stock inicial y efectos
+de pedidos permanecen legacy; sus revisiones ya se invalidan al mutar stock/metadatos.
 El intérprete universal y los esquemas configurables siguen pendientes; no abrir conjuntos
 ni optimización LLM antes de cerrar la integridad de estas mutaciones.
 
@@ -191,6 +191,29 @@ ni optimización LLM antes de cerrar la integridad de estas mutaciones.
 - H4 restante: actualizaciones/ajustes, conjuntos, bajas, ABM con stock inicial, efectos de
   pedidos y finanzas siguen pendientes. Un lote con stock y finanzas no migradas se rechaza
   entero. Continúa bloqueo compatible con escritores históricos. No se desplegó.
+
+- H4.1: `stock.adjust` fija balances absolutos no negativos, con revisión esperada y motivo;
+  `sku.update` modifica metadatos/atributos tipados/precio de catálogo. Mismo contrato v1,
+  planner y transacción; permisos separados. Revisiones avanzan una vez por SKU por plan.
+  Deltas de ajuste son exactos; cambios de catálogo dejan movimiento cero como auditoría.
+  Identidad duplicada/inactiva, revisión obsoleta y fingerprint distinto rechazan todo.
+- H4.1: PUT individual y `update_product` usan el núcleo. Recibo guarda producto final
+  completo; replay de PUT retorna ese producto aunque el stock haya cambiado después.
+  Panel captura revisión al abrir, exige motivo y conserva ID/payload tras fallo ambiguo
+  o fallo de refresh posterior al commit; cambiar el borrador genera ID nuevo, sin saltar
+  la revisión original. Conflicto conserva borrador e indica revisar inventario vigente.
+- H4.1: escritores legacy de modelo/pedidos invalidan revisiones. Pedido individual toma
+  bloqueo de inventario antes de leer y bloqueo de su fila; reemplazo legacy preserva
+  metadatos e incrementa revisión de productos cambiados. No se retiraron esos escritores.
+- H4.1 verificado: 101 checks PG/HTTP, 30 de suite pura y 50 del motor. Incluye carreras
+  entre ajustes, venta y pedidos legacy; rollback multi-SKU; replay congelado; aislamiento;
+  PUT real con metadata+stock+fingerprint y Meta firmado con precio cero. Build y Edge:
+  inventario, recuperación de borrador, ventas y nuevo test de ajustes aprobados.
+  Revisión independiente encontró fingerprint contra estado intermedio y asociación
+  desplazada tras expandir acciones; corregidos y cubiertos por regresiones. Audio largo
+  aprobado; sin evaluación LLM ni despliegue real. No declarar completa arquitectura C.
+- H4.1 límites: edición de modelo masiva, bajas, stock inicial de ABM y efectos de pedidos
+  aún esperan migración. No hay conversión de unidades ni cantidades fraccionarias.
 
 ## Continuación sin repetir investigación
 

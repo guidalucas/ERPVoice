@@ -12,6 +12,10 @@ El motor de ingresos `add_stock` admite cualquier rubro. `voiceStockEngine.js` e
 
 Ventas y reservas mantienen su interpretación actual, pero la resolución conservadora emite un SKU explícito antes de escribir. La ejecución rechaza stock insuficiente sin aplicar una parte del lote, no crea productos y no busca nuevamente por nombre. El precio de venta informado no cambia el precio del catálogo; sin precio informado el recibo lo marca desconocido. Los pedidos siguen pendientes. El panel mantiene propuestas que la persona confirma manualmente antes de llamar a `/api/state/apply`; todavía no usa el diálogo persistente de WhatsApp.
 
+`update_product` ya exige SKU único y revisión del catálogo: los cambios de precio y
+los ajustes absolutos usan `sku.update`/`stock.adjust`, sin truncar cantidades. Una
+variante omitida pide aclaración; los conjuntos masivos todavía requieren migración.
+
 ## Persistencia y recuperación
 
 - Las referencias al producto anterior y las autocorrecciones actualizan ese ítem; no agregan unidades sin un ingreso adicional explícito. Los atributos globales conservan su alcance y sus citas. Los atributos no mencionados quedan ausentes; la auditoría de cobertura no exige completarlos para todo el lote.

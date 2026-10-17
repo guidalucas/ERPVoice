@@ -600,7 +600,10 @@ app.put('/api/products/:id', authenticateRequest, async (req, res) => {
       stockAvailable: req.body?.stockAvailable,
       stockReserved: req.body?.stockReserved,
       price: req.body?.price,
-    }, clientPhone);
+      priceCurrency: req.body?.priceCurrency,
+      attributes: req.body?.attributes,
+    }, clientPhone, { operationId: req.body?.operationId, expectedRevision: req.body?.expectedRevision,
+      expectedFingerprint: req.body?.expectedFingerprint, reason: req.body?.reason, actorId: authPhoneOf(req) });
 
     if (!product) {
       res.status(404).json({ error: 'Producto no encontrado' });
@@ -609,7 +612,10 @@ app.put('/api/products/:id', authenticateRequest, async (req, res) => {
 
     res.json(product);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    const status = error.code === 'SKU_NOT_FOUND' ? 404
+      : ['OPERATION_ID_REQUIRED', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400
+        : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude guardar la edición.' : error.message, code: error.code });
   }
 });
 
@@ -873,7 +879,7 @@ app.get('/api/meta-webhook', (req, res) => {
 app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
   try {
     const result = await executeInventoryOperation(req.body, {
-      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:receive', 'inventory:sell', 'inventory:reserve'],
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:receive', 'inventory:sell', 'inventory:reserve', 'inventory:adjust', 'inventory:update'],
     });
     res.json(result);
   } catch (error) {

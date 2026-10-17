@@ -142,7 +142,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
     await run('mixed inventory and unmigrated operation reject atomically', async () => {
       const before = await db.getStateSnapshotStrict(owner);
       const response = await request('/api/state/apply', { body: { operationId: 'http-mixed', sourceText: 'mixed', actions: [
-        { type: 'add_stock', productName: 'HTTP mixed must not exist', qty: 4 }, { type: 'update_product', productName: fresh.target.sku.name, price: 1 },
+        { type: 'add_stock', productName: 'HTTP mixed must not exist', qty: 4 }, { type: 'add_debt', clientName: 'Not migrated', amount: 1 },
       ] } });
       assert.equal(response.status, 409); assert.equal(response.json.code, 'UNSUPPORTED_MIXED_OPERATION');
       assert.deepEqual(await db.getStateSnapshotStrict(owner), before); assert.equal((await ledger('panel:http-mixed')).length, 0);
@@ -169,6 +169,55 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(denied.status, 409); assert.equal(denied.json.code, 'INSUFFICIENT_STOCK');
       assert.equal((await ledger('http-insufficient')).length, 0);
       assert.deepEqual(await stock(id), [{ stock_available: '0', stock_reserved: '1', price: '450', price_currency: 'UYU' }]);
+    });
+    await run('product PUT uses reviewed revision and returns frozen receipt after later changes', async () => {
+      const seeded = await request('/api/inventory/operations', { body: plan('http-edit-seed', [{ ...fresh,
+        target: { kind: 'new', sku: { name: 'Ficha HTTP original' } } }]) });
+      const id = seeded.json.items[0].skuId;
+      const reviewed = (await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.id === id);
+      const route = `/api/products/${id}`;
+      const body = { operationId: 'http-edit-once', expectedRevision: reviewed.revision, expectedFingerprint: reviewed.identityFingerprint,
+        reason: 'Conteo físico y corrección de ficha', name: 'Ficha HTTP corregida', stockAvailable: 0, stockReserved: 2, price: 0 };
+      assert.equal((await request(route, { method: 'PUT', body: { price: 0 } })).status, 400);
+      assert.equal((await request(route, { method: 'PUT', body: { ...body, operationId: 'http-edit-no-revision', expectedRevision: undefined } })).status, 400);
+      const changed = await request(route, { method: 'PUT', body });
+      assert.equal(changed.status, 200); assert.equal(changed.json.revision, reviewed.revision + 1);
+      assert.equal(changed.json.name, body.name); assert.equal(changed.json.stockAvailable, 0); assert.equal(changed.json.price, 0);
+      const moves = await ledger('product-edit:http-edit-once');
+      assert.equal(moves.length, 2); assert.equal(moves.reduce((sum, move) => sum + Number(move.delta_available), 0), -3);
+      const added = await request('/api/inventory/operations', { body: plan('http-edit-later', [{ itemId: 'one', type: 'stock.receive',
+        target: { kind: 'existing', skuId: id }, quantity: { value: 4, unit: 'unit' } }]) });
+      assert.equal(added.status, 200);
+      assert.deepEqual((await request(route, { method: 'PUT', body })).json, changed.json);
+      const stale = await request(route, { method: 'PUT', body: { ...body, operationId: 'http-edit-stale' } });
+      assert.equal(stale.status, 409); assert.equal(stale.json.code, 'REVISION_MISMATCH');
+      const foreign = await request(route, { method: 'PUT', body, headers: { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000515' })}` } });
+      assert.equal(foreign.status, 404);
+      assert.equal(Number((await stock(id))[0].stock_available), 4);
+    });
+    await run('signed WhatsApp catalog update uses exact SKU and accepts zero without changing stock', async () => {
+      const product = await db.createProductRecord({ name: 'Taladro Contador', stockAvailable: 3, price: 900 }, owner);
+      const messageId = 'http-meta-update-zero';
+      const body = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [{
+        id: messageId, from: owner, type: 'text', text: { body: 'El Taladro Contador vale 0' },
+      }] } }] }] };
+      const raw = JSON.stringify(body);
+      const headers = { 'X-Hub-Signature-256': `sha256=${crypto.createHmac('sha256', appSecret).update(Buffer.from(raw)).digest('hex')}` };
+      assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
+      const deadline = Date.now() + 5000;
+      let claim;
+      while (Date.now() < deadline) {
+        claim = (await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1', [messageId])).rows[0];
+        if (claim?.status === 'completed') break;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+      assert.equal(claim?.status, 'completed');
+      const event = (await sql.query('SELECT error,actions_json,reply_text FROM meta_events WHERE id=$1', [messageId])).rows[0];
+      assert.equal(event.error, null); assert.equal(event.actions_json[0].productId, product.id); assert.equal(event.actions_json[0].price, 0);
+      assert.match(event.reply_text, /SKU actualizado/); assert.equal((await ledger(`whatsapp:${messageId}`)).length, 1);
+      assert.equal(Number((await stock(product.id))[0].stock_available), 3); assert.equal(Number((await stock(product.id))[0].price), 0);
+      assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
+      assert.equal((await ledger(`whatsapp:${messageId}`)).length, 1);
     });
     await run('signed WhatsApp insufficient sale completes rejection and cannot execute after replenishment', async () => {
       const product = await db.createProductRecord({ name: 'Taladro Delta', stockAvailable: 2, price: 900 }, owner);

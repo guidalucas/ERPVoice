@@ -8,9 +8,13 @@ opcional queda separado del catálogo y los totales separan monedas y precios de
 `POST /api/inventory/operations` acepta el contrato v1 con autenticación; el negocio
 se verifica contra la sesión. `POST /api/state/apply` requiere `operationId` estable
 para estas tres operaciones. Los lotes mixtos con mutaciones aún no migradas se rechazan.
+Actualizaciones y ajustes individuales usan `sku.update` y `stock.adjust` en el mismo
+núcleo. `PUT /api/products/:id` exige `operationId`, `expectedRevision` y motivo;
+un snapshot obsoleto se rechaza con 409 y se conserva el borrador para revisarlo.
 `npm run test:inventory` prueba dominio/contratos/seguridad y
 `npm run test:voice-stock-postgres` agrega integración y HTTP en PostgreSQL temporal.
 `npm run test:sales-ui` comprueba identidad, retry y totales en el navegador con API simulada.
+`npm run test:inventory-adjustments-ui` verifica revisiones, conflictos y retry de ediciones.
 
 Antes de desplegar: configurar `META_APP_SECRET` (firma POST Meta) y, en producción,
 `AUTH_JWT_SECRET` privado de al menos 32 bytes. `/api/health` publica readiness y el SHA

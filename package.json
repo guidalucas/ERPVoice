@@ -17,11 +17,12 @@
     "test:parser": "node scripts/test-parser-robustness.js",
     "test:voice-stock-batches": "node scripts/test-voice-stock-batch-regression.js",
     "test:voice-stock-postgres": "node scripts/test-voice-stock-postgres.js",
-    "test:inventory": "node --test scripts/test-inventory-domain.js scripts/test-inventory-operations.js scripts/test-meta-webhook-security.js scripts/test-auth-boundary.js scripts/test-stock-clarification-interpreter.js scripts/test-llm-log-privacy.js scripts/test-stock-draft-patches.js scripts/test-stock-draft-identity.js scripts/test-inventory-sales.js",
+    "test:inventory": "node --test scripts/test-inventory-domain.js scripts/test-inventory-operations.js scripts/test-meta-webhook-security.js scripts/test-auth-boundary.js scripts/test-stock-clarification-interpreter.js scripts/test-llm-log-privacy.js scripts/test-stock-draft-patches.js scripts/test-stock-draft-identity.js scripts/test-inventory-sales.js scripts/test-inventory-adjustments.js",
     "eval:voice-stock:live": "node scripts/evaluate-stock-corpus.js --live",
     "test:inventory-ui": "npm run build && node scripts/test-inventory-ui.mjs",
     "test:panel-draft-recovery": "npm run build && node scripts/test-panel-draft-recovery.mjs",
     "test:sales-ui": "npm run build && node scripts/test-sales-ui.mjs",
+    "test:inventory-adjustments-ui": "npm run build && node scripts/test-inventory-adjustments-ui.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

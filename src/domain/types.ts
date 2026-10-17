@@ -1,4 +1,5 @@
 export interface Product {
+  revision?: number;
   identityFingerprint?: string;
   id: string;
   name: string;
@@ -128,12 +129,18 @@ export type ParsedAction =
     }
   | {
       type: 'update_product';
+      productId?: string;
+      expectedRevision?: number;
+      expectedFingerprint?: string;
+      reason?: string;
+      priceCurrency?: string;
       productName: string;
       productType?: string;
       productModel?: string;
       size?: string;
       price?: number;
       stockAvailable?: number;
+      stockReserved?: number;
     }
   | {
       type: 'update_pedido';

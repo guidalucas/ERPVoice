@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { runInventoryCoreChecks } from './inventory-core-postgres-checks.js';
 import { runInventorySalesChecks } from './inventory-sales-postgres-checks.js';
+import { runInventoryAdjustmentsChecks } from './inventory-adjustments-postgres-checks.js';
 import { runInventoryHttpChecks } from './inventory-http-checks.js';
 import os from 'node:os';
 import path from 'node:path';
@@ -52,6 +53,7 @@ try {
   sql = new Client({ connectionString: connection }); await sql.connect();
   await runInventoryCoreChecks({ db, sql, check });
   await runInventorySalesChecks({ db, sql, check });
+  await runInventoryAdjustmentsChecks({ db, sql, check });
   await runInventoryHttpChecks({ db, sql, check });
 
   await check('migración repetible y RLS', async () => {
@@ -126,7 +128,8 @@ try {
     const item = { ...action('Taladro Bosch', { kind: 'existing', productId: existing.id, fingerprint: productFingerprint(existing) }), size: '10 mm' };
     const batch = await createBatch([item]);
     await assert.rejects(db.applyResolvedVoiceStockBatch(batch.id, other));
-    await db.updateProductRecord(existing.id, { name: 'Taladro Bosch modificado' }, owner);
+    await db.updateProductRecord(existing.id, { name: 'Taladro Bosch modificado' }, owner,
+      { operationId: 'fingerprint-change', expectedRevision: existing.revision, reason: 'Cambiar ficha para verificar fingerprint' });
     await assert.rejects(db.applyResolvedVoiceStockBatch(batch.id, owner));
     assert.equal((await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.id === existing.id).stockAvailable, 3);
     await db.updateVoiceStockBatch(batch.id, { expectedVersion: batch.version, status: 'cancelled' });

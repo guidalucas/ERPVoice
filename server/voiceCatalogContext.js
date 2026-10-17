@@ -535,7 +535,7 @@ const groundQueryStockAction = (action, products, sourceText) => {
 };
 
 const groundOneAction = (action, products, sourceText, bulkDelete = false) => {
-  if (action.type === 'sell' || action.type === 'reserve_stock') {
+  if (action.type === 'sell' || action.type === 'reserve_stock' || action.type === 'update_product') {
     const bound = bindStockConsumptionAction(action, products);
     return bound ? { actions: [bound], ambiguous: false }
       : { actions: [action], ambiguous: true, candidates: rankProducts(products,
@@ -654,7 +654,7 @@ export const groundActionsAgainstCatalog = (actions, catalog, sourceText) => {
   }
 
   if (!products.length) {
-    if (actions.some((action) => action.type === 'sell' || action.type === 'reserve_stock')) {
+    if (actions.some((action) => action.type === 'sell' || action.type === 'reserve_stock' || action.type === 'update_product')) {
       return { actions, requiresConfirmation: true, missingFields: ['productMatch'], suggestedPhrases: [] };
     }
     return actions.some((action) => isBulkDelete(action, sourceText))
@@ -717,7 +717,7 @@ export const groundActionsAgainstCatalog = (actions, catalog, sourceText) => {
   const seen = new Map();
   const deduped = [];
   for (const action of next) {
-    if (action.type === 'sell' || action.type === 'reserve_stock') {
+    if (action.type === 'sell' || action.type === 'reserve_stock' || action.type === 'update_product') {
       // Each proposed effect is a distinct operation item. Deduplicating by SKU
       // and quantity can silently discard a second legitimate sale/reservation.
       deduped.push(action);

@@ -172,10 +172,10 @@ export async function runInventorySalesChecks({ db, sql, check }) {
     await Promise.all([
       db.applyActionsToDatabase([{ type: 'sell', productId: skuId, qty: 2 }], 'Venta', a, { operationId: 'legacy-race-sell', channel: 'panel', actorId: a }),
       db.applyActionsToDatabase([{ type: 'reserve_stock', productId: skuId, qty: 3 }], 'Reserva', a, { operationId: 'legacy-race-reserve', channel: 'panel', actorId: a }),
-      db.applyActionsToDatabase([{ type: 'update_product', productName: 'Sales check sales-legacy-race', price: 800 }], 'Actualización legacy', a, { messageId: 'legacy-race-update' }),
+      db.updateProductModelRecords({ ids: [skuId], name: 'Sales check renamed', productType: 'Tools', productModel: 'New label' }, a),
     ]);
     const row = (await rows(a, skuId))[0];
-    assert.equal(Number(row.stock_available), 5); assert.equal(Number(row.stock_reserved), 3); assert.equal(Number(row.price), 800);
+    assert.equal(Number(row.stock_available), 5); assert.equal(Number(row.stock_reserved), 3); assert.equal(Number(row.price), 900);
   });
   return completed;
 }

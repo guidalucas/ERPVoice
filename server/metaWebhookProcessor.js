@@ -1006,10 +1006,10 @@ const parseAction = (value) => {
   }
 
   if (value.type === 'update_product' && typeof value.productName === 'string' && value.productName.trim()) {
-    const priceValue = Number.isFinite(Number(value.price)) ? Number(value.price) : amount;
+    const priceValue = value.price != null ? Number(value.price) : amount;
     const stockValue = Number(value.stockAvailable);
-    const hasPrice = Number.isFinite(priceValue) && priceValue > 0;
-    const hasStock = Number.isFinite(stockValue) && stockValue >= 0;
+    const hasPrice = Number.isFinite(priceValue);
+    const hasStock = value.stockAvailable != null && Number.isFinite(stockValue);
 
     if (!hasPrice && !hasStock) {
       return null;
@@ -1022,7 +1022,7 @@ const parseAction = (value) => {
       productModel: typeof value.productModel === 'string' ? value.productModel : undefined,
       size: typeof value.size === 'string' ? value.size : undefined,
       ...(hasPrice ? { price: priceValue } : {}),
-      ...(hasStock ? { stockAvailable: Math.trunc(stockValue) } : {}),
+      ...(hasStock ? { stockAvailable: stockValue } : {}),
     };
   }
 
@@ -1365,7 +1365,7 @@ const tryParseMutationAction = (fragment) => {
   if (updatePriceMatch) {
     const productText = updatePriceMatch[1].trim().replace(/^(?:producto|precio de)\s+/i, '');
     const price = parsePrice(updatePriceMatch[2]) ?? Number(String(updatePriceMatch[2]).replace(/\./g, '').replace(',', '.'));
-    if (productText && Number.isFinite(price) && price > 0) {
+    if (productText && Number.isFinite(price) && price >= 0) {
       return { type: 'update_product', productName: productText, price };
     }
   }
