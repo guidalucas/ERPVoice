@@ -52,6 +52,8 @@ export function prepareUniversalOperation(input, context) {
     blocks.at(-1).actions.push(action);
   }
   const candidate = {...input,operationId:operationId.trim()};
+  if (candidate.operationId.startsWith('draft-operation:') && !context.internalConversationOperation)
+    fail('FORBIDDEN','Los IDs de borradores están reservados a su confirmación.');
   const prepareBlock = (domain, blockCandidate) => {
     const plan = validators[domain](blockCandidate,context);
     if (domain === 'inventory') requireReviewedUpdateSelection(plan);

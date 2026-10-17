@@ -21,6 +21,11 @@ import { validateAccountPlan } from './accountOperations.js';
 import { mergeClientsInTransaction } from './clientMergePostgres.js';
 import { UNIVERSAL_SCHEMA_SQL, executeUniversalPlanInTransaction } from './universalPostgres.js';
 import { prepareUniversalOperation } from './universalOperations.js';
+import { interpretUniversalIntent } from './universalIntentInterpreter.js';
+import { buildUniversalOperationReview } from './universalOperationReview.js';
+import { UNIVERSAL_CONVERSATION_SCHEMA_SQL, authorizeUniversalConversation, normalizeDraftRequest,
+  findDraftCommand, readUniversalDraft, persistUniversalInterpretation,
+  confirmUniversalDraftInTransaction, cancelUniversalDraftInTransaction } from './universalConversationPostgres.js';
 import { PARTY_SCHEMA_SQL, executePartyPlanInTransaction, partyRowToEntity } from './partyPostgres.js';
 import { partyCreationToPlan, partyUpdateToPlan, partyDeleteToPlan, supplierMergeToPlan, validatePartyPlan } from './partyOperations.js';
 
@@ -545,6 +550,7 @@ const initializeDatabase = async () => {
     ${ACCOUNT_SCHEMA_SQL}
     ${PARTY_SCHEMA_SQL}
     ${UNIVERSAL_SCHEMA_SQL}
+    ${UNIVERSAL_CONVERSATION_SCHEMA_SQL}
     ${META_SELECTION_SCHEMA_SQL}
 
     DO $$
@@ -561,6 +567,8 @@ const initializeDatabase = async () => {
         'inventory_operations',
         'party_operations',
         'universal_operations',
+        'universal_drafts',
+        'universal_draft_commands',
         'order_operations',
         'account_operations',
         'account_movements',
@@ -1407,6 +1415,75 @@ export const executeUniversalOperation = async (input, context) => {
   return withTransaction((client) => executeUniversalPlanInTransaction(client,plan,{
     ...context,ownerPhoneVariants:getOwnerPhoneVariants(context.businessId),
   },persistInventoryTransactions));
+};
+
+// Interpretation happens outside any SQL transaction. Only validated, frozen
+// drafts reach the existing universal executor after an explicit confirmation.
+const interpretUniversalDraft = async (text,draftId,context,options,clarifications=[]) => {
+  const catalog=await withTransaction(async client=>{
+    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const owners=[getOwnerPhoneVariants(context.businessId)],catalog={};
+    // Use stored identities, never presentation-normalized product metadata.
+    catalog.products=(await client.query("SELECT * FROM products WHERE owner_phone=ANY($1) AND inventory_status='active' ORDER BY id",owners)).rows.map(inventoryRowToProduct);
+    catalog.clients=(await client.query('SELECT * FROM clients WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToClient);
+    catalog.proveedores=(await client.query('SELECT * FROM proveedores WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToProveedor);
+    catalog.pedidos=(await client.query('SELECT * FROM pedidos WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToPedido);
+    return catalog;
+  });
+  const result=await interpretUniversalIntent({sourceText:text,catalog,clarifications,
+    context:{...context,internalConversationOperation:true},operationId:`draft-operation:${draftId}`,
+    channel:context.channel ?? 'panel',...(options?.complete ? {complete:options.complete} : {})});
+  if (result.kind==='invalid') throw new InventoryOperationError('INTERPRETATION_INVALID','La interpretación no cumple el contrato. No apliqué cambios.',{reason:result.reason});
+  if (result.kind==='unavailable') throw new InventoryOperationError('INTERPRETATION_UNAVAILABLE','No pude interpretar la solicitud. Conservá el mensaje para reintentar.',{reason:result.reason});
+  return result.kind==='ready' ? {...result,review:buildUniversalOperationReview(result.plan,catalog)} : result;
+};
+
+export const prepareUniversalDraft = async (input,context,options={}) => {
+  authorizeUniversalConversation(context);
+  const request=normalizeDraftRequest(input);
+  await ensureReady();
+  const prior=await withTransaction(client=>findDraftCommand(client,request,context));
+  if (prior.response) return prior.response;
+  const draftId=crypto.randomUUID();
+  const interpretation=await interpretUniversalDraft(request.text,draftId,context,options);
+  return withTransaction(client=>persistUniversalInterpretation(client,request,interpretation,context,{draftId}));
+};
+export const replyUniversalDraft = async (draftId,input,context,options={}) => {
+  authorizeUniversalConversation(context);
+  const request=normalizeDraftRequest(input,true);
+  await ensureReady();
+  const pending=await withTransaction(async client=>{
+    const command=await findDraftCommand(client,request,context,'reply',draftId);
+    if (command.response) return {response:command.response};
+    const row=await readUniversalDraft(client,draftId,context);
+    if (row.version!==request.version) throw new InventoryOperationError('DRAFT_VERSION_MISMATCH','El borrador cambió. Revisá la versión actual.');
+    if (!row.status.startsWith('awaiting_')) throw new InventoryOperationError('DRAFT_NOT_PENDING','El borrador ya tiene un resultado definitivo.');
+    if (row.expired) throw new InventoryOperationError('DRAFT_EXPIRED','El borrador venció. Prepará uno nuevo.');
+    if (row.status!=='awaiting_clarification') throw new InventoryOperationError('DRAFT_NOT_AWAITING_CLARIFICATION','Este borrador no tiene una pregunta pendiente.');
+    const text=`${row.preview_json.text}\n${request.text}`;
+    if (row.version>=20 || text.length>12000) throw new InventoryOperationError('INVALID_DRAFT_REQUEST','La conversación excede el límite. Prepará un borrador nuevo.');
+    return {text,clarifications:[...(row.preview_json.clarifications ?? []),{question:row.preview_json.question,answer:request.text}]};
+  });
+  if (pending.response) return pending.response;
+  const interpretation=await interpretUniversalDraft(pending.text,draftId,context,options,pending.clarifications);
+  return withTransaction(client=>persistUniversalInterpretation(client,request,interpretation,context,{draftId,reply:true}));
+};
+export const getUniversalDraft = async (draftId,context) => {
+  authorizeUniversalConversation(context); await ensureReady();
+  return withTransaction(async client=>{
+    const row=await readUniversalDraft(client,draftId,context);
+    if (row.preview_json.plan) prepareUniversalOperation(row.preview_json.plan,{...context,internalConversationOperation:true});
+    return row.preview_json;
+  });
+};
+export const confirmUniversalDraft = async (draftId,input,context) => {
+  authorizeUniversalConversation(context); await ensureReady();
+  return withTransaction(client=>confirmUniversalDraftInTransaction(client,draftId,input,
+    {...context,ownerPhoneVariants:getOwnerPhoneVariants(context.businessId)},persistInventoryTransactions));
+};
+export const cancelUniversalDraft = async (draftId,input,context) => {
+  authorizeUniversalConversation(context); await ensureReady();
+  return withTransaction(client=>cancelUniversalDraftInTransaction(client,draftId,input,context));
 };
 
 export const executeInventoryOperation = async (plan, context) => {

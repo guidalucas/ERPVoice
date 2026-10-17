@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.5b2, pedidos en el contrato universal y composición atómica.
+- Último alcance integrado: H4.5c1, intérprete universal con revisión persistente y confirmación desde panel.
 - Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; código de b1 en `e22a459`.
 
 ## Hitos y dependencias
@@ -55,13 +55,11 @@
 
 ## Próximo paso exacto
 
-H4.5c1: frontera de interpretación universal independiente del proveedor. La IA propone
-acciones sin elegir tenant, actor, permisos ni IDs operativos. Backend valida el contrato,
-referencias explícitas y evidencia; nunca ejecuta durante interpretación. A continuación,
-conversación persistente de revisión/confirmación y consumidores, H4.6 familias/esquemas
-configurables y H5 real. No repetir la auditoría ni reintroducir escritores alternativos.
-Se conservan bloqueo amplio y selecciones masivas revisadas. Reentradas y aliases a nuevas
-entidades siguen fuera del contrato; las rutas compatibles no son motores duplicados.
+H4.5c2: corregir una revisión universal mediante parches por itemId, sin reinterpretar
+los demás ítems ni perder referencias. Reutilizar versiones/digest/recibos actuales y
+permitir revisión completa antes de confirmar. Después integrar canal WhatsApp al mismo
+servicio y completar familias/esquemas configurables (H4.6), evaluación y H5 real.
+No reauditar ni duplicar escritores. Conservar selecciones masivas y bloqueo amplio.
 
 ## Registro de hitos
 
@@ -570,6 +568,32 @@ entidades siguen fuera del contrato; las rutas compatibles no son motores duplic
   Sin cambios frontend en este hito; build anterior sigue vigente. Sin despliegue/LLM real.
 - Pendiente: intérprete/conversación universales, familias persistentes, migración de
   consumidores y validación H5. Este checkpoint no cierra la reingeniería completa.
+
+- H4.5c1 (2026-10-17): universalIntentInterpreter usa proveedor inyectable y salida cerrada
+  propuesta/pregunta, diferenciando invalid/unavailable. El modelo no recibe tenant/actor/
+  permisos/operationId ni puede emitir precondiciones. Backend fija revisiones/fingerprints
+  y verifica IDs ofrecidos/evidencia literal antes de validar el contrato universal.
+- H4.5c1: universal_drafts y universal_draft_commands persisten revisión, versión, digest,
+  TTL y primera respuesta por requestId/actor/negocio. Preparar no muta inventario; confirmar
+  ejecuta el mismo motor y guarda estado applied en su transacción. Replay concurrente y
+  posterior a cambios devuelve recibo original; fallo de guardado revierte todos los efectos.
+  IDs draft-operation reservados a confirmar. RLS/revocaciones agregadas a ambas tablas.
+- H4.5c1: preguntas/respuestas viajan como historial estructurado, separado del texto de
+  evidencia del usuario. Catálogo usa identidad SQL cruda y snapshot coherente, sin nombres
+  de presentación ni historial innecesario. Revisión legible se genera en backend y persiste.
+- H4.5c1 panel: chat ofrece Revisar operación; modal recupera referencia e intentos por
+  tenant/actor, conserva IDs ante respuesta incierta, muestra revisión completa, requiere
+  consentimiento nuevo tras recuperación y permite cancelar borradores vencidos. Aplicado
+  con refresco fallido muestra el resultado persistido y reintenta solo la lectura.
+- H4.5c1 verificado: 265 checks PG/HTTP, 92 pruebas puras, build y Edge universal-draft-ui
+  aprobados. Revisión independiente encontró pérdida de pregunta; corregida y probada con
+  pregunta/respuesta estructuradas que no autorizan evidencia del asistente. Identidad cruda,
+  aislamiento, CAS, rollback del estado final y replay sin proveedor incluidos.
+- H4.5c1 límites: canal WhatsApp anterior conserva adapters; entrada nueva del panel es
+  explícita. Correcciones de planes listos requieren cancelar/nuevo borrador hasta c2.
+  Selecciones masivas mantienen su flujo revisado; reentradas, aliases nuevos y pago+baja
+  dependiente se rechazan conservadoramente. Catálogo/texto acotados se rechazan completos,
+  nunca se truncan. Proveedores en pruebas simulados; no hay evaluación real ni despliegue.
 
 ## Continuación sin repetir investigación
 

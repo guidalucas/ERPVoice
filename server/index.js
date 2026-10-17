@@ -23,6 +23,11 @@ import {
   applyActionsToDatabase,
   executeInventoryOperation,
   executeUniversalOperation,
+  prepareUniversalDraft,
+  replyUniversalDraft,
+  getUniversalDraft,
+  confirmUniversalDraft,
+  cancelUniversalDraft,
   executeAccountOperation,
   executeOrderOperation,
   answerStockQuery,
@@ -829,23 +834,48 @@ app.get('/api/meta-webhook', (req, res) => {
   res.sendStatus(403);
 });
 
+const universalRequestContext = (req) => ({
+  businessId:tenantPhoneOf(req),actorId:authPhoneOf(req),channel:'panel',permissions:[
+    'inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
+    'accounts:charge','accounts:payment','accounts:adjust','accounts:transfer',
+    'clients:create','clients:update','clients:delete','suppliers:create','suppliers:update','suppliers:delete','suppliers:merge',
+    'orders:create','orders:update','orders:delete','orders:reconcile',
+  ],
+});
+const universalHttpError = (res,error) => {
+  const known = error.name === 'InventoryOperationError';
+  const status = !known ? 500 : ['FORBIDDEN','BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
+    : error.code==='INTERPRETATION_UNAVAILABLE' ? 503 : error.code==='INTERPRETATION_INVALID' ? 422
+    : ['INVALID_OPERATION_PLAN','INVALID_ACCOUNT_OPERATION','INVALID_PARTY_OPERATION','INVALID_ORDER_OPERATION','INVALID_DRAFT_REQUEST','BUSINESS_SCOPE_REQUIRED','UNSUPPORTED_OPERATION','OPERATION_ID_REQUIRED','MIXED_OPERATION_PLAN_UNSUPPORTED','UNSUPPORTED_OPERATION_ORDER'].includes(error.code) ? 400
+    : ['CLIENT_NOT_FOUND','PARTY_NOT_FOUND','SKU_NOT_FOUND','ORDER_NOT_FOUND','SUPPLIER_NOT_FOUND','DRAFT_NOT_FOUND'].includes(error.code) ? 404 : 409;
+  res.status(status).json({error:known ? error.message : 'No pude guardar la operación.',code:known ? error.code : 'OPERATION_UNAVAILABLE'});
+};
+app.post('/api/operation-drafts', authenticateRequest, async (req,res) => {
+  try { res.json(await prepareUniversalDraft(req.body,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
+});
+app.get('/api/operation-drafts/:id', authenticateRequest, async (req,res) => {
+  try { res.json(await getUniversalDraft(req.params.id,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
+});
+app.post('/api/operation-drafts/:id/replies', authenticateRequest, async (req,res) => {
+  try { res.json(await replyUniversalDraft(req.params.id,req.body,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
+});
+app.post('/api/operation-drafts/:id/confirm', authenticateRequest, async (req,res) => {
+  try { res.json(await confirmUniversalDraft(req.params.id,req.body,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
+});
+app.post('/api/operation-drafts/:id/cancel', authenticateRequest, async (req,res) => {
+  try { res.json(await cancelUniversalDraft(req.params.id,req.body,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
+});
 app.post('/api/operations', authenticateRequest, async (req,res) => {
   try {
-    const result = await executeUniversalOperation(req.body, {
-      businessId:tenantPhoneOf(req),actorId:authPhoneOf(req),permissions:[
-        'inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
-        'accounts:charge','accounts:payment','accounts:adjust','accounts:transfer',
-        'clients:create','clients:update','clients:delete','suppliers:create','suppliers:update','suppliers:delete','suppliers:merge',
-        'orders:create','orders:update','orders:delete','orders:reconcile',
-      ],
-    });
+    const result = await executeUniversalOperation(req.body,universalRequestContext(req));
     res.json(result);
   } catch (error) {
-    const known = error.name === 'InventoryOperationError';
-    const status = !known ? 500 : ['FORBIDDEN','BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
-      : ['INVALID_OPERATION_PLAN','INVALID_ACCOUNT_OPERATION','INVALID_PARTY_OPERATION','INVALID_ORDER_OPERATION','BUSINESS_SCOPE_REQUIRED','UNSUPPORTED_OPERATION','OPERATION_ID_REQUIRED','MIXED_OPERATION_PLAN_UNSUPPORTED','UNSUPPORTED_OPERATION_ORDER'].includes(error.code) ? 400
-      : ['CLIENT_NOT_FOUND','PARTY_NOT_FOUND','SKU_NOT_FOUND','ORDER_NOT_FOUND','SUPPLIER_NOT_FOUND'].includes(error.code) ? 404 : 409;
-    res.status(status).json({error:known ? error.message : 'No pude guardar la operación.',code:known ? error.code : 'OPERATION_UNAVAILABLE'});
+    universalHttpError(res,error);
   }
 });
 
