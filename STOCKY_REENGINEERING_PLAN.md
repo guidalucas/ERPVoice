@@ -17,7 +17,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.0, H4.1, H4.2a, H4.3 y H4.4a verificados; pedidos siguientes |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Hasta H4.4b verificado; finanzas y conciliación histórica siguientes |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -53,15 +53,17 @@
 
 ## Próximo paso exacto
 
-H4.4b: migrar efectos de pedidos al mismo núcleo. Revisar solamente ensureProduct,
-applyPedidoEstadoStockEffect, updatePedidoRecord y rama update_pedido, sus consumidores
-HTTP/panel/WhatsApp y pruebas existentes. Definir transiciones/reversión con SKU explícito:
-sin creación por nombre, recorte con Math.max ni reservas/ventas implícitas fuera del plan.
-Pedido, recibo, movimientos e historial deben compartir transacción; exigir operationId
-estable, revisión y autorización del negocio. Probar transición/reintento concurrente,
-stock insuficiente, reversión y rollback antes de retirar ese escritor. Después finanzas
-y demás escritores. Mantener bloqueo de tabla hasta retirar reemplazo legacy.
-H4.4a ya integrado: reutilizar productCreationAdapter/sku.create, no rediseñarlo ni reauditar.
+H4.4c: migrar add_debt/payment_received y mutaciones directas de deuda de clientes a un
+contrato explícito, determinista e idempotente; retirar fallback al primer cliente, recortes
+silenciosos y deuda inferida por nombre/precio de catálogo. Revisar calculateProductDebt,
+última rama de applyActionsToDatabase, createClientRecord/updateClientRecord/mergeClientRecords
+y sus consumidores. Conservar unidades monetarias existentes; no simular contabilidad
+multimoneda sin contrato/migración. Probar aislamiento, pagos excesivos, concurrencia,
+rollback y recibo/respuesta exactos antes de integrar. No repetir auditoría del inventario.
+H4.4d: conciliación explícita de pedidos históricos conseguidos sin procedencia de stock;
+hoy fallan con ORDER_RECONCILIATION_REQUIRED al modificar stock o borrar, sin inventar SKU.
+H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
+El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
 H4.2b pendiente: conversación de conjuntos para otros verbos (bajas WhatsApp ya migradas).
 Intérprete universal, esquemas configurables y optimización/evaluación LLM siguen pendientes.
 
@@ -300,12 +302,47 @@ Intérprete universal, esquemas configurables y optimización/evaluación LLM si
   finanzas, intérprete universal y esquemas de familias configurables pendientes. No se
   desplegó ni evaluó IA real. River conserva las dos fallas conocidas del registro anterior.
 
+- H4.4b (2026-10-17): pedidos registran product_id, revision y stock_posting_json (ingreso
+  neto vigente: SKU, cantidad, unidad). Conseguido significa aprovisionamiento: entrar suma;
+  salir/borrar retira exactamente lo registrado del SKU original. Cambiar cantidad aplica
+  diferencia neta; cambiar SKU revierte y recibe atómicamente. Sin stock suficiente se
+  rechaza todo; no recorta ni registra ventas/ingresos financieros ficticios.
+- H4.4b: stock.withdraw amplía el mismo OperationPlan/planner/adapter; exige SKU existente,
+  cantidad positiva, motivo y permiso propio. No admite precios ni afecta reservado.
+  orderOperations planifica transiciones; orderPostgres ejecuta pedido + núcleo + historial
+  en una transacción. order_operations guarda solicitud normalizada y resultado inmutable
+  incluso si no cambia stock o se borra el pedido. Replay precede a existencia/revisión;
+  IDs internos reservados y locks ordenados impiden colisión con operaciones externas.
+- H4.4b: POST pide operationId; PUT/DELETE también expectedRevision. Creación conseguida
+  exige SKU explícito; pendientes pueden ser texto libre. Clientes/proveedores se validan
+  dentro del negocio. Pedido histórico conseguido sin procedencia no se reinterpreta.
+  Borrar cliente con pedidos se rechaza; fusiones/bajas de proveedor invalidan revisiones.
+- H4.4b: retirados ensureProduct, applyPedidoEstadoStockEffect, resolución aproximada de
+  pedidos y reemplazo completo de productos/clientes/proveedores. La última rama financiera
+  actualiza solo deuda, sin tocar inventario ni pedidos; todavía requiere H4.4c.
+  WhatsApp/panel adaptan pedidos al mismo ejecutor; nombres solo seleccionan un pedido único
+  con igualdad conservadora antes de escribir. IDs de SKU propuestos por IA se descartan;
+  pedido sin SKU vinculado necesita selección explícita, no nueva inferencia al conseguirlo.
+- H4.4b: lotes de pedidos y outbox atómicos, recibos congelados y proyección común en
+  operationResults para eventos Meta. Panel conserva cuerpo/UUID/revisión tras 503 y refresh
+  fallido; retry permanece visible tras hidratar otro estado. Elegir SKU o revisar conflicto
+  abre un intento nuevo; controles bloqueados durante envío. Seed actualizado, no ejecutado.
+- H4.4b verificado: 145 checks PostgreSQL/HTTP, 43 tests puros y 50 del motor. Carreras,
+  rollback de movimiento/outbox (incluidos clientes creados), cambios de cantidad/SKU,
+  replay tras borrado, aislamiento y revisiones indirectas cubiertos. HTTP real con JWT y
+  Meta firmado valida ingreso/replay y reversión insuficiente terminal. Build y Edge de
+  pedidos e inventario aprobados; Edge usa API simulada. Revisión arquitectónica independiente
+  señaló borrado indirecto, procedencia neta y orden de locks, corregidos y probados.
+- H4.4b límites: conciliación histórica aún sin UI/contrato, finanzas todavía legacy,
+  intérprete universal/esquemas configurables y evaluación/despliegue pendientes. No se
+  cambió configuración productiva ni se llamó a proveedores reales. No declarar C completa.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
 - H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
-- H4.4a: siguiente commit de altas con stock inicial; recuperar SHA con git log.
+- H4.4a `844b29b`; H4.4b sobre checkpoint parcial del usuario `600373f`; ver git log.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
 - Frontend: `npm run test:inventory-ui` y `npm run test:panel-draft-recovery`.
@@ -314,5 +351,6 @@ Intérprete universal, esquemas configurables y optimización/evaluación LLM si
 - Bajas: `npm run test:inventory-deactivation-ui`; incluido en test:inventory y PG/HTTP.
   Edge local; APIs/proveedores simulados. Ninguna de estas pruebas valida IA real.
 - Altas: `npm run test:inventory-create-ui`; contrato y rollback incluidos en suites pura/PG.
+- Pedidos: `npm run test:order-ui`; transacciones/HTTP/Meta en test:voice-stock-postgres.
 - Producción: falta verificar configuración privada, backup/restauración recuperable,
   ejecutar migración controlada, comprobar SHA/readiness y piloto aislado. No desplegado.

@@ -400,6 +400,56 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal((await ledger(`whatsapp:${messageId}`)).length, 0);
       assert.equal(await db.claimMetaMessage({ messageId, ownerPhone: owner, senderPhone: owner, rawBody: body }), false);
     });
+    await run('order endpoints require IDs/revisions, persist procurement and return immutable delete receipts', async () => {
+      const product = await createHttpFixtureProduct({ name:'HTTP order explicit SKU',stockAvailable:0 },owner);
+      const customer = await db.createClientRecord({name:'HTTP order customer'},owner);
+      const body = {operationId:'http-order-create',clienteId:customer.id,producto:product.name,productId:product.id,qty:3};
+      assert.equal((await request('/api/pedidos',{body,auth:false})).status,401);
+      assert.equal((await request('/api/pedidos',{body:{...body,operationId:undefined}})).status,400);
+      assert.equal((await request('/api/pedidos',{body:{...body,operationId:'http-order-inject',ownerPhone:'foreign'}})).status,400);
+      const created = await request('/api/pedidos',{body}); assert.equal(created.status,201); assert.equal(created.json.revision,0);
+      assert.deepEqual((await request('/api/pedidos',{body})).json,created.json);
+      const route = `/api/pedidos/${created.json.id}`, transition = {operationId:'http-order-achieved',expectedRevision:0,estado:'conseguido'};
+      const changed = await request(route,{method:'PUT',body:transition}); assert.equal(changed.status,200);
+      assert.deepEqual(changed.json.stockPosting,{skuId:product.id,quantity:3,unit:'unit'}); assert.equal(Number((await stock(product.id))[0].stock_available),3);
+      assert.equal((await request(route,{method:'PUT',body:{...transition,operationId:'http-order-stale'}})).status,409);
+      assert.deepEqual((await request(route,{method:'PUT',body:transition})).json,changed.json);
+      const foreign = await request(route,{method:'PUT',body:transition,headers:{Authorization:`Bearer ${issueJwt({phoneNumber:'59899000515'})}`}}); assert.equal(foreign.status,404);
+      const deletion = {operationId:'http-order-delete',expectedRevision:1};
+      const removed = await request(route,{method:'DELETE',body:deletion}); assert.equal(removed.status,200); assert.equal(removed.json.deleted,true);
+      assert.equal(removed.json.inventoryResult.items[0].type,'stock.withdraw'); assert.equal(Number((await stock(product.id))[0].stock_available),0);
+      assert.deepEqual((await request(route,{method:'DELETE',body:deletion})).json,removed.json);
+      assert.deepEqual((await request(route,{method:'PUT',body:transition})).json,changed.json);
+      assert.equal((await request('/api/state/apply',{body:{operationId:'forged-withdraw-history',actions:[{type:'withdraw_stock',productId:product.id,qty:1}]}})).status,409);
+    });
+    await run('signed WhatsApp order transitions use the bound SKU, outbox and terminal insufficiency', async () => {
+      const product = await createHttpFixtureProduct({name:'Taladro Pedido HTTP',stockAvailable:0},owner);
+      const customer = await db.createClientRecord({name:'HTTP proveedor pedido'},owner);
+      await db.createPedidoRecord({operationId:'http-meta-order-create',clienteId:customer.id,producto:product.name,productId:product.id,qty:2},owner);
+      const send = async (messageId,text) => {
+        const raw = JSON.stringify({object:'whatsapp_business_account',entry:[{changes:[{value:{messages:[{id:messageId,from:owner,type:'text',text:{body:text}}]}}]}]});
+        const headers = {'X-Hub-Signature-256':`sha256=${crypto.createHmac('sha256',appSecret).update(Buffer.from(raw)).digest('hex')}`};
+        assert.equal((await request('/api/meta-webhook',{raw,headers,auth:false})).status,200);
+        const deadline = Date.now()+5000;
+        while (Date.now()<deadline) {
+          const claim = (await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1',[messageId])).rows[0];
+          if (claim?.status==='completed') return (await sql.query('SELECT error,reply_text,actions_json FROM meta_events WHERE id=$1',[messageId])).rows[0];
+          await new Promise((resolve)=>setTimeout(resolve,30));
+        }
+        assert.fail('Order Meta event did not finish');
+      };
+      const achieved = await send('http-order-meta-achieved','Marcá el pedido Taladro Pedido HTTP como conseguido');
+      assert.equal(achieved.error,null); assert.match(achieved.reply_text,/Ingreso aplicado: 2 unit/); assert.equal(Number((await stock(product.id))[0].stock_available),2);
+      const replay = await send('http-order-meta-achieved','Marcá el pedido Taladro Pedido HTTP como conseguido');
+      assert.deepEqual(replay,achieved); assert.equal(Number((await stock(product.id))[0].stock_available),2);
+      assert.equal((await sql.query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1',['http-order-meta-achieved'])).rows[0].reply_text,achieved.reply_text);
+      await db.executeInventoryOperation(plan('http-order-meta-sell',[{itemId:'sale',type:'stock.sell',target:{kind:'existing',skuId:product.id},quantity:{value:2,unit:'unit'}}]),{businessId:owner,actorId:owner,permissions:['inventory:sell']});
+      const rejected = await send('http-order-meta-reject','Descartá el pedido Taladro Pedido HTTP');
+      assert.equal(rejected.error,'INSUFFICIENT_STOCK'); assert.deepEqual(rejected.actions_json,[]);
+      await db.executeInventoryOperation(plan('http-order-meta-replenish',[{itemId:'receive',type:'stock.receive',target:{kind:'existing',skuId:product.id},quantity:{value:2,unit:'unit'}}]),{businessId:owner,actorId:owner,permissions:['inventory:receive']});
+      assert.deepEqual(await send('http-order-meta-reject','Descartá el pedido Taladro Pedido HTTP'),rejected);
+      assert.equal(Number((await stock(product.id))[0].stock_available),2);
+    });
     return completed;
   } catch (error) {
     let safeLogs = logs;

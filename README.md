@@ -42,7 +42,15 @@ reutilizar el ID con otro contenido o duplicar una identidad devuelve 409.
 Cada modelo es actualmente un lote de SKU: la API permite añadir variantes únicas a los
 mismos tipo/modelo; todavía no existe una entidad persistente de familia configurable.
 `npm run test:inventory-create-ui` verifica altas, reintentos y recuperación del panel.
-Los efectos de pedidos y otros escritores históricos siguen pendientes de migración.
+Los pedidos ya ejecutan sus efectos en ese núcleo. POST `/api/pedidos` requiere
+`operationId`; PUT y DELETE también `expectedRevision`. Marcar conseguido suma al SKU
+explícito (`productId`); revertir o borrar retira la cantidad neta ingresada del SKU original.
+Stock insuficiente rechaza toda la transición. DELETE devuelve un recibo y conserva su replay.
+Pedidos históricos conseguidos sin procedencia verificable requieren conciliación explícita
+antes de cambiar su stock; un nombre no alcanza para atribuirles un ingreso.
+WhatsApp exige un pedido único y un SKU ya vinculado para conseguirlo; el panel permite
+elegir el SKU exacto. `npm run test:order-ui` cubre reintentos y revisiones del panel.
+Se retiró el reemplazo completo de tablas; finanzas y conciliación histórica siguen pendientes.
 
 Antes de desplegar: configurar `META_APP_SECRET` (firma POST Meta) y, en producción,
 `AUTH_JWT_SECRET` privado de al menos 32 bytes. `/api/health` publica readiness y el SHA

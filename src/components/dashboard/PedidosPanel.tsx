@@ -82,6 +82,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
   const [pedidoErrors, setPedidoErrors] = useState<Record<string, string>>({});
   const createAttemptRef = useRef<{ key: string; body: Parameters<typeof createPedidoRecord>[0] } | null>(null);
   const statusAttemptsRef = useRef(new Map<string, { estado: PedidoEstado; productId?: string; operationId: string; expectedRevision: number }>());
+  const busyRef = useRef(false);
 
   useEffect(() => {
     if (startWithForm) {
@@ -193,7 +194,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
   }, [filtered, proveedoresById]);
 
   const changeEstado = async (pedido: (typeof pedidos)[number], estado: PedidoEstado) => {
-    if (updatingId) return;
+    if (busyRef.current) return;
     const productId = estado === 'conseguido' ? pedido.productId ?? pedidoSkuChoices[pedido.id] : pedido.productId ?? undefined;
     if (estado === 'conseguido' && !productId) {
       setPedidoErrors((current) => ({ ...current, [pedido.id]: 'Elegí el SKU exacto antes de marcar como conseguido.' }));
@@ -204,19 +205,27 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
       ? prior
       : { estado, productId, operationId: crypto.randomUUID(), expectedRevision: pedido.revision ?? 0 };
     statusAttemptsRef.current.set(pedido.id, attempt);
-    setUpdatingId(pedido.id);
+    await submitStatus(pedido.id, attempt);
+  };
+
+  const submitStatus = async (pedidoId: string, attempt: NonNullable<ReturnType<typeof statusAttemptsRef.current.get>>) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setUpdatingId(pedidoId);
     try {
-      setPedidoErrors((current) => ({ ...current, [pedido.id]: '' }));
-      await updatePedidoRecord(pedido.id, { estado, productId, operationId: attempt.operationId, expectedRevision: attempt.expectedRevision });
-      statusAttemptsRef.current.delete(pedido.id);
+      setPedidoErrors((current) => ({ ...current, [pedidoId]: '' }));
+      await updatePedidoRecord(pedidoId, { ...attempt });
+      statusAttemptsRef.current.delete(pedidoId);
     } catch (error) {
-      setPedidoErrors((current) => ({ ...current, [pedido.id]: toUserFacingError(error, 'No se pudo actualizar el pedido. Reintentá.') }));
+      setPedidoErrors((current) => ({ ...current, [pedidoId]: toUserFacingError(error, 'No se pudo actualizar el pedido. Reintentá.') }));
     } finally {
       setUpdatingId(null);
+      busyRef.current = false;
     }
   };
 
   const resetForm = () => {
+    createAttemptRef.current = null;
     setClienteId('');
     setNewClientName('');
     setProveedorId('');
@@ -227,9 +236,19 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
   };
 
   const handleCreatePedido = async () => {
+    if (busyRef.current) return;
+    if (createAttemptRef.current) {
+      busyRef.current = true; setSaving(true); setFormError(null);
+      try {
+        await createPedidoRecord(createAttemptRef.current.body);
+        resetForm(); setFormOpen(false); setEstadoFilter('pendiente');
+      } catch (error) { setFormError(toUserFacingError(error, 'No se pudo crear el pedido.')); }
+      finally { busyRef.current = false; setSaving(false); }
+      return;
+    }
     setFormError(null);
     const qty = Number(qtyText);
-    if (!Number.isFinite(qty) || qty < 1 || !Number.isInteger(qty)) {
+    if (!Number.isSafeInteger(qty) || qty < 1) {
       setFormError('Ingresá una cantidad entera mayor a 0.');
       return;
     }
@@ -240,7 +259,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
       return;
     }
 
-    setSaving(true);
+    busyRef.current = true; setSaving(true);
     try {
       let resolvedClientId = clienteId;
       if (!resolvedClientId) {
@@ -251,16 +270,18 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
         }
         const created = await createClientRecord({ name });
         resolvedClientId = created.id;
+        setClienteId(created.id); setNewClientName('');
       }
 
       let resolvedProveedorId: string | null = proveedorId || null;
       if (!resolvedProveedorId && newProveedorName.trim()) {
         const created = await createProveedorRecord({ name: newProveedorName.trim() });
         resolvedProveedorId = created.id;
+        setProveedorId(created.id); setNewProveedorName('');
       }
 
       const key = JSON.stringify([resolvedClientId, resolvedProveedorId, selectedProduct.id, qty]);
-      const captured: Parameters<typeof createPedidoRecord>[0] = createAttemptRef.current?.key === key ? createAttemptRef.current.body : {
+      const captured: Parameters<typeof createPedidoRecord>[0] = {
         operationId: crypto.randomUUID(),
         clienteId: resolvedClientId,
         proveedorId: resolvedProveedorId,
@@ -284,6 +305,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
       setFormError(toUserFacingError(error, 'No se pudo crear el pedido.'));
     } finally {
       setSaving(false);
+      busyRef.current = false;
     }
   };
 
@@ -294,17 +316,21 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
 
   const renderStatusControls = (pedido: (typeof pedidos)[number]) => (
     <div className="space-y-2 sm:text-right">
-      {pedido.estado === 'pendiente' && !pedido.productId && (
+      {pedido.estado !== 'conseguido' && !pedido.productId && (
         <label className="block text-xs text-[color:var(--muted)]">
           SKU exacto para ingresar
-          <select className="erp-input mt-1 min-h-10" aria-label={`SKU para ${pedido.producto}`} value={pedidoSkuChoices[pedido.id] ?? ''}
-            onChange={(event) => setPedidoSkuChoices((current) => ({ ...current, [pedido.id]: event.target.value }))}>
+          <select disabled={Boolean(updatingId) || saving} className="erp-input mt-1 min-h-10" aria-label={`SKU para ${pedido.producto}`} value={pedidoSkuChoices[pedido.id] ?? ''}
+            onChange={(event) => {
+              setPedidoSkuChoices((current) => ({ ...current, [pedido.id]: event.target.value }));
+              statusAttemptsRef.current.delete(pedido.id);
+              setPedidoErrors((current) => ({ ...current, [pedido.id]: '' }));
+            }}>
             <option value="">Elegir SKU…</option>
             {sortedProducts.map((product) => <option key={product.id} value={product.id}>{productOptionLabel(product, true)} · {product.id}</option>)}
           </select>
         </label>
       )}
-      <PedidoStatusControls estado={pedido.estado} disabled={updatingId === pedido.id} onChange={(next) => void changeEstado(pedido, next)} />
+      <PedidoStatusControls estado={pedido.estado} disabled={Boolean(updatingId) || saving || Boolean(pedidoErrors[pedido.id])} onChange={(next) => void changeEstado(pedido, next)} />
       {pedidoErrors[pedido.id] && <p role="alert" className="text-xs text-rose-700 dark:text-rose-200">{pedidoErrors[pedido.id]}</p>}
     </div>
   );
@@ -324,13 +350,13 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
                   : 'Agrupados por producto. Marcar como conseguido suma stock; revertirlo lo resta.'}
           </p>
         </div>
-        <button type="button" className="erp-button-primary min-h-11" onClick={() => setFormOpen((open) => !open)}>
+        <button type="button" disabled={saving || Boolean(updatingId)} className="erp-button-primary min-h-11" onClick={() => { resetForm(); setFormOpen((open) => !open); }}>
           {formOpen ? 'Cerrar formulario' : '+ Nuevo pedido'}
         </button>
       </div>
 
       {formOpen && (
-        <div className="inventory-row p-4">
+        <fieldset disabled={saving || Boolean(updatingId)} onChange={() => { createAttemptRef.current = null; }} className="inventory-row p-4">
           <p className="text-sm type-subtitle text-[color:var(--text)]">Cargar pedido manual</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
@@ -433,8 +459,24 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
               Cancelar
             </button>
           </div>
-        </div>
+        </fieldset>
       )}
+
+      {Object.entries(pedidoErrors).filter(([, error]) => error).map(([pedidoId, error]) => (
+        <div key={pedidoId} className="inventory-row p-3" role="alert">
+          <p>{error}</p>
+          <div className="mt-2 flex gap-2">
+            <button type="button" disabled={Boolean(updatingId) || saving} className="erp-button-primary" onClick={() => {
+              const attempt = statusAttemptsRef.current.get(pedidoId);
+              if (attempt) void submitStatus(pedidoId, attempt);
+            }}>Reintentar cambio de pedido</button>
+            <button type="button" disabled={Boolean(updatingId) || saving} className="erp-button-secondary" onClick={() => {
+              statusAttemptsRef.current.delete(pedidoId);
+              setPedidoErrors((current) => ({ ...current, [pedidoId]: '' }));
+            }}>Revisar pedido actual</button>
+          </div>
+        </div>
+      ))}
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-2">

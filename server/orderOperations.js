@@ -8,6 +8,10 @@ const dataFields = ['clienteId', 'proveedorId', 'producto', 'productType', 'prod
 const stable = (value) => value && typeof value === 'object' && !Array.isArray(value)
   ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])])) : value;
 export const orderRequestDigest = (request) => createHash('sha256').update(JSON.stringify(stable(request))).digest('hex');
+export const orderReceiptAction = (kind, pedido) => ({
+  type: kind === 'create' ? 'client_order' : kind === 'delete' ? 'delete_pedido' : 'update_pedido',
+  pedidoId: pedido.id, productId: pedido.productId, productName: pedido.producto, qty: pedido.qty, estado: pedido.estado, revision: pedido.revision,
+});
 const text = (value, field) => { if (typeof value !== 'string' || !value.trim()) invalid(`${field} debe ser texto no vacío.`); return value.trim(); };
 
 /** Closed request, normalized without reading current state, so replay also works after delete. */

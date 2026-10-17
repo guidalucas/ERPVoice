@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { Pool } from 'pg';
 import { normalizePhone, getWhatsAppVariants } from './phone.js';
-import { productBaseName, productMatchKey, normalizeProductMetadata } from './productIdentity.js';
+import { productMatchKey, normalizeProductMetadata } from './productIdentity.js';
 import { validateStockDraft, hasExplicitStockSize, productFingerprint, stockReferenceIssues, explicitIdentityConflict } from './voiceStockEngine.js';
 import { INVENTORY_SCHEMA_SQL, executeInventoryPlanInTransaction, inventoryRowToProduct } from './inventoryPostgres.js';
 import { validateOperationPlan, InventoryOperationError } from './inventoryOperations.js';
@@ -11,6 +11,9 @@ import { inventoryResultActions, inventoryResultReply } from './inventoryResults
 import { normalizeSelectionRequest, selectionRequestDigest, buildSelectionPreview, requireReviewedUpdateSelection } from './inventorySelections.js';
 import { parseMetaDeactivationCommand, deactivationPreviewReply, metaDeactivationReceiptReply } from './inventoryMetaSelections.js';
 import { productCreationToPlan } from './productCreationAdapter.js';
+import { ORDER_SCHEMA_SQL, orderRowToPedido, executeOrderInTransaction } from './orderPostgres.js';
+import { canonicalIdentityText } from './inventoryDomain.js';
+import { orderRequestDigest } from './orderOperations.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -291,20 +294,7 @@ const rowToProveedor = (row) => ({
   notas: row.notas ?? null,
 });
 
-const rowToPedido = (row) => ({
-  id: row.id,
-  ownerPhone: row.owner_phone,
-  clienteId: row.cliente_id,
-  proveedorId: row.proveedor_id ?? null,
-  producto: row.producto,
-  productType: row.product_type,
-  productModel: row.product_model,
-  talle: row.talle,
-  qty: Number(row.qty ?? 1),
-  estado: PEDIDO_ESTADOS.has(row.estado) ? row.estado : 'pendiente',
-  fechaPedido: row.fecha_pedido,
-  notas: row.notas ?? null,
-});
+const rowToPedido = orderRowToPedido;
 
 const rowToTransaction = (row) => ({
   id: row.id,
@@ -564,6 +554,7 @@ const initializeDatabase = async () => {
     CREATE INDEX IF NOT EXISTS idx_auth_wa_status ON auth_wa_challenges (status);
 
     ${INVENTORY_SCHEMA_SQL}
+    ${ORDER_SCHEMA_SQL}
 
     DO $$
     DECLARE
@@ -667,7 +658,7 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null, { 
     client,
   );
   const pedidosRows = await queryRows(
-    `SELECT id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
+    `SELECT *
      FROM pedidos WHERE owner_phone = ANY($1)
      ORDER BY fecha_pedido DESC`,
     [ownerPhoneVariants],
@@ -1202,141 +1193,6 @@ export const answerStockQuery = (products, action, options = {}) => {
   return truncateStockReply(`${header}\n${lines.join('\n')}${reservedLine}`);
 };
 
-const resolvePedidoFlexible = (pedidos, productName, clientName) => {
-  const pendingFirst = [...pedidos].sort((left, right) => {
-    if (left.estado === 'pendiente' && right.estado !== 'pendiente') return -1;
-    if (right.estado === 'pendiente' && left.estado !== 'pendiente') return 1;
-    return 0;
-  });
-
-  let best = null;
-  let bestScore = 0;
-
-  for (const pedido of pendingFirst) {
-    let score = Math.max(
-      scoreNameMatch(pedido.producto, productName),
-      scoreNameMatch([pedido.productType, pedido.productModel, pedido.talle].filter(Boolean).join(' '), productName),
-    );
-
-    if (clientName?.trim()) {
-      // slight preference only; client match isn't available on pedido without clients list here
-      score += 0;
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = pedido;
-    }
-  }
-
-  return bestScore >= 1 ? best : null;
-};
-
-const createProduct = (name, index, metadata = {}) => ({
-  id: `product-${slugify(name)}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,
-  name: String(name ?? '').trim(),
-  productType: metadata.productType ?? null,
-  productModel: metadata.productModel ?? null,
-  size: metadata.size ?? null,
-  stockAvailable: 0,
-  stockReserved: 0,
-  price: Number.isFinite(metadata.price) && metadata.price > 0 ? metadata.price : 0,
-});
-
-const splitBloatedGarmentFields = (action) => normalizeProductMetadata(action);
-
-const ensureProduct = (products, action) => {
-  const normalizedAction = splitBloatedGarmentFields(action);
-  const resolvedProduct = resolveProduct(products, normalizedAction);
-  if (resolvedProduct && (resolvedProduct.status ?? 'active') !== 'active') throw new InventoryOperationError('SKU_INACTIVE', 'El SKU está desactivado; no modifiqué el pedido ni su stock.');
-
-  if (resolvedProduct) {
-    if (Number.isFinite(normalizedAction.price) && normalizedAction.price > 0 && (!resolvedProduct.price || resolvedProduct.price === 0)) {
-      resolvedProduct.price = normalizedAction.price;
-    }
-    return resolvedProduct;
-  }
-
-  const product = createProduct(productBaseName(normalizedAction) || normalizedAction.productName, products.length, {
-    productType: normalizedAction.productType,
-    productModel: normalizedAction.productModel,
-    size: normalizedAction.size,
-    price: Number.isFinite(normalizedAction.price) && normalizedAction.price > 0 ? normalizedAction.price : undefined,
-  });
-  products.push(product);
-  return product;
-};
-
-/**
- * Al pasar un pedido a "conseguido" suma stock; al salir de "conseguido" lo resta.
- * Mutates `products` in place. Returns effect metadata or null if no stock change.
- */
-const applyPedidoEstadoStockEffect = (products, pedido, previousEstado, nextEstado) => {
-  if (!pedido || previousEstado === nextEstado) {
-    return null;
-  }
-
-  const enteredConseguido = previousEstado !== 'conseguido' && nextEstado === 'conseguido';
-  const leftConseguido = previousEstado === 'conseguido' && nextEstado !== 'conseguido';
-
-  if (!enteredConseguido && !leftConseguido) {
-    return null;
-  }
-
-  const qty = Math.max(1, Math.trunc(Number(pedido.qty) || 1));
-  const matchInput = {
-    productName: pedido.producto,
-    productType: pedido.productType,
-    productModel: pedido.productModel,
-    size: pedido.talle,
-  };
-
-  const existingIds = new Set(products.map((entry) => entry.id));
-  const product = ensureProduct(products, matchInput);
-  const created = !existingIds.has(product.id);
-
-  if (enteredConseguido) {
-    product.stockAvailable += qty;
-  } else {
-    product.stockAvailable = Math.max(0, product.stockAvailable - qty);
-  }
-
-  const sizeLabel = pedido.talle ? ` (${pedido.talle})` : '';
-  const productLabel = pedido.producto || product.name;
-  const summary = enteredConseguido
-    ? `Pedido conseguido: +${qty} stock de ${productLabel}${sizeLabel}`
-    : `Pedido revertido: -${qty} stock de ${productLabel}${sizeLabel}`;
-
-  const action = enteredConseguido
-    ? {
-        type: 'add_stock',
-        productName: productLabel,
-        productType: pedido.productType || undefined,
-        productModel: pedido.productModel || undefined,
-        size: pedido.talle || undefined,
-        qty,
-      }
-    : {
-        type: 'update_pedido',
-        productName: productLabel,
-        estado: nextEstado,
-        qty,
-        size: pedido.talle || undefined,
-      };
-
-  return {
-    product,
-    created,
-    qty,
-    enteredConseguido,
-    summary,
-    action,
-    sourceText: enteredConseguido
-      ? `Pedido marcado como conseguido: ${productLabel}${sizeLabel}`
-      : `Pedido revertido de conseguido: ${productLabel}${sizeLabel}`,
-  };
-};
-
 const calculateProductDebt = (products, debtAction) => {
   if (!debtAction.productName || typeof debtAction.qty !== 'number' || debtAction.qty <= 0) {
     return null;
@@ -1352,6 +1208,7 @@ const calculateProductDebt = (products, debtAction) => {
 };
 
 const summarizeAction = (action) => {
+  if (action.type === 'withdraw_stock') return `Retiro de ${action.qty} ${action.unit}: ${action.productName}; disponible ${action.stockAvailable}; reservado ${action.stockReserved}`;
   if (action.type === 'create_product') return `SKU creado: ${action.productName}; disponible ${action.stockAvailable}; reservado ${action.stockReserved}`;
   if (action.type === 'add_stock') {
     return `+${action.qty} stock para ${action.productName}`;
@@ -1415,69 +1272,6 @@ const summarizeAction = (action) => {
   return `+$${action.amount.toLocaleString('es-AR')} en cuenta de ${action.clientName}`;
 };
 
-const ANONYMOUS_PEDIDO_CLIENT = 'Sin cliente';
-
-const resolveOrCreateClientByName = (clients, clientName) => {
-  const resolvedName = String(clientName ?? '').trim() || ANONYMOUS_PEDIDO_CLIENT;
-  const target = normalizeText(resolvedName).trim();
-  const exactMatches = clients.filter((entry) => normalizeText(entry.name).trim() === target);
-
-  if (exactMatches.length === 1) {
-    return exactMatches[0];
-  }
-
-  const created = {
-    id: `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    name: titleCase(resolvedName),
-    debt: 0,
-    notas: resolvedName === ANONYMOUS_PEDIDO_CLIENT ? 'Pedidos sin cliente asignado' : null,
-  };
-  clients.push(created);
-  return created;
-};
-
-const resolveOrCreateProveedorByName = (proveedores, proveedorName) => {
-  const resolvedName = String(proveedorName ?? '').trim();
-  if (!resolvedName) {
-    return null;
-  }
-
-  const target = normalizeText(resolvedName).trim();
-  const exactMatches = proveedores.filter((entry) => normalizeText(entry.name).trim() === target);
-
-  if (exactMatches.length === 1) {
-    return exactMatches[0];
-  }
-
-  const created = {
-    id: `proveedor-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    name: titleCase(resolvedName),
-    notas: null,
-  };
-  proveedores.push(created);
-  return created;
-};
-
-const buildPedidoProductoLabel = (action) => {
-  const fromParts = composeProductName({
-    productType: action.productType,
-    productModel: action.productModel,
-    size: undefined,
-    fallback: '',
-  }).trim();
-
-  if (fromParts) {
-    return fromParts;
-  }
-
-  const rawName = String(action.productName ?? '').trim();
-  if (!rawName) {
-    return 'Producto';
-  }
-
-  return rawName.replace(/(?:,\s*|\s+)(?:talle|talles|numero|numeros|nro|num|medida|medidas|variante|variantes)\s+[a-z0-9\/]+\b/i, '').trim() || rawName;
-};
-
 const withTransaction = async (callback) => {
   return withClient(async (client) => {
     await client.query('BEGIN');
@@ -1491,58 +1285,6 @@ const withTransaction = async (callback) => {
       throw error;
     }
   });
-};
-
-const replaceStateTables = async (client, ownerPhone, products, clients, proveedores = []) => {
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
-
-  await client.query('DELETE FROM products WHERE owner_phone = ANY($1)', [ownerPhoneVariants]);
-  await client.query('DELETE FROM clients WHERE owner_phone = ANY($1)', [ownerPhoneVariants]);
-  await client.query('DELETE FROM proveedores WHERE owner_phone = ANY($1)', [ownerPhoneVariants]);
-
-  for (const product of products) {
-    await client.query(
-      `
-        INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price,
-          attributes_json, inventory_unit, inventory_status, inventory_revision, price_currency)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14)
-      `,
-      [
-        product.id,
-        normalizedOwnerPhone,
-        product.name,
-        product.productType ?? null,
-        product.productModel ?? null,
-        product.size ?? null,
-        product.stockAvailable,
-        product.stockReserved,
-        product.price,
-        JSON.stringify(product.attributes ?? {}), product.unit ?? 'unit', product.status ?? 'active',
-        product.revision ?? 0, product.priceCurrency ?? 'XXX',
-      ],
-    );
-  }
-
-  for (const clientEntry of clients) {
-    await client.query(
-      `
-        INSERT INTO clients (id, owner_phone, name, debt, notas)
-        VALUES ($1, $2, $3, $4, $5)
-      `,
-      [clientEntry.id, normalizedOwnerPhone, clientEntry.name, clientEntry.debt, clientEntry.notas ?? null],
-    );
-  }
-
-  for (const proveedorEntry of proveedores) {
-    await client.query(
-      `
-        INSERT INTO proveedores (id, owner_phone, name, notas)
-        VALUES ($1, $2, $3, $4)
-      `,
-      [proveedorEntry.id, normalizedOwnerPhone, proveedorEntry.name, proveedorEntry.notas ?? null],
-    );
-  }
 };
 
 export const createProductRecord = async (productInput, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
@@ -1655,7 +1397,9 @@ export const deleteClientRecord = async (clientId, ownerPhone = DEFAULT_OWNER_PH
   const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
 
   return withTransaction(async (client) => {
-    await client.query('DELETE FROM pedidos WHERE cliente_id = $1 AND owner_phone = ANY($2)', [clientId, ownerPhoneVariants]);
+    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
+    const linked = await client.query('SELECT id FROM pedidos WHERE cliente_id=$1 AND owner_phone=ANY($2) FOR UPDATE', [clientId, ownerPhoneVariants]);
+    if (linked.rowCount) throw new InventoryOperationError('CLIENT_HAS_ORDERS', 'El cliente tiene pedidos. Resolvelos explícitamente antes de eliminarlo.');
     const result = await client.query('DELETE FROM clients WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [clientId, ownerPhoneVariants]);
     return result.rowCount > 0;
   });
@@ -1670,6 +1414,7 @@ export const mergeClientRecords = async (keepId, mergeId, ownerPhone = DEFAULT_O
   }
 
   return withTransaction(async (client) => {
+    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
     const keep = await queryRow(
       'SELECT id, owner_phone, name, debt, notas FROM clients WHERE id = $1 AND owner_phone = ANY($2)',
       [keepId, ownerPhoneVariants],
@@ -1686,7 +1431,7 @@ export const mergeClientRecords = async (keepId, mergeId, ownerPhone = DEFAULT_O
     }
 
     await client.query(
-      'UPDATE pedidos SET cliente_id = $1 WHERE cliente_id = $2 AND owner_phone = ANY($3)',
+      'UPDATE pedidos SET cliente_id = $1, revision=revision+1 WHERE cliente_id = $2 AND owner_phone = ANY($3)',
       [keepId, mergeId, ownerPhoneVariants],
     );
 
@@ -1761,7 +1506,8 @@ export const deleteProveedorRecord = async (proveedorId, ownerPhone = DEFAULT_OW
   const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
 
   return withTransaction(async (client) => {
-    await client.query('UPDATE pedidos SET proveedor_id = NULL WHERE proveedor_id = $1 AND owner_phone = ANY($2)', [
+    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
+    await client.query('UPDATE pedidos SET proveedor_id = NULL, revision=revision+1 WHERE proveedor_id = $1 AND owner_phone = ANY($2)', [
       proveedorId,
       ownerPhoneVariants,
     ]);
@@ -1782,6 +1528,7 @@ export const mergeProveedorRecords = async (keepId, mergeId, ownerPhone = DEFAUL
   }
 
   return withTransaction(async (client) => {
+    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
     const keep = await queryRow(
       'SELECT id, owner_phone, name, notas FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)',
       [keepId, ownerPhoneVariants],
@@ -1798,7 +1545,7 @@ export const mergeProveedorRecords = async (keepId, mergeId, ownerPhone = DEFAUL
     }
 
     await client.query(
-      'UPDATE pedidos SET proveedor_id = $1 WHERE proveedor_id = $2 AND owner_phone = ANY($3)',
+      'UPDATE pedidos SET proveedor_id = $1, revision=revision+1 WHERE proveedor_id = $2 AND owner_phone = ANY($3)',
       [keepId, mergeId, ownerPhoneVariants],
     );
 
@@ -1813,204 +1560,24 @@ export const mergeProveedorRecords = async (keepId, mergeId, ownerPhone = DEFAUL
   });
 };
 
-export const createPedidoRecord = async (pedidoInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
+export const executeOrderOperation = async (kind, pedidoId, input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
   await ensureReady();
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-  const clienteId = String(pedidoInput?.clienteId ?? '').trim();
-  const producto = String(pedidoInput?.producto ?? '').trim();
-
-  if (!clienteId || !producto) {
-    return null;
-  }
-
-  const estado = PEDIDO_ESTADOS.has(pedidoInput?.estado) ? pedidoInput.estado : 'pendiente';
-  const proveedorId = normalizeNullableString(pedidoInput?.proveedorId);
-  const id = `pedido-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const result = await getPool().query(
-    `
-      INSERT INTO pedidos (id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)
-      RETURNING id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
-    `,
-    [
-      id,
-      normalizedOwnerPhone,
-      clienteId,
-      proveedorId,
-      producto,
-      normalizeNullableString(pedidoInput?.productType),
-      normalizeNullableString(pedidoInput?.productModel),
-      normalizeNullableString(pedidoInput?.talle),
-      Math.max(1, normalizeInteger(pedidoInput?.qty, 1)),
-      estado,
-      normalizeNullableString(pedidoInput?.notas),
-    ],
-  );
-
-  return rowToPedido(result.rows[0]);
+  const businessId = normalizeOwnerPhone(ownerPhone);
+  return withTransaction((client) => executeOrderInTransaction(client, kind, pedidoId, input, {
+    businessId, actorId: options.actorId ?? businessId, channel: options.channel ?? 'panel',
+    permissions: ['orders:create', 'orders:update', 'orders:delete', 'inventory:receive', 'inventory:withdraw'],
+    ownerPhoneVariants: getOwnerPhoneVariants(businessId),
+  }, persistInventoryTransactions));
 };
 
-export const updatePedidoRecord = async (pedidoId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  await ensureReady();
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
+export const createPedidoRecord = async (input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) =>
+  (await executeOrderOperation('create', null, input, ownerPhone, options)).pedido;
 
-  return withTransaction(async (client) => {
-    // Legacy order stock effects must read after acquiring the inventory lock.
-    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
-    await ensureTenantState(client, normalizedOwnerPhone);
+export const updatePedidoRecord = async (pedidoId, input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) =>
+  (await executeOrderOperation('update', pedidoId, input, ownerPhone, options)).pedido;
 
-    const existing = await queryRow(
-      `SELECT id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
-       FROM pedidos WHERE id = $1 AND owner_phone = ANY($2) FOR UPDATE`,
-      [pedidoId, ownerPhoneVariants],
-      client,
-    );
-
-    if (!existing) {
-      return null;
-    }
-
-    const current = rowToPedido(existing);
-    const nextEstado = updates.estado && PEDIDO_ESTADOS.has(updates.estado) ? updates.estado : current.estado;
-    const nextClienteId =
-      typeof updates.clienteId === 'string' && updates.clienteId.trim() ? updates.clienteId.trim() : current.clienteId;
-    const nextProveedorId =
-      updates.proveedorId === undefined
-        ? current.proveedorId
-        : updates.proveedorId === null || updates.proveedorId === ''
-          ? null
-          : normalizeNullableString(updates.proveedorId);
-    const nextProducto =
-      typeof updates.producto === 'string' && updates.producto.trim() ? updates.producto.trim() : current.producto;
-    const nextProductType = updates.productType === undefined ? current.productType : normalizeNullableString(updates.productType);
-    const nextProductModel =
-      updates.productModel === undefined ? current.productModel : normalizeNullableString(updates.productModel);
-    const nextTalle = updates.talle === undefined ? current.talle : normalizeNullableString(updates.talle);
-    const nextQty = updates.qty === undefined ? current.qty : Math.max(1, normalizeInteger(updates.qty, current.qty));
-    const nextNotas = updates.notas === undefined ? current.notas : normalizeNullableString(updates.notas);
-
-    const snapshot = await queryAllState(normalizedOwnerPhone, client, { includeInactive: true });
-    const nextProducts = snapshot.products.map((product) => ({ ...product }));
-    const qtyForStock =
-      current.estado === 'conseguido' && nextEstado !== 'conseguido' ? current.qty : nextQty;
-    const stockEffect = applyPedidoEstadoStockEffect(
-      nextProducts,
-      {
-        producto: nextProducto,
-        productType: nextProductType,
-        productModel: nextProductModel,
-        talle: nextTalle,
-        qty: qtyForStock,
-      },
-      current.estado,
-      nextEstado,
-    );
-
-    const result = await client.query(
-      `
-        UPDATE pedidos
-        SET cliente_id = $1,
-            proveedor_id = $2,
-            producto = $3,
-            product_type = $4,
-            product_model = $5,
-            talle = $6,
-            qty = $7,
-            estado = $8,
-            notas = $9
-        WHERE id = $10 AND owner_phone = $11
-        RETURNING id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas
-      `,
-      [
-        nextClienteId,
-        nextProveedorId,
-        nextProducto,
-        nextProductType,
-        nextProductModel,
-        nextTalle,
-        nextQty,
-        nextEstado,
-        nextNotas,
-        pedidoId,
-        normalizedOwnerPhone,
-      ],
-    );
-
-    if (stockEffect) {
-      const product = stockEffect.product;
-      if (stockEffect.created) {
-        await client.query(
-          `
-            INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          `,
-          [
-            product.id,
-            normalizedOwnerPhone,
-            product.name,
-            product.productType ?? null,
-            product.productModel ?? null,
-            product.size ?? null,
-            product.stockAvailable,
-            product.stockReserved,
-            product.price,
-          ],
-        );
-      } else {
-        await client.query(
-          `
-            UPDATE products
-            SET stock_available = $1,
-                stock_reserved = $2,
-                price = $3,
-                product_type = $4,
-                product_model = $5,
-                size = $6,
-                name = $7,
-                inventory_revision = inventory_revision + 1
-            WHERE id = $8 AND owner_phone = ANY($9)
-          `,
-          [
-            product.stockAvailable,
-            product.stockReserved,
-            product.price,
-            product.productType ?? null,
-            product.productModel ?? null,
-            product.size ?? null,
-            product.name,
-            product.id,
-            ownerPhoneVariants,
-          ],
-        );
-      }
-
-      await client.query(
-        `
-          INSERT INTO transactions (id, owner_phone, timestamp, source_text, summary, actions_json)
-          VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-        `,
-        [
-          `transaction-${Date.now()}-pedido-stock`,
-          normalizedOwnerPhone,
-          new Date().toISOString(),
-          stockEffect.sourceText,
-          stockEffect.summary,
-          toJsonbParam([stockEffect.action]),
-        ],
-      );
-    }
-
-    return result.rows[0] ? rowToPedido(result.rows[0]) : null;
-  });
-};
-
-export const deletePedidoRecord = async (pedidoId, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  await ensureReady();
-  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
-  const result = await getPool().query('DELETE FROM pedidos WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [pedidoId, ownerPhoneVariants]);
-  return result.rowCount > 0;
-};
+export const deletePedidoRecord = async (pedidoId, ownerPhone = DEFAULT_OWNER_PHONE, input = {}, options = {}) =>
+  executeOrderOperation('delete', pedidoId, input, ownerPhone, options);
 
 export const executeInventoryOperation = async (plan, context) => {
   const normalized = validateOperationPlan(plan, context);
@@ -2202,8 +1769,88 @@ const applyConfirmedStockActions = async (actions, sourceText, ownerPhone, optio
   });
 };
 
+const applyOrderActions = async (actions, sourceText, ownerPhone, options) => {
+  const operationId = options.operationId ?? options.messageId;
+  if (typeof operationId !== 'string' || !operationId.trim()) throw new InventoryOperationError('OPERATION_ID_REQUIRED', 'El lote de pedidos necesita un ID estable.');
+  if (!actions.length || actions.length > 100) throw new InventoryOperationError('INVALID_ORDER_OPERATION', 'El lote admite de 1 a 100 pedidos.');
+  await ensureReady();
+  const businessId = normalizeOwnerPhone(ownerPhone), batchId = `batch:${options.channel ?? 'orders'}:${operationId}`;
+  const requestHash = orderRequestDigest({ actions, sourceText });
+  const interpreted = ['meta','whatsapp'].includes(options.channel);
+  return withTransaction(async (client) => {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify(['order', businessId, batchId])]);
+    const prior = await queryRow('SELECT request_hash,result_json FROM order_operations WHERE owner_phone=$1 AND operation_id=$2', [businessId,batchId], client);
+    let result;
+    if (prior) {
+      if (prior.request_hash !== requestHash) throw new InventoryOperationError('IDEMPOTENCY_CONFLICT', 'El ID del lote ya corresponde a otros cambios.');
+      result = parseJsonValue(prior.result_json);
+    } else {
+      const context = { businessId, actorId: options.actorId ?? businessId, channel: options.channel ?? 'orders', internalOrderBatch: true,
+        permissions: ['orders:create','orders:update','orders:delete','inventory:receive','inventory:withdraw'], ownerPhoneVariants: getOwnerPhoneVariants(businessId) };
+      const receipts = [];
+      for (const [index, action] of actions.entries()) {
+        const snapshot = await queryAllState(businessId, client);
+        const itemId = `order-batch-item:${crypto.createHash('sha256').update(JSON.stringify([businessId,batchId,index])).digest('hex')}`;
+        // Compatibility grounding occurs once, before the explicit-ID order writer.
+        const party = async (kind, id, name) => {
+          const rows = kind === 'client' ? snapshot.clients : snapshot.proveedores;
+          if (id) return id;
+          if (typeof name !== 'string' || !name.trim()) throw new InventoryOperationError('PARTY_SELECTION_REQUIRED', 'Indicá el cliente/proveedor exacto del pedido.');
+          const found = rows.filter((entry) => canonicalIdentityText(entry.name) === canonicalIdentityText(name));
+          if (found.length > 1) throw new InventoryOperationError('PARTY_SELECTION_REQUIRED', 'Hay varios clientes/proveedores con ese nombre. Elegí su ID.');
+          if (found.length) return found[0].id;
+          const newId = `${kind}-${crypto.randomUUID()}`;
+          await client.query(kind === 'client' ? 'INSERT INTO clients(id,owner_phone,name,debt) VALUES($1,$2,$3,0)' : 'INSERT INTO proveedores(id,owner_phone,name) VALUES($1,$2,$3)', [newId,businessId,name.trim()]);
+          return newId;
+        };
+        let receipt;
+        if (action.type === 'client_order') {
+          const clienteId = await party('client', interpreted ? undefined : action.clienteId, action.clientName);
+          const proveedorId = (!interpreted && action.proveedorId) || action.proveedorName ? await party('supplier', interpreted ? undefined : action.proveedorId, action.proveedorName) : null;
+          receipt = await executeOrderInTransaction(client, 'create', null, {
+            operationId: itemId, clienteId, proveedorId, producto: action.productName, productType: action.productType,
+            productModel: action.productModel, talle: action.size, qty: action.qty, notas: action.notas,
+            productId: interpreted ? undefined : action.productId,
+          }, context, persistInventoryTransactions);
+        } else {
+          let pedido;
+          if (action.pedidoId && !interpreted) pedido = snapshot.pedidos.find((entry) => entry.id === action.pedidoId);
+          else {
+            const candidates = snapshot.pedidos.filter((entry) => typeof action.productName === 'string'
+              && canonicalIdentityText(entry.producto) === canonicalIdentityText(action.productName)
+              && (!action.clientName || canonicalIdentityText(snapshot.clients.find((c) => c.id === entry.clienteId)?.name ?? '') === canonicalIdentityText(action.clientName)));
+            if (candidates.length !== 1) throw new InventoryOperationError('ORDER_SELECTION_REQUIRED', 'El pedido no es único. Indicá el pedido y cliente exactos.');
+            pedido = candidates[0];
+          }
+          if (!pedido) throw new InventoryOperationError('ORDER_NOT_FOUND', 'Pedido no encontrado.');
+          receipt = await executeOrderInTransaction(client, action.type === 'delete_pedido' ? 'delete' : 'update', pedido.id,
+            { operationId: itemId, expectedRevision: interpreted || !action.pedidoId ? pedido.revision : action.expectedRevision,
+              ...(action.type === 'update_pedido' ? { estado: action.estado, qty: action.qty, talle: action.size,
+                productId: interpreted ? undefined : action.productId } : {}) }, context, persistInventoryTransactions);
+        }
+        receipts.push(receipt);
+      }
+      const receiptReply = receipts.map(({ pedido, deleted, inventoryResult }) => [
+        `${deleted ? 'Pedido eliminado' : 'Pedido guardado'}: ${pedido.producto}; ${pedido.estado}; cantidad ${pedido.qty}.`,
+        inventoryResult ? inventoryResultReply(inventoryResult) : '',
+      ].filter(Boolean).join('\n')).join('\n');
+      const replyText = [options.replyPrefix, receiptReply].filter(Boolean).join('\n\n');
+      result = { contractVersion: 1, operationId: batchId, businessId, status: 'applied', receipts, replyText };
+      await client.query('INSERT INTO order_operations(owner_phone,operation_id,actor_id,request_hash,request_json,result_json) VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb)',
+        [businessId,batchId,context.actorId,requestHash,JSON.stringify({ actions,sourceText }),JSON.stringify(result)]);
+    }
+    if (options.messageId && options.recipient) await client.query('INSERT INTO meta_reply_outbox(event_id,recipient,reply_text) VALUES($1,$2,$3) ON CONFLICT(event_id) DO NOTHING', [options.messageId,normalizePhone(options.recipient),result.replyText]);
+    return { ...await queryAllState(businessId, client), operationResult: result, replyText: result.replyText };
+  });
+};
+
 export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
-  if (actions.some((action) => action.type === 'create_product')) throw new InventoryOperationError('UNSUPPORTED_OPERATION', 'El alta requiere el contrato de creación; no se ejecuta desde un evento de historial.');
+  if (actions.some((action) => ['create_product','withdraw_stock'].includes(action.type))) throw new InventoryOperationError('UNSUPPORTED_OPERATION', 'Un evento de historial no es un comando de escritura.');
+  const orders = new Set(['client_order','update_pedido','delete_pedido']);
+  if (actions.some((action) => orders.has(action.type))) {
+    if (actions.some((action) => !orders.has(action.type))) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION', 'El lote mezcla pedidos y otras operaciones; no apliqué cambios.');
+    return applyOrderActions(actions, sourceText, ownerPhone, options);
+  }
   if (actions.some((action) => action.type === 'delete_product')) {
     if (actions.some((action) => action.type !== 'delete_product')) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION', 'La baja necesita una selección independiente; no apliqué el lote mixto.');
     const ids = actions.every((action) => typeof action.productId === 'string' && action.productId.trim()) ? actions.map((action) => action.productId) : undefined;
@@ -2217,6 +1864,7 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     if (actions.some((action) => !migrated.has(action.type))) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION', 'El lote combina operaciones todavía no migradas; no apliqué cambios.');
     return applyConfirmedStockActions(actions, sourceText, ownerPhone, options);
   }
+  if (actions.some((action) => !['add_debt','payment_received','query_stock','query_pedidos'].includes(action.type))) throw new InventoryOperationError('UNSUPPORTED_OPERATION', 'Operación no reconocida; no apliqué cambios.');
   await ensureReady();
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
 
@@ -2230,13 +1878,11 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
     await ensureTenantState(client, normalizedOwnerPhone);
 
+    await client.query('SELECT id FROM clients WHERE owner_phone=ANY($1) ORDER BY id FOR UPDATE', [getOwnerPhoneVariants(normalizedOwnerPhone)]);
     const currentSnapshot = await queryAllState(normalizedOwnerPhone, client, { includeInactive: true });
     const nextProducts = currentSnapshot.products.map((product) => ({ ...product }));
     const nextClients = currentSnapshot.clients.map((clientEntry) => ({ ...clientEntry }));
-    const nextProveedores = currentSnapshot.proveedores.map((proveedorEntry) => ({ ...proveedorEntry }));
-    const nextPedidos = currentSnapshot.pedidos.map((pedido) => ({ ...pedido }));
     const newTransactions = [];
-    const originalPedidoIds = new Set(currentSnapshot.pedidos.map((pedido) => pedido.id));
 
     actions.forEach((action, index) => {
       if (action.type === 'query_stock' || action.type === 'query_pedidos') {
@@ -2266,74 +1912,6 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
         }
       }
 
-      if (action.type === 'client_order' && typeof action.productName === 'string') {
-        const clientEntry = resolveOrCreateClientByName(nextClients, action.clientName);
-        const proveedorEntry = resolveOrCreateProveedorByName(nextProveedores, action.proveedorName);
-        const qty = Number.isFinite(Number(action.qty)) && Number(action.qty) > 0 ? Math.trunc(Number(action.qty)) : 1;
-        const productDescriptor = parseProductDescriptor(action.productName);
-        nextPedidos.unshift({
-          id: `pedido-${Date.now().toString(36)}-${index + 1}-${Math.random().toString(36).slice(2, 6)}`,
-          clienteId: clientEntry.id,
-          proveedorId: proveedorEntry?.id ?? null,
-          producto: buildPedidoProductoLabel({
-            ...action,
-            productType: action.productType || productDescriptor.productType,
-            productModel: action.productModel || productDescriptor.productModel,
-            productName: action.productName,
-          }),
-          productType: normalizeNullableString(action.productType || productDescriptor.productType),
-          productModel: normalizeNullableString(action.productModel || productDescriptor.productModel),
-          talle: normalizeNullableString(action.size || productDescriptor.size),
-          qty,
-          estado: 'pendiente',
-          fechaPedido: new Date().toISOString(),
-          notas: normalizeNullableString(action.notas),
-        });
-      }
-
-      if (action.type === 'update_pedido' && typeof action.productName === 'string') {
-        const pedido = resolvePedidoFlexible(nextPedidos, action.productName, action.clientName);
-        if (pedido) {
-          const previousEstado = pedido.estado;
-          const previousQty = pedido.qty;
-
-          if (Number.isFinite(action.qty) && action.qty > 0) {
-            pedido.qty = Math.trunc(action.qty);
-          }
-          if (typeof action.size === 'string' && action.size.trim()) {
-            pedido.talle = action.size.trim().toUpperCase();
-          }
-          if (action.estado && PEDIDO_ESTADOS.has(action.estado)) {
-            pedido.estado = action.estado;
-          }
-
-          const qtyForStock =
-            previousEstado === 'conseguido' && pedido.estado !== 'conseguido' ? previousQty : pedido.qty;
-          applyPedidoEstadoStockEffect(
-            nextProducts,
-            {
-              producto: pedido.producto,
-              productType: pedido.productType,
-              productModel: pedido.productModel,
-              talle: pedido.talle,
-              qty: qtyForStock,
-            },
-            previousEstado,
-            pedido.estado,
-          );
-        }
-      }
-
-      if (action.type === 'delete_pedido' && typeof action.productName === 'string') {
-        const pedido = resolvePedidoFlexible(nextPedidos, action.productName, action.clientName);
-        if (pedido) {
-          const pedidoIndex = nextPedidos.findIndex((entry) => entry.id === pedido.id);
-          if (pedidoIndex >= 0) {
-            nextPedidos.splice(pedidoIndex, 1);
-          }
-        }
-      }
-
       newTransactions.push({
         id: inboundBatchId ? `transaction-meta-${crypto.createHash('sha256').update(inboundBatchId).digest('hex').slice(0, 24)}-${index + 1}` : `transaction-${Date.now()}-${index + 1}`,
         timestamp: new Date().toISOString(),
@@ -2343,78 +1921,9 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
       });
     });
 
-    // Legacy order writers must invalidate revisions used by absolute adjustments.
-    // Their table lock protects this comparison and the subsequent replacement.
-    for (const product of nextProducts) {
-      const before = currentSnapshot.products.find((entry) => entry.id === product.id);
-      if (before && JSON.stringify([before.name,before.productType,before.productModel,before.size,before.stockAvailable,before.stockReserved,before.price,before.attributes,before.unit,before.status,before.priceCurrency])
-        !== JSON.stringify([product.name,product.productType,product.productModel,product.size,product.stockAvailable,product.stockReserved,product.price,product.attributes,product.unit,product.status,product.priceCurrency])) product.revision = (before.revision ?? 0) + 1;
-    }
-    await replaceStateTables(client, normalizedOwnerPhone, nextProducts, nextClients, nextProveedores);
-
-    const nextPedidoIds = new Set(nextPedidos.map((pedido) => pedido.id));
-
-    for (const pedidoId of originalPedidoIds) {
-      if (!nextPedidoIds.has(pedidoId)) {
-        await client.query('DELETE FROM pedidos WHERE id = $1 AND owner_phone = ANY($2)', [
-          pedidoId,
-          getOwnerPhoneVariants(normalizedOwnerPhone),
-        ]);
-      }
-    }
-
-    for (const pedido of nextPedidos) {
-      if (originalPedidoIds.has(pedido.id)) {
-        await client.query(
-          `
-            UPDATE pedidos
-            SET cliente_id = $1,
-                proveedor_id = $2,
-                producto = $3,
-                product_type = $4,
-                product_model = $5,
-                talle = $6,
-                qty = $7,
-                estado = $8,
-                notas = $9
-            WHERE id = $10 AND owner_phone = ANY($11)
-          `,
-          [
-            pedido.clienteId,
-            pedido.proveedorId ?? null,
-            pedido.producto,
-            pedido.productType,
-            pedido.productModel,
-            pedido.talle,
-            pedido.qty,
-            pedido.estado,
-            pedido.notas,
-            pedido.id,
-            getOwnerPhoneVariants(normalizedOwnerPhone),
-          ],
-        );
-      } else {
-        await client.query(
-          `
-            INSERT INTO pedidos (id, owner_phone, cliente_id, proveedor_id, producto, product_type, product_model, talle, qty, estado, fecha_pedido, notas)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-          `,
-          [
-            pedido.id,
-            normalizedOwnerPhone,
-            pedido.clienteId,
-            pedido.proveedorId ?? null,
-            pedido.producto,
-            pedido.productType,
-            pedido.productModel,
-            pedido.talle,
-            pedido.qty,
-            pedido.estado,
-            pedido.fechaPedido,
-            pedido.notas,
-          ],
-        );
-      }
+    for (const entry of nextClients) {
+      const before = currentSnapshot.clients.find((item) => item.id === entry.id);
+      if (before && before.debt !== entry.debt) await client.query('UPDATE clients SET debt=$1 WHERE id=$2 AND owner_phone=ANY($3)', [entry.debt,entry.id,getOwnerPhoneVariants(normalizedOwnerPhone)]);
     }
 
     for (const transaction of newTransactions) {

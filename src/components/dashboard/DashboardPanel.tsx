@@ -97,7 +97,7 @@ const actionKinds = (actions: Transaction['actions']): ActivityKind[] => {
   for (const action of actions) {
     if (action.type === 'add_stock' || action.type === 'create_product') kinds.add('ingreso');
     else if (action.type === 'sell') kinds.add('venta');
-    else if (action.type === 'client_order' || action.type === 'update_pedido' || action.type === 'delete_pedido') kinds.add('pedido');
+    else if (action.type === 'client_order' || action.type === 'update_pedido' || action.type === 'delete_pedido' || action.type === 'withdraw_stock') kinds.add('pedido');
     else if (action.type === 'update_product' || action.type === 'delete_product') kinds.add('ingreso');
   }
   return [...kinds];
@@ -255,7 +255,7 @@ const matchesActivityFilter = (transaction: Transaction, filter: ActivityFilter)
   }
 
   if (filter === 'pedidos') {
-    return actionTypes.includes('client_order') || actionTypes.includes('reserve_stock') || actionTypes.includes('update_pedido') || actionTypes.includes('delete_pedido');
+    return actionTypes.includes('client_order') || actionTypes.includes('reserve_stock') || actionTypes.includes('update_pedido') || actionTypes.includes('delete_pedido') || actionTypes.includes('withdraw_stock');
   }
 
   if (filter === 'voz') {

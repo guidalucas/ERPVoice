@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { getBusinessCategoryPreset } from './businessCategories.js';
 import { hasProductMatchHold } from './voiceCatalogContext.js';
-import { inventoryResultActions } from './inventoryResults.js';
+import { operationResultActions } from './operationResults.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
 import { answerPedidosQuery } from './pedidoQuery.js';
 import {
@@ -781,72 +781,29 @@ app.post('/api/proveedores/merge', authenticateRequest, async (req, res) => {
   }
 });
 
+const orderHttpError = (res, error) => {
+  const status = ['OPERATION_ID_REQUIRED', 'INVALID_ORDER_OPERATION'].includes(error.code) ? 400
+    : ['ORDER_NOT_FOUND', 'CLIENT_NOT_FOUND', 'SUPPLIER_NOT_FOUND'].includes(error.code) ? 404
+    : error.name === 'InventoryOperationError' ? 409 : 500;
+  res.status(status).json({ error: status === 500 ? 'No pude guardar el pedido.' : error.message, code: error.code });
+};
 app.post('/api/pedidos', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const pedido = await createPedidoRecord({
-      clienteId: req.body?.clienteId,
-      proveedorId: req.body?.proveedorId,
-      producto: req.body?.producto,
-      productType: req.body?.productType,
-      productModel: req.body?.productModel,
-      talle: req.body?.talle,
-      qty: req.body?.qty,
-      estado: req.body?.estado,
-      notas: req.body?.notas,
-    }, clientPhone);
-
-    if (!pedido) {
-      res.status(400).json({ error: 'Cliente y producto son requeridos' });
-      return;
-    }
-
+    const pedido = await createPedidoRecord(req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req) });
     res.status(201).json(pedido);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+  } catch (error) { orderHttpError(res, error); }
 });
-
 app.put('/api/pedidos/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const pedido = await updatePedidoRecord(req.params.id, {
-      clienteId: req.body?.clienteId,
-      proveedorId: req.body?.proveedorId,
-      producto: req.body?.producto,
-      productType: req.body?.productType,
-      productModel: req.body?.productModel,
-      talle: req.body?.talle,
-      qty: req.body?.qty,
-      estado: req.body?.estado,
-      notas: req.body?.notas,
-    }, clientPhone);
-
-    if (!pedido) {
-      res.status(404).json({ error: 'Pedido no encontrado' });
-      return;
-    }
-
+    const pedido = await updatePedidoRecord(req.params.id, req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req) });
     res.json(pedido);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+  } catch (error) { orderHttpError(res, error); }
 });
-
 app.delete('/api/pedidos/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const deleted = await deletePedidoRecord(req.params.id, clientPhone);
-
-    if (!deleted) {
-      res.status(404).json({ error: 'Pedido no encontrado' });
-      return;
-    }
-
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+    const receipt = await deletePedidoRecord(req.params.id, tenantPhoneOf(req), req.body, { actorId: authPhoneOf(req) });
+    res.json(receipt);
+  } catch (error) { orderHttpError(res, error); }
 });
 
 app.get('/api/meta-events', authenticateRequest, (_req, res) => {
@@ -1221,7 +1178,7 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       eventRecord.replyText = finalReplyText;
       eventRecord.error ??= stockBatchResponse?.errorCode ?? null;
       eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? (mutationRejected || mutationOutcome?.pendingSelection ? [] : mutationOutcome?.operationResult
-        ? inventoryResultActions(mutationOutcome.operationResult, mutationActions) : result.parsed?.actions ?? []));
+        ? operationResultActions(mutationOutcome.operationResult, mutationActions) : result.parsed?.actions ?? []));
       eventRecord.processed = Boolean(stockBatchResponse || queryActions.length || mutationActions.length);
 
       console.log('[MetaWebhook] response debug:', {

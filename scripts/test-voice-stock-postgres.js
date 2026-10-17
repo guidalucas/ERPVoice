@@ -1,3 +1,4 @@
+import { runOrderChecks } from './order-postgres-checks.js';
 import assert from 'node:assert/strict';
 import { runInventoryCoreChecks } from './inventory-core-postgres-checks.js';
 import { runInventorySalesChecks } from './inventory-sales-postgres-checks.js';
@@ -71,6 +72,7 @@ try {
   await runInventoryDeactivationChecks({ db, sql, check });
   await runInventoryDeactivationMetaChecks({ db, sql, check });
   await runInventoryCreateChecks({ db, sql, check });
+  await runOrderChecks({ db, sql, check });
   await runInventoryHttpChecks({ db, sql, check });
 
   await check('migración repetible y RLS', async () => {
