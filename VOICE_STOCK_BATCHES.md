@@ -16,6 +16,13 @@ Ventas y reservas mantienen su interpretación actual, pero la resolución conse
 los ajustes absolutos usan `sku.update`/`stock.adjust`, sin truncar cantidades. Una
 variante omitida pide aclaración; los conjuntos masivos todavía requieren migración.
 
+Las bajas ya usan `sku.deactivate` y selección persistida. Pedir borrar por WhatsApp
+no ejecuta: muestra los SKU y balances, y ofrece un código para `CONFIRMAR BAJA` o
+`CANCELAR BAJA`. No se busca nuevamente por nombre al confirmar; cambios de revisión,
+reservas, expiración o remitente distinto impiden aplicar. Stock e historial permanecen;
+el SKU sale del catálogo activo. Las confirmaciones repetidas devuelven el mismo recibo.
+Conjuntos demasiado extensos para revisar en un mensaje deben dividirse; no se truncan.
+
 ## Persistencia y recuperación
 
 - Las referencias al producto anterior y las autocorrecciones actualizan ese ítem; no agregan unidades sin un ingreso adicional explícito. Los atributos globales conservan su alcance y sus citas. Los atributos no mencionados quedan ausentes; la auditoría de cobertura no exige completarlos para todo el lote.

@@ -24,6 +24,7 @@ const domain = (fn) => {
 
 /** Public mutation channels must obtain a reviewed set before changing several SKUs. */
 export function requireReviewedUpdateSelection(plan) {
+  if ((Array.isArray(plan?.actions) ? plan.actions : []).some((action) => action?.type === 'sku.deactivate')) fail('SELECTION_REQUIRED', 'Revisá y confirmá una selección antes de dar de baja los SKU.');
   const ids = new Set((Array.isArray(plan?.actions) ? plan.actions : [])
     .filter((action) => ['sku.update', 'stock.adjust'].includes(action?.type))
     .map((action) => action.target?.skuId));
@@ -69,12 +70,15 @@ export function normalizeSelectionRequest(input) {
     }
   } else invalid('Unsupported selector kind');
   const mutation = record(request.mutation, ['type', 'changes', 'reason'], 'mutation');
-  if (mutation.type !== 'sku.update') fail('UNSUPPORTED_OPERATION', 'Este conjunto solo admite cambios de SKU por ahora.');
+  if (!['sku.update', 'sku.deactivate'].includes(mutation.type)) fail('UNSUPPORTED_OPERATION', 'Este conjunto solo admite cambios y bajas de SKU por ahora.');
+  if (mutation.type === 'sku.deactivate' && Object.hasOwn(mutation, 'changes')) invalid('Deactivation cannot include changes');
   // Reuse the operation contract for mutation fields and values.
   const validated = validateOperationPlan({ contractVersion: 1, businessId: 'selection-validation', operationId: 'validation',
-    actions: [{ itemId: 'validation', type: mutation.type, target: { kind: 'existing', skuId: 'validation', expectedRevision: 0 }, changes: mutation.changes, reason: mutation.reason }],
-  }, { businessId: 'selection-validation', actorId: 'selection-validation', permissions: ['inventory:update'] });
-  return { requestId, selector: normalized, mutation: { type: mutation.type, changes: validated.actions[0].changes, reason: validated.actions[0].reason } };
+    actions: [{ itemId: 'validation', type: mutation.type, target: { kind: 'existing', skuId: 'validation', expectedRevision: 0 },
+      ...(mutation.type === 'sku.update' ? { changes: mutation.changes } : {}), reason: mutation.reason }],
+  }, { businessId: 'selection-validation', actorId: 'selection-validation', permissions: ['inventory:update', 'inventory:deactivate'] });
+  return { requestId, selector: normalized, mutation: { type: mutation.type,
+    ...(mutation.type === 'sku.update' ? { changes: validated.actions[0].changes } : {}), reason: validated.actions[0].reason } };
 }
 
 export function selectInventoryProducts(selector, products) {
@@ -83,7 +87,8 @@ export function selectInventoryProducts(selector, products) {
     mutation: { type: 'sku.update', changes: { price: 0 }, reason: 'Selector validation' } }).selector;
   const selected = products.filter((product) => {
     if (normalized.kind === 'ids') return normalized.skuIds.includes(product.id);
-    if (normalized.kind === 'all') return true;
+    if (normalized.kind === 'all') return (product.status ?? 'active') === 'active';
+    if (!Object.hasOwn(normalized.equals, 'status') && (product.status ?? 'active') !== 'active') return false;
     return Object.entries(normalized.equals).every(([field, wanted]) => {
       if (field === 'attributes') {
         const actual = domain(() => normalizeAttributes(product.attributes ?? {}));
@@ -100,7 +105,7 @@ export function selectInventoryProducts(selector, products) {
   return selected;
 }
 
-export function buildSelectionPreview(input, products, { businessId, actorId, selectionId, expiresAt, permissions = ['inventory:update'] }) {
+export function buildSelectionPreview(input, products, { businessId, actorId, selectionId, expiresAt, permissions = ['inventory:update', 'inventory:deactivate'] }) {
   const request = normalizeSelectionRequest(input);
   text(selectionId, 'selectionId');
   if (typeof expiresAt !== 'string' || !Number.isFinite(Date.parse(expiresAt))) invalid('Invalid selection expiry');

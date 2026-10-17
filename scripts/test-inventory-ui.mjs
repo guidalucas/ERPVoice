@@ -96,10 +96,13 @@ await page.route('**/api/**', async (route) => {
   }
   if (path === '/api/products/batch' && request.method() === 'DELETE') {
     const input = request.postDataJSON();
-    bulkDeletions.push(input.ids);
-    if (input.ids.some((id) => !products.some((product) => product.id === id))) return json({ error: 'El inventario cambió.' }, 400);
-    for (const id of input.ids) products.splice(products.findIndex((product) => product.id === id), 1);
-    return json({ deleted: input.ids.length });
+    const preview = selectionPreviews.find((entry) => entry.selectionId === input.selectionId && entry.digest === input.digest && entry.mutation.type === 'sku.deactivate');
+    if (!preview) return json({ error: 'Selección de baja no revisada.' }, 409);
+    const ids = preview.members.map((member) => member.skuId);
+    bulkDeletions.push(ids);
+    if (ids.some((id) => !products.some((product) => product.id === id))) return json({ error: 'El inventario cambió.' }, 409);
+    for (const id of ids) products.splice(products.findIndex((product) => product.id === id), 1);
+    return json({ deleted: ids.length });
   }
   return json({});
 });
@@ -245,10 +248,13 @@ try {
   await page.getByRole('checkbox', { name: 'Seleccionar modelo Camiseta Uruguay Titular' }).check();
   await page.getByRole('checkbox', { name: 'Seleccionar talle M de Camiseta Argentina Selección' }).check();
   await page.getByRole('toolbar', { name: 'Acciones de selección' }).getByText('3 talles seleccionados').waitFor();
-  await page.getByRole('button', { name: 'Eliminar seleccionados' }).click();
-  const bulkDialog = page.getByRole('dialog', { name: 'Eliminar selección' });
-  await bulkDialog.getByText(/Vas a eliminar 3 talles/).waitFor();
-  await bulkDialog.getByRole('button', { name: 'Eliminar 3' }).click();
+  await page.getByRole('button', { name: 'Desactivar seleccionados' }).click();
+  const bulkDialog = page.getByRole('dialog', { name: 'Desactivar productos' });
+  await bulkDialog.getByText(/3 SKU seleccionados/).waitFor();
+  await bulkDialog.getByLabel('Motivo de la desactivación').fill('Retiro del catálogo');
+  await bulkDialog.getByRole('button', { name: 'Revisar desactivación' }).click();
+  assert.equal(bulkDeletions.length, 0);
+  await bulkDialog.getByRole('button', { name: 'Confirmar desactivación' }).click();
   await bulkDialog.waitFor({ state: 'hidden' });
   assert.equal(bulkDeletions.length, 1);
   assert.equal(bulkDeletions[0].length, 3);

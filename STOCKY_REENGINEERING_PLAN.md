@@ -17,7 +17,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.0, H4.1 y H4.2a implementados/verificados; bajas siguientes |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.0, H4.1, H4.2a y H4.3 verificados; altas/pedidos siguientes |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -53,17 +53,16 @@
 
 ## Próximo paso exacto
 
-H4.3: migrar bajas/desactivación mediante el mismo núcleo y extender las selecciones ya
-implementadas a esa mutación. Definir conservación de historial y semántica de inactividad;
-migrar DELETE individual/batch y delete_product de WhatsApp antes de retirar su escritor.
-Reutilizar inventario de consumidores: deleteProductRecord/deleteProductRecords y rama
-delete_product de applyActionsToDatabase; modal individual y selección de ProductsAbmPanel.
-No recalcular por nombre al confirmar. Mantener bloqueo de tabla hasta retirar el reemplazo
-legacy completo. Luego ABM con stock inicial, efectos de pedidos y resto de mutaciones.
-H4.2b pendiente: ampliar la conversación de conjuntos/verificación a WhatsApp y a otros
-verbos; no confundir la edición de modelos migrada con todas las mutaciones masivas.
-El intérprete universal y los esquemas configurables siguen pendientes; no abrir conjuntos
-ni optimización LLM antes de cerrar la integridad de estas mutaciones.
+H4.4a: migrar altas de SKU/modelos con stock inicial (incluido cero) al núcleo, con contrato
+explícito, recibo y operationId estable. Revisar solo createProductRecord/createProductModelRecords,
+POST /api/products[/model] y formularios de ProductsAbmPanel. No usar stock.receive con
+cantidad ficticia para crear stock cero. Preservar atributos/unidad, identidad conservadora,
+guardas de archivado y compatibilidad del bloqueo. Probar retry concurrente y rollback multi-SKU.
+Luego H4.4b: efectos de pedidos (ensureProduct/applyPedidoEstadoStockEffect, updatePedidoRecord
+y rama update_pedido), con SKU explícito y política de reversión; después finanzas y demás
+escritores. Mantener bloqueo de tabla hasta retirar reemplazo legacy. No repetir auditoría.
+H4.2b pendiente: conversación de conjuntos para otros verbos (bajas WhatsApp ya migradas).
+Intérprete universal, esquemas configurables y optimización/evaluación LLM siguen pendientes.
 
 ## Registro de hitos
 
@@ -241,16 +240,47 @@ ni optimización LLM antes de cerrar la integridad de estas mutaciones.
   ni bajas/ajustes absolutos masivos. NOW() de PostgreSQL define admisión por inicio de
   transacción; no revalida vencimiento tras esperar locks. No se desplegó ni evaluó IA real.
 
+- H4.3 (2026-10-17): `sku.deactivate` en el mismo OperationPlan v1/planner/adapter. Requiere
+  SKU existente, revisión, permiso y motivo. Conserva cantidades/precios/identidad e historial;
+  movimiento de auditoría con deltas cero y recibo con estado/revisión/producto persistidos.
+  Unidades reservadas rechazan el lote entero. Inactivo no admite ventas/ingresos/ajustes ni
+  cambios de catálogo; creación idéntica queda bloqueada. Reactivación explícita pendiente.
+- H4.3: DELETE individual/batch solo confirma selección de bajas (tipo y alcance exactos).
+  Retirados SQL DELETE anteriores y rama delete_product por nombre del escritor histórico.
+  Snapshots operativos excluyen inactivos; snapshots internos del reemplazo/pedidos conservan
+  filas archivadas. Pedidos legacy rechazan efecto de stock en SKU inactivo y no lo recrean.
+  Alta manual todavía legacy agregó guarda transaccional contra identidad archivada.
+- H4.3: panel captura IDs, exige motivo, muestra preview antes de confirmar y conserva
+  referencia tras 503 o refresh fallido; selección obsoleta requiere revisión explícita.
+  WhatsApp propone baja sin acciones aplicadas y exige código de 8 dígitos hexadecimales
+  ligado a selección/negocio/remitente. Código explícito intercepta antes del diálogo de
+  ingresos; no toma un “sí” como autorización. Cancelar invalida esa selección en PostgreSQL.
+  Core, recibo, historial, selección aplicada y outbox de confirmación comparten transacción.
+  Confirmar/cancelar concurrentes se serializan. Replay conserva recibo aun tras vencer.
+- H4.3: preview Meta demasiado extenso se rechaza sin truncar miembros; recibo largo usa
+  resumen de cantidad exacta y conserva detalle completo en base. No hubo llamadas a Meta
+  de producción ni proveedores LLM reales; se probó firma HTTP contra servidor local.
+- H4.3 verificado: 124 checks PostgreSQL/HTTP, 32 de suite pura y 50 del motor. Incluye
+  carreras venta/baja y confirmar/cancelar, rollback de movimiento/outbox, reservas, ámbito,
+  selección obsoleta, historial intacto, guardas legacy y DELETE con recibo. Meta firmado
+  prueba solicitud/confirmación/reentrega, remitente ajeno, cancelación y revisión obsoleta.
+  Build y Edge de bajas, inventario completo y edición de modelos aprobados; audio largo
+  y parsing de borrados también. Revisión independiente backend sin hallazgos P1/P2.
+- H4.3 límites: no hay purga física ni UI de reactivación/archivo. Altas con stock inicial,
+  efectos de pedidos y finanzas aún no migrados. Conservar bloqueo amplio hasta retirarlos.
+  River mantiene los dos fallos conocidos; IA real y despliegue siguen pendientes.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
-- H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a consultar el siguiente commit de conjuntos.
+- H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 siguiente commit de bajas.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
 - Frontend: `npm run test:inventory-ui` y `npm run test:panel-draft-recovery`.
 - Ventas/ajustes/conjuntos: `npm run test:sales-ui`, `npm run test:inventory-adjustments-ui`
   y `npm run test:inventory-selection-ui`.
+- Bajas: `npm run test:inventory-deactivation-ui`; incluido en test:inventory y PG/HTTP.
   Edge local; APIs/proveedores simulados. Ninguna de estas pruebas valida IA real.
 - Producción: falta verificar configuración privada, backup/restauración recuperable,
   ejecutar migración controlada, comprobar SHA/readiness y piloto aislado. No desplegado.

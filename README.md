@@ -23,7 +23,13 @@ Selectores disponibles: IDs explícitos, todos o filtros de igualdad conservador
 un SKU posterior queda fuera y una revisión obsoleta rechaza todo el cambio.
 `PUT /api/products/model` solo acepta esa referencia confirmable; ya no escribe por IDs
 y nombre sin previsualización. `npm run test:inventory-selection-ui` verifica el flujo.
-Esta selección admite `sku.update`; bajas y otras mutaciones masivas siguen pendientes.
+Esta selección admite `sku.update` y `sku.deactivate`. DELETE individual y batch exigen
+`{selectionId,digest}` y devuelven el recibo. La baja conserva stock e historial, retira
+el SKU del inventario activo y rechaza unidades reservadas. No hay reactivación implícita.
+En WhatsApp, pedir una baja prepara el conjunto; `CONFIRMAR BAJA <código>` lo confirma y
+`CANCELAR BAJA <código>` lo invalida. Código y selección quedan ligados a negocio/remitente.
+`npm run test:inventory-deactivation-ui` verifica revisión, cancelación y reintentos del panel.
+La reactivación explícita y otras mutaciones masivas siguen pendientes.
 
 Antes de desplegar: configurar `META_APP_SECRET` (firma POST Meta) y, en producción,
 `AUTH_JWT_SECRET` privado de al menos 32 bytes. `/api/health` publica readiness y el SHA

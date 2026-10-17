@@ -76,10 +76,16 @@ export const updateProduct = async (productId: string, product: Partial<ProductI
     body: JSON.stringify({ ...product, ...adjustment }),
   });
 
+export type InventorySelectionMutation =
+  | { type: 'sku.update'; changes: { name: string; productType: string; productModel: string }; reason: string }
+  | { type: 'sku.deactivate'; reason: string };
+
+export type InventorySelectionReference = { selectionId: string; digest: string };
+
 export type InventorySelectionRequest = {
   requestId: string;
   selector: { kind: 'ids'; skuIds: string[] };
-  mutation: { type: 'sku.update'; changes: { name: string; productType: string; productModel: string }; reason: string };
+  mutation: InventorySelectionMutation;
 };
 
 export type InventorySelectionPreview = {
@@ -96,6 +102,13 @@ export const previewInventorySelection = async (input: InventorySelectionRequest
     method: 'POST', body: JSON.stringify(input),
   });
   const ids = new Set(input.selector.skuIds);
+  const mutationMatches = (mutation: InventorySelectionMutation | undefined) => {
+    if (!mutation || mutation.type !== input.mutation.type || mutation.reason !== input.mutation.reason) return false;
+    if (mutation.type === 'sku.deactivate') return Object.keys(mutation).sort().join(',') === 'reason,type';
+    if (input.mutation.type !== 'sku.update' || Object.keys(mutation).sort().join(',') !== 'changes,reason,type'
+      || !mutation.changes || Object.keys(mutation.changes).sort().join(',') !== 'name,productModel,productType') return false;
+    return (['name', 'productType', 'productModel'] as const).every((key) => mutation.changes[key] === (input.mutation as Extract<InventorySelectionMutation, { type: 'sku.update' }>).changes[key]);
+  };
   if (!preview || typeof preview.selectionId !== 'string' || !preview.selectionId.trim()
     || typeof preview.digest !== 'string' || !preview.digest.trim() || preview.status !== 'pending'
     || typeof preview.expiresAt !== 'string' || !Number.isFinite(Date.parse(preview.expiresAt))
@@ -106,9 +119,7 @@ export const previewInventorySelection = async (input: InventorySelectionRequest
       || !Number.isSafeInteger(member.revision) || member.revision < 0
       || ![member.stockAvailable, member.stockReserved, member.price].every((value) => Number.isSafeInteger(value) && value >= 0)
       || typeof member.priceCurrency !== 'string' || !member.priceCurrency.trim())
-    || preview.mutation?.type !== input.mutation.type || preview.mutation.reason !== input.mutation.reason
-    || !preview.mutation?.changes || Object.keys(preview.mutation.changes).length !== Object.keys(input.mutation.changes).length
-    || Object.keys(input.mutation.changes).some((key) => preview.mutation?.changes?.[key as keyof typeof input.mutation.changes] !== input.mutation.changes[key as keyof typeof input.mutation.changes])) {
+    || !mutationMatches(preview.mutation)) {
     throw new Error('La vista previa no coincide con la selección solicitada. No se aplicaron cambios.');
   }
   return preview;
@@ -120,15 +131,16 @@ export const updateProductModel = async (input: { selectionId: string; digest: s
     body: JSON.stringify(input),
   });
 
-export const deleteProduct = async (productId: string) =>
-  requestJson<void>(`/api/products/${productId}`, {
+export const deleteProduct = async (productId: string, selection: InventorySelectionReference) =>
+  requestJson<{ deleted: number; operationResult: unknown }>(`/api/products/${productId}`, {
     method: 'DELETE',
+    body: JSON.stringify(selection),
   });
 
-export const deleteProducts = async (ids: string[]) =>
-  requestJson<{ deleted: number }>('/api/products/batch', {
+export const deleteProducts = async (selection: InventorySelectionReference) =>
+  requestJson<{ deleted: number; operationResult: unknown }>('/api/products/batch', {
     method: 'DELETE',
-    body: JSON.stringify({ ids }),
+    body: JSON.stringify(selection),
   });
 
 export const createClient = async (client: ClientInput) =>

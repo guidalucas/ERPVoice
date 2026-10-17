@@ -164,65 +164,35 @@ const buildProductName = (draft: ProductDraft) => {
   return parts.length ? parts.join(' ') : 'Nuevo Producto';
 };
 
-function ConfirmDeleteModal({
-  productName,
-  onCancel,
-  onConfirm,
-  confirming,
-}: {
-  productName: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-  confirming: boolean;
+function DeactivateModal({ ids, reason, onReasonChange, preview, stale, error, busy, onCancel, onSubmit }: {
+  ids: string[]; reason: string; onReasonChange: (reason: string) => void;
+  preview: InventorySelectionPreview | null; stale: boolean; error: string | null; busy: boolean;
+  onCancel: () => void; onSubmit: (refresh?: boolean) => Promise<void>;
 }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
-        <h4 className="type-title text-xl text-[color:var(--text)]">Eliminar producto</h4>
-        <p className="mt-3 text-sm leading-6 text-[color:var(--muted)]">
-          Vas a eliminar <span className="type-subtitle text-[color:var(--text)]">{productName}</span>. Esta acción no se puede deshacer.
-        </p>
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <button type="button" onClick={onCancel} className="erp-button-secondary">
-            Cancelar
-          </button>
-          <button type="button" onClick={onConfirm} disabled={confirming} className="erp-button-danger">
-            {confirming ? 'Eliminando...' : 'Eliminar'}
-          </button>
-        </div>
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
+    <div role="dialog" aria-modal="true" aria-label="Desactivar productos" className="max-h-full overflow-y-auto w-full max-w-lg rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl">
+      <h4 className="type-title text-xl">Desactivar {ids.length === 1 ? 'producto' : 'selección'}</h4>
+      <p className="mt-3 text-sm">Se desactivarán y saldrán del inventario activo; se conservan stock e historial.</p>
+      <p className="mt-2 text-sm">{ids.length} SKU seleccionados: {ids.join(', ')}</p>
+      <label className="mt-4 block text-sm">Motivo de la desactivación
+        <input className="erp-input" required disabled={busy} value={reason} onChange={(event) => onReasonChange(event.target.value)} />
+      </label>
+      {preview && <section aria-label="Vista previa de desactivación" className="mt-4 space-y-3 text-sm">
+        <p>Motivo: {preview.mutation.reason}</p>
+        <ul className="space-y-2">{preview.members.map((member) => <li key={member.skuId} className="rounded-xl border border-[color:var(--border)] p-3">
+          <strong>{member.name}</strong> · Variante: {member.size || 'Sin definir'}
+          <p>SKU: {member.skuId} · Revisión: {member.revision}</p>
+          <p>Disponible: {member.stockAvailable} · Reservado: {member.stockReserved} · Precio: {member.price} {member.priceCurrency}</p>
+        </li>)}</ul>
+        <p>Vence: {preview.expiresAt}</p>
+      </section>}
+      {error && <p role="alert" className="mt-4 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
+      <div className="mt-6 flex justify-end gap-3">
+        <button type="button" disabled={busy} onClick={onCancel} className="erp-button-secondary">Cancelar</button>
+        <button type="button" disabled={busy} onClick={() => void onSubmit(stale)} className="erp-button-danger">{busy ? 'Procesando...' : stale ? 'Revisar selección actualizada' : preview ? 'Confirmar desactivación' : 'Revisar desactivación'}</button>
       </div>
     </div>
-  );
-}
-
-function ConfirmBulkDeleteModal({
-  count,
-  variantWord,
-  onCancel,
-  onConfirm,
-  confirming,
-  error,
-}: {
-  count: number;
-  variantWord: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-  confirming: boolean;
-  error: string | null;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
-      <div role="dialog" aria-modal="true" aria-label="Eliminar selección" className="w-full max-w-md rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
-        <h4 className="type-title text-xl">Eliminar selección</h4>
-        <p className="mt-3 text-sm leading-6 text-[color:var(--muted)]">Vas a eliminar {count} {count === 1 ? variantWord : pluralizeVariantLabel(variantWord)} del inventario. Esta acción no se puede deshacer.</p>
-        {error && <p role="alert" className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
-        <div className="mt-6 flex justify-end gap-3">
-          <button type="button" onClick={onCancel} disabled={confirming} className="erp-button-secondary">Cancelar</button>
-          <button type="button" onClick={onConfirm} disabled={confirming} className="erp-button-danger">{confirming ? 'Eliminando...' : `Eliminar ${count}`}</button>
-        </div>
-      </div>
-    </div>
-  );
+  </div>;
 }
 
 function ProductFormModal({
@@ -467,7 +437,7 @@ function ModelFormModal({
             <input className="erp-input" required disabled={saving} value={reason} onChange={(event) => onReasonChange(event.target.value)} />
           </label>
         </form>
-        {preview && <section aria-label="Vista previa de cambios" className="mt-4 space-y-3 text-sm">
+        {preview && preview.mutation.type === 'sku.update' && <section aria-label="Vista previa de cambios" className="mt-4 space-y-3 text-sm">
           <p className="font-semibold">{preview.members.length} SKU seleccionados · Nuevo nombre: {preview.mutation.changes.name}</p>
           <p>Tipo: {preview.mutation.changes.productType} · Modelo: {preview.mutation.changes.productModel}</p>
           <p>Motivo: {preview.mutation.reason}</p>
@@ -519,13 +489,17 @@ export function ProductsAbmPanel({
   const modelRequest = useRef<InventorySelectionRequest | null>(null);
   const modelRefreshRequestNeeded = useRef(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [pendingDeleteProduct, setPendingDeleteProduct] = useState<ProductRow | null>(null);
+  const [deactivation, setDeactivation] = useState<{ ids: string[]; single: boolean } | null>(null);
+  const [deactivationReason, setDeactivationReason] = useState('');
+  const [deactivationPreview, setDeactivationPreview] = useState<InventorySelectionPreview | null>(null);
+  const [deactivationStale, setDeactivationStale] = useState(false);
+  const [deactivationError, setDeactivationError] = useState<string | null>(null);
+  const deactivationRequest = useRef<InventorySelectionRequest | null>(null);
+  const deactivationRefreshNeeded = useRef(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
-  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const onlyLowStock = stockFilter === 'low-stock';
 
@@ -608,19 +582,56 @@ export function ProductsAbmPanel({
     });
   };
 
-  const handleBulkDelete = async () => {
-    if (!selectedCurrentIds.length) return;
-    setDeleting(true);
-    setBulkDeleteError(null);
-    try {
-      await deleteProductRecords(selectedCurrentIds);
-      setSelectedIds([]);
-      setConfirmBulkDelete(false);
-    } catch (error) {
-      setBulkDeleteError(error instanceof Error ? error.message : 'No se pudo eliminar la selección.');
-    } finally {
-      setDeleting(false);
+  const invalidateDeactivationPreview = () => {
+    setDeactivationPreview(null);
+    setDeactivationStale(false);
+    setDeactivationError(null);
+    deactivationRequest.current = null;
+    deactivationRefreshNeeded.current = false;
+  };
+
+  const openDeactivation = (ids: string[], single: boolean) => {
+    setDeactivation({ ids: [...ids], single });
+    setDeactivationReason('');
+    invalidateDeactivationPreview();
+  };
+
+  const handleDeactivation = async (refreshPreview = false) => {
+    if (!deactivation || deleting || (deactivationStale && !refreshPreview)) return;
+    if (!deactivationReason.trim()) {
+      setDeactivationError('Ingresá el motivo de la desactivación.');
+      return;
     }
+    setDeleting(true);
+    setDeactivationError(null);
+    try {
+      if (!deactivationPreview || refreshPreview) {
+        if (refreshPreview && deactivationRefreshNeeded.current) {
+          deactivationRequest.current = null;
+          deactivationRefreshNeeded.current = false;
+        }
+        deactivationRequest.current ??= {
+          requestId: crypto.randomUUID(),
+          selector: { kind: 'ids', skuIds: deactivation.ids },
+          mutation: { type: 'sku.deactivate', reason: deactivationReason.trim() },
+        };
+        setDeactivationPreview(await previewInventorySelection(deactivationRequest.current));
+        setDeactivationStale(false);
+        return;
+      }
+      const selection = { selectionId: deactivationPreview.selectionId, digest: deactivationPreview.digest };
+      if (deactivation.single) await deleteProductRecord(deactivation.ids[0]!, selection);
+      else await deleteProductRecords(selection);
+      setSelectedIds((current) => current.filter((id) => !deactivation.ids.includes(id)));
+      setDeactivation(null);
+    } catch (error) {
+      const stale = Boolean(deactivationPreview && error && typeof error === 'object' && 'status' in error && error.status === 409);
+      if (stale) {
+        setDeactivationStale(true);
+        deactivationRefreshNeeded.current = true;
+      }
+      setDeactivationError(stale ? 'El inventario cambió. Tu motivo y vista previa se conservan. Revisá una selección actualizada antes de confirmar.' : error instanceof Error ? error.message : 'No se pudo desactivar la selección.');
+    } finally { setDeleting(false); }
   };
 
   const lowStockGroupKeys = useMemo(
@@ -893,20 +904,6 @@ export function ProductsAbmPanel({
     }
   };
 
-  const confirmDelete = async () => {
-    if (!pendingDeleteProduct) {
-      return;
-    }
-
-    setDeleting(true);
-    try {
-      await deleteProductRecord(pendingDeleteProduct.id);
-      setPendingDeleteProduct(null);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-12">
@@ -992,7 +989,7 @@ export function ProductsAbmPanel({
             <span className="text-sm font-semibold text-[color:var(--text)]">{selectedCurrentIds.length} {preset.useVariants ? selectedCurrentIds.length === 1 ? variantWord : variantLabelPlural : selectedCurrentIds.length === 1 ? 'producto' : 'productos'} seleccionados</span>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="erp-button-secondary" onClick={() => setSelectedIds([])}>Limpiar selección</button>
-              <button type="button" className="erp-button-danger" onClick={() => { setBulkDeleteError(null); setConfirmBulkDelete(true); }}>Eliminar seleccionados</button>
+              <button type="button" className="erp-button-danger" onClick={() => openDeactivation(selectedCurrentIds, false)}>Desactivar seleccionados</button>
             </div>
           </div>
         )}
@@ -1057,7 +1054,7 @@ export function ProductsAbmPanel({
                             <span className="font-semibold text-[color:var(--text)] sm:col-span-2">{formatCurrency(product.price)}</span>
                             <div className="col-span-2 flex flex-wrap gap-x-3 gap-y-2 sm:col-span-3 sm:justify-end">
                               <button type="button" className="erp-toggle-link min-h-9 text-sm" aria-label={`Editar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => openEditForm(product)}>Editar {variantWord}</button>
-                              <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" aria-label={`Eliminar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => setPendingDeleteProduct(product)}>Eliminar</button>
+                              <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" aria-label={`Desactivar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => openDeactivation([product.id], true)}>Desactivar</button>
                             </div>
                           </div>)}
                         </div>
@@ -1082,7 +1079,7 @@ export function ProductsAbmPanel({
                     <span className="col-span-4 text-sm font-semibold lg:col-span-2"><span className="lg:hidden">Precio: </span>{formatCurrency(product.price)}</span>
                     <div className="col-span-11 col-start-2 flex gap-3 lg:col-span-2 lg:col-start-auto lg:justify-end">
                       <button type="button" className="erp-toggle-link min-h-9 text-sm" onClick={() => openEditForm(product)}>Editar</button>
-                      <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" onClick={() => setPendingDeleteProduct(product)}>Eliminar</button>
+                      <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" onClick={() => openDeactivation([product.id], true)}>Desactivar</button>
                     </div>
                   </div>
                 );
@@ -1153,26 +1150,17 @@ export function ProductsAbmPanel({
           onRefreshPreview={() => { void handleModelSubmit(true); }}
         />}
 
-        {pendingDeleteProduct && (
-          <ConfirmDeleteModal
-            productName={preset.useVariants
-              ? `${productLineName(pendingDeleteProduct)} · ${preset.variantLabel ?? 'Variante'} ${pendingDeleteProduct.size || 'sin definir'}`
-              : pendingDeleteProduct.name}
-            onCancel={() => setPendingDeleteProduct(null)}
-            onConfirm={() => void confirmDelete()}
-            confirming={deleting}
-          />
-        )}
-        {confirmBulkDelete && (
-          <ConfirmBulkDeleteModal
-            count={selectedCurrentIds.length}
-            variantWord={preset.useVariants ? variantWord : 'producto'}
-            onCancel={() => setConfirmBulkDelete(false)}
-            onConfirm={() => void handleBulkDelete()}
-            confirming={deleting}
-            error={bulkDeleteError}
-          />
-        )}
+        {deactivation && <DeactivateModal
+          ids={deactivation.ids}
+          reason={deactivationReason}
+          onReasonChange={(reason) => { setDeactivationReason(reason); invalidateDeactivationPreview(); }}
+          preview={deactivationPreview}
+          stale={deactivationStale}
+          error={deactivationError}
+          busy={deleting}
+          onCancel={() => setDeactivation(null)}
+          onSubmit={handleDeactivation}
+        />}
       </article>
     </div>
   );

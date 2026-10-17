@@ -48,6 +48,8 @@ import {
   updateProductRecord,
   previewInventorySelection,
   confirmInventorySelection,
+  prepareMetaDeactivation,
+  processMetaDeactivationCommand,
   updateProductModelRecords,
   updateClientRecord,
   updateProveedorRecord,
@@ -621,26 +623,29 @@ app.put('/api/products/:id', authenticateRequest, async (req, res) => {
 
 app.delete('/api/products/batch', authenticateRequest, async (req, res) => {
   try {
-    const deleted = await deleteProductRecords(req.body?.ids, tenantPhoneOf(req));
-    res.json({ deleted });
+    const result = await deleteProductRecords(req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req), returnResult: true });
+    res.json({ deleted: result.items.length, operationResult: result });
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(error.name === 'InventoryOperationError' ? 409 : 500).json({ error: error.message, code: error.code });
   }
 });
 
 app.delete('/api/products/:id', authenticateRequest, async (req, res) => {
   try {
     const clientPhone = tenantPhoneOf(req);
-    const deleted = await deleteProductRecord(req.params.id, clientPhone);
+    if (!req.body || Object.keys(req.body).some((key) => !['selectionId', 'digest'].includes(key))) {
+      res.status(409).json({ error: 'Revisá la selección antes de confirmar la baja.', code: 'SELECTION_REQUIRED' }); return;
+    }
+    const deleted = await deleteProductRecord(req.params.id, clientPhone, { ...req.body, actorId: authPhoneOf(req), returnResult: true });
 
     if (!deleted) {
       res.status(404).json({ error: 'Producto no encontrado' });
       return;
     }
 
-    res.status(204).send();
+    res.json({ deleted: 1, operationResult: deleted });
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(error.name === 'InventoryOperationError' ? 409 : 500).json({ error: error.message, code: error.code });
   }
 });
 
@@ -880,7 +885,7 @@ app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
   try {
     requireReviewedUpdateSelection(req.body);
     const result = await executeInventoryOperation(req.body, {
-      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:receive', 'inventory:sell', 'inventory:reserve', 'inventory:adjust', 'inventory:update'],
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:receive', 'inventory:sell', 'inventory:reserve', 'inventory:adjust', 'inventory:update', 'inventory:deactivate'],
     });
     res.json(result);
   } catch (error) {
@@ -895,7 +900,7 @@ app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
 app.post('/api/inventory/selections', authenticateRequest, async (req, res) => {
   try {
     const preview = await previewInventorySelection(req.body, {
-      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update'],
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate'],
     });
     res.json(preview);
   } catch (error) {
@@ -912,7 +917,7 @@ app.post('/api/inventory/selections/:id/confirm', authenticateRequest, async (re
       res.status(400).json({ error: 'Confirmá únicamente la selección revisada.', code: 'INVALID_SELECTION' }); return;
     }
     const result = await confirmInventorySelection(req.params.id, req.body.digest, {
-      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update'],
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate'],
     });
     res.json(result);
   } catch (error) {
@@ -1088,11 +1093,15 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
     const results = await processMetaWebhook(processingBody, {
       loadTranscript: loadMetaTranscript,
       saveTranscript: saveMetaTranscript,
-      processStockText: async ({ sourceText, businessCategory, metaMessage }) => processStockBatchMessage({
-        sourceText, businessCategory, ownerPhone: await resolveTenant(metaMessage.fromNumber),
-        senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId(),
-        replyToMessageId: metaMessage.replyToMessageId,
-      }),
+      processStockText: async ({ sourceText, businessCategory, metaMessage }) => {
+        const selectionReply = await processMetaDeactivationCommand({ sourceText, ownerPhone: await resolveTenant(metaMessage.fromNumber),
+          senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId() });
+        return selectionReply ?? processStockBatchMessage({
+          sourceText, businessCategory, ownerPhone: await resolveTenant(metaMessage.fromNumber),
+          senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId(),
+          replyToMessageId: metaMessage.replyToMessageId,
+        });
+      },
       resolveBusinessCategory: async (fromNumber) => {
         try {
           const profile = await getAuthUserProfile(fromNumber);
@@ -1197,11 +1206,15 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       let mutationRejected = false;
       if (!stockBatchResponse && !legacyStockHold && mutationActions.length && !hasProductMatchHold(result.parsed)) {
         try {
-          mutationOutcome = await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber, {
+          mutationOutcome = mutationActions.some((action) => action.type === 'delete_product')
+            ? await prepareMetaDeactivation({ actions: mutationActions, sourceText: result.sourceText, messageId: incomingId,
+              ownerPhone, senderPhone: result.fromNumber })
+            : await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber, {
             messageId: incomingId, recipient: result.fromNumber,
             actorId: result.fromNumber, channel: 'whatsapp', replyPrefix: overrideReplyText,
             replyText: [overrideReplyText, result.replyText].filter(Boolean).join('\n\n'),
           });
+          if (mutationOutcome?.pendingSelection && overrideReplyText) mutationOutcome.replyText = [overrideReplyText, mutationOutcome.replyText].join('\n\n');
         } catch (error) {
           if (error.name !== 'InventoryOperationError') throw error;
           // A business rejection is terminal. Never retry a rejected sale later
@@ -1216,7 +1229,8 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
         ?? [overrideReplyText, result.replyText].filter(Boolean).join('\n\n');
 
       eventRecord.replyText = finalReplyText;
-      eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? (mutationRejected ? [] : mutationOutcome?.operationResult
+      eventRecord.error ??= stockBatchResponse?.errorCode ?? null;
+      eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? (mutationRejected || mutationOutcome?.pendingSelection ? [] : mutationOutcome?.operationResult
         ? inventoryResultActions(mutationOutcome.operationResult, mutationActions) : result.parsed?.actions ?? []));
       eventRecord.processed = Boolean(stockBatchResponse || queryActions.length || mutationActions.length);
 

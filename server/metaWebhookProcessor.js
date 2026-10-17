@@ -2567,7 +2567,7 @@ const processMetaMessage = async (
     const response = await hooks.processStockText?.({ sourceText, businessCategory: preset.id, conversationTurns, metaMessage });
     if (!response) return null;
     return { ...metaMessage, kind, sourceText, transcript: kind === 'audio' ? sourceText : null,
-      parsed: { schemaVersion: 1, sourceText, intent: 'add_stock', actions: response.actions ?? [], requiresConfirmation: response.batchStatus !== 'applied' },
+      parsed: { schemaVersion: 1, sourceText, intent: response.intent ?? 'add_stock', actions: response.actions ?? [], requiresConfirmation: response.requiresConfirmation ?? response.batchStatus !== 'applied' },
       businessCategory: preset.id, replyText: response.replyText, stockBatchResponse: response };
   };
   if (metaMessage.messageType === 'audio' && metaMessage.audioId) {

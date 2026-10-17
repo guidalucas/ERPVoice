@@ -5,10 +5,11 @@ import { normalizePhone, getWhatsAppVariants } from './phone.js';
 import { productBaseName, productMatchKey, normalizeProductMetadata } from './productIdentity.js';
 import { validateStockDraft, hasExplicitStockSize, productFingerprint, stockReferenceIssues, explicitIdentityConflict } from './voiceStockEngine.js';
 import { INVENTORY_SCHEMA_SQL, executeInventoryPlanInTransaction, inventoryRowToProduct } from './inventoryPostgres.js';
-import { validateOperationPlan, InventoryOperationError } from './inventoryOperations.js';
+import { validateOperationPlan, productIdentity, InventoryOperationError } from './inventoryOperations.js';
 import { resolvedStockBatchToPlan, confirmedStockActionsToPlan, productUpdateActions } from './stockOperationAdapter.js';
 import { inventoryResultActions, inventoryResultReply } from './inventoryResults.js';
 import { normalizeSelectionRequest, selectionRequestDigest, buildSelectionPreview, requireReviewedUpdateSelection } from './inventorySelections.js';
+import { parseMetaDeactivationCommand, deactivationPreviewReply, metaDeactivationReceiptReply } from './inventoryMetaSelections.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -659,13 +660,13 @@ const ensureTenantState = async (client, ownerPhone) => {
   return normalizedOwnerPhone;
 };
 
-const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null) => {
+const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null, { includeInactive = false } = {}) => {
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
   const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
 
   const productsRows = await queryRows(
-    'SELECT * FROM products WHERE owner_phone = ANY($1) ORDER BY name ASC',
-    [ownerPhoneVariants],
+    "SELECT * FROM products WHERE owner_phone = ANY($1) AND ($2 OR inventory_status='active') ORDER BY name ASC",
+    [ownerPhoneVariants, includeInactive],
     client,
   );
   const clientsRows = await queryRows(
@@ -1260,6 +1261,7 @@ const splitBloatedGarmentFields = (action) => normalizeProductMetadata(action);
 const ensureProduct = (products, action) => {
   const normalizedAction = splitBloatedGarmentFields(action);
   const resolvedProduct = resolveProduct(products, normalizedAction);
+  if (resolvedProduct && (resolvedProduct.status ?? 'active') !== 'active') throw new InventoryOperationError('SKU_INACTIVE', 'El SKU está desactivado; no modifiqué el pedido ni su stock.');
 
   if (resolvedProduct) {
     if (Number.isFinite(normalizedAction.price) && normalizedAction.price > 0 && (!resolvedProduct.price || resolvedProduct.price === 0)) {
@@ -1417,9 +1419,9 @@ const summarizeAction = (action) => {
 
   if (action.type === 'delete_product') {
     if (action.productName === '*') {
-      return 'Eliminar todos los productos del inventario';
+      return 'Desactivar los SKU de la selección revisada';
     }
-    return `Eliminar producto ${action.productName}`;
+    return `Desactivar SKU ${action.productName}`;
   }
 
   return `+$${action.amount.toLocaleString('es-AR')} en cuenta de ${action.clientName}`;
@@ -1559,33 +1561,38 @@ export const createProductRecord = async (productInput, ownerPhone = DEFAULT_OWN
   await ensureReady();
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
 
-  await withClient(async (client) => {
+  return withTransaction(async (client) => {
+    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
     await ensureTenantState(client, normalizedOwnerPhone);
+
+    const normalizedInput = normalizeProductMetadata(productInput);
+    const id = `product-${slugify(normalizeProductNameFromInput(normalizedInput))}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
+    const archived = await client.query("SELECT * FROM products WHERE owner_phone=ANY($1) AND inventory_status='inactive'", [getOwnerPhoneVariants(ownerPhone)]);
+    const intended = { name: normalizeProductNameFromInput(normalizedInput), productType: normalizeNullableString(normalizedInput.productType),
+      productModel: normalizeNullableString(normalizedInput.productModel), size: normalizeNullableString(normalizedInput.size), unit: 'unit', attributes: {} };
+    if (archived.rows.some((row) => productIdentity(inventoryRowToProduct(row)) === productIdentity(intended))) throw new InventoryOperationError('SKU_INACTIVE', 'Ya existe un SKU desactivado con esa identidad; no creé otro producto.');
+    const result = await client.query(
+      `
+        INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price
+      `,
+      [
+        id,
+        normalizedOwnerPhone,
+        normalizeProductNameFromInput(normalizedInput),
+        normalizeNullableString(normalizedInput.productType),
+        normalizeNullableString(normalizedInput.productModel),
+        normalizeNullableString(normalizedInput.size),
+        normalizeInteger(productInput.stockAvailable, 0),
+        normalizeInteger(productInput.stockReserved, 0),
+        normalizeInteger(productInput.price, 0),
+      ],
+    );
+
+    return rowToProduct(result.rows[0]);
   });
-
-  const normalizedInput = normalizeProductMetadata(productInput);
-  const id = `product-${slugify(normalizeProductNameFromInput(normalizedInput))}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-
-  const result = await getPool().query(
-    `
-      INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price
-    `,
-    [
-      id,
-      normalizedOwnerPhone,
-      normalizeProductNameFromInput(normalizedInput),
-      normalizeNullableString(normalizedInput.productType),
-      normalizeNullableString(normalizedInput.productModel),
-      normalizeNullableString(normalizedInput.size),
-      normalizeInteger(productInput.stockAvailable, 0),
-      normalizeInteger(productInput.stockReserved, 0),
-      normalizeInteger(productInput.price, 0),
-    ],
-  );
-
-  return rowToProduct(result.rows[0]);
 };
 
 export const createProductModelRecords = async (input, ownerPhone = DEFAULT_OWNER_PHONE) => {
@@ -1609,6 +1616,7 @@ export const createProductModelRecords = async (input, ownerPhone = DEFAULT_OWNE
 
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
   return withTransaction(async (client) => {
+    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
     await ensureTenantState(client, normalizedOwnerPhone);
     const existing = await client.query(
       `SELECT id FROM products WHERE owner_phone = ANY($1)
@@ -1651,29 +1659,23 @@ export const updateProductModelRecords = async (input, ownerPhone = DEFAULT_OWNE
   const businessId = normalizeOwnerPhone(ownerPhone);
   const result = await confirmInventorySelection(input.selectionId, input.digest, {
     businessId, actorId: options.actorId ?? businessId, permissions: ['inventory:update'],
-  });
+  }, { mutationType: 'sku.update' });
   return result.items.map((item) => item.product);
 };
 
-export const deleteProductRecord = async (productId, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  await ensureReady();
-  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
-  const result = await getPool().query('DELETE FROM products WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [productId, ownerPhoneVariants]);
-  return result.rowCount > 0;
+export const deleteProductRecord = async (productId, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
+  const result = await confirmInventorySelection(options.selectionId, options.digest, {
+    businessId: normalizeOwnerPhone(ownerPhone), actorId: options.actorId ?? normalizeOwnerPhone(ownerPhone), permissions: ['inventory:deactivate'],
+  }, { mutationType: 'sku.deactivate', skuIds: [productId], requireReference: true });
+  return options.returnResult ? result : true;
 };
 
-export const deleteProductRecords = async (idsInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  await ensureReady();
-  const ids = [...new Set(Array.isArray(idsInput) ? idsInput.filter((id) => typeof id === 'string' && id.trim()) : [])];
-  if (!ids.length) throw new Error('Seleccioná al menos un producto.');
-  return withTransaction(async (client) => {
-    const result = await client.query(
-      'DELETE FROM products WHERE id = ANY($1) AND owner_phone = ANY($2) RETURNING id',
-      [ids, getOwnerPhoneVariants(ownerPhone)],
-    );
-    if (result.rowCount !== ids.length) throw new Error('El inventario cambió. Actualizá la página e intentá de nuevo.');
-    return result.rowCount;
-  });
+export const deleteProductRecords = async (idsInput, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
+  if (!idsInput || Array.isArray(idsInput) || Object.keys(idsInput).some((key) => !['selectionId', 'digest'].includes(key))) throw new InventoryOperationError('SELECTION_REQUIRED', 'Revisá una selección antes de dar de baja los SKU.');
+  const result = await confirmInventorySelection(idsInput.selectionId, idsInput.digest, {
+    businessId: normalizeOwnerPhone(ownerPhone), actorId: options.actorId ?? normalizeOwnerPhone(ownerPhone), permissions: ['inventory:deactivate'],
+  }, { mutationType: 'sku.deactivate', requireReference: true });
+  return options.returnResult ? result : result.items.length;
 };
 
 export const createClientRecord = async (clientInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
@@ -1969,7 +1971,7 @@ export const updatePedidoRecord = async (pedidoId, updates, ownerPhone = DEFAULT
     const nextQty = updates.qty === undefined ? current.qty : Math.max(1, normalizeInteger(updates.qty, current.qty));
     const nextNotas = updates.notas === undefined ? current.notas : normalizeNullableString(updates.notas);
 
-    const snapshot = await queryAllState(normalizedOwnerPhone, client);
+    const snapshot = await queryAllState(normalizedOwnerPhone, client, { includeInactive: true });
     const nextProducts = snapshot.products.map((product) => ({ ...product }));
     const qtyForStock =
       current.estado === 'conseguido' && nextEstado !== 'conseguido' ? current.qty : nextQty;
@@ -2103,15 +2105,15 @@ export const executeInventoryOperation = async (plan, context) => {
   });
 };
 
-const authorizeInventorySelection = (context) => validateOperationPlan({ contractVersion: 1,
+const authorizeInventorySelection = (context, mutationType = 'sku.update') => validateOperationPlan({ contractVersion: 1,
   businessId: context?.businessId, operationId: 'selection-authorization',
-  actions: [{ itemId: 'authorization', type: 'sku.update', target: { kind: 'existing', skuId: 'authorization', expectedRevision: 0 },
-    changes: { price: 0 }, reason: 'Authorization only' }],
+  actions: [{ itemId: 'authorization', type: mutationType, target: { kind: 'existing', skuId: 'authorization', expectedRevision: 0 },
+    ...(mutationType === 'sku.update' ? { changes: { price: 0 } } : {}), reason: 'Authorization only' }],
 }, context);
 
 export const previewInventorySelection = async (input, context) => {
-  authorizeInventorySelection(context);
   const request = normalizeSelectionRequest(input), requestHash = selectionRequestDigest(request);
+  authorizeInventorySelection(context, request.mutation.type);
   await ensureReady();
   return withTransaction(async (client) => {
     const scope = [context.businessId, context.actorId, request.requestId];
@@ -2134,23 +2136,82 @@ export const previewInventorySelection = async (input, context) => {
   });
 };
 
-export const confirmInventorySelection = async (selectionId, digest, context) => {
-  authorizeInventorySelection(context);
-  if (typeof selectionId !== 'string' || !selectionId.trim() || typeof digest !== 'string' || !digest.trim()) throw new InventoryOperationError('SELECTION_CONFIRMATION_MISMATCH', 'Falta la confirmación de la selección revisada.');
+export const confirmInventorySelection = async (selectionId, digest, context, options = {}) => {
+  if (!context || !context.businessId || !context.actorId) throw new InventoryOperationError('BUSINESS_SCOPE_REQUIRED', 'Falta el contexto autorizado de negocio y actor.');
+  if (typeof selectionId !== 'string' || !selectionId.trim() || typeof digest !== 'string' || !digest.trim()) throw new InventoryOperationError(options.requireReference ? 'SELECTION_REQUIRED' : 'SELECTION_CONFIRMATION_MISMATCH', 'Falta la confirmación de la selección revisada.');
   await ensureReady();
   return withTransaction(async (client) => {
     const selected = await queryRow(`SELECT *,expires_at <= NOW() AS expired FROM inventory_selections
       WHERE owner_phone=$1 AND selection_id=$2 AND actor_id=$3 FOR UPDATE`, [context.businessId,selectionId,context.actorId], client);
     if (!selected) throw new InventoryOperationError('SELECTION_NOT_FOUND', 'La selección no está disponible para esta sesión.');
     if (parseJsonValue(selected.preview_json).digest !== digest) throw new InventoryOperationError('SELECTION_CONFIRMATION_MISMATCH', 'La confirmación no corresponde al conjunto y los cambios revisados.');
-    if (selected.status === 'applied') return parseJsonValue(selected.result_json);
-    if (selected.expired) throw new InventoryOperationError('SELECTION_EXPIRED', 'La selección venció. Revisá una nueva previsualización antes de confirmar.');
     const plan = parseJsonValue(selected.plan_json);
-    const result = await executeInventoryPlanInTransaction(client, plan, { ...context, ownerPhoneVariants: getOwnerPhoneVariants(context.businessId) });
-    await persistInventoryTransactions(client, plan, result);
-    await client.query("UPDATE inventory_selections SET status='applied',result_json=$3::jsonb WHERE owner_phone=$1 AND selection_id=$2", [context.businessId,selectionId,JSON.stringify(result)]);
+    if (options.mutationType && plan.actions.some((action) => action.type !== options.mutationType)) throw new InventoryOperationError('SELECTION_OPERATION_MISMATCH', 'La selección revisada corresponde a otra operación.');
+    if (options.skuIds && (plan.actions.length !== options.skuIds.length || plan.actions.some((action) => !options.skuIds.includes(action.target.skuId)))) throw new InventoryOperationError('SELECTION_SCOPE_MISMATCH', 'La selección no corresponde a los SKU de esta operación.');
+    validateOperationPlan(plan, context);
+    if (selected.cancelled_at) throw new InventoryOperationError('SELECTION_CANCELLED', 'La baja fue cancelada. Pedí una nueva selección antes de confirmar.');
+    let result;
+    if (selected.status === 'applied') result = parseJsonValue(selected.result_json);
+    else {
+      if (selected.expired) throw new InventoryOperationError('SELECTION_EXPIRED', 'La selección venció. Revisá una nueva previsualización antes de confirmar.');
+      result = await executeInventoryPlanInTransaction(client, plan, { ...context, ownerPhoneVariants: getOwnerPhoneVariants(context.businessId) });
+      await persistInventoryTransactions(client, plan, result);
+      await client.query("UPDATE inventory_selections SET status='applied',result_json=$3::jsonb WHERE owner_phone=$1 AND selection_id=$2", [context.businessId,selectionId,JSON.stringify(result)]);
+    }
+    if (options.messageId && options.recipient) await client.query(`INSERT INTO meta_reply_outbox(event_id,recipient,reply_text) VALUES($1,$2,$3) ON CONFLICT(event_id) DO NOTHING`,
+      [options.messageId,normalizePhone(options.recipient),options.mutationType === 'sku.deactivate' ? metaDeactivationReceiptReply(result) : inventoryResultReply(result)]);
     return result;
   });
+};
+
+/** Conversation adapter only: execution always confirms the persisted universal plan. */
+export const prepareMetaDeactivation = async ({ actions, sourceText, messageId, ownerPhone, senderPhone }) => {
+  await ensureReady();
+  const context = { businessId: normalizeOwnerPhone(ownerPhone), actorId: normalizePhone(senderPhone), permissions: ['inventory:deactivate'] };
+  const requestId = `meta-deactivate:${messageId}`;
+  const stored = await queryRow('SELECT preview_json FROM inventory_selections WHERE owner_phone=$1 AND actor_id=$2 AND request_id=$3',
+    [context.businessId,context.actorId,requestId]);
+  let preview = stored ? parseJsonValue(stored.preview_json) : null;
+  if (!preview) {
+    if (!actions.length || actions.some((action) => action.type !== 'delete_product')) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION', 'La baja necesita una selección independiente; no apliqué el lote mixto.');
+    const all = actions.length === 1 && actions[0].productName === '*';
+    if (!all && actions.some((action) => typeof action.productId !== 'string' || !action.productId.trim())) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Falta identificar los SKU que querés dar de baja.');
+    preview = await previewInventorySelection({ requestId,
+      selector: all ? { kind: 'all' } : { kind: 'ids', skuIds: [...new Set(actions.map((action) => action.productId))] },
+      mutation: { type: 'sku.deactivate', reason: sourceText },
+    }, context);
+  }
+  return { replyText: deactivationPreviewReply(preview), pendingSelection: true, actions: [], selectionId: preview.selectionId };
+};
+
+export const processMetaDeactivationCommand = async ({ sourceText, messageId, ownerPhone, senderPhone }) => {
+  const command = parseMetaDeactivationCommand(sourceText);
+  if (!command) return null;
+  await ensureReady();
+  const context = { businessId: normalizeOwnerPhone(ownerPhone), actorId: normalizePhone(senderPhone), permissions: ['inventory:deactivate'] };
+  try {
+    const candidates = await queryRows(`SELECT selection_id,preview_json FROM inventory_selections
+      WHERE owner_phone=$1 AND actor_id=$2 AND request_id LIKE 'meta-deactivate:%'
+      AND left(preview_json->>'digest',8)=$3`, [context.businessId,context.actorId,command.code]);
+    if (candidates.length !== 1) throw new InventoryOperationError('SELECTION_NOT_FOUND', 'No encontré una baja con ese código para este negocio y remitente. Pedí una nueva selección.');
+    const selected = candidates[0], preview = parseJsonValue(selected.preview_json);
+    if (!command.confirm) {
+      await withTransaction(async (client) => {
+        const row = await queryRow('SELECT status FROM inventory_selections WHERE owner_phone=$1 AND selection_id=$2 AND actor_id=$3 FOR UPDATE',
+          [context.businessId,selected.selection_id,context.actorId], client);
+        if (row.status === 'applied') throw new InventoryOperationError('SELECTION_ALREADY_APPLIED', 'La baja ya estaba aplicada. El historial conserva el recibo.');
+        await client.query('UPDATE inventory_selections SET cancelled_at=COALESCE(cancelled_at,NOW()) WHERE owner_phone=$1 AND selection_id=$2', [context.businessId,selected.selection_id]);
+        await client.query('INSERT INTO meta_reply_outbox(event_id,recipient,reply_text) VALUES($1,$2,$3) ON CONFLICT(event_id) DO NOTHING', [messageId,context.actorId,'Baja cancelada. No desactivé ningún SKU.']);
+      });
+      return { handled: true, intent: 'delete_product', requiresConfirmation: false, replyText: 'Baja cancelada. No desactivé ningún SKU.', actions: [] };
+    }
+    const result = await confirmInventorySelection(selected.selection_id, preview.digest, context,
+      { mutationType: 'sku.deactivate', messageId, recipient: context.actorId });
+    return { handled: true, intent: 'delete_product', requiresConfirmation: false, replyText: metaDeactivationReceiptReply(result), actions: inventoryResultActions(result), operationResult: result };
+  } catch (error) {
+    if (error.name !== 'InventoryOperationError') throw error;
+    return { handled: true, intent: 'delete_product', requiresConfirmation: false, replyText: error.message, actions: [], errorCode: error.code };
+  }
 };
 
 export const getStateSnapshot = async (ownerPhone = DEFAULT_OWNER_PHONE) => {
@@ -2223,6 +2284,14 @@ const applyConfirmedStockActions = async (actions, sourceText, ownerPhone, optio
 };
 
 export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
+  if (actions.some((action) => action.type === 'delete_product')) {
+    if (actions.some((action) => action.type !== 'delete_product')) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION', 'La baja necesita una selección independiente; no apliqué el lote mixto.');
+    const ids = actions.every((action) => typeof action.productId === 'string' && action.productId.trim()) ? actions.map((action) => action.productId) : undefined;
+    const result = await confirmInventorySelection(options.selectionId, options.digest, {
+      businessId: normalizeOwnerPhone(ownerPhone), actorId: options.actorId ?? normalizeOwnerPhone(ownerPhone), permissions: ['inventory:deactivate'],
+    }, { mutationType: 'sku.deactivate', skuIds: ids, requireReference: true, messageId: options.messageId, recipient: options.recipient });
+    return { ...await getStateSnapshotStrict(ownerPhone), operationResult: result, replyText: inventoryResultReply(result) };
+  }
   const migrated = new Set(['add_stock', 'sell', 'reserve_stock', 'update_product']);
   if (actions.some((action) => migrated.has(action.type))) {
     if (actions.some((action) => !migrated.has(action.type))) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION', 'El lote combina operaciones todavía no migradas; no apliqué cambios.');
@@ -2241,7 +2310,7 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
     await ensureTenantState(client, normalizedOwnerPhone);
 
-    const currentSnapshot = await queryAllState(normalizedOwnerPhone, client);
+    const currentSnapshot = await queryAllState(normalizedOwnerPhone, client, { includeInactive: true });
     const nextProducts = currentSnapshot.products.map((product) => ({ ...product }));
     const nextClients = currentSnapshot.clients.map((clientEntry) => ({ ...clientEntry }));
     const nextProveedores = currentSnapshot.proveedores.map((proveedorEntry) => ({ ...proveedorEntry }));
@@ -2341,29 +2410,6 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
           const pedidoIndex = nextPedidos.findIndex((entry) => entry.id === pedido.id);
           if (pedidoIndex >= 0) {
             nextPedidos.splice(pedidoIndex, 1);
-          }
-        }
-      }
-
-      if (action.type === 'delete_product' && typeof action.productName === 'string') {
-        if (action.productName === '*') {
-          nextProducts.length = 0;
-        } else {
-          const product = typeof action.productId === 'string' && action.productId.trim()
-            ? nextProducts.find((entry) => entry.id === action.productId)
-            : resolveProductFlexible(nextProducts, action);
-          if (action.productId && !product) {
-            throw new Error('El inventario cambió antes de aplicar la selección. Volvé a pedir la operación.');
-          }
-          if (action.selection?.field === 'size' && action.selection?.operator === 'missing' &&
-            normalizeNullableString(product?.size)) {
-            throw new Error('Una variante seleccionada ya tiene talle o medida. Volvé a pedir la operación.');
-          }
-          if (product) {
-            const productIndex = nextProducts.findIndex((entry) => entry.id === product.id);
-            if (productIndex >= 0) {
-              nextProducts.splice(productIndex, 1);
-            }
           }
         }
       }

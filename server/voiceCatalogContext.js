@@ -247,6 +247,7 @@ const cloneActionWithProduct = (action, product) => ({
   productType: product.productType || action.productType,
   productModel: product.productModel || action.productModel,
   size: product.size || action.size,
+  ...(action.type === 'delete_product' && product.id ? { productId: product.id } : {}),
 });
 
 export const hasBulkSelection = (sourceText) => /\b(?:todos?|todas?)\b/.test(normalizeText(sourceText || ''));

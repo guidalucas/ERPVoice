@@ -22,7 +22,7 @@ import {
   updateProveedor,
 } from '../services/productService';
 import type { Client, ParsedActionUnion, Pedido, PedidoEstado, Product, Proveedor } from '../domain/types';
-import type { ProductAdjustment } from '../services/productService';
+import type { InventorySelectionReference, ProductAdjustment } from '../services/productService';
 
 export const useInventory = () => {
   const { state, confirmPendingProposal, clearPendingProposal, hydratePersistedState } = useAppStore();
@@ -86,13 +86,13 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const deleteProductRecord = async (productId: string) => {
-    await deleteProduct(productId);
+  const deleteProductRecord = async (productId: string, selection: InventorySelectionReference) => {
+    await deleteProduct(productId, selection);
     await refreshState();
   };
 
-  const deleteProductRecords = async (ids: string[]) => {
-    await deleteProducts(ids);
+  const deleteProductRecords = async (selection: InventorySelectionReference) => {
+    await deleteProducts(selection);
     await refreshState();
   };
 

@@ -3,6 +3,8 @@ import { runInventoryCoreChecks } from './inventory-core-postgres-checks.js';
 import { runInventorySalesChecks } from './inventory-sales-postgres-checks.js';
 import { runInventoryAdjustmentsChecks } from './inventory-adjustments-postgres-checks.js';
 import { runInventorySelectionsChecks } from './inventory-selections-postgres-checks.js';
+import { runInventoryDeactivationChecks } from './inventory-deactivation-postgres-checks.js';
+import { runInventoryDeactivationMetaChecks } from './inventory-deactivation-meta-checks.js';
 import { runInventoryHttpChecks } from './inventory-http-checks.js';
 import os from 'node:os';
 import path from 'node:path';
@@ -29,6 +31,13 @@ let sql;
 let checks = 0;
 const originalFetch = globalThis.fetch;
 const owner = '59899000101';
+const purgeFixtureProduct = async (id) => sql.query('DELETE FROM products WHERE owner_phone=$1 AND id=$2', [owner,id]);
+const deactivateFixtureProduct = async (id) => {
+  const preview = await db.previewInventorySelection({ requestId: `fixture-${id}`, selector: { kind: 'ids', skuIds: [id] },
+    mutation: { type: 'sku.deactivate', reason: 'Baja de fixture para comprobar catálogo obsoleto' } },
+  { businessId: owner, actorId: owner, permissions: ['inventory:deactivate'] });
+  return db.deleteProductRecord(id, owner, { selectionId: preview.selectionId, digest: preview.digest });
+};
 const other = '59899000202';
 let sequence = 0;
 const action = (name, resolution = { kind: 'new' }) => ({ type: 'add_stock', itemId: 'item-1', productName: name, qty: 2, evidence: name, fieldEvidence: { qty: 'dos' }, resolution });
@@ -56,6 +65,8 @@ try {
   await runInventorySalesChecks({ db, sql, check });
   await runInventoryAdjustmentsChecks({ db, sql, check });
   await runInventorySelectionsChecks({ db, sql, check });
+  await runInventoryDeactivationChecks({ db, sql, check });
+  await runInventoryDeactivationMetaChecks({ db, sql, check });
   await runInventoryHttpChecks({ db, sql, check });
 
   await check('migración repetible y RLS', async () => {
@@ -282,7 +293,7 @@ try {
       assert.equal(rows.rows[0].total, 11);
     } finally {
       extractionOverride = null; enrichmentOverride = null; resolutionKind = 'ambiguous';
-      for (const id of createdIds) await db.deleteProductRecord(id, owner);
+      for (const id of createdIds) await purgeFixtureProduct(id);
     }
   });
   await check('indumentaria exige talles y todas son talle L completa el lote', async () => {
@@ -316,7 +327,7 @@ try {
       }
     } finally {
       extractionOverride = null; resolutionKind = 'ambiguous';
-      for (const id of createdIds) await db.deleteProductRecord(id, owner);
+      for (const id of createdIds) await purgeFixtureProduct(id);
     }
   });
   await check('los talles parciales conservan el borrador hasta completar todos', async () => {
@@ -343,7 +354,7 @@ try {
       }
     } finally {
       extractionOverride = null; resolutionKind = 'ambiguous';
-      for (const id of createdIds) await db.deleteProductRecord(id, owner);
+      for (const id of createdIds) await purgeFixtureProduct(id);
     }
   });
   await check('si falla el catálogo después de responder talles, reintentar conserva las respuestas', async () => {
@@ -366,7 +377,7 @@ try {
       createdId = product.id;
     } finally {
       extractionOverride = null; resolutionKind = 'ambiguous'; failResolve = false;
-      if (createdId) await db.deleteProductRecord(createdId, owner);
+      if (createdId) await purgeFixtureProduct(createdId);
     }
   });
   await check('un único SKU con variante explícita aplica stock sin pedir una opción', async () => {
@@ -759,11 +770,14 @@ try {
     const offeredIds = beforeDelete.actions[0].resolution.candidateIds;
     const deletedChoice = offeredIds.indexOf(drillA.id) + 1;
     assert.ok(deletedChoice > 0);
-    await db.deleteProductRecord(drillA.id, owner);
+    await deactivateFixtureProduct(drillA.id);
     const afterDeletion = await message('deleted-answer', String(deletedChoice)); assert.equal(afterDeletion.batchStatus, 'awaiting_choice');
     const saved = await db.getVoiceStockBatchByMessage(owner, 'deleted-source');
     assert.deepEqual(saved.payload.actions[0].resolution.candidateIds, offeredIds);
     await message('deleted-cancel', 'cancelar');
+    // Restore this isolated fixture for the unrelated clarification tests below.
+    // Production has no implicit recreation of an archived identity.
+    await purgeFixtureProduct(drillA.id);
     drillA = await db.createProductRecord({ name: 'Taladro Makita', size: '10 mm', stockAvailable: 0 }, owner);
   });
   await check('nuevo indistinguible pide diferencia y usa la aclaración literal', async () => {
@@ -1044,15 +1058,20 @@ try {
     const missing = await db.createProductRecord({ name: 'Prueba Variante Ausente', stockAvailable: 1 }, owner);
     const sized = await db.createProductRecord({ name: 'Prueba Variante Ausente', size: 'L', stockAvailable: 1 }, owner);
     const selection = { field: 'size', operator: 'missing' };
+    const preview = await db.previewInventorySelection({ requestId: 'missing-variant-deactivation',
+      selector: { kind: 'filter', equals: { name: missing.name, size: null } },
+      mutation: { type: 'sku.deactivate', reason: 'Baja de SKU sin variante' } },
+    { businessId: owner, actorId: owner, permissions: ['inventory:deactivate'] });
+    const reference = { selectionId: preview.selectionId, digest: preview.digest };
     await assert.rejects(
       db.applyActionsToDatabase([
         { type: 'delete_product', productName: missing.name, productId: missing.id, selection },
         { type: 'delete_product', productName: sized.name, productId: sized.id, selection },
-      ], 'Borrado desactualizado', owner),
-      /ya tiene talle o medida/,
+      ], 'Borrado desactualizado', owner, reference),
+      { code: 'SELECTION_SCOPE_MISMATCH' },
     );
     assert.ok((await db.getStateSnapshotStrict(owner)).products.some((product) => product.id === missing.id));
-    await db.applyActionsToDatabase([{ type: 'delete_product', productName: missing.name, productId: missing.id, selection }], 'Borrado sin variante', owner);
+    await db.applyActionsToDatabase([{ type: 'delete_product', productName: missing.name, productId: missing.id, selection }], 'Borrado sin variante', owner, reference);
     const products = (await db.getStateSnapshotStrict(owner)).products;
     assert.equal(products.some((product) => product.id === missing.id), false);
     assert.equal(products.some((product) => product.id === sized.id), true);

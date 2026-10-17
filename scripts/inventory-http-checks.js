@@ -199,6 +199,75 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const foreign = await request(route, { body: { digest: preview.json.digest }, headers: { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000515' })}` } });
       assert.equal(foreign.json.code, 'SELECTION_NOT_FOUND');
     });
+    await run('DELETE archives only a reviewed selection, preserves stock and hides inactive SKUs', async () => {
+      const seed = async (name) => (await request('/api/inventory/operations', { body: plan(`http-archive-${name}`, [{ ...fresh,
+        target: { kind: 'new', sku: { name: `Archivo HTTP ${name}` } } }]) })).json.items[0].skuId;
+      const first = await seed('primero'), second = await seed('segundo');
+      assert.equal((await request(`/api/products/${first}`, { method: 'DELETE' })).json.code, 'SELECTION_REQUIRED');
+      assert.equal((await request('/api/products/batch', { method: 'DELETE', body: { ids: [first, second] } })).json.code, 'SELECTION_REQUIRED');
+      const preview = await request('/api/inventory/selections', { body: { requestId: 'http-archive-selection',
+        selector: { kind: 'ids', skuIds: [first, second] }, mutation: { type: 'sku.deactivate', reason: 'Retiro de catálogo' } } });
+      assert.equal(preview.status, 200);
+      const reference = { selectionId: preview.json.selectionId, digest: preview.json.digest };
+      assert.equal((await request(`/api/products/${first}`, { method: 'DELETE', body: reference })).json.code, 'SELECTION_SCOPE_MISMATCH');
+      const deleted = await request('/api/products/batch', { method: 'DELETE', body: reference });
+      assert.equal(deleted.status, 200); assert.equal(deleted.json.deleted, 2);
+      assert.ok(deleted.json.operationResult.items.every((item) => item.product.status === 'inactive' && item.stockAvailable === 3));
+      assert.deepEqual((await request('/api/products/batch', { method: 'DELETE', body: reference })).json, deleted.json);
+      const actual = (await sql.query('SELECT inventory_status,stock_available FROM products WHERE id=ANY($1)', [[first,second]])).rows;
+      assert.equal(actual.length, 2); assert.ok(actual.every((row) => row.inventory_status === 'inactive' && Number(row.stock_available) === 3));
+      const snapshot = await request('/api/state', { method: 'GET' });
+      assert.ok(!snapshot.json.products.some((product) => [first,second].includes(product.id)));
+      const blocked = await request('/api/inventory/operations', { body: plan('http-archive-inactive-sale', [{ itemId: 'one', type: 'stock.sell',
+        target: { kind: 'existing', skuId: first }, quantity: { value: 1, unit: 'unit' } }]) });
+      assert.equal(blocked.json.code, 'SKU_INACTIVE');
+      const single = await seed('individual');
+      const one = await request('/api/inventory/selections', { body: { requestId: 'http-archive-one', selector: { kind: 'ids', skuIds: [single] },
+        mutation: { type: 'sku.deactivate', reason: 'Baja individual revisada' } } });
+      const changed = await request(`/api/products/${single}`, { method: 'DELETE', body: { selectionId: one.json.selectionId, digest: one.json.digest } });
+      assert.equal(changed.status, 200); assert.equal(changed.json.operationResult.items[0].skuId, single);
+    });
+    await run('signed WhatsApp deactivation requires its code, scopes actors and respects cancel/stale/replay', async () => {
+      const sendText = async (id, text, sender = owner) => {
+        const body = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [{ id, from: sender, type: 'text', text: { body: text } }] } }] }] };
+        const raw = JSON.stringify(body), headers = { 'X-Hub-Signature-256': `sha256=${crypto.createHmac('sha256', appSecret).update(Buffer.from(raw)).digest('hex')}` };
+        assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+          const claim = (await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1', [id])).rows[0];
+          if (claim?.status === 'completed') return (await sql.query('SELECT error,actions_json,reply_text,processed FROM meta_events WHERE id=$1', [id])).rows[0];
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        }
+        assert.fail('WhatsApp archive command did not complete');
+      };
+      const product = await db.createProductRecord({ name: 'Taladro Archivo', stockAvailable: 4, price: 900 }, owner);
+      const pending = await sendText('http-meta-archive-preview', 'Borrá el Taladro Archivo');
+      assert.deepEqual(pending.actions_json, []); assert.match(pending.reply_text, /CONFIRMAR BAJA/);
+      const code = /CONFIRMAR BAJA ([A-F0-9]{8})/.exec(pending.reply_text)[1];
+      assert.equal(Number((await stock(product.id))[0].stock_available), 4);
+      const foreign = await sendText('http-meta-archive-foreign', `CONFIRMAR BAJA ${code}`, '59899000515');
+      assert.equal(foreign.error, 'SELECTION_NOT_FOUND');
+      const confirmed = await sendText('http-meta-archive-confirm', `CONFIRMAR BAJA ${code}`);
+      assert.equal(confirmed.error, null); assert.equal(confirmed.actions_json[0].productId, product.id); assert.equal(confirmed.actions_json[0].status, 'inactive');
+      assert.match(confirmed.reply_text, /SKU desactivado/);
+      assert.equal((await sendText('http-meta-archive-confirm', `CONFIRMAR BAJA ${code}`)).reply_text, confirmed.reply_text);
+      assert.equal((await sendText('http-meta-archive-confirm-again', `CONFIRMAR BAJA ${code}`)).reply_text, confirmed.reply_text);
+      assert.equal((await sql.query("SELECT inventory_status FROM products WHERE id=$1", [product.id])).rows[0].inventory_status, 'inactive');
+      const cancelProduct = await db.createProductRecord({ name: 'Taladro Cancelable', stockAvailable: 4 }, owner);
+      const cancelPreview = await sendText('http-meta-archive-cancel-preview', 'Borrá el Taladro Cancelable');
+      const cancelCode = /CONFIRMAR BAJA ([A-F0-9]{8})/.exec(cancelPreview.reply_text)[1];
+      assert.match((await sendText('http-meta-archive-cancel', `CANCELAR BAJA ${cancelCode}`)).reply_text, /cancelada/);
+      assert.equal((await sendText('http-meta-archive-cancelled-confirm', `CONFIRMAR BAJA ${cancelCode}`)).error, 'SELECTION_CANCELLED');
+      assert.equal((await sql.query('SELECT inventory_status FROM products WHERE id=$1', [cancelProduct.id])).rows[0].inventory_status, 'active');
+      const staleProduct = await db.createProductRecord({ name: 'Taladro Obsoleto', stockAvailable: 4 }, owner);
+      const stalePreview = await sendText('http-meta-archive-stale-preview', 'Borrá el Taladro Obsoleto');
+      const staleCode = /CONFIRMAR BAJA ([A-F0-9]{8})/.exec(stalePreview.reply_text)[1];
+      await request('/api/inventory/operations', { body: plan('http-meta-archive-stale-sale', [{ itemId: 'one', type: 'stock.sell',
+        target: { kind: 'existing', skuId: staleProduct.id }, quantity: { value: 1, unit: 'unit' } }]) });
+      const stale = await sendText('http-meta-archive-stale-confirm', `CONFIRMAR BAJA ${staleCode}`);
+      assert.equal(stale.error, 'REVISION_MISMATCH'); assert.deepEqual(stale.actions_json, []);
+      assert.equal(Number((await stock(staleProduct.id))[0].stock_available), 3);
+    });
     await run('product PUT uses reviewed revision and returns frozen receipt after later changes', async () => {
       const seeded = await request('/api/inventory/operations', { body: plan('http-edit-seed', [{ ...fresh,
         target: { kind: 'new', sku: { name: 'Ficha HTTP original' } } }]) });
