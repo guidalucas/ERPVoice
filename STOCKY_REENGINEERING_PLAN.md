@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.2b1, ajustes de conjuntos con revisión antes/después y confirmación.
+- Último alcance integrado: H4.2b2, cambios/ajustes/bajas conversacionales confirmados por plan persistido.
 - Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; código de b1 en `e22a459`.
 
 ## Hitos y dependencias
@@ -55,13 +55,13 @@
 
 ## Próximo paso exacto
 
-H4.2b2: ampliar el adapter conversacional de selecciones a sku.update y stock.adjust.
-Reutilizar inventoryMetaSelections, inventory_selections, digest/actor/TTL y el confirmador;
-la escritura debe confirmar el plan persistido, sin nueva resolución por nombre. Separar
-preparación, vista completa y confirmación/cancelación con código; outbox en la misma
-transacción. No reimplementar el engine ni el CRUD ya migrado. Probar Meta firmado,
-reentregas, código/actor equivocados, vencimiento, cambios concurrentes y recibo exacto.
-Después H4.5b intérprete universal desacoplado/composición y H4.6 familias configurables.
+H4.5b1: composición atómica de planes universales de inventario, cuentas y entidades.
+Reutilizar validadores y adapters existentes; orden explícito de bloques por dominio,
+IDs de ítem únicos y childreceipts reservados por bloque. Preflight de todo el contrato
+antes de escribir; fallo de un bloque revierte efectos/recibos/historia de los anteriores.
+Preservar hashes/replay de planes homogéneos ya guardados y guards de selecciones masivas.
+Luego ampliar contrato universal a pedidos y desacoplar interpretación/conversación de
+proveedores; H4.6 familias configurables y H5 externo permanecen pendientes.
 El escritor local ya fue retirado; no reintroducir fallback optimista ni simulaciones.
 H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
 El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
@@ -518,6 +518,30 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   universal, familias/esquemas configurables y H5 externo. La reingeniería completa sigue
   abierta. Intentos UI de este formulario viven en memoria; recibos/selecciones son
   persistentes. No hubo despliegue ni evaluación LLM real en este cierre.
+
+- H4.2b2 (2026-10-17): inventoryMetaSelections generaliza comandos BAJA/CAMBIO/AJUSTE,
+  vista completa con cambios o balances antes/después/unidad y motivo; jamás trunca revisión.
+  Nuevos inventoryMetaSelectionPostgres y meta_selection_commands guardan resultado terminal
+  de cada comando y outbox en el mismo commit. SAVEPOINT revierte efectos parciales incluso
+  ante PERSISTED_EFFECT_MISMATCH antes de guardar un rechazo; fallos SQL revierten todo.
+- H4.2b2: preparar usa IDs grounded por backend y misma mutación para el conjunto; mezcla
+  de tipos/valores se rechaza explícitamente. Preview y respuesta comparten transacción.
+  Confirmación actor/negocio/código/tipo/TTL apunta a selección persistida, sin nuevo match.
+  Repetir mensaje reproduce primer recibo; nuevo ID puede confirmar selección aplicada sin
+  volver a ejecutar. Cancelar y confirmar se serializan. IDs conversacionales reservados.
+- H4.2b2: index usa contexto único por mensaje, resume preview persistido antes del parser
+  y dirige update_product al flujo revisado. Aliases de bajas y rutas del panel conservan
+  compatibilidad. Prefijo de consultas queda en primer outbox; conflicto de destinatario/
+  contenido rechaza la transacción en vez de enviar una respuesta ajena a lo aplicado.
+- H4.2b2 verificado: 238 checks PG/HTTP, 68 pruebas puras y build aprobados. HTTP firmado
+  demuestra precio cero pendiente -> CONFIRMAR CAMBIO -> precio/historia/evento exactos.
+  SQL prueba saldo SET individual/múltiple, concurrencia, rechazo terminal, cancelación,
+  scope/tipo/expiración, outbox fallido y trigger de efecto divergente con rollback.
+  La prueba anterior de dos aclaraciones ahora usa candidatos realmente ofrecidos, confirma
+  un solo movimiento y verifica todos los SKU; no depende de IDs aleatorios de dos variantes.
+- H4.2b2 límites: conjuntos con efectos diferentes o ficha+saldo se revisan por separado;
+  selección desde texto aún depende del adapter grounded existente. No es todavía el
+  intérprete universal. No hubo proveedor/WhatsApp real ni despliegue en este hito.
 
 ## Continuación sin repetir investigación
 

@@ -52,8 +52,9 @@ import {
   updateProductRecord,
   previewInventorySelection,
   confirmInventorySelection,
-  prepareMetaDeactivation,
-  processMetaDeactivationCommand,
+  prepareMetaInventorySelection,
+  processMetaInventorySelectionCommand,
+  resumeMetaInventorySelection,
   updateProductModelRecords,
   updateClientRecord,
   updateProveedorRecord,
@@ -1068,13 +1069,12 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       loadTranscript: loadMetaTranscript,
       saveTranscript: saveMetaTranscript,
       processStockText: async ({ sourceText, businessCategory, metaMessage }) => {
-        const selectionReply = await processMetaDeactivationCommand({ sourceText, ownerPhone: await resolveTenant(metaMessage.fromNumber),
-          senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId() });
-        return selectionReply ?? processStockBatchMessage({
-          sourceText, businessCategory, ownerPhone: await resolveTenant(metaMessage.fromNumber),
-          senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId(),
-          replyToMessageId: metaMessage.replyToMessageId,
-        });
+        const scope = {sourceText,ownerPhone:await resolveTenant(metaMessage.fromNumber),senderPhone:metaMessage.fromNumber,
+          messageId:metaMessage.messageId ?? createEventId()};
+        const selectionReply = await processMetaInventorySelectionCommand(scope);
+        if (selectionReply) return selectionReply;
+        const prepared = await resumeMetaInventorySelection(scope);
+        return prepared ?? processStockBatchMessage({...scope,businessCategory,replyToMessageId:metaMessage.replyToMessageId});
       },
       resolveBusinessCategory: async (fromNumber) => {
         try {
@@ -1180,9 +1180,9 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       let mutationRejected = false;
       if (!stockBatchResponse && !legacyStockHold && mutationActions.length && !hasProductMatchHold(result.parsed)) {
         try {
-          mutationOutcome = mutationActions.some((action) => action.type === 'delete_product')
-            ? await prepareMetaDeactivation({ actions: mutationActions, sourceText: result.sourceText, messageId: incomingId,
-              ownerPhone, senderPhone: result.fromNumber })
+          mutationOutcome = mutationActions.some((action) => ['delete_product','update_product'].includes(action.type))
+            ? await prepareMetaInventorySelection({ actions: mutationActions, sourceText: result.sourceText, messageId: incomingId,
+              ownerPhone, senderPhone: result.fromNumber, replyPrefix: overrideReplyText })
             : await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber, {
             messageId: incomingId, recipient: result.fromNumber,
             actorId: result.fromNumber, channel: 'whatsapp', replyPrefix: overrideReplyText,

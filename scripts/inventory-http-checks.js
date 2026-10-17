@@ -522,29 +522,37 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(foreign.status, 404);
       assert.equal(Number((await stock(id))[0].stock_available), 4);
     });
-    await run('signed WhatsApp catalog update uses exact SKU and accepts zero without changing stock', async () => {
+    await run('signed WhatsApp catalog update previews exact SKU then confirms zero price once', async () => {
       const product = await createHttpFixtureProduct({ name: 'Taladro Contador', stockAvailable: 3, price: 900 }, owner);
       const messageId = 'http-meta-update-zero';
-      const body = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [{
-        id: messageId, from: owner, type: 'text', text: { body: 'El Taladro Contador vale 0' },
-      }] } }] }] };
-      const raw = JSON.stringify(body);
-      const headers = { 'X-Hub-Signature-256': `sha256=${crypto.createHmac('sha256', appSecret).update(Buffer.from(raw)).digest('hex')}` };
-      assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
-      const deadline = Date.now() + 5000;
-      let claim;
-      while (Date.now() < deadline) {
-        claim = (await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1', [messageId])).rows[0];
-        if (claim?.status === 'completed') break;
-        await new Promise((resolve) => setTimeout(resolve, 30));
-      }
-      assert.equal(claim?.status, 'completed');
-      const event = (await sql.query('SELECT error,actions_json,reply_text FROM meta_events WHERE id=$1', [messageId])).rows[0];
+      const sendText = async (id, text) => {
+        const body = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [{ id, from: owner, type: 'text', text: { body: text } }] } }] }] };
+        const raw = JSON.stringify(body), headers = { 'X-Hub-Signature-256': `sha256=${crypto.createHmac('sha256', appSecret).update(Buffer.from(raw)).digest('hex')}` };
+        assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+          if ((await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1', [id])).rows[0]?.status === 'completed') return (await sql.query('SELECT error,actions_json,reply_text FROM meta_events WHERE id=$1', [id])).rows[0];
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        }
+        assert.fail('WhatsApp selection message did not complete');
+      };
+      const before = (await sql.query('SELECT * FROM inventory_movements WHERE owner_phone=$1 ORDER BY 1', [owner])).rows;
+      const pending = await sendText(messageId, 'El Taladro Contador vale 0');
+      assert.equal(pending.error, null); assert.deepEqual(pending.actions_json, []); assert.match(pending.reply_text, /CONFIRMAR CAMBIO/);
+      const selection = (await sql.query('SELECT preview_json FROM inventory_selections WHERE owner_phone=$1 AND request_id=$2', [owner, `meta-selection:${messageId}`])).rows[0].preview_json;
+      assert.deepEqual(selection.members.map(({ skuId }) => skuId), [product.id]); assert.equal(selection.mutation.changes.price, 0);
+      assert.equal(Number((await stock(product.id))[0].price), 900);
+      assert.deepEqual((await sql.query('SELECT * FROM inventory_movements WHERE owner_phone=$1 ORDER BY 1', [owner])).rows, before);
+      assert.equal((await sql.query('SELECT 1 FROM inventory_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, `selection:${selection.selectionId}`])).rowCount, 0);
+      const confirmId = 'http-meta-update-zero-confirm', text = `CONFIRMAR CAMBIO ${selection.digest.slice(0, 8).toUpperCase()}`;
+      const event = await sendText(confirmId, text);
       assert.equal(event.error, null); assert.equal(event.actions_json[0].productId, product.id); assert.equal(event.actions_json[0].price, 0);
-      assert.match(event.reply_text, /SKU actualizado/); assert.equal((await ledger(`whatsapp:${messageId}`)).length, 1);
+      assert.equal(event.actions_json.length, 1); assert.match(event.reply_text, /SKU actualizado/);
+      assert.equal((await ledger(`selection:${selection.selectionId}`)).length, 1);
+      assert.equal((await sql.query('SELECT 1 FROM transactions WHERE owner_phone=$1 AND batch_id=$2', [owner, `${owner}:selection:${selection.selectionId}`])).rowCount, 1);
       assert.equal(Number((await stock(product.id))[0].stock_available), 3); assert.equal(Number((await stock(product.id))[0].price), 0);
-      assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
-      assert.equal((await ledger(`whatsapp:${messageId}`)).length, 1);
+      assert.deepEqual(await sendText(confirmId, text), event);
+      assert.equal((await ledger(`selection:${selection.selectionId}`)).length, 1);
     });
     await run('signed WhatsApp insufficient sale completes rejection and cannot execute after replenishment', async () => {
       const product = await createHttpFixtureProduct({ name: 'Taladro Delta', stockAvailable: 2, price: 900 }, owner);
