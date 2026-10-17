@@ -41,9 +41,11 @@ export async function runInventoryAdjustmentsChecks({ db, sql, check }) {
     assert.equal(Number((await row(a, skuId)).stock_available), 8);
   });
 
-  await run('a legacy model edit advances revision and invalidates older absolute adjustments', async () => {
+  await run('a reviewed model edit advances revision and invalidates older absolute adjustments', async () => {
     const { skuId, revision } = await seed(a, 'adjust-legacy-model');
-    await db.updateProductModelRecords({ ids: [skuId], name: 'Legacy renamed model', productType: 'Widget', productModel: 'Adjusted' }, a);
+    const preview = await db.previewInventorySelection({ requestId: 'adjust-legacy-model', selector: { kind: 'ids', skuIds: [skuId] },
+      mutation: { type: 'sku.update', changes: { name: 'Legacy renamed model', productType: 'Widget', productModel: 'Adjusted' }, reason: 'Modelo revisado' } }, context(a));
+    await db.updateProductModelRecords({ selectionId: preview.selectionId, digest: preview.digest }, a, { actorId: context(a).actorId });
     const actual = await row(a, skuId);
     assert.equal(actual.name, 'Legacy renamed model'); assert.equal(Number(actual.revision), revision + 1);
     await assert.rejects(db.executeInventoryOperation(plan(a, 'adjust-stale-model', [adjust(skuId, revision, { available: 0 })]), context(a)), { code: 'REVISION_MISMATCH' });

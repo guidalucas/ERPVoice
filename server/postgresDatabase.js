@@ -4,10 +4,11 @@ import { Pool } from 'pg';
 import { normalizePhone, getWhatsAppVariants } from './phone.js';
 import { productBaseName, productMatchKey, normalizeProductMetadata } from './productIdentity.js';
 import { validateStockDraft, hasExplicitStockSize, productFingerprint, stockReferenceIssues, explicitIdentityConflict } from './voiceStockEngine.js';
-import { INVENTORY_SCHEMA_SQL, executeInventoryPlanInTransaction } from './inventoryPostgres.js';
+import { INVENTORY_SCHEMA_SQL, executeInventoryPlanInTransaction, inventoryRowToProduct } from './inventoryPostgres.js';
 import { validateOperationPlan, InventoryOperationError } from './inventoryOperations.js';
 import { resolvedStockBatchToPlan, confirmedStockActionsToPlan, productUpdateActions } from './stockOperationAdapter.js';
 import { inventoryResultActions, inventoryResultReply } from './inventoryResults.js';
+import { normalizeSelectionRequest, selectionRequestDigest, buildSelectionPreview, requireReviewedUpdateSelection } from './inventorySelections.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -1645,29 +1646,13 @@ export const updateProductRecord = async (productId, updates, ownerPhone = DEFAU
   return result.items.at(-1).product;
 };
 
-export const updateProductModelRecords = async (input, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  await ensureReady();
-  const ids = [...new Set(Array.isArray(input?.ids) ? input.ids.filter((id) => typeof id === 'string' && id.trim()) : [])];
-  const productType = normalizeNullableString(input?.productType);
-  const productModel = normalizeNullableString(input?.productModel);
-  const name = String(input?.name ?? '').trim();
-  if (!ids.length || !name || (!productType && !productModel)) {
-    throw new Error('Indicá los productos y los datos del modelo.');
-  }
-
-  return withTransaction(async (client) => {
-    const result = await client.query(
-      `UPDATE products
-       SET name = $1, product_type = $2, product_model = $3, inventory_revision = inventory_revision + 1
-       WHERE id = ANY($4) AND owner_phone = ANY($5)
-       RETURNING id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price`,
-      [name, productType, productModel, ids, getOwnerPhoneVariants(ownerPhone)],
-    );
-    if (result.rowCount !== ids.length) {
-      throw new Error('El modelo cambió mientras lo editabas. Actualizá la página e intentá de nuevo.');
-    }
-    return result.rows.map(rowToProduct);
+export const updateProductModelRecords = async (input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
+  if (!input?.selectionId || !input?.digest || Object.keys(input).some((key) => !['selectionId', 'digest'].includes(key))) throw new InventoryOperationError('SELECTION_REQUIRED', 'Revisá y confirmá una selección de SKU antes de editar el modelo.');
+  const businessId = normalizeOwnerPhone(ownerPhone);
+  const result = await confirmInventorySelection(input.selectionId, input.digest, {
+    businessId, actorId: options.actorId ?? businessId, permissions: ['inventory:update'],
   });
+  return result.items.map((item) => item.product);
 };
 
 export const deleteProductRecord = async (productId, ownerPhone = DEFAULT_OWNER_PHONE) => {
@@ -2118,6 +2103,56 @@ export const executeInventoryOperation = async (plan, context) => {
   });
 };
 
+const authorizeInventorySelection = (context) => validateOperationPlan({ contractVersion: 1,
+  businessId: context?.businessId, operationId: 'selection-authorization',
+  actions: [{ itemId: 'authorization', type: 'sku.update', target: { kind: 'existing', skuId: 'authorization', expectedRevision: 0 },
+    changes: { price: 0 }, reason: 'Authorization only' }],
+}, context);
+
+export const previewInventorySelection = async (input, context) => {
+  authorizeInventorySelection(context);
+  const request = normalizeSelectionRequest(input), requestHash = selectionRequestDigest(request);
+  await ensureReady();
+  return withTransaction(async (client) => {
+    const scope = [context.businessId, context.actorId, request.requestId];
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify(['selection-preview', ...scope])]);
+    const existing = await queryRow('SELECT request_hash,preview_json FROM inventory_selections WHERE owner_phone=$1 AND actor_id=$2 AND request_id=$3', scope, client);
+    if (existing) {
+      if (existing.request_hash !== requestHash) throw new InventoryOperationError('IDEMPOTENCY_CONFLICT', 'El ID de previsualización ya corresponde a otros cambios.');
+      return parseJsonValue(existing.preview_json);
+    }
+    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
+    const rows = await client.query('SELECT * FROM products WHERE owner_phone=ANY($1) ORDER BY id FOR UPDATE', [getOwnerPhoneVariants(context.businessId)]);
+    // Keep raw persisted metadata; presentation normalization cannot select another identity.
+    const products = rows.rows.map(inventoryRowToProduct);
+    const expiresAt = (await client.query("SELECT NOW() + INTERVAL '15 minutes' AS expires_at")).rows[0].expires_at.toISOString();
+    const { preview, plan } = buildSelectionPreview(request, products, { ...context, selectionId: `selection-${crypto.randomUUID()}`, expiresAt });
+    await client.query(`INSERT INTO inventory_selections (owner_phone,selection_id,request_id,actor_id,request_hash,preview_json,plan_json,expires_at)
+      VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8)`,
+    [context.businessId,preview.selectionId,request.requestId,context.actorId,requestHash,JSON.stringify(preview),JSON.stringify(plan),expiresAt]);
+    return preview;
+  });
+};
+
+export const confirmInventorySelection = async (selectionId, digest, context) => {
+  authorizeInventorySelection(context);
+  if (typeof selectionId !== 'string' || !selectionId.trim() || typeof digest !== 'string' || !digest.trim()) throw new InventoryOperationError('SELECTION_CONFIRMATION_MISMATCH', 'Falta la confirmación de la selección revisada.');
+  await ensureReady();
+  return withTransaction(async (client) => {
+    const selected = await queryRow(`SELECT *,expires_at <= NOW() AS expired FROM inventory_selections
+      WHERE owner_phone=$1 AND selection_id=$2 AND actor_id=$3 FOR UPDATE`, [context.businessId,selectionId,context.actorId], client);
+    if (!selected) throw new InventoryOperationError('SELECTION_NOT_FOUND', 'La selección no está disponible para esta sesión.');
+    if (parseJsonValue(selected.preview_json).digest !== digest) throw new InventoryOperationError('SELECTION_CONFIRMATION_MISMATCH', 'La confirmación no corresponde al conjunto y los cambios revisados.');
+    if (selected.status === 'applied') return parseJsonValue(selected.result_json);
+    if (selected.expired) throw new InventoryOperationError('SELECTION_EXPIRED', 'La selección venció. Revisá una nueva previsualización antes de confirmar.');
+    const plan = parseJsonValue(selected.plan_json);
+    const result = await executeInventoryPlanInTransaction(client, plan, { ...context, ownerPhoneVariants: getOwnerPhoneVariants(context.businessId) });
+    await persistInventoryTransactions(client, plan, result);
+    await client.query("UPDATE inventory_selections SET status='applied',result_json=$3::jsonb WHERE owner_phone=$1 AND selection_id=$2", [context.businessId,selectionId,JSON.stringify(result)]);
+    return result;
+  });
+};
+
 export const getStateSnapshot = async (ownerPhone = DEFAULT_OWNER_PHONE) => {
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
 
@@ -2170,6 +2205,7 @@ const applyConfirmedStockActions = async (actions, sourceText, ownerPhone, optio
     await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
     const snapshot = await queryAllState(businessId, client);
     const plan = confirmedStockActionsToPlan({ actions, sourceText, ownerPhone: businessId, operationId: id, products: snapshot.products });
+    requireReviewedUpdateSelection(plan);
     plan.source.channel = options.channel ?? 'confirmed';
     plan.source.requestHash = requestHash;
     const result = await executeInventoryPlanInTransaction(client, plan, {

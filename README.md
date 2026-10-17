@@ -16,6 +16,15 @@ un snapshot obsoleto se rechaza con 409 y se conserva el borrador para revisarlo
 `npm run test:sales-ui` comprueba identidad, retry y totales en el navegador con API simulada.
 `npm run test:inventory-adjustments-ui` verifica revisiones, conflictos y retry de ediciones.
 
+Los cambios de modelo requieren primero `POST /api/inventory/selections` con
+`{requestId,selector,mutation}` y luego confirmar el `selectionId`/`digest` devuelto.
+Selectores disponibles: IDs explícitos, todos o filtros de igualdad conservadora
+(incluidos atributos tipados). La selección congela hasta 100 SKU durante 15 minutos;
+un SKU posterior queda fuera y una revisión obsoleta rechaza todo el cambio.
+`PUT /api/products/model` solo acepta esa referencia confirmable; ya no escribe por IDs
+y nombre sin previsualización. `npm run test:inventory-selection-ui` verifica el flujo.
+Esta selección admite `sku.update`; bajas y otras mutaciones masivas siguen pendientes.
+
 Antes de desplegar: configurar `META_APP_SECRET` (firma POST Meta) y, en producción,
 `AUTH_JWT_SECRET` privado de al menos 32 bytes. `/api/health` publica readiness y el SHA
 si existe `RENDER_GIT_COMMIT` o `GIT_COMMIT_SHA`. Verificar backup/restauración antes de

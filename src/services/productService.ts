@@ -76,7 +76,45 @@ export const updateProduct = async (productId: string, product: Partial<ProductI
     body: JSON.stringify({ ...product, ...adjustment }),
   });
 
-export const updateProductModel = async (input: { ids: string[]; name: string; productType: string; productModel: string }) =>
+export type InventorySelectionRequest = {
+  requestId: string;
+  selector: { kind: 'ids'; skuIds: string[] };
+  mutation: { type: 'sku.update'; changes: { name: string; productType: string; productModel: string }; reason: string };
+};
+
+export type InventorySelectionPreview = {
+  selectionId: string;
+  digest: string;
+  expiresAt: string;
+  status: 'pending';
+  members: Array<{ skuId: string; name: string; size: string | null; revision: number; stockAvailable: number; stockReserved: number; price: number; priceCurrency: string }>;
+  mutation: InventorySelectionRequest['mutation'];
+};
+
+export const previewInventorySelection = async (input: InventorySelectionRequest): Promise<InventorySelectionPreview> => {
+  const preview = await requestJson<InventorySelectionPreview>('/api/inventory/selections', {
+    method: 'POST', body: JSON.stringify(input),
+  });
+  const ids = new Set(input.selector.skuIds);
+  if (!preview || typeof preview.selectionId !== 'string' || !preview.selectionId.trim()
+    || typeof preview.digest !== 'string' || !preview.digest.trim() || preview.status !== 'pending'
+    || typeof preview.expiresAt !== 'string' || !Number.isFinite(Date.parse(preview.expiresAt))
+    || !Array.isArray(preview.members) || preview.members.length !== ids.size
+    || new Set(preview.members.map((member) => member?.skuId)).size !== ids.size
+    || preview.members.some((member) => !member || !ids.has(member.skuId) || typeof member.name !== 'string'
+      || !(member.size === null || typeof member.size === 'string')
+      || !Number.isSafeInteger(member.revision) || member.revision < 0
+      || ![member.stockAvailable, member.stockReserved, member.price].every((value) => Number.isSafeInteger(value) && value >= 0)
+      || typeof member.priceCurrency !== 'string' || !member.priceCurrency.trim())
+    || preview.mutation?.type !== input.mutation.type || preview.mutation.reason !== input.mutation.reason
+    || !preview.mutation?.changes || Object.keys(preview.mutation.changes).length !== Object.keys(input.mutation.changes).length
+    || Object.keys(input.mutation.changes).some((key) => preview.mutation?.changes?.[key as keyof typeof input.mutation.changes] !== input.mutation.changes[key as keyof typeof input.mutation.changes])) {
+    throw new Error('La vista previa no coincide con la selección solicitada. No se aplicaron cambios.');
+  }
+  return preview;
+};
+
+export const updateProductModel = async (input: { selectionId: string; digest: string }) =>
   requestJson<Product[]>('/api/products/model', {
     method: 'PUT',
     body: JSON.stringify(input),

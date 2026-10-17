@@ -17,7 +17,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.0 y H4.1 implementados/verificados; H4.2 siguiente |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.0, H4.1 y H4.2a implementados/verificados; bajas siguientes |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -53,12 +53,15 @@
 
 ## Próximo paso exacto
 
-H4.2: selectores explícitos y conjuntos congelados por negocio, con revisiones/fingerprints
-y confirmación verificable antes de operaciones masivas. Reutilizar acciones `sku.update`
-del núcleo y migrar primero edición de modelo. Rechazar selección obsoleta/completa diferente;
-no recalcular por nombre al confirmar. Luego migrar bajas y demás escritores. Mantener el
-bloqueo de tabla hasta retirar el reemplazo legacy completo. ABM con stock inicial y efectos
-de pedidos permanecen legacy; sus revisiones ya se invalidan al mutar stock/metadatos.
+H4.3: migrar bajas/desactivación mediante el mismo núcleo y extender las selecciones ya
+implementadas a esa mutación. Definir conservación de historial y semántica de inactividad;
+migrar DELETE individual/batch y delete_product de WhatsApp antes de retirar su escritor.
+Reutilizar inventario de consumidores: deleteProductRecord/deleteProductRecords y rama
+delete_product de applyActionsToDatabase; modal individual y selección de ProductsAbmPanel.
+No recalcular por nombre al confirmar. Mantener bloqueo de tabla hasta retirar el reemplazo
+legacy completo. Luego ABM con stock inicial, efectos de pedidos y resto de mutaciones.
+H4.2b pendiente: ampliar la conversación de conjuntos/verificación a WhatsApp y a otros
+verbos; no confundir la edición de modelos migrada con todas las mutaciones masivas.
 El intérprete universal y los esquemas configurables siguen pendientes; no abrir conjuntos
 ni optimización LLM antes de cerrar la integridad de estas mutaciones.
 
@@ -215,13 +218,39 @@ ni optimización LLM antes de cerrar la integridad de estas mutaciones.
 - H4.1 límites: edición de modelo masiva, bajas, stock inicial de ABM y efectos de pedidos
   aún esperan migración. No hay conversión de unidades ni cantidades fraccionarias.
 
+- H4.2a: módulo puro de selectores ids/all/filter, con igualdad conservadora de metadatos
+  y atributos tipados (missing/unknown/ausente distintos). Máximo 100 SKU; conjunto vacío,
+  ID inexistente y filtros abiertos/ambiguos se rechazan. Solo plantilla sku.update hoy.
+- H4.2a: inventory_selections guarda actor/negocio, requestId/hash, miembros, revisiones,
+  fingerprints, plan inmutable, digest y vencimiento de 15 minutos. Preview reintenta con
+  el mismo contenido congelado; confirmar usa solo ese plan, sin buscar otra vez por nombre.
+  SKU nuevos después del preview no se incorporan. Cambios concurrentes rechazan todo.
+  Recibo/movimientos/historial y selección aplicada comparten transacción; confirmaciones
+  concurrentes aplican una vez. Replay aplicado sigue disponible tras cambios y vencimiento.
+- H4.2a: PUT de modelo retiró su SQL anterior; exige selección revisada. Panel captura IDs
+  al abrir, muestra miembros exactos, estado y cambios; separa revisar/confirmar. Modificar
+  campos invalida preview; fallo ambiguo conserva referencia, conflicto exige nueva revisión
+  explícita y cancelar no escribe. Endpoints públicos de operaciones y compatibilidad
+  rechazan actualizaciones de varios SKU sin selección; el núcleo interno sigue componible.
+- H4.2a verificado: 110 checks PG/HTTP, 31 de suite pura y 50 del motor. HTTP real verifica
+  autorización, preview sin escritura, bloqueo de bypass, digest, confirmación y replay.
+  Rollback SQL, expiración, aislamiento de actor/negocio, selección obsoleta, nuevo SKU
+  excluido y conflicto de identidad posterior cubiertos. Build y Edge de conjuntos,
+  inventario existente y ajustes individuales aprobados. Revisión independiente sin hallazgos.
+- H4.2a límites: selección de cambios de SKU vía API/panel, no diálogo universal de WhatsApp
+  ni bajas/ajustes absolutos masivos. NOW() de PostgreSQL define admisión por inicio de
+  transacción; no revalida vencimiento tras esperar locks. No se desplegó ni evaluó IA real.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
+- H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a consultar el siguiente commit de conjuntos.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
 - Frontend: `npm run test:inventory-ui` y `npm run test:panel-draft-recovery`.
+- Ventas/ajustes/conjuntos: `npm run test:sales-ui`, `npm run test:inventory-adjustments-ui`
+  y `npm run test:inventory-selection-ui`.
   Edge local; APIs/proveedores simulados. Ninguna de estas pruebas valida IA real.
 - Producción: falta verificar configuración privada, backup/restauración recuperable,
   ejecutar migración controlada, comprobar SHA/readiness y piloto aislado. No desplegado.

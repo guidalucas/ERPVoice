@@ -14,6 +14,7 @@ import {
   fetchPersistedState,
   mergeClients,
   mergeProveedores,
+  previewInventorySelection,
   updateClient,
   updatePedido,
   updateProduct,
@@ -80,7 +81,7 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const updateProductModelRecords = async (input: { ids: string[]; name: string; productType: string; productModel: string }) => {
+  const updateProductModelRecords = async (input: { selectionId: string; digest: string }) => {
     await updateProductModel(input);
     await refreshState();
   };
@@ -187,6 +188,7 @@ export const useInventory = () => {
     createProductModelRecords,
     updateProductRecord,
     updateProductModelRecords,
+    previewInventorySelection,
     deleteProductRecord,
     deleteProductRecords,
     createClientRecord,

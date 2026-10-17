@@ -170,6 +170,35 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal((await ledger('http-insufficient')).length, 0);
       assert.deepEqual(await stock(id), [{ stock_available: '0', stock_reserved: '1', price: '450', price_currency: 'UYU' }]);
     });
+    await run('bulk model changes require frozen selection and explicit confirmation over HTTP', async () => {
+      const seed = async (id, size) => (await request('/api/inventory/operations', { body: plan(id, [{ ...fresh,
+        target: { kind: 'new', sku: { name: 'Modelo HTTP selección', size } } }]) })).json.items[0].skuId;
+      const first = await seed('http-selection-s', 'S'), second = await seed('http-selection-m', 'M');
+      const body = { requestId: 'http-selection-model', selector: { kind: 'ids', skuIds: [first, second] },
+        mutation: { type: 'sku.update', changes: { name: 'Modelo HTTP revisado' }, reason: 'Nombre revisado en conjunto' } };
+      assert.equal((await request('/api/inventory/selections', { body, auth: false })).status, 401);
+      assert.equal((await request('/api/products/model', { method: 'PUT', body: { ids: [first, second], name: 'Bypass' } })).json.code, 'SELECTION_REQUIRED');
+      const preview = await request('/api/inventory/selections', { body });
+      assert.equal(preview.status, 200); assert.equal(preview.json.members.length, 2);
+      assert.deepEqual((await request('/api/inventory/selections', { body })).json, preview.json);
+      assert.equal((await sql.query('SELECT name FROM products WHERE id=$1', [first])).rows[0].name, 'Modelo HTTP selección');
+      assert.equal((await ledger(`selection:${preview.json.selectionId}`)).length, 0);
+      const direct = await request('/api/inventory/operations', { body: plan('http-selection-bypass', preview.json.members.map((member, index) => ({
+        itemId: `item-${index}`, type: 'sku.update', target: { kind: 'existing', skuId: member.skuId, expectedRevision: member.revision },
+        changes: { price: 0 }, reason: 'Sin previsualización confirmada',
+      }))) });
+      assert.equal(direct.status, 409); assert.equal(direct.json.code, 'SELECTION_REQUIRED');
+      const route = `/api/inventory/selections/${preview.json.selectionId}/confirm`;
+      assert.equal((await request(route, { body: { digest: 'wrong' } })).json.code, 'SELECTION_CONFIRMATION_MISMATCH');
+      assert.equal((await request(route, { body: { digest: preview.json.digest, changes: { name: 'No aceptado' } } })).status, 400);
+      const applied = await request('/api/products/model', { method: 'PUT', body: { selectionId: preview.json.selectionId, digest: preview.json.digest } });
+      assert.equal(applied.status, 200); assert.equal(applied.json.length, 2); assert.ok(applied.json.every((product) => product.name === body.mutation.changes.name));
+      const replay = await request(route, { body: { digest: preview.json.digest } });
+      assert.equal(replay.status, 200); assert.deepEqual(replay.json.items.map((item) => item.product), applied.json);
+      assert.equal((await ledger(`selection:${preview.json.selectionId}`)).length, 2);
+      const foreign = await request(route, { body: { digest: preview.json.digest }, headers: { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000515' })}` } });
+      assert.equal(foreign.json.code, 'SELECTION_NOT_FOUND');
+    });
     await run('product PUT uses reviewed revision and returns frozen receipt after later changes', async () => {
       const seeded = await request('/api/inventory/operations', { body: plan('http-edit-seed', [{ ...fresh,
         target: { kind: 'new', sku: { name: 'Ficha HTTP original' } } }]) });

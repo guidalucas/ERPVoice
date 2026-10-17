@@ -25,6 +25,14 @@ export const INVENTORY_SCHEMA_SQL = `
     FOREIGN KEY (owner_phone, operation_id) REFERENCES inventory_operations(owner_phone, operation_id)
   );
   CREATE INDEX IF NOT EXISTS idx_inventory_movements_sku ON inventory_movements(owner_phone, sku_id, created_at);
+  CREATE TABLE IF NOT EXISTS inventory_selections (
+    owner_phone TEXT NOT NULL, selection_id TEXT NOT NULL, request_id TEXT NOT NULL,
+    actor_id TEXT NOT NULL, request_hash TEXT NOT NULL, preview_json JSONB NOT NULL,
+    plan_json JSONB NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+    expires_at TIMESTAMPTZ NOT NULL, result_json JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY(owner_phone,selection_id), UNIQUE(owner_phone,actor_id,request_id),
+    CHECK(status IN ('pending','applied'))
+  );
 `;
 
 export const inventoryRowToProduct = (row) => ({

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { runInventoryCoreChecks } from './inventory-core-postgres-checks.js';
 import { runInventorySalesChecks } from './inventory-sales-postgres-checks.js';
 import { runInventoryAdjustmentsChecks } from './inventory-adjustments-postgres-checks.js';
+import { runInventorySelectionsChecks } from './inventory-selections-postgres-checks.js';
 import { runInventoryHttpChecks } from './inventory-http-checks.js';
 import os from 'node:os';
 import path from 'node:path';
@@ -54,6 +55,7 @@ try {
   await runInventoryCoreChecks({ db, sql, check });
   await runInventorySalesChecks({ db, sql, check });
   await runInventoryAdjustmentsChecks({ db, sql, check });
+  await runInventorySelectionsChecks({ db, sql, check });
   await runInventoryHttpChecks({ db, sql, check });
 
   await check('migración repetible y RLS', async () => {

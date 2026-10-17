@@ -6,6 +6,7 @@ import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseV
 import { getBusinessCategoryPreset } from './businessCategories.js';
 import { hasProductMatchHold } from './voiceCatalogContext.js';
 import { inventoryResultActions } from './inventoryResults.js';
+import { requireReviewedUpdateSelection } from './inventorySelections.js';
 import { answerPedidosQuery } from './pedidoQuery.js';
 import {
   createProductRecord,
@@ -45,6 +46,8 @@ import {
   upsertAuthUser,
   hasDatabaseConfig,
   updateProductRecord,
+  previewInventorySelection,
+  confirmInventorySelection,
   updateProductModelRecords,
   updateClientRecord,
   updateProveedorRecord,
@@ -576,15 +579,12 @@ app.post('/api/products', authenticateRequest, async (req, res) => {
 
 app.put('/api/products/model', authenticateRequest, async (req, res) => {
   try {
-    const products = await updateProductModelRecords({
-      ids: req.body?.ids,
-      name: req.body?.name,
-      productType: req.body?.productType,
-      productModel: req.body?.productModel,
-    }, tenantPhoneOf(req));
+    const products = await updateProductModelRecords(req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req) });
     res.json(products);
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    const status = ['SELECTION_REQUIRED', 'INVALID_SELECTION', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400
+      : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude guardar el modelo.' : error.message, code: error.code });
   }
 });
 
@@ -878,6 +878,7 @@ app.get('/api/meta-webhook', (req, res) => {
 
 app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
   try {
+    requireReviewedUpdateSelection(req.body);
     const result = await executeInventoryOperation(req.body, {
       businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:receive', 'inventory:sell', 'inventory:reserve', 'inventory:adjust', 'inventory:update'],
     });
@@ -888,6 +889,35 @@ app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
         : error.name === 'InventoryOperationError' ? 409 : 500;
     res.status(status).json({ error: status === 500 ? 'No pude guardar la operación.' : error.message,
       code: error.name === 'InventoryOperationError' ? error.code : 'INVENTORY_UNAVAILABLE' });
+  }
+});
+
+app.post('/api/inventory/selections', authenticateRequest, async (req, res) => {
+  try {
+    const preview = await previewInventorySelection(req.body, {
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update'],
+    });
+    res.json(preview);
+  } catch (error) {
+    const status = ['FORBIDDEN', 'BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
+      : ['INVALID_SELECTION', 'INVALID_OPERATION_PLAN', 'BUSINESS_SCOPE_REQUIRED', 'UNSUPPORTED_OPERATION'].includes(error.code) ? 400
+        : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude preparar la selección.' : error.message, code: error.code });
+  }
+});
+
+app.post('/api/inventory/selections/:id/confirm', authenticateRequest, async (req, res) => {
+  try {
+    if (!req.body || Object.keys(req.body).some((key) => key !== 'digest')) {
+      res.status(400).json({ error: 'Confirmá únicamente la selección revisada.', code: 'INVALID_SELECTION' }); return;
+    }
+    const result = await confirmInventorySelection(req.params.id, req.body.digest, {
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update'],
+    });
+    res.json(result);
+  } catch (error) {
+    const status = error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude confirmar la selección.' : error.message, code: error.code });
   }
 });
 

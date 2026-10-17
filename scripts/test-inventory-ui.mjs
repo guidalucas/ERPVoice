@@ -18,6 +18,7 @@ const products = [{
 const created = [];
 const createdModels = [];
 const modelUpdates = [];
+const selectionPreviews = [];
 const movementAttempts = [];
 const movements = [];
 const bulkDeletions = [];
@@ -73,11 +74,24 @@ await page.route('**/api/**', async (route) => {
     products.push(...newProducts);
     return json(newProducts, 201);
   }
+  if (path === '/api/inventory/selections' && request.method() === 'POST') {
+    const input = request.postDataJSON();
+    const preview = { selectionId: `selection-${selectionPreviews.length + 1}`, digest: 'local-preview-digest',
+      status: 'pending', expiresAt: '2030-01-01T00:00:00.000Z', mutation: input.mutation,
+      members: products.filter((product) => input.selector.skuIds.includes(product.id)).map((product) => ({
+        skuId: product.id, name: product.name, size: product.size ?? null, revision: 0,
+        stockAvailable: product.stockAvailable, stockReserved: product.stockReserved, price: product.price, priceCurrency: 'XXX',
+      })) };
+    selectionPreviews.push(preview);
+    return json(preview);
+  }
   if (path === '/api/products/model' && request.method() === 'PUT') {
     const input = request.postDataJSON();
     modelUpdates.push(input);
-    const matching = products.filter((product) => input.ids.includes(product.id));
-    for (const product of matching) Object.assign(product, { name: input.name, productType: input.productType, productModel: input.productModel });
+    const preview = selectionPreviews.find((entry) => entry.selectionId === input.selectionId && entry.digest === input.digest);
+    if (!preview) return json({ error: 'Selección no revisada.' }, 409);
+    const matching = products.filter((product) => preview.members.some((member) => member.skuId === product.id));
+    for (const product of matching) Object.assign(product, preview.mutation.changes);
     return json(matching);
   }
   if (path === '/api/products/batch' && request.method() === 'DELETE') {
@@ -148,11 +162,15 @@ try {
   await page.getByRole('button', { name: 'Editar modelo Camiseta Argentina' }).click();
   const modelDialog = page.getByRole('dialog', { name: 'Editar modelo Camiseta Argentina' });
   await modelDialog.getByLabel('Modelo').fill('Argentina Selección');
-  await modelDialog.getByRole('button', { name: 'Guardar modelo' }).click();
+  await modelDialog.getByLabel('Motivo del cambio').fill('Corregir nombre del modelo');
+  await modelDialog.getByRole('button', { name: 'Revisar cambios' }).click();
+  assert.equal(modelUpdates.length, 0);
+  await modelDialog.getByRole('button', { name: 'Confirmar cambios' }).click();
   await modelDialog.waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Editar talle M de Camiseta Argentina Selección' }).waitFor();
   assert.equal(modelUpdates.length, 1);
-  assert.equal(modelUpdates[0].ids.length, 2);
+  assert.equal(selectionPreviews[0].members.length, 2);
+  assert.deepEqual(modelUpdates[0], { selectionId: selectionPreviews[0].selectionId, digest: selectionPreviews[0].digest });
 
   await page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name: 'Inicio' }).click();
   await page.getByRole('button', { name: 'Registrar ingreso' }).click();

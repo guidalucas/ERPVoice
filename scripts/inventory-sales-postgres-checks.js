@@ -167,12 +167,13 @@ export async function runInventorySalesChecks({ db, sql, check }) {
     } finally { await sql.query('DROP TRIGGER sales_outbox_failure ON meta_reply_outbox; DROP FUNCTION sales_outbox_failure()'); }
     assert.equal((await db.applyActionsToDatabase(actions, 'Reserva atómica', a, options)).operationResult.items[0].stockReserved, 2);
   });
-  await run('concurrent legacy metadata writer cannot overwrite sale or reserved quantities', async () => {
+  await run('concurrent reviewed metadata edit cannot overwrite sale or reserved quantities', async () => {
     const skuId = await receive(a, 'sales-legacy-race', 10);
     await Promise.all([
       db.applyActionsToDatabase([{ type: 'sell', productId: skuId, qty: 2 }], 'Venta', a, { operationId: 'legacy-race-sell', channel: 'panel', actorId: a }),
       db.applyActionsToDatabase([{ type: 'reserve_stock', productId: skuId, qty: 3 }], 'Reserva', a, { operationId: 'legacy-race-reserve', channel: 'panel', actorId: a }),
-      db.updateProductModelRecords({ ids: [skuId], name: 'Sales check renamed', productType: 'Tools', productModel: 'New label' }, a),
+      db.updateProductRecord(skuId, { name: 'Sales check renamed', productType: 'Tools', productModel: 'New label' }, a,
+        { operationId: 'sales-rename-race', expectedRevision: 0, reason: 'Ficha revisada' }).catch((error) => { assert.equal(error.code, 'REVISION_MISMATCH'); }),
     ]);
     const row = (await rows(a, skuId))[0];
     assert.equal(Number(row.stock_available), 5); assert.equal(Number(row.stock_reserved), 3); assert.equal(Number(row.price), 900);

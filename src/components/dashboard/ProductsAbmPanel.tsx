@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ProductAdjustment } from '../../services/productService';
+import type { InventorySelectionPreview, InventorySelectionRequest, ProductAdjustment } from '../../services/productService';
 import { getVariantWord, type BusinessCategoryPreset } from '../../domain/businessCategories';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
@@ -432,6 +432,7 @@ function ModelFormModal({
   onSubmit,
   saving,
   error,
+  reason, onReasonChange, preview, stale, onRefreshPreview,
 }: {
   group: ProductGroup;
   preset: BusinessCategoryPreset;
@@ -442,26 +443,46 @@ function ModelFormModal({
   onSubmit: () => Promise<void>;
   saving: boolean;
   error: string | null;
+  reason: string;
+  onReasonChange: (reason: string) => void;
+  preview: InventorySelectionPreview | null;
+  stale: boolean;
+  onRefreshPreview: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" role="presentation">
-      <div role="dialog" aria-modal="true" aria-label={`Editar modelo ${group.displayName}`} className="w-full max-w-lg rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label={`Editar modelo ${group.displayName}`} className="max-h-full overflow-y-auto w-full max-w-lg rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl">
         <h4 className="type-title text-xl">Editar modelo</h4>
         <p className="mt-2 text-sm text-[color:var(--muted)]">Los cambios de nombre se aplican a sus {group.products.length} {group.products.length === 1 ? getVariantWord(preset) : pluralizeVariantLabel(preset.variantLabel)}.</p>
         <form id="model-form" className="mt-5 space-y-3" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
           <label className="block space-y-1.5 text-sm type-subtitle">
             {preset.productTypeLabel}
-            <input className="erp-input" required value={productType} onChange={(event) => onChange({ productType: event.target.value, productModel })} />
+            <input className="erp-input" required disabled={saving} value={productType} onChange={(event) => onChange({ productType: event.target.value, productModel })} />
           </label>
           <label className="block space-y-1.5 text-sm type-subtitle">
             {preset.productModelLabel}
-            <input className="erp-input" required value={productModel} onChange={(event) => onChange({ productType, productModel: event.target.value })} />
+            <input className="erp-input" required disabled={saving} value={productModel} onChange={(event) => onChange({ productType, productModel: event.target.value })} />
+          </label>
+          <label className="block space-y-1.5 text-sm type-subtitle">Motivo del cambio
+            <input className="erp-input" required disabled={saving} value={reason} onChange={(event) => onReasonChange(event.target.value)} />
           </label>
         </form>
+        {preview && <section aria-label="Vista previa de cambios" className="mt-4 space-y-3 text-sm">
+          <p className="font-semibold">{preview.members.length} SKU seleccionados · Nuevo nombre: {preview.mutation.changes.name}</p>
+          <p>Tipo: {preview.mutation.changes.productType} · Modelo: {preview.mutation.changes.productModel}</p>
+          <p>Motivo: {preview.mutation.reason}</p>
+          <ul className="space-y-2">{preview.members.map((member) => <li key={member.skuId} className="rounded-xl border border-[color:var(--border)] p-3">
+            <strong>{member.name}</strong> · Variante: {member.size || 'Sin definir'}
+            <p>SKU: {member.skuId} · Revisión: {member.revision}</p>
+            <p>Disponible: {member.stockAvailable} · Reservado: {member.stockReserved} · Precio: {member.price} {member.priceCurrency}</p>
+          </li>)}</ul>
+          <p>Vence: {preview.expiresAt}</p>
+        </section>}
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="erp-button-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button type="submit" form="model-form" className="erp-button-primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar modelo'}</button>
+          {stale ? <button type="button" className="erp-button-primary" disabled={saving} onClick={onRefreshPreview}>Revisar selección actualizada</button>
+            : <button type="submit" form="model-form" className="erp-button-primary" disabled={saving}>{saving ? 'Procesando...' : preview ? 'Confirmar cambios' : 'Revisar cambios'}</button>}
         </div>
       </div>
     </div>
@@ -475,7 +496,7 @@ export function ProductsAbmPanel({
   stockFilter?: 'all' | 'low-stock';
   onStockFilterChange?: (filter: 'all' | 'low-stock') => void;
 }) {
-  const { products, createProductRecord, createProductModelRecords, updateProductRecord, updateProductModelRecords, deleteProductRecord, deleteProductRecords } = useInventory();
+  const { products, createProductRecord, createProductModelRecords, updateProductRecord, updateProductModelRecords, previewInventorySelection, deleteProductRecord, deleteProductRecords } = useInventory();
   const preset = useBusinessCategoryPreset();
   const variantWord = getVariantWord(preset);
   const variantLabelPlural = pluralizeVariantLabel(preset.variantLabel);
@@ -492,6 +513,11 @@ export function ProductsAbmPanel({
   const [modelDraft, setModelDraft] = useState({ productType: '', productModel: '' });
   const [modelError, setModelError] = useState<string | null>(null);
   const [savingModel, setSavingModel] = useState(false);
+  const [modelReason, setModelReason] = useState('');
+  const [modelPreview, setModelPreview] = useState<InventorySelectionPreview | null>(null);
+  const [modelStale, setModelStale] = useState(false);
+  const modelRequest = useRef<InventorySelectionRequest | null>(null);
+  const modelRefreshRequestNeeded = useRef(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [pendingDeleteProduct, setPendingDeleteProduct] = useState<ProductRow | null>(null);
   const [saving, setSaving] = useState(false);
@@ -713,39 +739,68 @@ export function ProductsAbmPanel({
   };
 
   const openEditModelForm = (group: ProductGroup) => {
-    setEditingGroup(group);
+    setEditingGroup({ ...group, products: group.products.map((product) => ({ ...product })) });
     setModelDraft({ productType: group.productType ?? '', productModel: group.productModel ?? '' });
+    setModelReason('');
+    setModelPreview(null);
+    setModelStale(false);
+    modelRequest.current = null;
+    modelRefreshRequestNeeded.current = false;
     setModelError(null);
   };
 
-  const handleModelSubmit = async () => {
-    if (!editingGroup) return;
+  const invalidateModelPreview = () => {
+    setModelPreview(null);
+    setModelStale(false);
+    modelRequest.current = null;
+    modelRefreshRequestNeeded.current = false;
+    setModelError(null);
+  };
+
+  const handleModelSubmit = async (refreshPreview = false) => {
+    if (!editingGroup || savingModel || (modelStale && !refreshPreview)) return;
     const productType = modelDraft.productType.trim();
     const productModel = modelDraft.productModel.trim();
     if (!productType || !productModel) {
       setModelError('Completá el tipo y el modelo.');
       return;
     }
+    if (!modelReason.trim()) {
+      setModelError('Ingresá el motivo del cambio.');
+      return;
+    }
     const nextKey = `model||${normalizeSearch(productType)}||${normalizeSearch(productModel)}`;
-    if (groupedProducts.some((group) => group.key === nextKey && group.key !== editingGroup.key)) {
+    if (!modelPreview && !modelRequest.current && groupedProducts.some((group) => group.key === nextKey && group.key !== editingGroup.key)) {
       setModelError('Ya existe un modelo con ese nombre.');
       return;
     }
     setSavingModel(true);
     setModelError(null);
     try {
-      const currentGroup = groupedProducts.find((group) => group.key === editingGroup.key);
-      if (!currentGroup) throw new Error('El modelo cambió. Actualizá la página e intentá de nuevo.');
-      await updateProductModelRecords({
-        ids: currentGroup.products.map((product) => product.id),
-        name: `${productType} ${productModel}`,
-        productType,
-        productModel,
-      });
+      if (!modelPreview || refreshPreview) {
+        if (refreshPreview && modelRefreshRequestNeeded.current) {
+          modelRequest.current = null;
+          modelRefreshRequestNeeded.current = false;
+        }
+        modelRequest.current ??= {
+          requestId: crypto.randomUUID(),
+          selector: { kind: 'ids', skuIds: editingGroup.products.map((product) => product.id) },
+          mutation: { type: 'sku.update', changes: { name: `${productType} ${productModel}`, productType, productModel }, reason: modelReason.trim() },
+        };
+        setModelPreview(await previewInventorySelection(modelRequest.current));
+        setModelStale(false);
+        return;
+      }
+      await updateProductModelRecords({ selectionId: modelPreview.selectionId, digest: modelPreview.digest });
       setExpandedGroups((current) => ({ ...current, [nextKey]: true }));
       setEditingGroup(null);
     } catch (error) {
-      setModelError(error instanceof Error ? error.message : 'No se pudo editar el modelo.');
+      const stale = Boolean(error && typeof error === 'object' && 'status' in error && error.status === 409);
+      if (stale) {
+        setModelStale(true);
+        modelRefreshRequestNeeded.current = true;
+      }
+      setModelError(stale ? 'El inventario cambió. Tu borrador y vista previa se conservan. Revisá una selección actualizada antes de confirmar.' : error instanceof Error ? error.message : 'No se pudo editar el modelo.');
     } finally {
       setSavingModel(false);
     }
@@ -1086,11 +1141,16 @@ export function ProductsAbmPanel({
           preset={preset}
           productType={modelDraft.productType}
           productModel={modelDraft.productModel}
-          onChange={(nextDraft) => { setModelDraft(nextDraft); setModelError(null); }}
+          onChange={(nextDraft) => { setModelDraft(nextDraft); invalidateModelPreview(); }}
           onClose={() => setEditingGroup(null)}
           onSubmit={handleModelSubmit}
           saving={savingModel}
           error={modelError}
+          reason={modelReason}
+          onReasonChange={(reason) => { setModelReason(reason); invalidateModelPreview(); }}
+          preview={modelPreview}
+          stale={modelStale}
+          onRefreshPreview={() => { void handleModelSubmit(true); }}
         />}
 
         {pendingDeleteProduct && (
