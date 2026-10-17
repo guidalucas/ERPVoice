@@ -16,6 +16,9 @@ export function ClientesPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editNotas, setEditNotas] = useState('');
+  const editRevisionRef = useRef<number | null>(null);
+  const editAttemptRef = useRef<{ id: string; body: Parameters<typeof updateClientRecord>[1] } | null>(null);
+  const [editReviewRequired, setEditReviewRequired] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,33 +63,60 @@ export function ClientesPanel() {
     }
   };
 
+  const discardEdit = () => {
+    if (busyRef.current) return;
+    editAttemptRef.current = null;
+    editRevisionRef.current = null;
+    setEditReviewRequired(false); setEditingId(null); setError(null);
+  };
+
   const startEdit = (clientId: string) => {
+    if (busyRef.current || editAttemptRef.current) return;
     const client = clients.find((entry) => entry.id === clientId);
-    if (!client) {
+    if (!client) return;
+    if (typeof client.metadataRevision !== 'number' || !Number.isSafeInteger(client.metadataRevision) || client.metadataRevision < 0) {
+      setError('Falta la revisión. Actualizá la página y volvé a abrir la edición.');
       return;
     }
+    editRevisionRef.current = client.metadataRevision;
+    setEditReviewRequired(false); setError(null);
     setEditingId(clientId);
     setEditName(client.name);
     setEditNotas(client.notas ?? '');
   };
 
-  const saveEdit = async () => {
+  const changeEdit = (field: 'name' | 'notas', value: string) => {
+    editAttemptRef.current = null;
+    const current = clients.find((entry) => entry.id === editingId);
+    if (!current || current.metadataRevision !== editRevisionRef.current) {
+      setEditReviewRequired(true);
+      setError('El registro cambió. Revisá los clientes actuales y volvé a abrir la edición.');
+    }
+    if (field === 'name') setEditName(value); else setEditNotas(value);
+  };
+
+  const submitEdit = async (attempt: NonNullable<typeof editAttemptRef.current>) => {
     if (busyRef.current) return;
-    if (!editingId || !editName.trim()) {
-      return;
-    }
-    busyRef.current = true;
-    setSaving(true);
-    setError(null);
+    busyRef.current = true; setSaving(true); setError(null);
     try {
-      await updateClientRecord(editingId, { name: editName.trim(), notas: editNotas.trim() || null });
-      setEditingId(null);
+      await updateClientRecord(attempt.id, attempt.body);
+      editAttemptRef.current = null; editRevisionRef.current = null;
+      setEditReviewRequired(false); setEditingId(null);
     } catch (error) {
-      setError(toUserFacingError(error,'No pude guardar el cliente.'));
+      setError(toUserFacingError(error, 'No pude guardar el cliente.'));
     } finally {
-      busyRef.current = false;
-      setSaving(false);
+      busyRef.current = false; setSaving(false);
     }
+  };
+
+  const saveEdit = async () => {
+    if (busyRef.current || editReviewRequired || !editingId || !editName.trim() || editRevisionRef.current === null) return;
+    const attempt = editAttemptRef.current ?? { id: editingId, body: {
+      operationId: crypto.randomUUID(), expectedRevision: editRevisionRef.current,
+      name: editName.trim(), notas: editNotas.trim() || null,
+    } };
+    editAttemptRef.current = attempt;
+    await submitEdit(attempt);
   };
 
   const handleMerge = async () => {
@@ -128,6 +158,14 @@ export function ClientesPanel() {
   return (
     <div className="space-y-4">
       {error && <p role="alert" className="erp-panel text-rose-700 dark:text-rose-200">{error}</p>}
+      {(editAttemptRef.current || editReviewRequired) && (
+        <div className="flex flex-wrap gap-2">
+          {editAttemptRef.current && <button type="button" className="erp-button-primary" disabled={saving} onClick={() => {
+            const attempt = editAttemptRef.current; if (attempt) void submitEdit(attempt);
+          }}>Reintentar edición</button>}
+          <button type="button" className="erp-button-secondary" disabled={saving} onClick={discardEdit}>Revisar clientes actuales</button>
+        </div>
+      )}
       {error && mergeAttemptRef.current && (
         <div className="flex gap-2">
           <button type="button" className="erp-button-primary" disabled={saving} onClick={() => void handleMerge()}>Reintentar fusión</button>
@@ -196,7 +234,7 @@ export function ClientesPanel() {
                       </p>
                     </button>
                     <div className="flex gap-2">
-                      <button type="button" className="erp-button-secondary min-h-11 px-3 text-sm" onClick={() => startEdit(client.id)}>
+                      <button type="button" className="erp-button-secondary min-h-11 px-3 text-sm" disabled={saving || Boolean(editAttemptRef.current)} onClick={() => startEdit(client.id)}>
                         Editar
                       </button>
                       <button
@@ -213,12 +251,12 @@ export function ClientesPanel() {
                   {isEditing && (
                     <div className="border-t border-[color:var(--border)] px-4 py-3">
                       <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]">
-                        <input className="erp-input min-h-11" value={editName} onChange={(event) => setEditName(event.target.value)} />
-                        <input className="erp-input min-h-11" value={editNotas} onChange={(event) => setEditNotas(event.target.value)} placeholder="Notas" />
-                        <button type="button" className="erp-button-primary min-h-11" disabled={saving} onClick={() => void saveEdit()}>
+                        <input className="erp-input min-h-11" aria-label="Nombre de edición" disabled={saving} value={editName} onChange={(event) => changeEdit('name', event.target.value)} />
+                        <input className="erp-input min-h-11" aria-label="Notas de edición" disabled={saving} value={editNotas} onChange={(event) => changeEdit('notas', event.target.value)} placeholder="Notas" />
+                        <button type="button" className="erp-button-primary min-h-11" disabled={saving || editReviewRequired} onClick={() => void saveEdit()}>
                           Guardar
                         </button>
-                        <button type="button" className="erp-button-secondary min-h-11" onClick={() => setEditingId(null)}>
+                        <button type="button" className="erp-button-secondary min-h-11" disabled={saving} onClick={discardEdit}>
                           Cancelar
                         </button>
                       </div>

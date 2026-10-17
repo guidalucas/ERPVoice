@@ -11,6 +11,6 @@ export function operationResultActions(result, originalActions = []) {
   if (result.pedido) return [orderReceiptAction(result.kind, result.pedido),
     ...(result.inventoryResult ? inventoryResultActions(result.inventoryResult) : [])];
   if (result.items?.[0]?.type.startsWith('account.')) return accountResultActions(result);
-  if (['client.create','supplier.create'].includes(result.items?.[0]?.type)) return partyResultActions(result);
+  if (['client.create','supplier.create','client.update','supplier.update'].includes(result.items?.[0]?.type)) return partyResultActions(result);
   return inventoryResultActions(result, originalActions);
 }

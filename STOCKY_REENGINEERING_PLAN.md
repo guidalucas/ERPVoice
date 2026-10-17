@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.4e1a, altas idempotentes de clientes/proveedores, incluidos pedidos.
+- Último alcance integrado: H4.4e1b, altas y edición de metadatos con recibos/revisiones.
 
 ## Hitos y dependencias
 
@@ -18,7 +18,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Hasta H4.4e1a verificado; edición/baja/fusión de metadatos siguiente |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Hasta H4.4e1b verificado; baja/fusión de metadatos siguiente |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -54,12 +54,12 @@
 
 ## Próximo paso exacto
 
-H4.4e1b: migrar edición de nombre/notas de clientes y proveedores al contrato party v1.
-Agregar metadataRevision independiente de accountRevision; exigir revisión + operationId,
-recibo inmutable y rollback. Conservar saldo financiero concurrente, rechazar campos ajenos,
-actualizar formularios con cuerpos capturados/retry tras hidratación. Luego H4.4e1c: bajas y
-fusión de proveedores con IDs/revisiones, invalidación de pedidos y protección de saldos.
-Las altas ya están cerradas; no reimplementar ni rediseñar pedidos/cuentas.
+H4.4e1c: migrar bajas de clientes/proveedores y fusión de proveedores al contrato party v1.
+Exigir operationId/revisiones, guardar recibos tras borrado y actualizar formularios con
+retry alcanzable si la entidad desaparece. Mantener guards saldo/pedidos de clientes;
+proveedores deben informar exactamente los pedidos desligados/movidos y avanzar revisión.
+Extender fusión existente de clientes para revisar también metadatos antes de unir notas.
+Altas y PUT ya migrados; no rediseñar pedidos/cuentas ni reabrir e1a/b.
 El escritor local ya fue retirado; no reintroducir fallback optimista ni simulaciones.
 H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
 El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
@@ -433,13 +433,29 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   completa); recibos backend son persistentes. PUT/baja/fusión proveedor siguen pendientes
   de migración, igual que composición universal y familias; no declarar H4/H5 terminados.
 
+- H4.4e1b (2026-10-17): client.update/supplier.update usan el mismo contrato party v1,
+  patch cerrado name/notas, target explícito y metadataRevision BIGINT independiente del
+  saldo/accountRevision. Revisión obligatoria, incremento incluso si patch no cambia valor,
+  CAS y recibo exacto antes de existencia actual. Doble target en lote se rechaza entero.
+  PUT autenticados ya no escriben directamente; campos desconocidos/deuda quedan cerrados.
+- H4.4e1b: metadatos y pago concurrentes conservan ambos efectos; metadataRevision no avanza
+  por cuenta ni accountRevision por notas. Fusiones legacy avanzan metadataRevision para
+  invalidar ediciones previas. El panel captura revisión al abrir editor, cuerpo/UUID al
+  enviar, conserva retry global tras hidratación/borrado y exige revisión explícita si
+  cambia el borrador sobre una entidad actualizada. No sobrescribe automáticamente un 409.
+- H4.4e1b verificado: 182 checks PG/HTTP y 52 tests puros; build y Edge party-edit-ui,
+  party-create-ui y client-account-ui aprobados. Incluye replay concurrente, ganador único
+  de cambios distintos, pago simultáneo, aislamiento, lote crear/editar con rollback,
+  triggers de divergencia y recibo fallido, replay después de otra edición/baja y merge.
+  Motor permanece en 50 regresiones de e1a. No desplegado ni evaluado con LLM real.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
 - H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
 - H4.4a `844b29b`; H4.4b `bf812ee` (incluye checkpoint parcial `600373f`); H4.4c `ba251e6`.
-- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a: ver git log.
+- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a `f34ea14`; e1b: ver git log.
   No volver a diseñar la política de aprovisionamiento/conciliación.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.

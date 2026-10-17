@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizePartyPlan, validatePartyPlan, partyPlanDigest, partyCreationToPlan } from '../server/partyOperations.js';
+import { normalizePartyPlan, validatePartyPlan, partyPlanDigest, partyCreationToPlan, partyUpdateToPlan, planPartyUpdate } from '../server/partyOperations.js';
 import { operationResultActions } from '../server/operationResults.js';
 
 const context = { businessId: '59899900001', actorId: '59899900002', permissions: ['clients:create','suppliers:create'] };
@@ -50,4 +50,32 @@ test('semantic party digest ignores display source and canonical spacing, receip
   two.actions[0].name = 'Lucas Perez';assert.notEqual(partyPlanDigest(one),partyPlanDigest(two));
   const actions = operationResultActions({items:[{itemId:'one',type:'client.create',party:{id:'saved',name:'Persistido',notas:null}}]});
   assert.equal(actions[0].clientId,'saved');assert.equal(actions[0].clientName,'Persistido');
+});
+
+test('metadata patches use their own revision and never modify account balances or revisions', () => {
+  const p = partyUpdateToPlan('client','existing',{operationId:'update',expectedRevision:4,notas:null},context.businessId);
+  const current = {id:'existing',name:'Nombre',notas:'Antes',metadataRevision:4,debt:200,accountRevision:11};
+  const next = planPartyUpdate(p.actions[0],current);
+  assert.deepEqual(next,{...current,notas:null,metadataRevision:5});
+  assert.equal(current.notas,'Antes');
+  invalid(() => planPartyUpdate(p.actions[0],{...current,metadataRevision:5}),'PARTY_REVISION_MISMATCH');
+  invalid(() => planPartyUpdate(p.actions[0],null),'PARTY_NOT_FOUND');
+  invalid(() => planPartyUpdate(p.actions[0],{...current,debt:Number.MAX_SAFE_INTEGER+1}));
+  invalid(() => validatePartyPlan(p,context),'FORBIDDEN');
+  assert.deepEqual(validatePartyPlan(p,{...context,permissions:['clients:update']}),p);
+});
+
+test('metadata edits close targets and patches, require revisions and reject duplicate targets', () => {
+  const make = () => partyUpdateToPlan('supplier','existing',{operationId:'edit',expectedRevision:0,name:'Nuevo'},context.businessId);
+  const mutations = [
+    p => p.actions[0].changes = {}, p => p.actions[0].changes.debt = 1,
+    p => p.actions[0].target.kind = 'new', p => p.actions[0].target.expectedRevision = -1,
+    p => p.actions[0].target.expectedRevision = Number.MAX_SAFE_INTEGER,
+    p => p.actions[0].target.accountRevision = 7, p => p.actions[0].notas = null,
+    p => p.actions.push({...p.actions[0],itemId:'two'}),
+  ];
+  for (const mutate of mutations) {const p = structuredClone(make());mutate(p);invalid(() => normalizePartyPlan(p));}
+  invalid(() => partyUpdateToPlan('client','id',{operationId:'id',expectedRevision:0,debt:0},context.businessId),'ACCOUNT_OPERATION_REQUIRED');
+  invalid(() => partyUpdateToPlan('supplier','id',{operationId:'id',notas:'sin revisión'},context.businessId));
+  invalid(() => partyUpdateToPlan('supplier','id',{operationId:'id',expectedRevision:0},context.businessId));
 });

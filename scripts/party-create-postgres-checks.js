@@ -55,7 +55,7 @@ export async function runPartyCreateChecks({ db, sql, check }) {
       const input = { operationId: id(), name: `Alta original ${table}`, notas: 'Nota original' };
       const [original, concurrent] = await Promise.all([create(input, a), create(input, a)]);
       assert.deepEqual(original, concurrent);
-      await update(original.id, { name: 'Nombre posterior', notas: 'Nota posterior' }, a);
+      await update(original.id, { operationId: id(), expectedRevision: original.metadataRevision, name: 'Nombre posterior', notas: 'Nota posterior' }, a);
       assert.deepEqual(await create(input, a), original);
       await remove(original.id, a);
       const before = await state();

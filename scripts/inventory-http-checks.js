@@ -485,6 +485,39 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const supplierDebt = await request('/api/proveedores', { body: { operationId: 'http-supplier-debt', name: 'HTTP deuda proveedor', debt: 0 } });
       assert.equal(supplierDebt.status, 400); assert.equal(supplierDebt.json.code, 'INVALID_PARTY_OPERATION');
     });
+    await run('party metadata edits require explicit IDs and revisions and preserve immutable tenant scoped receipts', async () => {
+      for (const [collection, kind] of [['/api/clients', 'client'], ['/api/proveedores', 'supplier']]) {
+        const created = await request(collection, { body: { operationId: `http-party-edit-seed-${kind}`, name: `HTTP edición ${kind}`, notas: 'Nota inicial HTTP' } });
+        assert.equal(created.status, 201); assert.equal(created.json.metadataRevision, 0);
+        const route = `${collection}/${created.json.id}`, body = { operationId: `http-party-edit-${kind}`, expectedRevision: 0, name: 'Nombre Editado HTTP', notas: 'Nota editada HTTP' };
+        assert.equal((await request(route, { method: 'PUT', body, auth: false })).status, 401);
+        const missingId = await request(route, { method: 'PUT', body: { expectedRevision: 0, notas: 'Nota' } });
+        assert.equal(missingId.status, 400); assert.equal(missingId.json.code, 'OPERATION_ID_REQUIRED');
+        for (const invalid of [{ operationId: `http-no-revision-${kind}`, notas: 'Nota' }, { ...body, expectedRevision: '0' }, { ...body, ownerPhone: 'foreign' }, { ...body, name: '' }, { operationId: `http-no-changes-${kind}`, expectedRevision: 0 }]) {
+          const response = await request(route, { method: 'PUT', body: invalid });
+          assert.equal(response.status, 400); assert.equal(response.json.code, 'INVALID_PARTY_OPERATION');
+        }
+        const foreign = await request(route, { method: 'PUT', body, headers: { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000545' })}` } });
+        assert.equal(foreign.status, 404); assert.equal(foreign.json.code, 'PARTY_NOT_FOUND');
+        const [first, concurrent] = await Promise.all([request(route, { method: 'PUT', body }), request(route, { method: 'PUT', body })]);
+        assert.equal(first.status, 200); assert.deepEqual(first.json, concurrent.json); assert.equal(first.json.metadataRevision, 1);
+        assert.equal(first.json.name, body.name); assert.equal(first.json.notas, body.notas);
+        assert.deepEqual((await request(route, { method: 'PUT', body })).json, first.json);
+        const conflict = await request(route, { method: 'PUT', body: { ...body, notas: 'Cambio de intención' } });
+        assert.equal(conflict.status, 409); assert.equal(conflict.json.code, 'IDEMPOTENCY_CONFLICT');
+        const stale = await request(route, { method: 'PUT', body: { ...body, operationId: `http-party-edit-stale-${kind}` } });
+        assert.equal(stale.status, 409); assert.equal(stale.json.code, 'PARTY_REVISION_MISMATCH');
+        const later = await request(route, { method: 'PUT', body: { operationId: `http-party-edit-later-${kind}`, expectedRevision: 1, notas: null } });
+        assert.equal(later.status, 200); assert.equal(later.json.metadataRevision, 2); assert.equal(later.json.notas, null);
+        const table = kind === 'client' ? 'clients' : 'proveedores';
+        const persisted = (await sql.query(`SELECT * FROM ${table} WHERE owner_phone=$1 AND id=$2`, [owner, created.json.id])).rows[0];
+        assert.equal(persisted.name, body.name); assert.equal(persisted.notas, null); assert.equal(Number(persisted.metadata_revision), 2);
+        if (kind === 'client') { assert.equal(Number(persisted.debt), 0); assert.equal(Number(persisted.account_revision), 0); }
+        await sql.query(`DELETE FROM ${table} WHERE owner_phone=$1 AND id=$2`, [owner, created.json.id]);
+        assert.deepEqual((await request(route, { method: 'PUT', body })).json, first.json);
+        assert.equal((await sql.query(`SELECT 1 FROM ${table} WHERE id=$1`, [created.json.id])).rowCount, 0);
+      }
+    });
     await run('accounts HTTP validates explicit money/client scope, immutable receipts and closed debt writers',async()=>{
       const customer=await createFixtureClient({name:'HTTP cuentas'},owner);
       const charge={contractVersion:1,businessId:owner,operationId:'http-account-charge',actions:[{itemId:'one',type:'account.charge',target:{kind:'existing',clientId:customer.id},amount:{value:10,unit:'legacy-money'},reason:'Cargo explícito'}]};

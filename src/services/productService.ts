@@ -160,7 +160,9 @@ export const createClient = async (client: ClientCreateInput) =>
     body: JSON.stringify(client),
   });
 
-export const updateClient = async (clientId: string, client: Partial<ClientInput>) =>
+export type PartyUpdateInput = { operationId: string; expectedRevision: number; name?: string; notas?: string | null };
+
+export const updateClient = async (clientId: string, client: PartyUpdateInput) =>
   requestJson<Client>(`/api/clients/${clientId}`, {
     method: 'PUT',
     body: JSON.stringify(client),
@@ -184,7 +186,7 @@ export const createProveedor = async (proveedor: ProveedorCreateInput) =>
     body: JSON.stringify(proveedor),
   });
 
-export const updateProveedor = async (proveedorId: string, proveedor: Partial<ProveedorInput>) =>
+export const updateProveedor = async (proveedorId: string, proveedor: PartyUpdateInput) =>
   requestJson<Proveedor>(`/api/proveedores/${proveedorId}`, {
     method: 'PUT',
     body: JSON.stringify(proveedor),

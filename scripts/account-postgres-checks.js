@@ -57,7 +57,7 @@ export async function runAccountChecks({ db, sql, check }) {
         await assert.rejects(run(plan([action(other.id)]), { ...context(), permissions: [] }), { code: 'FORBIDDEN' });
         await assert.rejects(db.createClientRecord({ name: 'Bad initial debt', debt: 1 }, a), { code: 'ACCOUNT_OPERATION_REQUIRED' });
         await assert.rejects(db.updateClientRecord(other.id, { debt: 0 }, a), { code: 'ACCOUNT_OPERATION_REQUIRED' });
-        const updated = await db.updateClientRecord(other.id, { notas: 'Metadato sin saldo' }, a);
+        const updated = await db.updateClientRecord(other.id, { operationId: id(), expectedRevision: Number((await row(other.id)).metadata_revision), notas: 'Metadato sin saldo' }, a);
         assert.equal(updated.debt, 20);
         await db.createProductRecord({ name: 'Account catalog name', price: 900 }, a, { operationId: id() });
         const opts = { operationId: id(), channel: 'panel' };

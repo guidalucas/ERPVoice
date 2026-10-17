@@ -33,11 +33,11 @@ export async function mergeClientsInTransaction(client, keepId, mergeId, input, 
   }, {...context,internalClientMerge:true});
   await client.query('UPDATE pedidos SET cliente_id=$1,revision=revision+1 WHERE cliente_id=$2 AND owner_phone=ANY($3)',[keepId,mergeId,owners]);
   const notes = [keep.notas,source.notas].filter(Boolean).join('\n').trim() || null;
-  const saved = (await client.query('UPDATE clients SET notas=$1 WHERE id=$2 AND owner_phone=ANY($3) RETURNING *',[notes,keepId,owners])).rows[0];
+  const saved = (await client.query('UPDATE clients SET notas=$1,metadata_revision=metadata_revision+1 WHERE id=$2 AND owner_phone=ANY($3) RETURNING *',[notes,keepId,owners])).rows[0];
   const deleted = await client.query('DELETE FROM clients WHERE id=$1 AND owner_phone=ANY($2) AND debt=0 RETURNING id',[mergeId,owners]);
-  if (!saved || saved.notas !== notes || Number(saved.debt) !== Number(keep.debt)+Number(source.debt) || deleted.rowCount !== 1) throw new InventoryOperationError('PERSISTED_EFFECT_MISMATCH', 'La fusión persistida no coincide con el plan.');
+  if (!saved || saved.notas !== notes || Number(saved.debt) !== Number(keep.debt)+Number(source.debt) || Number(saved.metadata_revision) !== Number(keep.metadata_revision)+1 || deleted.rowCount !== 1) throw new InventoryOperationError('PERSISTED_EFFECT_MISMATCH', 'La fusión persistida no coincide con el plan.');
   const result = {contractVersion:1,kind:'client.merge',operationId,businessId:context.businessId,status:'applied',removedClientId:mergeId,
-    client:{id:saved.id,ownerPhone:saved.owner_phone,name:saved.name,debt:Number(saved.debt),notas:saved.notas,accountRevision:Number(saved.account_revision)},accountResult};
+    client:{id:saved.id,ownerPhone:saved.owner_phone,name:saved.name,debt:Number(saved.debt),notas:saved.notas,accountRevision:Number(saved.account_revision),metadataRevision:Number(saved.metadata_revision)},accountResult};
   await client.query('INSERT INTO account_operations(owner_phone,operation_id,actor_id,request_hash,plan_json,result_json) VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb)',
     [...scope,context.actorId,requestHash,JSON.stringify(request),JSON.stringify(result)]);
   await client.query('INSERT INTO transactions(id,owner_phone,timestamp,source_text,summary,actions_json) VALUES($1,$2,NOW(),$3,$4,$5::jsonb)',

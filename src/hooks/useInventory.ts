@@ -98,7 +98,7 @@ export const useInventory = () => {
     return client;
   };
 
-  const updateClientRecord = async (clientId: string, input: Partial<Pick<Client, 'name' | 'notas' | 'debt'>>) => {
+  const updateClientRecord = async (clientId: string, input: Parameters<typeof updateClient>[1]) => {
     await updateClient(clientId, input);
     await refreshState();
   };
@@ -119,7 +119,7 @@ export const useInventory = () => {
     return proveedor;
   };
 
-  const updateProveedorRecord = async (proveedorId: string, input: Partial<Pick<Proveedor, 'name' | 'notas'>>) => {
+  const updateProveedorRecord = async (proveedorId: string, input: Parameters<typeof updateProveedor>[1]) => {
     await updateProveedor(proveedorId, input);
     await refreshState();
   };

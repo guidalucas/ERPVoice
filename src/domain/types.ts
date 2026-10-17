@@ -24,6 +24,7 @@ export interface Product {
 }
 
 export interface Client {
+  metadataRevision?: number;
   id: string;
   name: string;
   debt: number;
@@ -32,6 +33,7 @@ export interface Client {
 }
 
 export interface Proveedor {
+  metadataRevision?: number;
   id: string;
   name: string;
   notas?: string | null;
@@ -231,8 +233,8 @@ export type StockWithdrawnAction = { type: 'withdraw_stock'; productId: string; 
 export type AccountEventAction = { type: 'account_adjustment' | 'account_transfer'; clientId: string; clientName: string; amount: number; unit: 'legacy-money'; balance: number; reason: string };
 export type ClientMergedAction = { type: 'client_merge'; clientId: string; removedClientId: string; clientName: string; balance: number };
 /** Persisted metadata receipts; never accepted as interpreted voice commands. */
-export type PartyCreatedAction = { type: 'client.create'; itemId: string; clientId: string; clientName: string; notas: string | null }
-  | { type: 'supplier.create'; itemId: string; proveedorId: string; proveedorName: string; notas: string | null };
+export type PartyCreatedAction = { type: 'client.create' | 'client.update'; metadataRevision: number; itemId: string; clientId: string; clientName: string; notas: string | null }
+  | { type: 'supplier.create' | 'supplier.update'; metadataRevision: number; itemId: string; proveedorId: string; proveedorName: string; notas: string | null };
 
 export interface Transaction {
   id: string;

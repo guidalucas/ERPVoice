@@ -655,7 +655,7 @@ app.post('/api/accounts/operations',authenticateRequest,async(req,res)=>{
 const partyHttpError = (res, error) => {
   const known = error.name === 'InventoryOperationError';
   const status = !known ? 500 : ['OPERATION_ID_REQUIRED','INVALID_PARTY_OPERATION'].includes(error.code) ? 400
-    : ['BUSINESS_SCOPE_REQUIRED','BUSINESS_SCOPE_MISMATCH','FORBIDDEN'].includes(error.code) ? 403 : 409;
+    : ['BUSINESS_SCOPE_REQUIRED','BUSINESS_SCOPE_MISMATCH','FORBIDDEN'].includes(error.code) ? 403 : error.code === 'PARTY_NOT_FOUND' ? 404 : 409;
   return res.status(status).json({error:known ? error.message : 'No pude guardar el cliente/proveedor.',...(known ? {code:error.code} : {})});
 };
 
@@ -668,22 +668,8 @@ app.post('/api/clients', authenticateRequest, async (req, res) => {
 
 app.put('/api/clients/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const client = await updateClientRecord(req.params.id, {
-      name: req.body?.name,
-      notas: req.body?.notas,
-      debt: req.body?.debt,
-    }, clientPhone);
-
-    if (!client) {
-      res.status(404).json({ error: 'Cliente no encontrado' });
-      return;
-    }
-
-    res.json(client);
-  } catch (error) {
-    accountHttpError(res,error);
-  }
+    res.json(await updateClientRecord(req.params.id,req.body,tenantPhoneOf(req),{actorId:authPhoneOf(req)}));
+  } catch (error) { partyHttpError(res,error); }
 });
 
 app.delete('/api/clients/:id', authenticateRequest, async (req, res) => {
@@ -730,21 +716,8 @@ app.post('/api/proveedores', authenticateRequest, async (req, res) => {
 
 app.put('/api/proveedores/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const proveedor = await updateProveedorRecord(req.params.id, {
-      name: req.body?.name,
-      notas: req.body?.notas,
-    }, clientPhone);
-
-    if (!proveedor) {
-      res.status(404).json({ error: 'Proveedor no encontrado' });
-      return;
-    }
-
-    res.json(proveedor);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+    res.json(await updateProveedorRecord(req.params.id,req.body,tenantPhoneOf(req),{actorId:authPhoneOf(req)}));
+  } catch (error) { partyHttpError(res,error); }
 });
 
 app.delete('/api/proveedores/:id', authenticateRequest, async (req, res) => {

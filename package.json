@@ -29,6 +29,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test:order-ui": "npm run build && node scripts/test-order-ui.mjs",
+    "test:party-edit-ui": "npm run build && node scripts/test-party-edit-ui.mjs",
     "test:party-create-ui": "npm run build && node scripts/test-party-create-ui.mjs",
     "test:client-account-ui": "npm run build && node scripts/test-client-account-ui.mjs"
   },

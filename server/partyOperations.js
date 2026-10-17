@@ -17,6 +17,15 @@ const text = (value, max) => {
   if (typeof value !== 'string' || !value.trim() || value.length > max) invalid();
   return value.trim();
 };
+const nameOf = (value) => text(value, 200).split(/\s+/).map((part) => part[0].toUpperCase() + part.slice(1)).join(' ');
+const notesOf = (value) => {
+  if (value !== null && (typeof value !== 'string' || value.length > 8000)) invalid();
+  return value?.trim() || null;
+};
+const revisionOf = (value) => {
+  if (!Number.isSafeInteger(value) || value < 0 || value >= Number.MAX_SAFE_INTEGER) invalid();
+  return value;
+};
 const freeze = (value) => {
   if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); }
   return value;
@@ -29,18 +38,31 @@ export function normalizePartyPlan(input) {
   const result = { contractVersion: 1, operationId: text(plan.operationId, 180), businessId: text(plan.businessId, 180), actions: [] };
   if (!Array.isArray(plan.actions) || Object.getPrototypeOf(plan.actions) !== Array.prototype
     || !plan.actions.length || plan.actions.length > 100 || Reflect.ownKeys(plan.actions).length !== plan.actions.length + 1) invalid();
-  const seen = new Set();
+  const seen = new Set(), targets = new Set();
   result.actions = Array.from({ length: plan.actions.length }, (_, index) => {
     const descriptor = Object.getOwnPropertyDescriptor(plan.actions, String(index));
     if (!descriptor || !Object.hasOwn(descriptor, 'value')) invalid();
-    const action = record(descriptor.value, ['itemId', 'type', 'name', 'notas']);
-    if (!['client.create', 'supplier.create'].includes(action.type)) invalid();
+    const action = record(descriptor.value, ['itemId', 'type', 'name', 'notas', 'target', 'changes']);
+    if (!['client.create', 'supplier.create', 'client.update', 'supplier.update'].includes(action.type)) invalid();
     const itemId = text(action.itemId, 180);
     if (seen.has(itemId)) invalid();
     seen.add(itemId);
-    const name = text(action.name, 200).split(/\s+/).map((part) => part[0].toUpperCase() + part.slice(1)).join(' ');
-    if (action.notas !== undefined && action.notas !== null && (typeof action.notas !== 'string' || action.notas.length > 8000)) invalid();
-    return { itemId, type: action.type, name, notas: action.notas?.trim() || null };
+    if (action.type.endsWith('.create')) {
+      if (Object.hasOwn(action,'target') || Object.hasOwn(action,'changes')) invalid();
+      return { itemId, type: action.type, name: nameOf(action.name), notas: action.notas === undefined ? null : notesOf(action.notas) };
+    }
+    if (Object.hasOwn(action,'name') || Object.hasOwn(action,'notas')) invalid();
+    const target = record(action.target, ['kind','partyId','expectedRevision']);
+    if (target.kind !== 'existing') invalid();
+    const normalizedTarget = {kind:'existing',partyId:text(target.partyId,180),expectedRevision:revisionOf(target.expectedRevision)};
+    const key = JSON.stringify([action.type.split('.')[0],normalizedTarget.partyId]);
+    if (targets.has(key)) invalid();
+    targets.add(key);
+    const changes = record(action.changes,['name','notas']), normalizedChanges = {};
+    if (!Object.keys(changes).length) invalid();
+    if (Object.hasOwn(changes,'name')) normalizedChanges.name = nameOf(changes.name);
+    if (Object.hasOwn(changes,'notas')) normalizedChanges.notas = notesOf(changes.notas);
+    return {itemId,type:action.type,target:normalizedTarget,changes:normalizedChanges};
   });
   if (plan.source !== undefined) {
     const source = record(plan.source, ['channel', 'text']);
@@ -58,7 +80,8 @@ export function validatePartyPlan(input, context) {
   if (plan.businessId !== context.businessId) fail('BUSINESS_SCOPE_MISMATCH', 'El plan no pertenece al negocio autorizado.');
   if (plan.operationId.startsWith('order-party:') && !context.internalOrderBatch) fail('FORBIDDEN', 'ID reservado para los participantes de un pedido.');
   for (const action of plan.actions) {
-    if (![...context.permissions].includes(action.type === 'client.create' ? 'clients:create' : 'suppliers:create')) fail('FORBIDDEN', 'No tenés permiso para esta alta.');
+    const [kind, verb] = action.type.split('.');
+    if (![...context.permissions].includes(`${kind === 'client' ? 'clients' : 'suppliers'}:${verb}`)) fail('FORBIDDEN', 'No tenés permiso para esta operación.');
   }
   return plan;
 }
@@ -87,5 +110,29 @@ export function partyCreationToPlan(kind, input, businessId) {
       ...(body.notas !== undefined ? { notas: body.notas } : {}) }] });
 }
 
+export function partyUpdateToPlan(kind, partyId, input, businessId) {
+  if (!['client','supplier'].includes(kind)) invalid();
+  const debt = input && typeof input === 'object' ? Object.getOwnPropertyDescriptor(input, 'debt') : undefined;
+  if (kind === 'client' && debt) fail('ACCOUNT_OPERATION_REQUIRED', 'El saldo requiere un ajuste de cuenta explícito con motivo y revisión.');
+  const id = input && typeof input === 'object' ? Object.getOwnPropertyDescriptor(input,'operationId') : null;
+  if (!id || (Object.hasOwn(id,'value') && (typeof id.value !== 'string' || !id.value.trim() || id.value.length > 180)))
+    fail('OPERATION_ID_REQUIRED', 'La edición requiere un ID estable para reintentar.');
+  const body = record(input,['operationId','expectedRevision','name','notas']);
+  const changes = {};
+  for (const key of ['name','notas']) if (Object.hasOwn(body,key)) changes[key] = body[key];
+  return normalizePartyPlan({contractVersion:1,businessId,operationId:body.operationId,
+    actions:[{itemId:'party-1',type:`${kind}.update`,target:{kind:'existing',partyId,expectedRevision:body.expectedRevision},changes}]});
+}
+
+/** Deterministic patch, independent from accounts, transport and storage. */
+export function planPartyUpdate(action, current) {
+  if (!current) fail('PARTY_NOT_FOUND', 'El cliente/proveedor no pertenece al negocio.');
+  if (!Number.isSafeInteger(current.metadataRevision) || current.metadataRevision < 0 || current.metadataRevision >= Number.MAX_SAFE_INTEGER) invalid();
+  if (Object.hasOwn(current,'debt') && (!Number.isSafeInteger(current.debt) || current.debt < 0 || !Number.isSafeInteger(current.accountRevision) || current.accountRevision < 0)) invalid();
+  if (current.metadataRevision !== action.target.expectedRevision) fail('PARTY_REVISION_MISMATCH', 'El cliente/proveedor cambió. Revisá sus datos antes de editar.');
+  return {...current,...action.changes,metadataRevision:current.metadataRevision + 1};
+}
+
 export const partyResultActions = (result) => result.items.map(({ itemId, type, party }) => ({ type, itemId,
-  ...(type === 'client.create' ? { clientId: party.id, clientName: party.name } : { proveedorId: party.id, proveedorName: party.name }), notas: party.notas }));
+  ...(type.startsWith('client.') ? { clientId: party.id, clientName: party.name } : { proveedorId: party.id, proveedorName: party.name }),
+  notas: party.notas, metadataRevision: party.metadataRevision }));

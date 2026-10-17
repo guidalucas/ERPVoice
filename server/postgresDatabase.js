@@ -18,8 +18,8 @@ import { ACCOUNT_SCHEMA_SQL, executeAccountPlanInTransaction } from './accountPo
 import { operationRequestDigest } from './operationHash.js';
 import { validateAccountPlan } from './accountOperations.js';
 import { mergeClientsInTransaction } from './clientMergePostgres.js';
-import { PARTY_SCHEMA_SQL, executePartyPlanInTransaction } from './partyPostgres.js';
-import { partyCreationToPlan, validatePartyPlan } from './partyOperations.js';
+import { PARTY_SCHEMA_SQL, executePartyPlanInTransaction, partyRowToEntity } from './partyPostgres.js';
+import { partyCreationToPlan, partyUpdateToPlan, validatePartyPlan } from './partyOperations.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -275,21 +275,8 @@ const rowToProduct = (row) => {
   return { ...normalizeProductMetadata(product), identityFingerprint: productFingerprint(product) };
 };
 
-const rowToClient = (row) => ({
-  id: row.id,
-  ownerPhone: row.owner_phone,
-  name: row.name,
-  debt: Number(row.debt ?? 0),
-  accountRevision: Number(row.account_revision ?? 0),
-  notas: row.notas ?? null,
-});
-
-const rowToProveedor = (row) => ({
-  id: row.id,
-  ownerPhone: row.owner_phone,
-  name: row.name,
-  notas: row.notas ?? null,
-});
+const rowToClient = (row) => partyRowToEntity(row,true);
+const rowToProveedor = (row) => partyRowToEntity(row,false);
 
 const rowToPedido = orderRowToPedido;
 
@@ -653,7 +640,7 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null, { 
     client,
   );
   const proveedoresRows = await queryRows(
-    'SELECT id, owner_phone, name, notas FROM proveedores WHERE owner_phone = ANY($1) ORDER BY name ASC',
+    'SELECT * FROM proveedores WHERE owner_phone = ANY($1) ORDER BY name ASC',
     [ownerPhoneVariants],
     client,
   );
@@ -1320,7 +1307,7 @@ export const deleteProductRecords = async (idsInput, ownerPhone = DEFAULT_OWNER_
 export const executePartyOperation = async (plan, context) => {
   const normalized = validatePartyPlan(plan, context);
   await ensureReady();
-  return withTransaction((client) => executePartyPlanInTransaction(client, normalized, context));
+  return withTransaction((client) => executePartyPlanInTransaction(client, normalized, {...context,ownerPhoneVariants:getOwnerPhoneVariants(context.businessId)}));
 };
 
 const createPartyRecord = async (kind, input, ownerPhone, options) => {
@@ -1334,36 +1321,15 @@ const createPartyRecord = async (kind, input, ownerPhone, options) => {
 export const createClientRecord = async (input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) =>
   createPartyRecord('client', input, ownerPhone, options);
 
-export const updateClientRecord = async (clientId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  if (updates?.debt !== undefined) throw new InventoryOperationError('ACCOUNT_OPERATION_REQUIRED', 'El saldo requiere un ajuste de cuenta explícito con motivo y revisión.');
-  await ensureReady();
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
-  const existing = await queryRow(
-    'SELECT * FROM clients WHERE id = $1 AND owner_phone = ANY($2)',
-    [clientId, ownerPhoneVariants],
-  );
-
-  if (!existing) {
-    return null;
-  }
-
-  const current = rowToClient(existing);
-  const nextName = typeof updates.name === 'string' && updates.name.trim() ? titleCase(updates.name.trim()) : current.name;
-  const nextNotas = updates.notas === undefined ? current.notas : normalizeNullableString(updates.notas);
-
-  const result = await getPool().query(
-    `
-      UPDATE clients
-      SET name = $1, notas = $2
-      WHERE id = $3 AND owner_phone = ANY($4)
-      RETURNING id, owner_phone, name, debt, notas, account_revision
-    `,
-    [nextName, nextNotas, clientId, ownerPhoneVariants],
-  );
-
-  return result.rows[0] ? rowToClient(result.rows[0]) : null;
+const updatePartyRecord = async (kind, partyId, input, ownerPhone, options) => {
+  const businessId = normalizeOwnerPhone(ownerPhone);
+  const result = await executePartyOperation(partyUpdateToPlan(kind,partyId,input,businessId), {
+    businessId,actorId:options.actorId ?? businessId,permissions:[kind === 'client' ? 'clients:update' : 'suppliers:update'] });
+  return result.items[0].party;
 };
+
+export const updateClientRecord = async (id, input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) =>
+  updatePartyRecord('client', id, input, ownerPhone, options);
 
 export const deleteClientRecord = async (clientId, ownerPhone = DEFAULT_OWNER_PHONE) => {
   await ensureReady();
@@ -1394,35 +1360,8 @@ export const mergeClientRecords = async (keepId, mergeId, ownerPhone = DEFAULT_O
 export const createProveedorRecord = async (input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) =>
   createPartyRecord('supplier', input, ownerPhone, options);
 
-export const updateProveedorRecord = async (proveedorId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  await ensureReady();
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
-  const existing = await queryRow(
-    'SELECT id, owner_phone, name, notas FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)',
-    [proveedorId, ownerPhoneVariants],
-  );
-
-  if (!existing) {
-    return null;
-  }
-
-  const current = rowToProveedor(existing);
-  const nextName = typeof updates.name === 'string' && updates.name.trim() ? titleCase(updates.name.trim()) : current.name;
-  const nextNotas = updates.notas === undefined ? current.notas : normalizeNullableString(updates.notas);
-
-  const result = await getPool().query(
-    `
-      UPDATE proveedores
-      SET name = $1, notas = $2
-      WHERE id = $3 AND owner_phone = $4
-      RETURNING id, owner_phone, name, notas
-    `,
-    [nextName, nextNotas, proveedorId, normalizedOwnerPhone],
-  );
-
-  return result.rows[0] ? rowToProveedor(result.rows[0]) : null;
-};
+export const updateProveedorRecord = async (id, input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) =>
+  updatePartyRecord('supplier', id, input, ownerPhone, options);
 
 export const deleteProveedorRecord = async (proveedorId, ownerPhone = DEFAULT_OWNER_PHONE) => {
   await ensureReady();
@@ -1453,12 +1392,12 @@ export const mergeProveedorRecords = async (keepId, mergeId, ownerPhone = DEFAUL
   return withTransaction(async (client) => {
     await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
     const keep = await queryRow(
-      'SELECT id, owner_phone, name, notas FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)',
+      'SELECT * FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)',
       [keepId, ownerPhoneVariants],
       client,
     );
     const merge = await queryRow(
-      'SELECT id, owner_phone, name, notas FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)',
+      'SELECT * FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)',
       [mergeId, ownerPhoneVariants],
       client,
     );
@@ -1476,7 +1415,7 @@ export const mergeProveedorRecords = async (keepId, mergeId, ownerPhone = DEFAUL
     const mergeProveedor = rowToProveedor(merge);
     const mergedNotas = [keepProveedor.notas, mergeProveedor.notas].filter(Boolean).join('\n').trim() || null;
 
-    await client.query('UPDATE proveedores SET notas = $1 WHERE id = $2', [mergedNotas, keepId]);
+    await client.query('UPDATE proveedores SET notas = $1, metadata_revision=metadata_revision+1 WHERE id = $2', [mergedNotas, keepId]);
     await client.query('DELETE FROM proveedores WHERE id = $1 AND owner_phone = ANY($2)', [mergeId, ownerPhoneVariants]);
 
     return queryAllState(normalizeOwnerPhone(ownerPhone), client);
