@@ -8,7 +8,8 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.5a, entrada común de planes con despacho/recibo universal.
+- Último alcance integrado: H4.2b1, ajustes de conjuntos con revisión antes/después y confirmación.
+- Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; código de b1 en `e22a459`.
 
 ## Hitos y dependencias
 
@@ -18,7 +19,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.4e1c verificado; conversación de conjuntos e intérprete universal pendientes |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.4e1c/H4.5a/H4.2b1 verificados; conversación e intérprete/composición pendientes |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -34,8 +35,8 @@
 - Precios: dinero entero; política explícita. Conflictos no se resuelven silenciosamente.
 - Contexto autorizado se recibe del backend; el LLM/cliente no elige otro negocio.
 - Operaciones atómicas por defecto; replay requiere mismo ID y mismo contenido.
-- Mantener el bloqueo compatible con el escritor legacy mientras siga reemplazando tablas.
-  No reducir locks sin migrar todos los escritores que compiten.
+- El escritor de tablas completas ya fue retirado. Conservar por ahora el bloqueo compartido
+  entre inventario, cuentas, pedidos y metadatos; reducirlo solo con pruebas de concurrencia.
 - Conservar fuente, evidencias, claims, control de versión y outbox. Migrar etapas sin
   reinterpretar mensajes ya aplicados ni descartar borradores activos.
 
@@ -54,11 +55,13 @@
 
 ## Próximo paso exacto
 
-H4.2b1: ampliar selecciones congeladas a stock.adjust, reutilizando el planner y la
-confirmación existentes. Mostrar antes/después por SKU y unidad, aplicar solo balances
-revisados con motivo, rechazar revisión vencida y rollback integral. Integrar ajuste de
-conjunto desde el panel con preview sin escritura y retry estable; probar PG/HTTP/Edge.
-Después H4.2b conversación de conjuntos, H4.5b intérprete desacoplado/composición y H4.6.
+H4.2b2: ampliar el adapter conversacional de selecciones a sku.update y stock.adjust.
+Reutilizar inventoryMetaSelections, inventory_selections, digest/actor/TTL y el confirmador;
+la escritura debe confirmar el plan persistido, sin nueva resolución por nombre. Separar
+preparación, vista completa y confirmación/cancelación con código; outbox en la misma
+transacción. No reimplementar el engine ni el CRUD ya migrado. Probar Meta firmado,
+reentregas, código/actor equivocados, vencimiento, cambios concurrentes y recibo exacto.
+Después H4.5b intérprete universal desacoplado/composición y H4.6 familias configurables.
 El escritor local ya fue retirado; no reintroducir fallback optimista ni simulaciones.
 H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
 El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
@@ -492,13 +495,37 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   compatibles. Idempotencia raíz global aplica a esta entrada, no reconcilia IDs ya usados
   en endpoints históricos de dominios distintos. No desplegado ni probado con LLM real.
 
+- H4.2b1 (2026-10-17): selecciones congeladas admiten stock.adjust con balances absolutos
+  parciales y motivo. El mismo planner calcula finalAvailable/finalReserved por SKU y unidad
+  en preview; no hay escritura de stock hasta confirmar digest/actor/TTL. Campo omitido
+  conserva saldo observado; nuevos SKU no se incorporan y cambio de revisión/fingerprint
+  rechaza todo. Se mantienen guards de ajuste masivo directo en APIs de dominio/universal.
+- H4.2b1: StockSetAdjustmentForm permite elegir 1–100 SKU, muestra antes/después y unidad,
+  exige consentimiento antes de confirmar y conserva referencia ante 503/refresco fallido.
+  Cambiar borrador invalida preview/consentimiento; 409 exige nueva revisión explícita.
+  Se bloquea doble envío. El servicio rechaza previews con saldos finales forjados o campos
+  que no coinciden con lo solicitado. Formularios previos de selección siguen compatibles.
+- H4.2b1 verificado sobre el estado del usuario d35145f: build, 60 tests puros, 228 checks
+  PostgreSQL/HTTP y 50 regresiones de motor aprobados. Edge stock-set-adjustment-ui e
+  inventory-selection-ui aprobados. SQL prueba rollback de movimiento/recibo/historia/
+  estado de selección; HTTP prueba scopes, confirmación concurrente, freeze y replay.
+- H4.2b1 recuperabilidad: código fue guardado por el usuario en e22a459; sus commits de
+  login 9801920/17763fa y talles d35145f se conservaron. Validación final incluye esos
+  cambios. test-river-stock-query mantiene dos fallas previas de representación
+  (Camiseta Camisetas River), con los tres productos correctos; casos nuevos de talles
+  pasan. No presentar esa suite como aprobada. No se verificó login contra Meta real.
+- Pendiente global: conversación de conjuntos para otros verbos, intérprete/composición
+  universal, familias/esquemas configurables y H5 externo. La reingeniería completa sigue
+  abierta. Intentos UI de este formulario viven en memoria; recibos/selecciones son
+  persistentes. No hubo despliegue ni evaluación LLM real en este cierre.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
 - H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
 - H4.4a `844b29b`; H4.4b `bf812ee` (incluye checkpoint parcial `600373f`); H4.4c `ba251e6`.
-- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a `f34ea14`; e1b `848632c`; e1c `ffa7809`; H4.5a: ver git log.
+- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a `f34ea14`; e1b `848632c`; e1c `ffa7809`; H4.5a `bed1336`; H4.2b1 `e22a459` (usuario), cierre documental: git log.
   No volver a diseñar la política de aprovisionamiento/conciliación.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
@@ -509,6 +536,7 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   Edge local; APIs/proveedores simulados. Ninguna de estas pruebas valida IA real.
 - Altas: `npm run test:inventory-create-ui`; contrato y rollback incluidos en suites pura/PG.
 - Pedidos: `npm run test:order-ui`; transacciones/HTTP/Meta en test:voice-stock-postgres.
+- Ajustes de conjunto: `npm run test:stock-set-adjustment-ui`; usa preview/confirm compartidos.
 - Metadatos: `npm run test:party-create-ui`, `npm run test:party-edit-ui` y
   `npm run test:party-delete-merge-ui`; PG/HTTP incluidos en suite compartida.
 - Cuentas: `npm run test:client-account-ui`; contratos/dominio en test:inventory y PG/HTTP/Meta
