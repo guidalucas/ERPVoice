@@ -102,6 +102,121 @@ test('backend conversation capability is preserved and duplicate order mutations
   const order=actions[3];assert.equal((await invoke(proposal([order,{...order,itemId:'second-order'}]))).reason,'UNSUPPORTED_OPERATION_ORDER');
 });
 
+const revisionContext={...context,internalConversationOperation:true,permissions:[...context.permissions,'accounts:adjust']};
+const priorTwo=async()=>{
+  const entries=[{...actions[0],itemId:'first',quantity:{value:2,unit:'unit'}},{...actions[0],itemId:'second',quantity:{value:8,unit:'unit'}}];
+  return invoke(proposal(entries),{context:revisionContext});
+};
+const patchResponse=(patches,replyText)=>({contractVersion:1,kind:'patch',patches,evidence:patches.map(({itemId})=>({itemId,quote:replyText}))});
+const revise=(previous,json,replyText='La primera cantidad es 4.',extra={})=>invoke(json,{context:revisionContext,sourceText:`${previous.plan.source.text}\n${replyText}`,revision:{plan:previous.plan,evidence:previous.evidence,replyText},...extra});
+
+test('revision changes one quantity without re-extracting or reordering the other action',async()=>{
+  const previous=await priorTwo(), original=structuredClone(previous), replyText='La primera cantidad es 4.';
+  let calls=0;
+  const result=await revise(previous,null,replyText,{catalog:{...catalog,products:[{...catalog.products[0],revision:10}]},complete:async options=>{
+    calls++;
+    const supplied=JSON.parse(options.messages[1].content);
+    assert.deepEqual(supplied.previousActions.map(action=>action.itemId),['first','second']);
+    assert.equal(JSON.stringify(supplied.previousActions).includes('expected'),false);
+    for(const secret of ['secret-tenant','secret-actor','secret-operation']) assert.equal(JSON.stringify(options).includes(secret),false);
+    assert.deepEqual(supplied.previousEvidence,previous.evidence);
+    assert.equal(supplied.replyText,replyText);
+    return {ok:true,json:patchResponse([{itemId:'first',changes:{quantity:{value:4}}}],replyText)};
+  }});
+  assert.equal(calls,1);assert.equal(result.kind,'ready');
+  assert.deepEqual(result.plan.actions.map(action=>action.itemId),['first','second']);
+  assert.deepEqual(result.plan.actions.map(action=>action.quantity.value),[4,8]);
+  assert.equal(result.plan.actions[0].quantity.unit,'unit');
+  assert.deepEqual(result.plan.actions.map(action=>action.target.expectedRevision),[10,10]);
+  assert.deepEqual(result.evidence,[{itemId:'first',quote:replyText},previous.evidence[1]]);
+  assert.deepEqual(previous,original);
+});
+
+test('revision preserves zero amount/price and replaces attributes rather than merging records',async()=>{
+  const adjustment={itemId:'adjust',type:'account.adjust',target:{kind:'existing',clientId:'client'},amount:{value:5,unit:'legacy-money'},reason:'Saldo contado'};
+  const previous=await invoke(proposal([adjustment]),{context:revisionContext});
+  const reply='El saldo final es cero.';
+  const result=await revise(previous,patchResponse([{itemId:'adjust',changes:{amount:{value:0}}}],reply),reply);
+  assert.equal(result.kind,'ready');assert.deepEqual(result.plan.actions[0].amount,{value:0,unit:'legacy-money'});
+  const update={itemId:'metadata',type:'sku.update',target:{kind:'existing',skuId:'sku'},changes:{price:5,attributes:{material:{state:'known',type:'text',value:'metal'},color:{state:'known',type:'text',value:'rojo'}}},reason:'Revisión'};
+  const old=await invoke(proposal([update]),{context:revisionContext});
+  const text='Precio cero y solo material madera.';
+  const changed=await revise(old,patchResponse([{itemId:'metadata',changes:{changes:{price:0,attributes:{material:{state:'known',type:'text',value:'madera'}}}}}],text),text);
+  assert.equal(changed.kind,'ready');assert.equal(changed.plan.actions[0].changes.price,0);
+  assert.deepEqual(Object.keys(changed.plan.actions[0].changes.attributes),['material']);
+  assert.equal(changed.plan.actions[0].changes.attributes.material.value,'madera');
+});
+
+test('revision target replaces completely and only offers known explicit catalog IDs',async()=>{
+  const previous=await priorTwo(),reply='Usá el otro producto para la primera.';
+  const extra={catalog:{...catalog,products:[...catalog.products,{...catalog.products[0],id:'other',revision:15}]}};
+  const changed=await revise(previous,patchResponse([{itemId:'first',changes:{target:{kind:'existing',skuId:'other'}}}],reply),reply,extra);
+  assert.equal(changed.kind,'ready');assert.equal(changed.plan.actions[0].target.skuId,'other');assert.equal(changed.plan.actions[0].target.expectedRevision,15);
+  const unknown=await revise(previous,patchResponse([{itemId:'first',changes:{target:{kind:'existing',skuId:'unseen'}}}],reply),reply,extra);
+  assert.equal(unknown.kind,'invalid');
+  const fresh=await revise(previous,patchResponse([{itemId:'first',changes:{target:{kind:'new',sku:{name:'Nuevo explícito',unit:'unit'}}}}],reply),reply);
+  assert.equal(fresh.kind,'ready');assert.equal(fresh.plan.actions[0].target.kind,'new');assert.equal(fresh.plan.actions[0].target.skuId,undefined);
+});
+
+test('revision rejects authority, preconditions, changed identity, new/drop/reordered action output and original-text evidence',async()=>{
+  const previous=await priorTwo(),reply='La primera cantidad es 4.';
+  const invalid=[
+    patchResponse([{itemId:'first',changes:{target:{kind:'existing',skuId:'sku',expectedRevision:7}}}],reply),
+    patchResponse([{itemId:'first',changes:{quantity:{expectedFingerprint:'forged',value:4}}}],reply),
+    patchResponse([{itemId:'first',changes:{changes:{attributes:{expectedAccountRevision:0}}}}],reply),
+    patchResponse([{itemId:'first',changes:{source:{text:'forged'}}}],reply),
+    patchResponse([{itemId:'first',changes:{operationId:'forged'}}],reply),
+    patchResponse([{itemId:'first',changes:{type:'stock.sell'}}],reply),
+    patchResponse([{itemId:'first',changes:{itemId:'changed'}}],reply),
+    patchResponse([{itemId:'invented',changes:{quantity:{value:4}}}],reply),
+    patchResponse([{itemId:'first',changes:{}}],reply),
+    patchResponse([],reply),
+    patchResponse([{itemId:'first',changes:{quantity:{}}}],reply),
+    {...patchResponse([{itemId:'first',changes:{quantity:{value:4}}}],reply),actions:[]},
+    proposal(previous.plan.actions.toReversed()),
+    {contractVersion:1,kind:'patch',patches:[{itemId:'first',changes:{quantity:{value:4}}}],evidence:[{itemId:'first',quote:sourceText}]},
+    {contractVersion:1,kind:'patch',patches:[{itemId:'first',changes:{quantity:{value:4}}}],evidence:[]},
+  ];
+  for(const output of invalid) assert.equal((await revise(previous,output,reply)).kind,'invalid',JSON.stringify(output));
+  const reordered=await revise(previous,patchResponse([{itemId:'second',changes:{quantity:{value:6}}},{itemId:'first',changes:{quantity:{value:4}}}],reply),reply);
+  assert.deepEqual(reordered.plan.actions.map(action=>action.itemId),['first','second']);
+});
+
+test('revision clarification keeps the complete validated plan and original evidence',async()=>{
+  const previous=await priorTwo(),reply='No sé.';
+  const result=await revise(previous,{contractVersion:1,kind:'clarification',question:'¿Cuál de las dos cantidades querés cambiar?'},reply);
+  assert.equal(result.kind,'clarification');assert.deepEqual(result.plan,previous.plan);assert.deepEqual(result.evidence,previous.evidence);
+  assert.ok(Object.isFrozen(result.plan));
+});
+
+test('patching another item preserves business attributes named expected* or source',async()=>{
+  const attributes={expected_lifespan:{state:'known',type:'number',value:10},source:{state:'known',type:'text',value:'catálogo'},expectedrevision:{state:'known',type:'number',value:7}};
+  const entries=['A','B'].map((name,index)=>({itemId:name,type:'stock.receive',target:{kind:'new',sku:{name,unit:'unit',attributes:index ? {} : attributes}},quantity:{value:2,unit:'unit'}}));
+  const previous=await invoke(proposal(entries),{context:revisionContext}),reply='La cantidad de B es cuatro.';
+  const result=await revise(previous,patchResponse([{itemId:'B',changes:{quantity:{value:4}}}],reply),reply);
+  assert.equal(result.kind,'ready');assert.deepEqual(result.plan.actions[0],previous.plan.actions[0]);
+  const changed=await revise(previous,patchResponse([{itemId:'A',changes:{target:{kind:'new',sku:{name:'A',unit:'unit',attributes:{expected_lifespan:{state:'known',type:'number',value:20}}}}}}],reply),reply);
+  assert.equal(changed.kind,'ready');assert.equal(changed.plan.actions[0].target.sku.attributes.expected_lifespan.value,20);
+});
+
+test('invalid prior revision/context/evidence/history makes no provider calls',async()=>{
+  const previous=await priorTwo(),reply='La primera cantidad es 4.';
+  let calls=0;const complete=async()=>{calls++;return {ok:true,json:patchResponse([{itemId:'first',changes:{quantity:{value:4}}}],reply)};};
+  for(const extra of [
+    {context},
+    {context:{...revisionContext,permissions:['accounts:charge']}},
+    {revision:{plan:{...previous.plan,businessId:'foreign'},evidence:previous.evidence,replyText:reply}},
+    {revision:{plan:previous.plan,evidence:[],replyText:reply}},
+    {revision:{plan:previous.plan,evidence:previous.evidence,replyText:''}},
+    {sourceText:reply},
+    {sourceText:`${previous.plan.source.text}\nOtra respuesta`},
+    {operationId:'different'},
+  ]) assert.equal((await revise(previous,null,reply,{complete,...extra})).kind,'invalid');
+  assert.equal(calls,0);
+  const history=`${previous.plan.source.text}\nRespuesta intermedia.\n${reply}`;
+  assert.equal((await revise(previous,null,reply,{complete,sourceText:history})).kind,'ready');assert.equal(calls,1);
+});
+
 test('clarification questions resolve conversational references but never become user evidence',async()=>{
   const clarifications=[{question:'¿Fueron 7 unidades?',answer:'Sí'}];
   const data=proposal([actions[0]]);data.evidence[0].quote='7';

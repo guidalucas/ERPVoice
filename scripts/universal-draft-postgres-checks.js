@@ -14,6 +14,8 @@ export async function runUniversalDraftChecks({ db, sql, check }) {
     { itemId: 'money', type: 'account.charge', target: { kind: 'existing', clientId: client.id }, amount: { value: 7, unit: 'legacy-money' }, reason: 'Cargo explícito revisado' },
   ];
   const model = (items, quote = text) => ({ ok: true, json: { contractVersion: 1, kind: 'proposal', actions: items, evidence: items.map(({ itemId }) => ({ itemId, quote })) } });
+  const correctionText = 'Ahora son cuatro.';
+  const patchModel = (patches = [{ itemId: 'stock', changes: { quantity: { value: 4 } } }]) => ({ ok: true, json: { contractVersion: 1, kind: 'patch', patches, evidence: patches.map(({ itemId }) => ({ itemId, quote: 'cuatro' })) } });
   const provider = (response) => {
     const fake = { calls: 0, complete: async () => { fake.calls++; return response; } }; return fake;
   };
@@ -104,6 +106,49 @@ export async function runUniversalDraftChecks({ db, sql, check }) {
     const reply = { requestId: id(), version: initial.version, text }, ready = await db.replyUniversalDraft(initial.draftId, reply, context(), { complete: provider(model(actions(fixture))).complete });
     const after = await state(true); await assert.rejects(db.replyUniversalDraft(initial.draftId, { ...reply, text: 'Otra cantidad' }, context(), { complete: forbiddenProvider }), { code: 'IDEMPOTENCY_CONFLICT' }); assert.deepEqual(await state(true), after);
     assert.deepEqual(await db.prepareUniversalDraft(request, context(), { complete: forbiddenProvider }), preview); assert.deepEqual(await db.replyUniversalDraft(initial.draftId, reply, context(), { complete: forbiddenProvider }), ready);
+  });
+
+  await check('universal draft correction: per-item patch retains other actions, resets confirmation and applies corrected quantities once', async () => {
+    const fixture = await seed(), initial = await prepare({ requestId: id(), text }, provider(model(actions(fixture)))), before = await state();
+    const request = { requestId: id(), text: correctionText, version: initial.version }, fake = provider(patchModel());
+    const corrected = await db.replyUniversalDraft(initial.draftId, request, context(), { complete: fake.complete });
+    assert.equal(corrected.status, 'awaiting_confirmation'); assert.equal(corrected.version, initial.version + 1); assert.notEqual(corrected.digest, initial.digest); assert.equal(fake.calls, 1); assert.deepEqual(await state(), before);
+    assert.deepEqual(corrected.plan.actions.map(({ itemId }) => itemId), initial.plan.actions.map(({ itemId }) => itemId));
+    assert.deepEqual(corrected.plan.actions[1], initial.plan.actions[1]); assert.deepEqual(corrected.plan.actions[0], { ...initial.plan.actions[0], quantity: { ...initial.plan.actions[0].quantity, value: 4 } });
+    assert.deepEqual(corrected.evidence.find(({ itemId }) => itemId === 'money'), initial.evidence.find(({ itemId }) => itemId === 'money'));
+    await assert.rejects(confirm(initial), { code: 'DRAFT_VERSION_MISMATCH' });
+    const [one, two] = await Promise.all([confirm(corrected), confirm(corrected)]); assert.deepEqual(one, two); assert.equal(one.status, 'applied');
+    const after = await state(); assert.equal(Number(after.products.find(({ id }) => id === fixture.product.id).stock_available), 6); assert.equal(Number(after.clients.find(({ id }) => id === fixture.client.id).debt), 7);
+    assert.equal(after.inventory_movements.length, before.inventory_movements.length + 1); assert.equal(after.account_movements.length, before.account_movements.length + 1);
+    assert.deepEqual(await db.replyUniversalDraft(initial.draftId, request, context(), { complete: forbiddenProvider }), corrected); assert.deepEqual(await state(), after);
+  });
+
+  await check('universal draft correction: clarification retains reviewed plan and evidence until a later patch resolves it', async () => {
+    const fixture = await seed(), initial = await prepare({ requestId: id(), text }, provider(model(actions(fixture)))), before = await state();
+    const clarification = await db.replyUniversalDraft(initial.draftId, { requestId: id(), text: 'La cantidad está mal.', version: initial.version }, context(), { complete: provider({ ok: true, json: { contractVersion: 1, kind: 'clarification', question: '¿Cuántas unidades son?' } }).complete });
+    assert.equal(clarification.status, 'awaiting_clarification'); assert.deepEqual(clarification.plan, initial.plan); assert.deepEqual(clarification.evidence, initial.evidence); assert.deepEqual(clarification.review, initial.review);
+    await assert.rejects(confirm(clarification), { code: 'DRAFT_NOT_READY' }); assert.deepEqual(await state(), before);
+    const corrected = await db.replyUniversalDraft(initial.draftId, { requestId: id(), text: correctionText, version: clarification.version }, context(), { complete: provider(patchModel()).complete });
+    assert.equal(corrected.version, initial.version + 2); assert.equal(corrected.plan.actions[0].quantity.value, 4); assert.deepEqual(corrected.plan.actions.map(({ itemId }) => itemId), initial.plan.actions.map(({ itemId }) => itemId)); assert.deepEqual(await state(), before);
+  });
+
+  await check('universal draft correction: unknown IDs, forged targets/authority and concurrent outdated patches preserve all effects', async () => {
+    const fixture = await seed(), initial = await prepare({ requestId: id(), text }, provider(model(actions(fixture))));
+    for (const patches of [[{ itemId: 'unknown', changes: { quantity: { value: 4 } } }], [{ itemId: 'stock', changes: { target: { kind: 'existing', skuId: 'forged' }, quantity: { value: 4 } } }], [{ itemId: 'stock', changes: { expectedRevision: 99, quantity: { value: 4 } } }]]) {
+      const before = await state(true); await assert.rejects(db.replyUniversalDraft(initial.draftId, { requestId: id(), text: correctionText, version: initial.version }, context(), { complete: provider(patchModel(patches)).complete }), { code: 'INTERPRETATION_INVALID' }); assert.deepEqual(await state(true), before);
+    }
+    const before = await state(), results = await Promise.allSettled([1, 2].map(() => db.replyUniversalDraft(initial.draftId, { requestId: id(), text: correctionText, version: initial.version }, context(), { complete: provider(patchModel()).complete })));
+    assert.equal(results.filter(({ status }) => status === 'fulfilled').length, 1); assert.equal(results.find(({ status }) => status === 'rejected').reason.code, 'DRAFT_VERSION_MISMATCH');
+    assert.equal((await db.getUniversalDraft(initial.draftId, context())).version, initial.version + 1); assert.deepEqual(await state(), before);
+  });
+
+  await check('universal draft correction: preview-update SQL failure rolls back version and command and exact retry succeeds', async () => {
+    const fixture = await seed(), initial = await prepare({ requestId: id(), text }, provider(model(actions(fixture)))), request = { requestId: id(), text: correctionText, version: initial.version }, before = await state(true);
+    await sql.query(`CREATE FUNCTION universal_draft_patch_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.owner_phone='${owner}' AND NEW.draft_id='${initial.draftId}' AND NEW.version>OLD.version THEN RAISE EXCEPTION 'draft patch persistence failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER universal_draft_patch_failure BEFORE UPDATE ON universal_drafts FOR EACH ROW EXECUTE FUNCTION universal_draft_patch_failure()`);
+    try { await assert.rejects(db.replyUniversalDraft(initial.draftId, request, context(), { complete: provider(patchModel()).complete }), /draft patch persistence failure/); } finally { await sql.query('DROP TRIGGER universal_draft_patch_failure ON universal_drafts; DROP FUNCTION universal_draft_patch_failure()'); }
+    assert.deepEqual(await state(true), before);
+    const corrected = await db.replyUniversalDraft(initial.draftId, request, context(), { complete: provider(patchModel()).complete }); assert.equal(corrected.version, initial.version + 1); assert.equal(corrected.plan.actions[0].quantity.value, 4);
+    assert.deepEqual(await db.replyUniversalDraft(initial.draftId, request, context(), { complete: forbiddenProvider }), corrected);
   });
 
   await check('universal draft: command persistence and applied-status SQL failures roll back drafts/effects/receipts and permit exact retry', async () => {

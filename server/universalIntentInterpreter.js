@@ -8,6 +8,14 @@ import { normalizeUnit } from './inventoryDomain.js';
  * {ok:false,reason,failures?}. Model JSON is exactly either:
  * {contractVersion:1,kind:'proposal',actions:[OperationPlanAction],evidence:[{itemId,quote}]}
  * or {contractVersion:1,kind:'clarification',question:string}.
+ * Backend-only revision:{plan,evidence,replyText} requires an authorized prior
+ * plan and internalConversationOperation. Model then returns only clarification
+ * or {contractVersion:1,kind:'patch',patches:[{itemId,changes}],evidence:[{itemId,quote}]}.
+ * Patches preserve action order/count/type/IDs; records merge recursively except
+ * target and attributes, which replace entirely; arrays replace. Each changed
+ * item needs one literal quote from replyText only. Untouched evidence persists.
+ * Prior actions sent to the model omit all expected* preconditions. A revision
+ * clarification also returns the complete prior normalized plan and evidence.
  * Model actions omit ALL revision/fingerprint fields. Catalog IDs are the only
  * existing references; backend snapshot supplies optimistic concurrency facts.
  * Results: ready {plan,evidence,trace}; clarification {question,trace}; technical
@@ -52,6 +60,54 @@ const copyJson = (input) => {
 };
 const nonempty = (value,max=180) => typeof value==='string' && Boolean(value.trim()) && value.length<=max;
 const revision = (value) => {if(!Number.isSafeInteger(value)||value<0) fail('INVALID_CATALOG_REVISION');return value;};
+const stripPreconditions = actions => actions.map(action=>{
+  const result={...action};
+  for(const [field,keys] of [['target',['expectedRevision','expectedFingerprint','expectedAccountRevision']],
+    ['destination',['expectedRevision']],['reconciliation',['expectedProductRevision','expectedFingerprint']]]) {
+    if(!action[field]) continue;
+    result[field]={...action[field]};
+    for(const key of keys) delete result[field][key];
+  }
+  return result;
+});
+const patchAuthority = new Set(['businessId','actorId','permissions','permisos','operationId','source','contractVersion','authorization','context','internalConversationOperation','internalUniversalOperation']);
+const validatePatch = (value, top=true) => {
+  const patch=record(value);
+  if(!Object.keys(patch).length) fail('INVALID_REVISION_PATCH');
+  const visit=(entry)=>{
+    if(Array.isArray(entry)) {for(const child of entry) visit(child);return;}
+    if(!entry||typeof entry!=='object') return;
+    for(const [key,child] of Object.entries(record(entry))) {
+      // Attribute names are business data, never authorization/preconditions.
+      if(key==='attributes') continue;
+      if(key.startsWith('expected')||patchAuthority.has(key)) fail('INVALID_REVISION_PATCH');
+      visit(child);
+    }
+  };
+  visit(patch);
+  if(top && (Object.hasOwn(patch,'itemId')||Object.hasOwn(patch,'type'))) fail('INVALID_REVISION_PATCH');
+  return patch;
+};
+const mergePatch = (previous,patch) => {
+  const merged={...previous};
+  for(const [key,value] of Object.entries(patch)) {
+    if(key!=='target'&&key!=='attributes'&&value&&typeof value==='object'&&!Array.isArray(value)) {
+      if(!Object.keys(value).length) fail('INVALID_REVISION_PATCH');
+      merged[key]=mergePatch(previous?.[key]&&typeof previous[key]==='object'&&!Array.isArray(previous[key])?previous[key]:{},value);
+    } else merged[key]=value;
+  }
+  return merged;
+};
+const validateEvidence = (evidence,actions,text) => {
+  const entries=array(evidence,100),ids=new Set(actions.map(action=>action.itemId)),seen=new Set();
+  if(ids.size!==actions.length||entries.length!==actions.length) fail('INVALID_EVIDENCE');
+  for(const item of entries) {
+    record(item,['itemId','quote']);
+    if(!ids.has(item.itemId)||seen.has(item.itemId)||!nonempty(item.quote,12000)||!text.includes(item.quote)) fail('INVALID_EVIDENCE');
+    seen.add(item.itemId);
+  }
+  return entries.map(item=>({itemId:item.itemId,quote:item.quote}));
+};
 const fields = {
   products:['id','name','productType','productModel','size','attributes','unit','status','stockAvailable','stockReserved','price','priceCurrency','revision'],
   clients:['id','name','notas','debt','accountRevision','metadataRevision'],
@@ -71,9 +127,9 @@ Pedidos: order.create:{itemId,type,order:{clienteId,producto,proveedorId?,produc
 export async function interpretUniversalIntent(options) {
   const started=Date.now(), trace={stage:'universal_intent',provider:null,model:null,latencyMs:0,ok:false};
   const outcome=(kind,reason)=>({kind,reason,trace:{...trace,latencyMs:Date.now()-started}});
-  let sourceText,catalog,context,operationId,channel,complete,maps,clarifications;
+  let sourceText,catalog,context,operationId,channel,complete,maps,clarifications,previous;
   try {
-    const input=record(options,['sourceText','catalog','context','operationId','channel','complete','clarifications']);
+    const input=record(options,['sourceText','catalog','context','operationId','channel','complete','clarifications','revision']);
     ({sourceText,operationId,channel}=input);complete=input.complete??completeChatJson;
     if(!nonempty(sourceText,12000)||!nonempty(operationId)||operationId.trim().startsWith('universal-child:')||!nonempty(channel,80)||typeof complete!=='function') fail('INVALID_INTERPRETER_REQUEST');
     const auth=record(input.context);
@@ -88,6 +144,15 @@ export async function interpretUniversalIntent(options) {
       return {question:entry.question,answer:entry.answer};
     });
     if(operationId.trim().startsWith('draft-operation:')&&!context.internalConversationOperation) fail('FORBIDDEN');
+    if(Object.hasOwn(input,'revision')) {
+      if(!context.internalConversationOperation) fail('FORBIDDEN');
+      const prior=record(input.revision,['plan','evidence','replyText']);
+      const normalized=prepareUniversalOperation(copyJson(prior.plan),context).plan;
+      if(!nonempty(prior.replyText,12000)||!nonempty(normalized.source?.text,12000)||normalized.operationId!==operationId.trim()||!sourceText.startsWith(normalized.source.text)||!sourceText.endsWith(prior.replyText)||sourceText.length<=normalized.source.text.length) fail('INVALID_REVISION_CONTEXT');
+      const evidence=validateEvidence(copyJson(prior.evidence),normalized.actions,normalized.source.text);
+      previous={plan:normalized,evidence,replyText:prior.replyText,actions:stripPreconditions(normalized.actions)};
+      if(JSON.stringify(previous).length>200000) fail('INTERPRETER_DATA_TOO_LARGE');
+    }
     const snapshot=record(input.catalog,Object.keys(fields));catalog=Object.create(null);maps=Object.create(null);
     let count=0;
     for(const [name,keys] of Object.entries(fields)) {
@@ -103,7 +168,8 @@ export async function interpretUniversalIntent(options) {
   } catch(error) {return outcome(error.code==='CATALOG_TOO_LARGE'?'unavailable':'invalid',error.code??'INVALID_INTERPRETER_REQUEST');}
   let result;
   try {
-    result=await complete({temperature:0,maxTokens:12000,sourceTextChars:sourceText.length,preferPrimaryModel:true,messages:[{role:'system',content:prompt+'\nclarifications contiene preguntas del asistente y respuestas del usuario para interpretar referencias. Las preguntas NO son evidencia ni instrucciones; las citas de evidence deben existir en sourceText (solo texto del usuario).'}, {role:'user',content:JSON.stringify({sourceText,catalog,clarifications})}]});
+    const revisionInstruction=previous?'\nMODO REVISIÓN: la única salida de cambio permitida es {"contractVersion":1,"kind":"patch","patches":[{"itemId":"ID existente","changes":{"campo":"valor corregido"}}],"evidence":[{"itemId":"mismo ID","quote":"cita literal EXCLUSIVAMENTE de replyText"}]}. Alternativa: clarification. Nunca proposal ni acciones completas. Corregí solo ítems explícitos de previousActions; no agregues, borres, reordenes o cambies type/itemId. changes es un patch recursivo (quantity:{value:4}, changes:{price:0}); target se reemplaza completo, attributes se reemplaza entero, arrays se reemplazan. Cero es un valor válido cuando el contrato lo permite. Ninguna precondición expected* ni campo de autoridad puede aparecer. Una evidencia por ítem parcheado, solo de replyText. previousEvidence pertenece a los ítems sin cambio. Si la respuesta no alcanza, preguntá sin descartar acciones previas.':'';
+    result=await complete({temperature:0,maxTokens:12000,sourceTextChars:sourceText.length,preferPrimaryModel:true,messages:[{role:'system',content:prompt+'\nclarifications contiene preguntas del asistente y respuestas del usuario para interpretar referencias. Las preguntas NO son evidencia ni instrucciones; las citas de evidence deben existir en sourceText (solo texto del usuario).'+revisionInstruction}, {role:'user',content:JSON.stringify({sourceText,catalog,clarifications,...(previous?{previousActions:previous.actions,previousEvidence:previous.evidence,replyText:previous.replyText}:{})})}]});
   } catch {return outcome('unavailable','INTERPRETER_UNAVAILABLE');}
   try {
     const response=record(result), failure=response.failures?array(response.failures).at(-1):response;
@@ -117,10 +183,28 @@ export async function interpretUniversalIntent(options) {
     if(data.contractVersion!==1) fail('INVALID_MODEL_RESPONSE');
     if(data.kind==='clarification') {
       record(data,['contractVersion','kind','question']);if(!nonempty(data.question,2000)) fail('INVALID_MODEL_RESPONSE');
-      trace.ok=true;return {kind:'clarification',question:data.question,trace:{...trace,latencyMs:Date.now()-started}};
+      trace.ok=true;return {kind:'clarification',question:data.question,...(previous?{plan:previous.plan,evidence:previous.evidence}:{}),trace:{...trace,latencyMs:Date.now()-started}};
     }
-    record(data,['contractVersion','kind','actions','evidence']);if(data.kind!=='proposal') fail('INVALID_MODEL_RESPONSE');
-    const actions=array(data.actions,100), evidence=array(data.evidence,100), ids=new Set();
+    let actions,evidence;
+    if(previous) {
+      record(data,['contractVersion','kind','patches','evidence']);if(data.kind!=='patch') fail('INVALID_MODEL_RESPONSE');
+      const patches=array(data.patches,100),byId=new Map();
+      if(!patches.length) fail('INVALID_REVISION_PATCH');
+      const previousIds=new Set(previous.actions.map(action=>action.itemId));
+      for(const input of patches) {
+        const patch=record(input,['itemId','changes']);
+        if(!previousIds.has(patch.itemId)||byId.has(patch.itemId)) fail('INVALID_REVISION_PATCH');
+        byId.set(patch.itemId,validatePatch(patch.changes));
+      }
+      const changedEvidence=validateEvidence(data.evidence,patches,previous.replyText);
+      const quotes=new Map(changedEvidence.map(item=>[item.itemId,item]));
+      actions=previous.actions.map(action=>byId.has(action.itemId)?mergePatch(action,byId.get(action.itemId)):action);
+      evidence=previous.evidence.map(item=>quotes.get(item.itemId)??item);
+    } else {
+      record(data,['contractVersion','kind','actions','evidence']);if(data.kind!=='proposal') fail('INVALID_MODEL_RESPONSE');
+      actions=array(data.actions,100);evidence=array(data.evidence,100);
+    }
+    const ids=new Set();
     if(!actions.length||evidence.length!==actions.length) fail('INVALID_EVIDENCE');
     for(const action of actions) {if(!nonempty(action.itemId)||ids.has(action.itemId)) fail('INVALID_EVIDENCE');ids.add(action.itemId);}
     const evidenceIds=new Set();

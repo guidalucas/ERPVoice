@@ -1419,7 +1419,7 @@ export const executeUniversalOperation = async (input, context) => {
 
 // Interpretation happens outside any SQL transaction. Only validated, frozen
 // drafts reach the existing universal executor after an explicit confirmation.
-const interpretUniversalDraft = async (text,draftId,context,options,clarifications=[]) => {
+const interpretUniversalDraft = async (text,draftId,context,options,clarifications=[],previous=null) => {
   const catalog=await withTransaction(async client=>{
     await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const owners=[getOwnerPhoneVariants(context.businessId)],catalog={};
@@ -1432,10 +1432,12 @@ const interpretUniversalDraft = async (text,draftId,context,options,clarificatio
   });
   const result=await interpretUniversalIntent({sourceText:text,catalog,clarifications,
     context:{...context,internalConversationOperation:true},operationId:`draft-operation:${draftId}`,
+    ...(previous?.plan ? {revision:{plan:previous.plan,evidence:previous.evidence,replyText:text.slice(previous.text.length+1)}} : {}),
     channel:context.channel ?? 'panel',...(options?.complete ? {complete:options.complete} : {})});
   if (result.kind==='invalid') throw new InventoryOperationError('INTERPRETATION_INVALID','La interpretación no cumple el contrato. No apliqué cambios.',{reason:result.reason});
   if (result.kind==='unavailable') throw new InventoryOperationError('INTERPRETATION_UNAVAILABLE','No pude interpretar la solicitud. Conservá el mensaje para reintentar.',{reason:result.reason});
-  return result.kind==='ready' ? {...result,review:buildUniversalOperationReview(result.plan,catalog)} : result;
+  return result.kind==='ready' ? {...result,review:buildUniversalOperationReview(result.plan,catalog)}
+    : result.plan ? {...result,review:previous.review} : result;
 };
 
 export const prepareUniversalDraft = async (input,context,options={}) => {
@@ -1459,13 +1461,13 @@ export const replyUniversalDraft = async (draftId,input,context,options={}) => {
     if (row.version!==request.version) throw new InventoryOperationError('DRAFT_VERSION_MISMATCH','El borrador cambió. Revisá la versión actual.');
     if (!row.status.startsWith('awaiting_')) throw new InventoryOperationError('DRAFT_NOT_PENDING','El borrador ya tiene un resultado definitivo.');
     if (row.expired) throw new InventoryOperationError('DRAFT_EXPIRED','El borrador venció. Prepará uno nuevo.');
-    if (row.status!=='awaiting_clarification') throw new InventoryOperationError('DRAFT_NOT_AWAITING_CLARIFICATION','Este borrador no tiene una pregunta pendiente.');
     const text=`${row.preview_json.text}\n${request.text}`;
     if (row.version>=20 || text.length>12000) throw new InventoryOperationError('INVALID_DRAFT_REQUEST','La conversación excede el límite. Prepará un borrador nuevo.');
-    return {text,clarifications:[...(row.preview_json.clarifications ?? []),{question:row.preview_json.question,answer:request.text}]};
+    return {text,previous:row.preview_json,clarifications:[...(row.preview_json.clarifications ?? []),
+      ...(row.preview_json.question ? [{question:row.preview_json.question,answer:request.text}] : [])]};
   });
   if (pending.response) return pending.response;
-  const interpretation=await interpretUniversalDraft(pending.text,draftId,context,options,pending.clarifications);
+  const interpretation=await interpretUniversalDraft(pending.text,draftId,context,options,pending.clarifications,pending.previous);
   return withTransaction(client=>persistUniversalInterpretation(client,request,interpretation,context,{draftId,reply:true}));
 };
 export const getUniversalDraft = async (draftId,context) => {

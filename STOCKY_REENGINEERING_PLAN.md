@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.5c1, intérprete universal con revisión persistente y confirmación desde panel.
+- Último alcance integrado: H4.5c2, correcciones universales por ítem con revisión versionada.
 - Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; código de b1 en `e22a459`.
 
 ## Hitos y dependencias
@@ -55,11 +55,11 @@
 
 ## Próximo paso exacto
 
-H4.5c2: corregir una revisión universal mediante parches por itemId, sin reinterpretar
-los demás ítems ni perder referencias. Reutilizar versiones/digest/recibos actuales y
-permitir revisión completa antes de confirmar. Después integrar canal WhatsApp al mismo
-servicio y completar familias/esquemas configurables (H4.6), evaluación y H5 real.
-No reauditar ni duplicar escritores. Conservar selecciones masivas y bloqueo amplio.
+H4.6a: familias/esquemas inmutables versionados, asociación explícita del SKU y validación
+en el Inventory Engine existente. Mantener hashes de productos sin familia, migración
+aditiva y replay antes de consultar schemas actuales. Después controles configurables del
+panel, canal WhatsApp compartido, migración de consumidores y evaluación/H5 real.
+No reauditar; reutilizar contratos, selecciones masivas y bloqueo amplio actuales.
 
 ## Registro de hitos
 
@@ -594,6 +594,29 @@ No reauditar ni duplicar escritores. Conservar selecciones masivas y bloqueo amp
   Selecciones masivas mantienen su flujo revisado; reentradas, aliases nuevos y pago+baja
   dependiente se rechazan conservadoramente. Catálogo/texto acotados se rechazan completos,
   nunca se truncan. Proveedores en pruebas simulados; no hay evaluación real ni despliegue.
+
+- H4.5c2 (2026-10-17): respuestas a revisiones listas usan patches por itemId. No permiten
+  agregar, borrar, reordenar ni cambiar tipo/ID de acciones; target y attributes se reemplazan
+  enteros, otros campos se fusionan conservando lo no corregido. Evidencia del parche debe
+  pertenecer exclusivamente a la nueva respuesta; ítems intactos conservan su evidencia.
+- H4.5c2: backend valida plan previo antes del proveedor, renueva precondiciones desde
+  snapshot coherente y genera otra revisión completa. Pregunta intermedia conserva plan,
+  evidencia y revisión anteriores, bloqueando confirmar hasta resolverla. Versión/CAS y
+  comandos inmutables serializan correcciones simultáneas y compiten seguro con confirmar.
+- H4.5c2 panel: Corregir revisión conserva borrador e intento entre recargas, exige nuevo
+  consentimiento y oculta confirmar mientras se edita. Volver a revisión consulta el estado
+  y puede abandonar solo el parche; una respuesta tardía queda protegida por versión.
+- H4.5c2 revisión independiente encontró y se corrigieron dos defectos: limpieza recursiva
+  quitaba atributos legítimos expected_lifespan y Volver a revisión quedaba atrapado tras
+  error. Ahora se quitan solo precondiciones de target/destination/reconciliation; atributos
+  expected*/source se preservan y admiten corrección. Fallos 4xx de parche liberan su intento.
+- H4.5c2 verificado: 269 checks PG/HTTP, 99 pruebas puras, build y Edge universal-draft-ui
+  aprobados, incluidos rollback de cambio de versión/comando, corrección aplicada con
+  respuesta perdida, error 422/503 sin persistir, concurrencia, cero y conservación de otros
+  ítems. Revisión final de ambos fixes sin hallazgos nuevos. Proveedores simulados.
+- H4.5c2 límites: no cambia el tipo ni la cantidad de ítems del plan mediante corrección;
+  nueva intención independiente requiere otro borrador. Familias, migración del canal
+  WhatsApp al servicio universal y evaluación real/H5 continúan pendientes.
 
 ## Continuación sin repetir investigación
 

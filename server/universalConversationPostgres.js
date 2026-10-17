@@ -74,7 +74,8 @@ function previewFromInterpretation(interpretation,{draftId,version,text,clarific
   if (!['ready','clarification'].includes(interpretation?.kind)) fail('INTERPRETATION_UNAVAILABLE','No pude preparar una interpretación válida. No apliqué cambios.');
   const preview=json({draftId,version,text,clarifications,expiresAt,
     status:interpretation.kind==='ready' ? 'awaiting_confirmation' : 'awaiting_clarification',
-    ...(interpretation.kind==='ready' ? {plan:interpretation.plan,evidence:interpretation.evidence,review:interpretation.review} : {question:interpretation.question}),
+    ...(interpretation.plan ? {plan:interpretation.plan,evidence:interpretation.evidence,review:interpretation.review} : {}),
+    ...(interpretation.kind==='clarification' ? {question:interpretation.question} : {}),
     trace:interpretation.trace});
   if (preview.plan) {
     if (preview.plan.operationId!==`draft-operation:${draftId}`) fail('INVALID_DRAFT_REQUEST','El plan no corresponde al borrador.');
@@ -108,9 +109,8 @@ export async function persistUniversalInterpretation(client,request,interpretati
   let version=1,text=request.text,clarifications=[];
   if (reply) {
     const row=await readUniversalDraft(client,draftId,context,{lock:true}); requirePending(row,request.version);
-    if (row.status!=='awaiting_clarification') fail('DRAFT_NOT_AWAITING_CLARIFICATION','Este borrador ya tiene acciones para revisar.');
     version=row.version+1; text=`${row.preview_json.text}\n${request.text}`;
-    clarifications=[...(row.preview_json.clarifications ?? []),{question:row.preview_json.question,answer:request.text}];
+    clarifications=[...(row.preview_json.clarifications ?? []),...(row.preview_json.question ? [{question:row.preview_json.question,answer:request.text}] : [])];
     if (version>20 || text.length>12000) fail('INVALID_DRAFT_REQUEST','La conversación excede el límite. Prepará un borrador nuevo.');
   }
   const expiresAt=(await client.query("SELECT NOW()+INTERVAL '15 minutes' AS expires_at")).rows[0].expires_at.toISOString();

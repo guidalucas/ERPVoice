@@ -38,7 +38,17 @@ async function fixture() {
       if (action === 'replies') {
         replies.push({ draftId, input }); assert.deepEqual(Object.keys(input).sort(), ['requestId', 'text', 'version']); assert.equal(input.version, stored.version);
         if (mode === 'reply503') { mode = 'ok'; return json({ error: 'Respuesta incierta.' }, 503); }
-        const next = ready(draftId, `${stored.text}\n${input.text}`, stored.version + 1); drafts.set(draftId, next); return json(next);
+        if (mode === 'correction422') { mode = 'ok'; return json({ error: 'Corrección inválida.', code: 'INTERPRETATION_INVALID' }, 422); }
+        if (mode === 'correction-unpersisted503') { mode = 'ok'; return json({ error: 'Corrección no guardada.', code: 'INTERPRETATION_UNAVAILABLE' }, 503); }
+        const next = ready(draftId, `${stored.text}\n${input.text}`, stored.version + 1);
+        if (input.text === 'Ahora son cuatro.') {
+          next.review[0].details[1] = 'Disponible: 2 → 6';
+          assert.deepEqual(next.plan.actions.map(({ itemId }) => itemId), stored.plan.actions.map(({ itemId }) => itemId));
+          assert.deepEqual(next.review[1], stored.review[1]);
+        }
+        drafts.set(draftId, next);
+        if (mode === 'correction503') { mode = 'ok'; return json({ error: 'Corrección guardada con respuesta incierta.' }, 503); }
+        return json(next);
       }
       assert.deepEqual(Object.keys(input).sort(), ['digest', 'version']);
       assert.deepEqual(input, { version: stored.version, digest: stored.digest });
@@ -101,6 +111,36 @@ try {
     await f.dialog.getByText('La revisión cambió. Recuperá el estado antes de confirmar nuevamente.', { exact: true }).waitFor(); assert.equal(await f.button('Confirmar operación').isDisabled(), true); assert.equal(await f.consent().isChecked(), false);
     f.setMode('ok'); await f.button('Recuperar estado').click(); await f.dialog.getByText('La revisión cambió. Recuperá el estado antes de confirmar nuevamente.', { exact: true }).waitFor({ state: 'hidden' }); assert.equal(await f.button('Confirmar operación').isDisabled(), true);
     await f.consent().check(); await f.button('Confirmar operación').click(); await f.dialog.getByText('Operación aplicada correctamente.', { exact: true }).waitFor(); assert.equal(f.writes(), 1); await f.page.close();
+  }
+  {
+    const f = await fixture(); await f.prepare(); await f.consent().check(); await f.button('Corregir revisión').click();
+    await f.dialog.getByLabel('Corrección', { exact: true }).fill('Ahora son cuatro.'); assert.equal(await f.button('Confirmar operación').count(), 0); assert.equal(await f.consent().count(), 0);
+    await f.dialog.getByText('Saldo: 0 → 7', { exact: true }).waitFor(); await f.button('Revisar corrección').click();
+    await f.dialog.getByText('Disponible: 2 → 6', { exact: true }).waitFor(); await f.dialog.getByText('Saldo: 0 → 7', { exact: true }).waitFor();
+    assert.equal(await f.consent().isChecked(), false); assert.equal(await f.button('Confirmar operación').isDisabled(), true); assert.equal(f.writes(), 0);
+    assert.deepEqual(f.replies[0].input.text, 'Ahora son cuatro.'); assert.equal(f.replies[0].input.version, 1);
+    await f.consent().check(); await f.button('Confirmar operación').click(); await f.dialog.getByText('Operación aplicada correctamente.', { exact: true }).waitFor();
+    assert.equal(f.confirms[0].input.version, 2); assert.equal(f.confirms[0].input.digest, '2'.repeat(64)); assert.equal(f.writes(), 1); assert.deepEqual(f.errors, []); await f.page.close();
+  }
+  {
+    const f = await fixture(); await f.prepare(); await f.consent().check(); await f.button('Corregir revisión').click();
+    await f.dialog.getByLabel('Corrección', { exact: true }).fill('Ahora son cuatro.'); f.setMode('correction503'); await f.button('Revisar corrección').click();
+    await f.dialog.getByText('Corrección guardada con respuesta incierta.', { exact: true }).waitFor(); assert.equal(f.writes(), 0); assert.equal(f.replies.length, 1); assert.equal(await f.button('Confirmar operación').count(), 0);
+    await f.page.reload(); await f.open(); await f.dialog.getByText('Disponible: 2 → 6', { exact: true }).waitFor(); await f.dialog.getByText('Saldo: 0 → 7', { exact: true }).waitFor();
+    assert.equal(f.replies.length, 1); assert.equal(await f.consent().isChecked(), false); assert.equal(await f.button('Confirmar operación').isDisabled(), true);
+    await f.consent().check(); await f.button('Confirmar operación').click(); await f.dialog.getByText('Operación aplicada correctamente.', { exact: true }).waitFor();
+    assert.equal(f.confirms[0].input.version, 2); assert.equal(f.writes(), 1); assert.equal(f.replies.length, 1); assert.deepEqual(f.errors, []); await f.page.close();
+  }
+  for (const [mode, error] of [['correction422', 'Corrección inválida.'], ['correction-unpersisted503', 'Corrección no guardada.']]) {
+    const f = await fixture(); await f.prepare(); await f.consent().check(); await f.button('Corregir revisión').click();
+    await f.dialog.getByLabel('Corrección', { exact: true }).fill('Ahora son cuatro.'); f.setMode(mode); await f.button('Revisar corrección').click();
+    await f.dialog.getByText(error, { exact: true }).waitFor(); assert.equal(f.replies.length, 1); assert.equal(f.writes(), 0); assert.equal(await f.button('Confirmar operación').count(), 0);
+    await f.button('Volver a revisión').click(); await f.button('Confirmar operación').waitFor();
+    assert.equal(f.gets.length, 1); assert.equal(await f.dialog.getByLabel('Corrección', { exact: true }).count(), 0); assert.equal(await f.button('Revisar corrección').count(), 0);
+    await f.dialog.getByText('Disponible: 2 → 5', { exact: true }).waitFor(); await f.dialog.getByText('Saldo: 0 → 7', { exact: true }).waitFor();
+    assert.equal(await f.consent().isChecked(), false); assert.equal(await f.button('Confirmar operación').isDisabled(), true); assert.equal(f.drafts.get('draft-1').version, 1);
+    await f.consent().check(); await f.button('Confirmar operación').click(); await f.dialog.getByText('Operación aplicada correctamente.', { exact: true }).waitFor();
+    assert.equal(f.confirms[0].input.version, 1); assert.equal(f.confirms[0].input.digest, '1'.repeat(64)); assert.equal(f.replies.length, 1); assert.equal(f.writes(), 1); assert.deepEqual(f.errors, []); await f.page.close();
   }
   for (const mode of ['expired', 'incomplete']) {
     const f = await fixture(); f.setMode(mode); await f.prepare(); await f.consent().waitFor(); assert.equal(await f.consent().isDisabled(), true); assert.equal(await f.button('Confirmar operación').isDisabled(), true); assert.equal(f.confirms.length, 0); assert.equal(f.writes(), 0); await f.page.close();
