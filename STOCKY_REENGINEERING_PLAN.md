@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.5b1, composición atómica de inventario/cuentas/entidades.
+- Último alcance integrado: H4.5b2, pedidos en el contrato universal y composición atómica.
 - Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; código de b1 en `e22a459`.
 
 ## Hitos y dependencias
@@ -55,19 +55,13 @@
 
 ## Próximo paso exacto
 
-H4.5b2: pedidos en OperationPlan universal (order.create/update/delete/reconcile),
-normalizando datos con normalizeOrderRequest y ejecutando exclusivamente orderPostgres.
-Contexto interno habilita solo los movimientos derivados de pedidos; stock.withdraw
-explícito del cliente sigue prohibido. Conservar revisiones/postings, recibos raíz/bloque/
-ítem, composición y rollback. Probar HTTP y concurrencia, luego intérprete universal,
-conversación compartida y H4.6 familias configurables. H5 externo sigue pendiente.
-El escritor local ya fue retirado; no reintroducir fallback optimista ni simulaciones.
-H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
-El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
-H4.2b pendiente: conversación de conjuntos para otros verbos (bajas WhatsApp ya migradas).
-H4.5: intérprete universal y composición de planes entre dominios; hoy stock+cuenta/pedido
-en un mismo lote se rechaza entero. H4.6: familias/esquemas configurables persistentes y
-validación de atributos; después optimización/evaluación LLM y H5 externo. No reauditar.
+H4.5c1: frontera de interpretación universal independiente del proveedor. La IA propone
+acciones sin elegir tenant, actor, permisos ni IDs operativos. Backend valida el contrato,
+referencias explícitas y evidencia; nunca ejecuta durante interpretación. A continuación,
+conversación persistente de revisión/confirmación y consumidores, H4.6 familias/esquemas
+configurables y H5 real. No repetir la auditoría ni reintroducir escritores alternativos.
+Se conservan bloqueo amplio y selecciones masivas revisadas. Reentradas y aliases a nuevas
+entidades siguen fuera del contrato; las rutas compatibles no son motores duplicados.
 
 ## Registro de hitos
 
@@ -562,6 +556,20 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   aliases a entidades recién creadas, pedidos y client.merge aún no están en esta entrada.
   Las rutas compatibles conservan esas capacidades; no declarar intérprete/composición
   universal completos por esta ampliación.
+
+- H4.5b2 (2026-10-17): order.create/update/delete/reconcile usan el mismo envelope universal.
+  Normalización delegada a orderOperations; cada bloque/ítem delega exclusivamente a
+  orderPostgres e Inventory Engine existentes. Permisos derivados de stock solo existen
+  en el contexto interno de pedidos: stock.withdraw público sigue prohibido.
+- H4.5b2: recibos raíz/bloque/ítem, expectedRevision, postings y reconciliación histórica
+  conservan semántica. Lotes homogéneos o mixtos son atómicos; fallos SQL del padre/bloque
+  revierten pedidos, stock, historial, ledger y recibos. Replay precede lectura del catálogo.
+- H4.5b2 verificado: 255 checks PostgreSQL/HTTP y 81 pruebas puras aprobados; revisión
+  crítica independiente sin hallazgos. Incluye concurrencia, múltiples pedidos, reversión,
+  aislamiento, permisos, revisión obsoleta y reproducción tras borrar/cambiar entidades.
+  Sin cambios frontend en este hito; build anterior sigue vigente. Sin despliegue/LLM real.
+- Pendiente: intérprete/conversación universales, familias persistentes, migración de
+  consumidores y validación H5. Este checkpoint no cierra la reingeniería completa.
 
 ## Continuación sin repetir investigación
 

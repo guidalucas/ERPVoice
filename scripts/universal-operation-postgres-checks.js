@@ -99,7 +99,7 @@ export async function runUniversalOperationChecks({ db, sql, check }) {
   await check('universal gateway rejects domain reentry, unsupported, malformed and unkeyed plans without any writes', async () => {
     const before = await state();
     for (const operationId of [undefined, '', ' ', 1, 'x'.repeat(181)]) await assert.rejects(run({ ...plan([party()]), operationId }), { code: 'OPERATION_ID_REQUIRED' });
-    for (const extra of [{ contractVersion: 2 }, { ownerPhone: b }, { actions: [] }, { actions: [null] }, { actions: [{ type: 'client_order' }] }, { actions: [{ type: 'client.merge' }] }, { actions: [{ type: 'stock.unknown' }] }]) await assert.rejects(run({ ...plan([party()]), ...extra }), { code: 'INVALID_OPERATION_PLAN' });
+    for (const extra of [{ contractVersion: 2 }, { ownerPhone: b }, { actions: [] }, { actions: [null] }, { actions: [{ type: 'order.unknown' }] }, { actions: [{ type: 'client.merge' }] }, { actions: [{ type: 'stock.unknown' }] }]) await assert.rejects(run({ ...plan([party()]), ...extra }), { code: 'INVALID_OPERATION_PLAN' });
     await assert.rejects(run(plan([party(), receive(), { ...party(), itemId: 'party-again' }])), { code: 'UNSUPPORTED_OPERATION_ORDER' });
     await assert.rejects(run(plan([{ ...party(), debt: 0 }])), { code: 'INVALID_PARTY_OPERATION' });
     assert.deepEqual(await state(), before);

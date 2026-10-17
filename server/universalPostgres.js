@@ -4,6 +4,7 @@ import { executeAccountPlanInTransaction } from './accountPostgres.js';
 import { executePartyPlanInTransaction } from './partyPostgres.js';
 import { prepareUniversalOperation } from './universalOperations.js';
 import { operationRequestDigest } from './operationHash.js';
+import { executeUniversalOrderPlanInTransaction } from './universalOrderPostgres.js';
 
 export const UNIVERSAL_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS universal_operations(
@@ -28,8 +29,8 @@ export async function executeUniversalPlanInTransaction(client, input, context, 
   // the same child ID and introduce a reverse lock dependency.
   for (const [index,block] of blocks.entries()) {
     const child = {...block.plan,operationId:`universal-child:${operationRequestDigest(domain === 'mixed' ? [block.domain,...scope,index] : [domain,...scope])}`};
-    const execute = {inventory:executeInventoryPlanInTransaction,accounts:executeAccountPlanInTransaction,parties:executePartyPlanInTransaction}[block.domain];
-    const receipt = await execute(client,child,childContext);
+    const execute = {inventory:executeInventoryPlanInTransaction,accounts:executeAccountPlanInTransaction,parties:executePartyPlanInTransaction,orders:executeUniversalOrderPlanInTransaction}[block.domain];
+    const receipt = await execute(client,child,childContext,persistInventoryTransactions);
     if (block.domain === 'inventory') await persistInventoryTransactions(client,child,receipt);
     receipts.push(receipt);
   }

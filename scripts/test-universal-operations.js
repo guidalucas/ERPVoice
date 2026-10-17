@@ -33,7 +33,7 @@ test('universal entry delegates canonical immutable contracts and hashes semanti
 test('universal parser rejects domain reentry, unknown, forged and non-data input before execution', () => {
   reject(() => prepareUniversalOperation(plan([inventory,account,inventory]),ctx),'UNSUPPORTED_OPERATION_ORDER');
   reject(() => prepareUniversalOperation(plan([account,party,account]),ctx),'UNSUPPORTED_OPERATION_ORDER');
-  for (const type of ['client.merge','order.create','unknown','account.unknown']) reject(() => prepareUniversalOperation(plan([{...party,type}]),ctx));
+  for (const type of ['client.merge','order.unknown','unknown','account.unknown']) reject(() => prepareUniversalOperation(plan([{...party,type}]),ctx));
   const mutations = [p => p.contractVersion=2,p => p.actorId='forged',p => p.domain='parties',p => p.actions=[],p => delete p.actions[0],
     p => p.actions.extra=true,p => Object.defineProperty(p,'actions',{enumerable:true,get(){throw Error('getter executed');}}),
     p => Object.defineProperty(p.actions[0],'type',{enumerable:true,get(){throw Error('getter executed');}})];

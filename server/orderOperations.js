@@ -4,7 +4,9 @@ import { InventoryOperationError, inventoryProductFingerprint } from './inventor
 const fail = (code, message) => { throw new InventoryOperationError(code, message); };
 const invalid = (message) => fail('INVALID_ORDER_OPERATION', message);
 export const ORDER_STATES = new Set(['pendiente', 'conseguido', 'descartado']);
-const dataFields = ['clienteId', 'proveedorId', 'producto', 'productType', 'productModel', 'talle', 'qty', 'estado', 'notas', 'productId'];
+export const ORDER_DATA_FIELDS = Object.freeze(['clienteId', 'proveedorId', 'producto', 'productType', 'productModel', 'talle', 'qty', 'estado', 'notas', 'productId']);
+export const ORDER_RECONCILIATION_FIELDS = Object.freeze(['productId','expectedProductRevision','expectedFingerprint','available','reserved','quantity','unit','reason','confirmed']);
+const dataFields = ORDER_DATA_FIELDS;
 const stable = (value) => value && typeof value === 'object' && !Array.isArray(value)
   ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])])) : value;
 export const orderRequestDigest = (request) => createHash('sha256').update(JSON.stringify(stable(request))).digest('hex');
@@ -34,7 +36,7 @@ export function normalizeOrderRequest(kind, pedidoId, input) {
   }
   if (kind === 'reconcile') {
     const proof = patch.reconciliation;
-    const fields = ['productId','expectedProductRevision','expectedFingerprint','available','reserved','quantity','unit','reason','confirmed'];
+    const fields = ORDER_RECONCILIATION_FIELDS;
     if (!proof || typeof proof !== 'object' || ![Object.prototype,null].includes(Object.getPrototypeOf(proof))) invalid('Se requiere una revisión explícita de stock histórico.');
     const normalized = {};
     for (const key of Reflect.ownKeys(proof)) {

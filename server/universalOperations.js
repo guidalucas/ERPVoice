@@ -3,6 +3,7 @@ import { validateAccountPlan, accountPlanDigest } from './accountOperations.js';
 import { validatePartyPlan, partyPlanDigest } from './partyOperations.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
 import { operationRequestDigest } from './operationHash.js';
+import { validateUniversalOrderPlan, universalOrderPlanDigest } from './universalOrderOperations.js';
 
 const fail = (code, message) => { throw new InventoryOperationError(code,message); };
 const invalid = () => fail('INVALID_OPERATION_PLAN','El plan universal contiene campos o acciones inválidos.');
@@ -15,10 +16,11 @@ const domains = new Map([
   ...['stock.receive','stock.sell','stock.reserve','stock.withdraw','stock.adjust','sku.create','sku.update','sku.deactivate'].map((type) => [type,'inventory']),
   ...['account.charge','account.payment','account.adjust','account.transfer'].map((type) => [type,'accounts']),
   ...['client.create','client.update','client.delete','supplier.create','supplier.update','supplier.delete','supplier.merge'].map((type) => [type,'parties']),
+  ...['order.create','order.update','order.delete','order.reconcile'].map((type) => [type,'orders']),
 ]);
 
-const validators = {inventory:validateOperationPlan,accounts:validateAccountPlan,parties:validatePartyPlan};
-const digests = {inventory:operationDigest,accounts:accountPlanDigest,parties:partyPlanDigest};
+const validators = {inventory:validateOperationPlan,accounts:validateAccountPlan,parties:validatePartyPlan,orders:validateUniversalOrderPlan};
+const digests = {inventory:operationDigest,accounts:accountPlanDigest,parties:partyPlanDigest,orders:universalOrderPlanDigest};
 
 /** One entry contract; each contiguous domain block uses its existing validator. */
 export function prepareUniversalOperation(input, context) {

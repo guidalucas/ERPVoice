@@ -26,6 +26,7 @@ export async function executeOrderInTransaction(client, kind, pedidoId, input, c
   if (!context?.businessId || context.businessId === '__default__' || !context.actorId) throw new InventoryOperationError('BUSINESS_SCOPE_REQUIRED', 'Falta el contexto autorizado.');
   if (!context.permissions?.includes(`orders:${kind}`)) throw new InventoryOperationError('FORBIDDEN', 'No tenés permiso para esta operación de pedido.');
   const request = normalizeOrderRequest(kind, pedidoId, input), requestHash = orderRequestDigest(request);
+  if (request.operationId.startsWith('universal-child:') && !context.internalUniversalOperation) throw new InventoryOperationError('FORBIDDEN','Los IDs internos universales están reservados al ejecutor universal.');
   if (request.operationId.startsWith('order-batch-item:') && !context.internalOrderBatch) throw new InventoryOperationError('FORBIDDEN', 'ID reservado para lotes de pedidos.');
   const scope = [context.businessId, request.operationId];
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify(['order', ...scope])]);
