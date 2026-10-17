@@ -1,3 +1,12 @@
+export type InventoryAttribute = { unit?: string } & (
+  | { state: 'known'; type: 'text'; value: string }
+  | { state: 'known'; type: 'number'; value: number }
+  | { state: 'known'; type: 'boolean'; value: boolean }
+  | { state: 'unknown' | 'not_applicable' | 'missing'; type: 'text' | 'number' | 'boolean'; value?: never }
+);
+
+export type InventoryAttributes = Record<string, InventoryAttribute>;
+
 export interface Product {
   revision?: number;
   identityFingerprint?: string;
@@ -9,6 +18,7 @@ export interface Product {
   stockAvailable: number;
   stockReserved: number;
   price: number;
+  attributes?: InventoryAttributes;
   unit?: string;
   priceCurrency?: string;
 }
@@ -194,11 +204,28 @@ export interface ParsedVoicePayload {
   suggestedPhrases?: string[];
 }
 
+/** System creation receipt; never accepted as a parsed voice command. */
+export type ProductCreatedAction = {
+  type: 'create_product';
+  productId: string;
+  productName: string;
+  productType?: string;
+  productModel?: string;
+  size?: string;
+  stockAvailable: number;
+  stockReserved: number;
+  unit: string;
+  price: number;
+  priceCurrency: string;
+  revision: number;
+  reason: string;
+};
+
 export interface Transaction {
   id: string;
   timestamp: string;
   sourceText: string;
-  actions: ParsedActionUnion[];
+  actions: Array<ParsedActionUnion | ProductCreatedAction>;
   summary: string;
 }
 

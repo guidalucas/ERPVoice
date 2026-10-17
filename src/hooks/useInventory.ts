@@ -22,7 +22,7 @@ import {
   updateProveedor,
 } from '../services/productService';
 import type { Client, ParsedActionUnion, Pedido, PedidoEstado, Product, Proveedor } from '../domain/types';
-import type { InventorySelectionReference, ProductAdjustment } from '../services/productService';
+import type { InventorySelectionReference, ProductAdjustment, ProductCreation, ProductInput, ProductModelInput } from '../services/productService';
 
 export const useInventory = () => {
   const { state, confirmPendingProposal, clearPendingProposal, hydratePersistedState } = useAppStore();
@@ -53,18 +53,13 @@ export const useInventory = () => {
     hydrateFromSnapshot(snapshot);
   };
 
-  const createProductRecord = async (input: Omit<Product, 'id'> & { name: string }) => {
-    await createProduct({
-      ...input,
-      productType: input.productType ?? undefined,
-      productModel: input.productModel ?? undefined,
-      size: input.size ?? undefined,
-    });
+  const createProductRecord = async (input: ProductInput, metadata: ProductCreation) => {
+    await createProduct(input, metadata);
     await refreshState();
   };
 
-  const createProductModelRecords = async (input: { productType: string; productModel: string; variants: Array<{ size: string; stockAvailable: number; price: number }> }) => {
-    await createProductModel(input);
+  const createProductModelRecords = async (input: ProductModelInput, metadata: ProductCreation) => {
+    await createProductModel(input, metadata);
     await refreshState();
   };
 

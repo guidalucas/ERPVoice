@@ -27,7 +27,7 @@ export async function runInventoryDeactivationMetaChecks({ db, sql, check }) {
     assert.equal((await sql.query('SELECT item_id FROM inventory_movements WHERE owner_phone=$1 AND operation_id=$2', [owner,result.operationResult.operationId])).rowCount, 1);
     const outbox = (await sql.query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1', ['meta-archive-confirm'])).rows[0];
     assert.equal(outbox.reply_text, result.replyText);
-    await assert.rejects(db.createProductRecord({ name: 'Archivo Meta once' }, owner), { code: 'SKU_INACTIVE' });
+    await assert.rejects(db.createProductRecord({ name: 'Archivo Meta once' }, owner, { operationId: 'meta-archive-recreate-guard' }), { code: 'SKU_INACTIVE' });
   });
 
   await check('Meta deactivation: cancel prevents later confirm and races serialize', async () => {

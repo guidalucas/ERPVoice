@@ -17,7 +17,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.0, H4.1, H4.2a y H4.3 verificados; altas/pedidos siguientes |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.0, H4.1, H4.2a, H4.3 y H4.4a verificados; pedidos siguientes |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -53,14 +53,15 @@
 
 ## Próximo paso exacto
 
-H4.4a: migrar altas de SKU/modelos con stock inicial (incluido cero) al núcleo, con contrato
-explícito, recibo y operationId estable. Revisar solo createProductRecord/createProductModelRecords,
-POST /api/products[/model] y formularios de ProductsAbmPanel. No usar stock.receive con
-cantidad ficticia para crear stock cero. Preservar atributos/unidad, identidad conservadora,
-guardas de archivado y compatibilidad del bloqueo. Probar retry concurrente y rollback multi-SKU.
-Luego H4.4b: efectos de pedidos (ensureProduct/applyPedidoEstadoStockEffect, updatePedidoRecord
-y rama update_pedido), con SKU explícito y política de reversión; después finanzas y demás
-escritores. Mantener bloqueo de tabla hasta retirar reemplazo legacy. No repetir auditoría.
+H4.4b: migrar efectos de pedidos al mismo núcleo. Revisar solamente ensureProduct,
+applyPedidoEstadoStockEffect, updatePedidoRecord y rama update_pedido, sus consumidores
+HTTP/panel/WhatsApp y pruebas existentes. Definir transiciones/reversión con SKU explícito:
+sin creación por nombre, recorte con Math.max ni reservas/ventas implícitas fuera del plan.
+Pedido, recibo, movimientos e historial deben compartir transacción; exigir operationId
+estable, revisión y autorización del negocio. Probar transición/reintento concurrente,
+stock insuficiente, reversión y rollback antes de retirar ese escritor. Después finanzas
+y demás escritores. Mantener bloqueo de tabla hasta retirar reemplazo legacy.
+H4.4a ya integrado: reutilizar productCreationAdapter/sku.create, no rediseñarlo ni reauditar.
 H4.2b pendiente: conversación de conjuntos para otros verbos (bajas WhatsApp ya migradas).
 Intérprete universal, esquemas configurables y optimización/evaluación LLM siguen pendientes.
 
@@ -270,11 +271,41 @@ Intérprete universal, esquemas configurables y optimización/evaluación LLM si
   efectos de pedidos y finanzas aún no migrados. Conservar bloqueo amplio hasta retirarlos.
   River mantiene los dos fallos conocidos; IA real y despliegue siguen pendientes.
 
+- H4.4a (2026-10-17): `sku.create` reutiliza OperationPlan v1, planner y adapter PG.
+  Solo target nuevo explícito, initialStock con disponibles/reservados enteros no negativos,
+  motivo y precio initialize opcional. Cero deja movimiento de auditoría cero, sin cantidad
+  ficticia. Permiso inventory:create y, si hay reservado inicial, también inventory:reserve.
+  Identidad activa duplicada o archivada rechaza el lote; atributos/unidad son identidad.
+- H4.4a: retirados INSERT propios de createProductRecord/createProductModelRecords.
+  productCreationAdapter traduce las rutas compatibles al contrato cerrado: operationId
+  obligatorio, números omitidos cero, null/cadenas/fracciones rechazados, máximo 100 variantes.
+  Unidad/atributos tipados/moneda preservados. Contexto autorizado del backend; payload no
+  elige negocio. Recibo, producto creado, movimientos e historial comparten transacción.
+  Replay retorna productos originales incluso tras ventas/ingresos posteriores.
+- H4.4a: create_product es evento de historial derivado del recibo, no comando de escritura
+  ni salida admitida del parser. Modelo sigue siendo lote de SKU, sin entidad de familia:
+  se retiró la restricción SQL por tipo/modelo; API admite variantes únicas adicionales,
+  conservando validación de identidad en núcleo. El panel conserva su guarda de nuevo modelo.
+- H4.4a: panel captura payload/UUID para SKU, variante y modelo; 503 o refresh fallido
+  mantienen el intento incluso después de hidratar inventario. Editar/cancelar genera otro
+  intento; formulario bloqueado durante envío. Historial muestra alta y balances exactos.
+  Fixtures/seed de productos pasan IDs explícitos; no se ejecutó seed contra base real.
+- H4.4a verificado: 134 checks PostgreSQL/HTTP, 39 tests de suite pura y 50 del motor.
+  Incluye creación cero/positiva/reservada, lotes atómicos, carreras por ID e identidad,
+  permisos/ámbitos, rollback SQL, replay congelado y contratos HTTP reales. Build aprobado;
+  Edge de altas (con prueba de tipos de atributos), inventario, ajustes, conjuntos y bajas
+  aprobados. Edge usa API simulada. Revisión independiente: corregidas validación de nombre
+  antes de coerción y unión de atributos frontend; sin otros hallazgos backend pendientes.
+- H4.4a límites: pedidos/reemplazo legacy aún escriben stock y requieren bloqueo amplio;
+  finanzas, intérprete universal y esquemas de familias configurables pendientes. No se
+  desplegó ni evaluó IA real. River conserva las dos fallas conocidas del registro anterior.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
-- H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 siguiente commit de bajas.
+- H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
+- H4.4a: siguiente commit de altas con stock inicial; recuperar SHA con git log.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
 - Frontend: `npm run test:inventory-ui` y `npm run test:panel-draft-recovery`.
@@ -282,5 +313,6 @@ Intérprete universal, esquemas configurables y optimización/evaluación LLM si
   y `npm run test:inventory-selection-ui`.
 - Bajas: `npm run test:inventory-deactivation-ui`; incluido en test:inventory y PG/HTTP.
   Edge local; APIs/proveedores simulados. Ninguna de estas pruebas valida IA real.
+- Altas: `npm run test:inventory-create-ui`; contrato y rollback incluidos en suites pura/PG.
 - Producción: falta verificar configuración privada, backup/restauración recuperable,
   ejecutar migración controlada, comprobar SHA/readiness y piloto aislado. No desplegado.

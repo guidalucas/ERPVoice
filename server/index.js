@@ -543,14 +543,11 @@ app.get('/api/state', authenticateRequest, async (req, res) => {
 
 app.post('/api/products/model', authenticateRequest, async (req, res) => {
   try {
-    const products = await createProductModelRecords({
-      productType: req.body?.productType,
-      productModel: req.body?.productModel,
-      variants: req.body?.variants,
-    }, tenantPhoneOf(req));
+    const products = await createProductModelRecords(req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req) });
     res.status(201).json(products);
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    const status = ['OPERATION_ID_REQUIRED', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400 : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude crear el modelo.' : error.message, code: error.code });
   }
 });
 
@@ -558,15 +555,7 @@ app.post('/api/products', authenticateRequest, async (req, res) => {
   try {
     const clientPhone = tenantPhoneOf(req);
 
-    const product = await createProductRecord({
-      name: req.body?.name,
-      productType: req.body?.productType,
-      productModel: req.body?.productModel,
-      size: req.body?.size,
-      stockAvailable: req.body?.stockAvailable,
-      stockReserved: req.body?.stockReserved,
-      price: req.body?.price,
-    }, clientPhone);
+    const product = await createProductRecord(req.body, clientPhone, { actorId: authPhoneOf(req) });
 
     if (!product) {
       res.status(400).json({ error: 'No se pudo crear el producto' });
@@ -575,7 +564,8 @@ app.post('/api/products', authenticateRequest, async (req, res) => {
 
     res.status(201).json(product);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    const status = ['OPERATION_ID_REQUIRED', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400 : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude crear el SKU.' : error.message, code: error.code });
   }
 });
 
@@ -885,7 +875,7 @@ app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
   try {
     requireReviewedUpdateSelection(req.body);
     const result = await executeInventoryOperation(req.body, {
-      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:receive', 'inventory:sell', 'inventory:reserve', 'inventory:adjust', 'inventory:update', 'inventory:deactivate'],
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:receive', 'inventory:sell', 'inventory:reserve', 'inventory:adjust', 'inventory:update', 'inventory:deactivate', 'inventory:create'],
     });
     res.json(result);
   } catch (error) {

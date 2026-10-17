@@ -39,6 +39,8 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
   child.on('error', (error) => { startupError = error; });
   for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => { logs = (logs + chunk.toString()).slice(-8000); });
   const owner = '59899000505';
+  let fixtureCreateSequence = 0;
+  const createHttpFixtureProduct = (input, businessId) => db.createProductRecord(input, businessId, { operationId: `http-fixture-create-${++fixtureCreateSequence}` });
   const token = issueJwt({ phoneNumber: owner });
   let completed = 0;
   const run = async (label, fn) => { await check(`inventory HTTP: ${label}`, fn); completed++; };
@@ -199,6 +201,60 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const foreign = await request(route, { body: { digest: preview.json.digest }, headers: { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000515' })}` } });
       assert.equal(foreign.json.code, 'SELECTION_NOT_FOUND');
     });
+    await run('POST product creates explicit zero stock, typed metadata and one frozen receipt on retry', async () => {
+      const body = { operationId: 'http-create-zero', name: 'SKU alta HTTP café', stockAvailable: 0, stockReserved: 0, price: 0,
+        priceCurrency: 'USD', unit: 'box', attributes: { color: { state: 'unknown', type: 'text' },
+          sealed: { state: 'known', type: 'boolean', value: false } } };
+      assert.equal((await request('/api/products', { body, auth: false })).status, 401);
+      assert.equal((await request('/api/products', { body: { name: body.name } })).json.code, 'OPERATION_ID_REQUIRED');
+      const created = await request('/api/products', { body });
+      assert.equal(created.status, 201); assert.equal(created.json.stockAvailable, 0); assert.equal(created.json.revision, 0);
+      assert.equal(created.json.stockReserved, 0); assert.equal(created.json.price, 0); assert.equal(created.json.priceCurrency, 'USD');
+      assert.deepEqual(created.json.attributes, body.attributes); assert.equal(created.json.unit, 'box');
+      assert.deepEqual((await request('/api/products', { body })).json, created.json);
+      const moves = await ledger('product-create:http-create-zero');
+      assert.equal(moves.length, 1); assert.equal(Number(moves[0].delta_available), 0); assert.equal(Number(moves[0].delta_reserved), 0);
+      const history = (await sql.query('SELECT actions_json FROM transactions WHERE owner_phone=$1 AND batch_id=$2', [owner,`${owner}:product-create:http-create-zero`])).rows;
+      assert.equal(history.length, 1); assert.equal(history[0].actions_json[0].type, 'create_product');
+      assert.equal(Object.hasOwn(history[0].actions_json[0], 'qty'), false);
+      const changed = await request('/api/products', { body: { ...body, price: 1 } });
+      assert.equal(changed.status, 409); assert.equal(changed.json.code, 'IDEMPOTENCY_CONFLICT');
+      const duplicate = await request('/api/products', { body: { ...body, operationId: 'http-create-duplicate' } });
+      assert.equal(duplicate.json.code, 'DUPLICATE_SKU_IDENTITY');
+      const count = (await sql.query('SELECT count(*) FROM products WHERE owner_phone=$1', [owner])).rows[0].count;
+      for (const [index, invalid] of [{ name: { toString: null } }, { stockAvailable: 0.5 }, { stockReserved: null }, { price: '0' },
+        { attributes: { color: 'azul' } }, { unit: null }, { priceCurrency: 'usd' }, { ownerPhone: '59899000999' }].entries()) {
+        const response = await request('/api/products', { body: { ...body, operationId: `http-create-invalid-${index}`, ...invalid } });
+        assert.equal(response.status, 400); assert.equal(response.json.code, 'INVALID_OPERATION_PLAN');
+      }
+      assert.equal((await sql.query('SELECT count(*) FROM products WHERE owner_phone=$1', [owner])).rows[0].count, count);
+      const forged = await request('/api/state/apply', { body: { operationId: 'http-create-event-forged', actions: [history[0].actions_json[0]] } });
+      assert.equal(forged.json.code, 'UNSUPPORTED_OPERATION');
+    });
+    await run('POST model uses one atomic create plan and replays original products after later stock changes', async () => {
+      const body = { operationId: 'http-create-model', productType: 'Prenda', productModel: 'Alta HTTP', unit: 'pack', priceCurrency: 'UYU',
+        attributes: { material: { state: 'known', type: 'text', value: 'algodón' } },
+        variants: [{ size: 'S', stockAvailable: 0, price: 0 }, { size: 'M', stockAvailable: 6, stockReserved: 2, price: 850 }] };
+      const bad = await request('/api/products/model', { body: { ...body, operationId: 'http-create-model-invalid',
+        variants: [body.variants[0], { ...body.variants[1], stockAvailable: -1 }] } });
+      assert.equal(bad.status, 400);
+      assert.equal((await sql.query('SELECT id FROM products WHERE owner_phone=$1 AND name=$2', [owner,'Prenda Alta HTTP'])).rowCount, 0);
+      const created = await request('/api/products/model', { body });
+      assert.equal(created.status, 201); assert.equal(created.json.length, 2);
+      assert.deepEqual(created.json.map((product) => product.stockAvailable), [0,6]);
+      assert.ok(created.json.every((product) => product.unit === 'pack' && product.priceCurrency === 'UYU'));
+      const one = created.json[0];
+      const later = await request('/api/inventory/operations', { body: plan('http-create-model-later', [{ itemId: 'one', type: 'stock.receive',
+        target: { kind: 'existing', skuId: one.id }, quantity: { value: 2, unit: 'pack' } }]) });
+      assert.equal(later.status, 200);
+      assert.deepEqual((await request('/api/products/model', { body })).json, created.json);
+      assert.equal(Number((await stock(one.id))[0].stock_available), 2);
+      assert.equal((await ledger('model-create:http-create-model')).length, 2);
+      const duplicate = await request('/api/products/model', { body: { ...body, operationId: 'http-create-model-same-variant',
+        productModel: 'Duplicado HTTP', variants: [body.variants[0], { ...body.variants[0], size: 's' }] } });
+      assert.equal(duplicate.status, 409); assert.equal(duplicate.json.code, 'DUPLICATE_SKU_IDENTITY');
+      assert.equal((await sql.query('SELECT id FROM products WHERE owner_phone=$1 AND name=$2', [owner,'Prenda Duplicado HTTP'])).rowCount, 0);
+    });
     await run('DELETE archives only a reviewed selection, preserves stock and hides inactive SKUs', async () => {
       const seed = async (name) => (await request('/api/inventory/operations', { body: plan(`http-archive-${name}`, [{ ...fresh,
         target: { kind: 'new', sku: { name: `Archivo HTTP ${name}` } } }]) })).json.items[0].skuId;
@@ -240,7 +296,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
         }
         assert.fail('WhatsApp archive command did not complete');
       };
-      const product = await db.createProductRecord({ name: 'Taladro Archivo', stockAvailable: 4, price: 900 }, owner);
+      const product = await createHttpFixtureProduct({ name: 'Taladro Archivo', stockAvailable: 4, price: 900 }, owner);
       const pending = await sendText('http-meta-archive-preview', 'Borrá el Taladro Archivo');
       assert.deepEqual(pending.actions_json, []); assert.match(pending.reply_text, /CONFIRMAR BAJA/);
       const code = /CONFIRMAR BAJA ([A-F0-9]{8})/.exec(pending.reply_text)[1];
@@ -253,13 +309,13 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal((await sendText('http-meta-archive-confirm', `CONFIRMAR BAJA ${code}`)).reply_text, confirmed.reply_text);
       assert.equal((await sendText('http-meta-archive-confirm-again', `CONFIRMAR BAJA ${code}`)).reply_text, confirmed.reply_text);
       assert.equal((await sql.query("SELECT inventory_status FROM products WHERE id=$1", [product.id])).rows[0].inventory_status, 'inactive');
-      const cancelProduct = await db.createProductRecord({ name: 'Taladro Cancelable', stockAvailable: 4 }, owner);
+      const cancelProduct = await createHttpFixtureProduct({ name: 'Taladro Cancelable', stockAvailable: 4 }, owner);
       const cancelPreview = await sendText('http-meta-archive-cancel-preview', 'Borrá el Taladro Cancelable');
       const cancelCode = /CONFIRMAR BAJA ([A-F0-9]{8})/.exec(cancelPreview.reply_text)[1];
       assert.match((await sendText('http-meta-archive-cancel', `CANCELAR BAJA ${cancelCode}`)).reply_text, /cancelada/);
       assert.equal((await sendText('http-meta-archive-cancelled-confirm', `CONFIRMAR BAJA ${cancelCode}`)).error, 'SELECTION_CANCELLED');
       assert.equal((await sql.query('SELECT inventory_status FROM products WHERE id=$1', [cancelProduct.id])).rows[0].inventory_status, 'active');
-      const staleProduct = await db.createProductRecord({ name: 'Taladro Obsoleto', stockAvailable: 4 }, owner);
+      const staleProduct = await createHttpFixtureProduct({ name: 'Taladro Obsoleto', stockAvailable: 4 }, owner);
       const stalePreview = await sendText('http-meta-archive-stale-preview', 'Borrá el Taladro Obsoleto');
       const staleCode = /CONFIRMAR BAJA ([A-F0-9]{8})/.exec(stalePreview.reply_text)[1];
       await request('/api/inventory/operations', { body: plan('http-meta-archive-stale-sale', [{ itemId: 'one', type: 'stock.sell',
@@ -294,7 +350,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(Number((await stock(id))[0].stock_available), 4);
     });
     await run('signed WhatsApp catalog update uses exact SKU and accepts zero without changing stock', async () => {
-      const product = await db.createProductRecord({ name: 'Taladro Contador', stockAvailable: 3, price: 900 }, owner);
+      const product = await createHttpFixtureProduct({ name: 'Taladro Contador', stockAvailable: 3, price: 900 }, owner);
       const messageId = 'http-meta-update-zero';
       const body = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [{
         id: messageId, from: owner, type: 'text', text: { body: 'El Taladro Contador vale 0' },
@@ -318,7 +374,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal((await ledger(`whatsapp:${messageId}`)).length, 1);
     });
     await run('signed WhatsApp insufficient sale completes rejection and cannot execute after replenishment', async () => {
-      const product = await db.createProductRecord({ name: 'Taladro Delta', stockAvailable: 2, price: 900 }, owner);
+      const product = await createHttpFixtureProduct({ name: 'Taladro Delta', stockAvailable: 2, price: 900 }, owner);
       const messageId = 'http-meta-insufficient-terminal';
       const body = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [{
         id: messageId, from: owner, type: 'text', text: { body: 'Vendí 50 Taladro Delta' },

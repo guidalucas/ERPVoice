@@ -5,6 +5,7 @@ import { runInventoryAdjustmentsChecks } from './inventory-adjustments-postgres-
 import { runInventorySelectionsChecks } from './inventory-selections-postgres-checks.js';
 import { runInventoryDeactivationChecks } from './inventory-deactivation-postgres-checks.js';
 import { runInventoryDeactivationMetaChecks } from './inventory-deactivation-meta-checks.js';
+import { runInventoryCreateChecks } from './inventory-create-postgres-checks.js';
 import { runInventoryHttpChecks } from './inventory-http-checks.js';
 import os from 'node:os';
 import path from 'node:path';
@@ -31,6 +32,8 @@ let sql;
 let checks = 0;
 const originalFetch = globalThis.fetch;
 const owner = '59899000101';
+let fixtureCreateSequence = 0;
+const createFixtureProduct = (input, businessId) => db.createProductRecord(input, businessId, { operationId: `fixture-create-${++fixtureCreateSequence}` });
 const purgeFixtureProduct = async (id) => sql.query('DELETE FROM products WHERE owner_phone=$1 AND id=$2', [owner,id]);
 const deactivateFixtureProduct = async (id) => {
   const preview = await db.previewInventorySelection({ requestId: `fixture-${id}`, selector: { kind: 'ids', skuIds: [id] },
@@ -67,6 +70,7 @@ try {
   await runInventorySelectionsChecks({ db, sql, check });
   await runInventoryDeactivationChecks({ db, sql, check });
   await runInventoryDeactivationMetaChecks({ db, sql, check });
+  await runInventoryCreateChecks({ db, sql, check });
   await runInventoryHttpChecks({ db, sql, check });
 
   await check('migración repetible y RLS', async () => {
@@ -136,7 +140,7 @@ try {
     await db.applyResolvedVoiceStockBatch(batch.id, owner);
     assert.equal((await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.name === 'Rollback de outbox').stockAvailable, 2);
   });
-  const existing = await db.createProductRecord({ name: 'Taladro Bosch', stockAvailable: 3, size: '10 mm' }, owner);
+  const existing = await createFixtureProduct({ name: 'Taladro Bosch', stockAvailable: 3, size: '10 mm' }, owner);
   await check('ID existente, aislamiento por negocio y cambio de catálogo', async () => {
     const item = { ...action('Taladro Bosch', { kind: 'existing', productId: existing.id, fingerprint: productFingerprint(existing) }), size: '10 mm' };
     const batch = await createBatch([item]);
@@ -187,8 +191,8 @@ try {
 
   // Real workflow, fake model; all writes still use the real PostgreSQL transaction.
   process.env.GEMINI_API_KEY = 'test'; process.env.LLM_PROVIDER = 'gemini'; process.env.LLM_DISABLE_FALLBACK = '1';
-  let drillA = await db.createProductRecord({ name: 'Taladro Makita', size: '10 mm', stockAvailable: 0 }, owner);
-  const drillB = await db.createProductRecord({ name: 'Taladro Makita', size: '13 mm', stockAvailable: 0 }, owner);
+  let drillA = await createFixtureProduct({ name: 'Taladro Makita', size: '10 mm', stockAvailable: 0 }, owner);
+  const drillB = await createFixtureProduct({ name: 'Taladro Makita', size: '13 mm', stockAvailable: 0 }, owner);
   await check('la transacción rechaza un producto existente con medida distinta', async () => {
     const batch = await createBatch([{ ...action('Taladro Makita', {
       kind: 'existing', productId: drillB.id, fingerprint: productFingerprint(drillB), userConfirmed: true,
@@ -381,7 +385,7 @@ try {
     }
   });
   await check('un único SKU con variante explícita aplica stock sin pedir una opción', async () => {
-    const product = await db.createProductRecord({ name: 'Taladro Bosch 18V', size: '10 mm', stockAvailable: 0 }, owner);
+    const product = await createFixtureProduct({ name: 'Taladro Bosch 18V', size: '10 mm', stockAvailable: 0 }, owner);
     extractionOverride = [{ type: 'add_stock', productName: 'Taladro Bosch 18V', size: '10 mm', qty: 2,
       evidence: 'Taladro Bosch 18V de 10 mm', fieldEvidence: { qty: 'dos' } }];
     const beforeCalls = modelInputs.length;
@@ -778,7 +782,7 @@ try {
     // Restore this isolated fixture for the unrelated clarification tests below.
     // Production has no implicit recreation of an archived identity.
     await purgeFixtureProduct(drillA.id);
-    drillA = await db.createProductRecord({ name: 'Taladro Makita', size: '10 mm', stockAvailable: 0 }, owner);
+    drillA = await createFixtureProduct({ name: 'Taladro Makita', size: '10 mm', stockAvailable: 0 }, owner);
   });
   await check('nuevo indistinguible pide diferencia y usa la aclaración literal', async () => {
     await message('new-source', 'Ingresaron dos Taladro Makita');
@@ -1035,7 +1039,7 @@ try {
     assert.equal(results[0].replyText, 'Borrador recuperado'); assert.equal(calls, before);
   });
   await check('recuperación de otros intents tampoco repite una mutación ya confirmada', async () => {
-    const product = await db.createProductRecord({ name: 'Producto de venta', stockAvailable: 10 }, owner);
+    const product = await createFixtureProduct({ name: 'Producto de venta', stockAvailable: 10 }, owner);
     const options = { messageId: 'legacy-sale-once', recipient: owner, replyText: 'Venta registrada.' };
     await Promise.all(Array.from({ length: 3 }, () => db.applyActionsToDatabase([{ type: 'sell', productId: product.id, productName: product.name, qty: 2 }], 'Vendí dos Producto de venta', owner, options)));
     assert.equal((await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.id === product.id).stockAvailable, 8);
@@ -1055,8 +1059,8 @@ try {
     assert.equal(events.some((event) => event.id === 'history-other'), false);
   });
   await check('borrado por variante faltante usa ID y valida el estado actual', async () => {
-    const missing = await db.createProductRecord({ name: 'Prueba Variante Ausente', stockAvailable: 1 }, owner);
-    const sized = await db.createProductRecord({ name: 'Prueba Variante Ausente', size: 'L', stockAvailable: 1 }, owner);
+    const missing = await createFixtureProduct({ name: 'Prueba Variante Ausente', stockAvailable: 1 }, owner);
+    const sized = await createFixtureProduct({ name: 'Prueba Variante Ausente', size: 'L', stockAvailable: 1 }, owner);
     const selection = { field: 'size', operator: 'missing' };
     const preview = await db.previewInventorySelection({ requestId: 'missing-variant-deactivation',
       selector: { kind: 'filter', equals: { name: missing.name, size: null } },

@@ -5,11 +5,12 @@ import { normalizePhone, getWhatsAppVariants } from './phone.js';
 import { productBaseName, productMatchKey, normalizeProductMetadata } from './productIdentity.js';
 import { validateStockDraft, hasExplicitStockSize, productFingerprint, stockReferenceIssues, explicitIdentityConflict } from './voiceStockEngine.js';
 import { INVENTORY_SCHEMA_SQL, executeInventoryPlanInTransaction, inventoryRowToProduct } from './inventoryPostgres.js';
-import { validateOperationPlan, productIdentity, InventoryOperationError } from './inventoryOperations.js';
+import { validateOperationPlan, InventoryOperationError } from './inventoryOperations.js';
 import { resolvedStockBatchToPlan, confirmedStockActionsToPlan, productUpdateActions } from './stockOperationAdapter.js';
 import { inventoryResultActions, inventoryResultReply } from './inventoryResults.js';
 import { normalizeSelectionRequest, selectionRequestDigest, buildSelectionPreview, requireReviewedUpdateSelection } from './inventorySelections.js';
 import { parseMetaDeactivationCommand, deactivationPreviewReply, metaDeactivationReceiptReply } from './inventoryMetaSelections.js';
+import { productCreationToPlan } from './productCreationAdapter.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -609,20 +610,6 @@ const initializeDatabase = async () => {
   await withClient(async (client) => {
     await ensureTenantState(client, DEFAULT_OWNER_PHONE);
   });
-};
-
-const normalizeProductNameFromInput = (productInput) => {
-  const explicitName = String(productInput?.name ?? '').trim();
-  if (explicitName) {
-    return explicitName;
-  }
-
-  const productType = normalizeNullableString(productInput?.productType);
-  const productModel = normalizeNullableString(productInput?.productModel);
-  const size = normalizeNullableString(productInput?.size);
-  const composed = composeProductName({ productType, productModel, size, fallback: '' }).trim();
-
-  return composed || 'Nuevo Producto';
 };
 
 const normalizeTextArray = (values) => values.filter(Boolean);
@@ -1365,6 +1352,7 @@ const calculateProductDebt = (products, debtAction) => {
 };
 
 const summarizeAction = (action) => {
+  if (action.type === 'create_product') return `SKU creado: ${action.productName}; disponible ${action.stockAvailable}; reservado ${action.stockReserved}`;
   if (action.type === 'add_stock') {
     return `+${action.qty} stock para ${action.productName}`;
   }
@@ -1557,89 +1545,20 @@ const replaceStateTables = async (client, ownerPhone, products, clients, proveed
   }
 };
 
-export const createProductRecord = async (productInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  await ensureReady();
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-
-  return withTransaction(async (client) => {
-    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
-    await ensureTenantState(client, normalizedOwnerPhone);
-
-    const normalizedInput = normalizeProductMetadata(productInput);
-    const id = `product-${slugify(normalizeProductNameFromInput(normalizedInput))}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-
-    const archived = await client.query("SELECT * FROM products WHERE owner_phone=ANY($1) AND inventory_status='inactive'", [getOwnerPhoneVariants(ownerPhone)]);
-    const intended = { name: normalizeProductNameFromInput(normalizedInput), productType: normalizeNullableString(normalizedInput.productType),
-      productModel: normalizeNullableString(normalizedInput.productModel), size: normalizeNullableString(normalizedInput.size), unit: 'unit', attributes: {} };
-    if (archived.rows.some((row) => productIdentity(inventoryRowToProduct(row)) === productIdentity(intended))) throw new InventoryOperationError('SKU_INACTIVE', 'Ya existe un SKU desactivado con esa identidad; no creé otro producto.');
-    const result = await client.query(
-      `
-        INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price
-      `,
-      [
-        id,
-        normalizedOwnerPhone,
-        normalizeProductNameFromInput(normalizedInput),
-        normalizeNullableString(normalizedInput.productType),
-        normalizeNullableString(normalizedInput.productModel),
-        normalizeNullableString(normalizedInput.size),
-        normalizeInteger(productInput.stockAvailable, 0),
-        normalizeInteger(productInput.stockReserved, 0),
-        normalizeInteger(productInput.price, 0),
-      ],
-    );
-
-    return rowToProduct(result.rows[0]);
+export const createProductRecord = async (productInput, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
+  const businessId = normalizeOwnerPhone(ownerPhone);
+  const result = await executeInventoryOperation(productCreationToPlan(productInput, businessId, options), {
+    businessId, actorId: options.actorId ?? businessId, permissions: ['inventory:create', 'inventory:reserve'],
   });
+  return result.items[0].product;
 };
 
-export const createProductModelRecords = async (input, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  await ensureReady();
-  const productType = String(input?.productType ?? '').trim();
-  const productModel = String(input?.productModel ?? '').trim();
-  const variants = input?.variants;
-  if (!productType || !productModel || !Array.isArray(variants) || variants.length === 0) {
-    throw new Error('Completá el tipo, el modelo y al menos un talle.');
-  }
-  const sizes = new Set();
-  for (const variant of variants) {
-    const size = String(variant?.size ?? '').trim();
-    const normalizedSize = size.toLocaleLowerCase('es');
-    if (!size || sizes.has(normalizedSize)) throw new Error('Cada talle debe estar completo y ser único.');
-    if (![variant?.stockAvailable, variant?.price].every((value) => Number.isSafeInteger(value) && value >= 0)) {
-      throw new Error('Stock y precio deben ser números enteros mayores o iguales a cero.');
-    }
-    sizes.add(normalizedSize);
-  }
-
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-  return withTransaction(async (client) => {
-    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
-    await ensureTenantState(client, normalizedOwnerPhone);
-    const existing = await client.query(
-      `SELECT id FROM products WHERE owner_phone = ANY($1)
-       AND lower(trim(coalesce(product_type, ''))) = lower($2)
-       AND lower(trim(coalesce(product_model, ''))) = lower($3) LIMIT 1`,
-      [getOwnerPhoneVariants(ownerPhone), productType, productModel],
-    );
-    if (existing.rowCount) throw new Error('Ese modelo ya existe. Agregá el talle desde su tarjeta.');
-
-    const name = `${productType} ${productModel}`;
-    const created = [];
-    for (const variant of variants) {
-      const id = `product-${slugify(name)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-      const result = await client.query(
-        `INSERT INTO products (id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8)
-         RETURNING id, owner_phone, name, product_type, product_model, size, stock_available, stock_reserved, price`,
-        [id, normalizedOwnerPhone, name, productType, productModel, String(variant.size).trim(), variant.stockAvailable, variant.price],
-      );
-      created.push(rowToProduct(result.rows[0]));
-    }
-    return created;
+export const createProductModelRecords = async (input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
+  const businessId = normalizeOwnerPhone(ownerPhone);
+  const result = await executeInventoryOperation(productCreationToPlan(input, businessId, options, true), {
+    businessId, actorId: options.actorId ?? businessId, permissions: ['inventory:create', 'inventory:reserve'],
   });
+  return result.items.map((item) => item.product);
 };
 
 export const updateProductRecord = async (productId, updates, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
@@ -2284,6 +2203,7 @@ const applyConfirmedStockActions = async (actions, sourceText, ownerPhone, optio
 };
 
 export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
+  if (actions.some((action) => action.type === 'create_product')) throw new InventoryOperationError('UNSUPPORTED_OPERATION', 'El alta requiere el contrato de creación; no se ejecuta desde un evento de historial.');
   if (actions.some((action) => action.type === 'delete_product')) {
     if (actions.some((action) => action.type !== 'delete_product')) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION', 'La baja necesita una selección independiente; no apliqué el lote mixto.');
     const ids = actions.every((action) => typeof action.productId === 'string' && action.productId.trim()) ? actions.map((action) => action.productId) : undefined;

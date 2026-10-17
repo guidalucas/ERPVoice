@@ -31,6 +31,19 @@ En WhatsApp, pedir una baja prepara el conjunto; `CONFIRMAR BAJA <código>` lo c
 `npm run test:inventory-deactivation-ui` verifica revisión, cancelación y reintentos del panel.
 La reactivación explícita y otras mutaciones masivas siguen pendientes.
 
+Las altas individuales y de variantes (`POST /api/products` y `/api/products/model`)
+requieren `operationId` estable y ejecutan `sku.create` en ese mismo núcleo. El contrato
+canónico declara `initialStock: {available,reserved}`; cero es válido, sin ingresos ficticios.
+Las rutas compatibles conservan `stockAvailable`, `stockReserved` y `price` (omitidos: cero),
+pero rechazan números negativos, fraccionarios, cadenas o null. Admiten `unit`, `attributes`
+tipados y `priceCurrency`. El lote de variantes se aplica completo o no escribe nada.
+Un reintento devuelve los productos del recibo original, aunque luego cambie su stock;
+reutilizar el ID con otro contenido o duplicar una identidad devuelve 409.
+Cada modelo es actualmente un lote de SKU: la API permite añadir variantes únicas a los
+mismos tipo/modelo; todavía no existe una entidad persistente de familia configurable.
+`npm run test:inventory-create-ui` verifica altas, reintentos y recuperación del panel.
+Los efectos de pedidos y otros escritores históricos siguen pendientes de migración.
+
 Antes de desplegar: configurar `META_APP_SECRET` (firma POST Meta) y, en producción,
 `AUTH_JWT_SECRET` privado de al menos 32 bytes. `/api/health` publica readiness y el SHA
 si existe `RENDER_GIT_COMMIT` o `GIT_COMMIT_SHA`. Verificar backup/restauración antes de

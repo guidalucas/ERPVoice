@@ -1,4 +1,4 @@
-import type { Client, ParsedActionUnion, Pedido, PedidoEstado, Product, Proveedor, Transaction } from '../domain/types';
+import type { Client, InventoryAttributes, ParsedActionUnion, Pedido, PedidoEstado, Product, Proveedor, Transaction } from '../domain/types';
 import { requestJson } from './apiClient';
 
 export type PersistedState = {
@@ -14,6 +14,9 @@ export type ProductInput = {
   productType?: string | null;
   productModel?: string | null;
   size?: string | null;
+  attributes?: InventoryAttributes;
+  unit?: string;
+  priceCurrency?: string;
   stockAvailable?: number;
   stockReserved?: number;
   price?: number;
@@ -58,16 +61,19 @@ export const applyStateActions = async (sourceText: string, actions: ParsedActio
     body: JSON.stringify({ sourceText, actions, operationId }),
   });
 
-export const createProduct = async (product: ProductInput) =>
+export type ProductCreation = { operationId: string };
+export type ProductModelInput = { productType: string; productModel: string; attributes?: InventoryAttributes; unit?: string; priceCurrency?: string; variants: Array<{ size: string; stockAvailable: number; stockReserved?: number; price: number }> };
+
+export const createProduct = async (product: ProductInput, metadata: ProductCreation) =>
   requestJson<Product>('/api/products', {
     method: 'POST',
-    body: JSON.stringify(product),
+    body: JSON.stringify({ ...product, operationId: metadata.operationId }),
   });
 
-export const createProductModel = async (input: { productType: string; productModel: string; variants: Array<{ size: string; stockAvailable: number; price: number }> }) =>
+export const createProductModel = async (input: ProductModelInput, metadata: ProductCreation) =>
   requestJson<Product[]>('/api/products/model', {
     method: 'POST',
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, operationId: metadata.operationId }),
   });
 
 export const updateProduct = async (productId: string, product: Partial<ProductInput>, adjustment: ProductAdjustment) =>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { InventorySelectionPreview, InventorySelectionRequest, ProductAdjustment } from '../../services/productService';
+import type { InventorySelectionPreview, InventorySelectionRequest, ProductAdjustment, ProductInput, ProductModelInput } from '../../services/productService';
 import { getVariantWord, type BusinessCategoryPreset } from '../../domain/businessCategories';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
@@ -233,13 +233,14 @@ function ProductFormModal({
       <div role="dialog" aria-modal="true" aria-label={title} className="max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
         <div className="flex items-start justify-between gap-3">
           <h4 className="type-title text-[1.55rem] leading-none text-[color:var(--text)]">{title}</h4>
-          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" onClick={onClose}>
+          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" disabled={submitting} onClick={onClose}>
             ×
           </button>
         </div>
         {description && <p className="mt-2 text-sm text-[color:var(--muted)]">{description}</p>}
 
         <form id="product-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
+          <fieldset disabled={submitting} className="min-w-0 space-y-5">
           {!variantOnly && (
             <fieldset>
               {preset.useVariants && <legend className="mb-3 type-subtitle text-sm text-[color:var(--muted)]">1. Modelo</legend>}
@@ -289,11 +290,12 @@ function ProductFormModal({
             Motivo del ajuste
             <input className="erp-input" required value={adjustmentReason ?? ''} onChange={(event) => onAdjustmentReasonChange(event.target.value)} placeholder="Por ejemplo: corrección por conteo físico" />
           </label>}
+        </fieldset>
         </form>
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button type="button" onClick={onClose} className="erp-button-secondary">
+          <button type="button" disabled={submitting} onClick={onClose} className="erp-button-secondary">
             Cancelar
           </button>
           <button type="submit" form="product-form" disabled={submitting} className="erp-button-primary">
@@ -335,10 +337,11 @@ function NewModelModal({
       <div role="dialog" aria-modal="true" aria-label="Nuevo modelo" className="max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
         <div className="flex items-start justify-between gap-3">
           <h4 className="type-title text-[1.55rem] leading-none">Nuevo modelo</h4>
-          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" onClick={onClose}>×</button>
+          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" disabled={saving} onClick={onClose}>×</button>
         </div>
         <p className="mt-2 text-sm text-[color:var(--muted)]">Cargá el modelo y todos los {pluralizeVariantLabel(preset.variantLabel)} que quieras vender.</p>
         <form id="new-model-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
+          <fieldset disabled={saving} className="min-w-0 space-y-5">
           <fieldset>
             <legend className="mb-3 type-subtitle text-sm text-[color:var(--muted)]">Modelo</legend>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -381,10 +384,11 @@ function NewModelModal({
             <button type="button" className="erp-button-secondary mt-3" onClick={() => onVariantsChange([...variants, emptyVariantDraft(variants[variants.length - 1]?.price ?? '0')])}>+ Agregar otro {variantWord}</button>
             <p className="mt-2 text-xs text-[color:var(--muted)]">Podés dejar el stock en 0 y registrar un ingreso después.</p>
           </fieldset>
+        </fieldset>
         </form>
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button type="button" onClick={onClose} className="erp-button-secondary" disabled={saving}>Cancelar</button>
+          <button type="button" disabled={saving} onClick={onClose} className="erp-button-secondary">Cancelar</button>
           <button type="submit" form="new-model-form" disabled={saving} className="erp-button-primary">{saving ? 'Guardando...' : 'Crear modelo'}</button>
         </div>
       </div>
@@ -478,6 +482,12 @@ export function ProductsAbmPanel({
   const [adjustmentReason, setAdjustmentReason] = useState('');
   // Keep the exact operation through ambiguous failures, including a failed refresh after success.
   const editOperation = useRef<{ key: string; adjustment: ProductAdjustment } | null>(null);
+  const createOperation = useRef<
+    | { kind: 'sku'; key: string; operationId: string; payload: ProductInput }
+    | { kind: 'model'; key: string; operationId: string; payload: ProductModelInput }
+    | null
+  >(null);
+  const formBusy = useRef(false);
   const [addingToGroup, setAddingToGroup] = useState<ProductGroup | null>(null);
   const [editingGroup, setEditingGroup] = useState<ProductGroup | null>(null);
   const [modelDraft, setModelDraft] = useState({ productType: '', productModel: '' });
@@ -660,16 +670,20 @@ export function ProductsAbmPanel({
 
   useEffect(() => {
     if (!isFormOpen) {
+      createOperation.current = null;
       setEditingProductId(null);
       setAddingToGroup(null);
       setDraft(emptyDraft());
       setNewVariants([emptyVariantDraft()]);
+      formBusy.current = false;
       setSaving(false);
       setFormError(null);
     }
   }, [isFormOpen]);
 
   const openCreateForm = () => {
+    if (formBusy.current) return;
+    createOperation.current = null;
     setEditingProductId(null);
     setAddingToGroup(null);
     setFormError(null);
@@ -679,6 +693,9 @@ export function ProductsAbmPanel({
   };
 
   const handleCreateModel = async () => {
+    if (formBusy.current) return;
+    const key = JSON.stringify({ draft, newVariants });
+    const retry = createOperation.current?.kind === 'model' && createOperation.current.key === key;
     const productType = draft.productType.trim();
     const productModel = draft.productModel.trim();
     if (!productType || !productModel) {
@@ -686,7 +703,7 @@ export function ProductsAbmPanel({
       return;
     }
     const modelKey = `model||${normalizeSearch(productType)}||${normalizeSearch(productModel)}`;
-    if (groupedProducts.some((group) => group.key === modelKey)) {
+    if (!retry && groupedProducts.some((group) => group.key === modelKey)) {
       setFormError(`Ese modelo ya existe. Agregá el ${variantWord} desde su tarjeta.`);
       return;
     }
@@ -708,9 +725,10 @@ export function ProductsAbmPanel({
       }
     }
     setFormError(null);
+    formBusy.current = true;
     setSaving(true);
     try {
-      await createProductModelRecords({
+      if (!retry) createOperation.current = { kind: 'model', key, operationId: crypto.randomUUID(), payload: {
         productType,
         productModel,
         variants: newVariants.map((variant) => ({
@@ -718,17 +736,23 @@ export function ProductsAbmPanel({
           stockAvailable: Number(variant.stockAvailable),
           price: Number(variant.price),
         })),
-      });
+      } };
+      const operation = createOperation.current!;
+      if (operation.kind !== 'model') return;
+      await createProductModelRecords(operation.payload, operation);
       setExpandedGroups((current) => ({ ...current, [modelKey]: true }));
       setIsFormOpen(false);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'No se pudo crear el modelo.');
     } finally {
+      formBusy.current = false;
       setSaving(false);
     }
   };
 
   const openEditForm = (product: ProductRow) => {
+    if (formBusy.current) return;
+    createOperation.current = null;
     setEditSnapshot({ ...product });
     setAdjustmentReason('');
     editOperation.current = null;
@@ -740,6 +764,8 @@ export function ProductsAbmPanel({
   };
 
   const openAddVariantForm = (group: ProductGroup) => {
+    if (formBusy.current) return;
+    createOperation.current = null;
     const reference = group.products[0];
     if (!reference) return;
     setEditingProductId(null);
@@ -818,7 +844,9 @@ export function ProductsAbmPanel({
   };
 
   const handleSubmit = async () => {
-    if (saving) return;
+    if (formBusy.current) return;
+    const createKey = JSON.stringify(draft);
+    const retry = createOperation.current?.kind === 'sku' && createOperation.current.key === createKey;
     if (editingProductId && (!editSnapshot || !Number.isSafeInteger(editSnapshot.revision) || (editSnapshot.revision ?? -1) < 0)) {
       setFormError('Falta la revisión del producto. Actualizá la página y volvé a abrir el formulario. Tu borrador se conserva.');
       return;
@@ -841,7 +869,7 @@ export function ProductsAbmPanel({
       setFormError('Precio y stock deben ser números enteros mayores o iguales a cero.');
       return;
     }
-    if (preset.useVariants && size) {
+    if (preset.useVariants && size && !retry) {
       const sameModel = (addingToGroup ? groupedProducts.find((group) => group.key === addingToGroup.key)?.products : null) ?? products.filter((product) => {
         if (draft.productType.trim() || draft.productModel.trim()) {
           return normalizeSearch(product.productType ?? '') === normalizeSearch(draft.productType)
@@ -860,6 +888,7 @@ export function ProductsAbmPanel({
     }
 
     setFormError(null);
+    formBusy.current = true;
     setSaving(true);
     try {
       const payload = {
@@ -890,16 +919,20 @@ export function ProductsAbmPanel({
         }
         await updateProductRecord(editingProductId, changes, editOperation.current.adjustment);
       } else {
-        await createProductRecord(payload as ProductRow & { name: string });
+        if (!retry) createOperation.current = { kind: 'sku', key: createKey, operationId: crypto.randomUUID(), payload };
+        const operation = createOperation.current!;
+        if (operation.kind !== 'sku') return;
+        await createProductRecord(operation.payload, operation);
       }
 
       setIsFormOpen(false);
       if (addingToGroup) setExpandedGroups((current) => ({ ...current, [addingToGroup.key]: true }));
     } catch (error) {
-      setFormError(error instanceof Error && 'status' in error && error.status === 409
+      setFormError(editingProductId && error instanceof Error && 'status' in error && error.status === 409
         ? 'El producto cambió desde que abriste el formulario. Tu borrador se conserva. Actualizá la página y volvé a abrir el producto para revisar los valores antes de guardar.'
         : error instanceof Error ? error.message : 'No se pudo guardar el producto.');
     } finally {
+      formBusy.current = false;
       setSaving(false);
     }
   };
@@ -1101,9 +1134,9 @@ export function ProductsAbmPanel({
             draft={draft}
             variants={newVariants}
             preset={preset}
-            onDraftChange={(nextDraft) => { setDraft(nextDraft); setFormError(null); }}
-            onVariantsChange={(nextVariants) => { setNewVariants(nextVariants); setFormError(null); }}
-            onClose={() => setIsFormOpen(false)}
+            onDraftChange={(nextDraft) => { if (formBusy.current) return; createOperation.current = null; setDraft(nextDraft); setFormError(null); }}
+            onVariantsChange={(nextVariants) => { if (formBusy.current) return; createOperation.current = null; setNewVariants(nextVariants); setFormError(null); }}
+            onClose={() => { if (!formBusy.current) setIsFormOpen(false); }}
             onSubmit={handleCreateModel}
             saving={saving}
             error={formError}
@@ -1118,8 +1151,8 @@ export function ProductsAbmPanel({
               : editingProductId && preset.useVariants ? `Modelo: ${[draft.productType, draft.productModel].filter(Boolean).join(' ') || draft.name}. Acá editás solo este ${variantWord}.`
               : preset.useVariants && !editingProductId ? `Cargá el modelo y su primer ${variantWord}. Si ya existe, agregá el ${variantWord} desde su tarjeta.` : undefined}
             draft={draft}
-            onDraftChange={(nextDraft) => { setDraft(nextDraft); setFormError(null); }}
-            onClose={() => setIsFormOpen(false)}
+            onDraftChange={(nextDraft) => { if (formBusy.current) return; createOperation.current = null; setDraft(nextDraft); setFormError(null); }}
+            onClose={() => { if (!formBusy.current) setIsFormOpen(false); }}
             onSubmit={handleSubmit}
             submitLabel={editingProductId ? 'Guardar cambios' : addingToGroup ? `Agregar ${variantWord}` : preset.useVariants ? 'Crear modelo' : 'Crear producto'}
             submitting={saving}

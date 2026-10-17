@@ -96,12 +96,12 @@ export async function executeInventoryPlanInTransaction(client, input, context) 
       productModel: persisted.get(item.skuId).productModel, size: persisted.get(item.skuId).size,
       stockAvailable: persisted.get(item.skuId).stockAvailable,
       stockReserved: persisted.get(item.skuId).stockReserved,
-      ...(['stock.adjust', 'sku.update', 'sku.deactivate'].includes(item.type) ? { revision: persisted.get(item.skuId).revision,
+      ...(['stock.adjust', 'sku.update', 'sku.deactivate', 'sku.create'].includes(item.type) ? { revision: persisted.get(item.skuId).revision,
         product: { ...persisted.get(item.skuId), identityFingerprint: inventoryProductFingerprint(persisted.get(item.skuId)) },
         ...(item.changes ? { changes: Object.fromEntries(Object.keys(item.changes).map((key) => [key, persisted.get(item.skuId)[key] ?? null])) } : {}),
         ...(item.balances ? { balances: Object.fromEntries(Object.keys(item.balances).map((key) => [key, persisted.get(item.skuId)[key === 'available' ? 'stockAvailable' : 'stockReserved']])) } : {}),
       } : {}),
-      ...(['stock.receive', 'stock.adjust', 'sku.update', 'sku.deactivate'].includes(item.type)
+      ...(['stock.receive', 'stock.adjust', 'sku.update', 'sku.deactivate', 'sku.create'].includes(item.type)
         ? { price: persisted.get(item.skuId).price, currency: persisted.get(item.skuId).priceCurrency }
         : { catalogPrice: persisted.get(item.skuId).price, catalogCurrency: persisted.get(item.skuId).priceCurrency }),
     })) };

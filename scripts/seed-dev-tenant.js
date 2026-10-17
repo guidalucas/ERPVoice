@@ -56,8 +56,8 @@ const main = async () => {
   }
 
   const products = [];
-  for (const product of seedProducts) {
-    const created = await createProductRecord(product, ownerPhone);
+  for (const [index, product] of seedProducts.entries()) {
+    const created = await createProductRecord(product, ownerPhone, { operationId: `dev-seed-product-${index + 1}`, channel: 'seed', actorId: ownerPhone });
     products.push(created);
     console.log(`[seed-dev] producto ${created.name} (stock ${created.stockAvailable})`);
   }
