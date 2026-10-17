@@ -151,7 +151,10 @@ export const deleteProducts = async (selection: InventorySelectionReference) =>
     body: JSON.stringify(selection),
   });
 
-export const createClient = async (client: ClientInput) =>
+export type ClientCreateInput = ClientInput & { operationId: string };
+export type ProveedorCreateInput = ProveedorInput & { operationId: string };
+
+export const createClient = async (client: ClientCreateInput) =>
   requestJson<Client>('/api/clients', {
     method: 'POST',
     body: JSON.stringify(client),
@@ -175,7 +178,7 @@ export const mergeClients = async (keepId: string, mergeId: string, metadata: Cl
     body: JSON.stringify({ keepId, mergeId, operationId:metadata.operationId, expectedKeepRevision:metadata.expectedKeepRevision, expectedMergeRevision:metadata.expectedMergeRevision }),
   });
 
-export const createProveedor = async (proveedor: ProveedorInput) =>
+export const createProveedor = async (proveedor: ProveedorCreateInput) =>
   requestJson<Proveedor>('/api/proveedores', {
     method: 'POST',
     body: JSON.stringify(proveedor),

@@ -63,8 +63,8 @@ const main = async () => {
   }
 
   const clients = [];
-  for (const client of seedClients) {
-    const created = await createClientRecord(client, ownerPhone);
+  for (const [index, client] of seedClients.entries()) {
+    const created = await createClientRecord({...client,operationId:`dev-seed-client-${index + 1}`}, ownerPhone);
     clients.push(created);
     console.log(`[seed-dev] cliente ${created.name}`);
   }

@@ -18,6 +18,8 @@ import { ACCOUNT_SCHEMA_SQL, executeAccountPlanInTransaction } from './accountPo
 import { operationRequestDigest } from './operationHash.js';
 import { validateAccountPlan } from './accountOperations.js';
 import { mergeClientsInTransaction } from './clientMergePostgres.js';
+import { PARTY_SCHEMA_SQL, executePartyPlanInTransaction } from './partyPostgres.js';
+import { partyCreationToPlan, validatePartyPlan } from './partyOperations.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -551,6 +553,7 @@ const initializeDatabase = async () => {
     ${INVENTORY_SCHEMA_SQL}
     ${ORDER_SCHEMA_SQL}
     ${ACCOUNT_SCHEMA_SQL}
+    ${PARTY_SCHEMA_SQL}
 
     DO $$
     DECLARE
@@ -564,6 +567,7 @@ const initializeDatabase = async () => {
         'transactions',
         'voice_stock_batches',
         'inventory_operations',
+        'party_operations',
         'inventory_movements',
         'meta_message_claims',
         'meta_reply_outbox',
@@ -1313,28 +1317,22 @@ export const deleteProductRecords = async (idsInput, ownerPhone = DEFAULT_OWNER_
   return options.returnResult ? result : result.items.length;
 };
 
-export const createClientRecord = async (clientInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  if (clientInput?.debt !== undefined && clientInput.debt !== 0) throw new InventoryOperationError('ACCOUNT_OPERATION_REQUIRED', 'Creá el cliente con saldo cero y registrá el cargo con un plan de cuenta explícito.');
+export const executePartyOperation = async (plan, context) => {
+  const normalized = validatePartyPlan(plan, context);
   await ensureReady();
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-  const name = String(clientInput?.name ?? '').trim();
-
-  if (!name) {
-    return null;
-  }
-
-  const id = `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const result = await getPool().query(
-    `
-      INSERT INTO clients (id, owner_phone, name, debt, notas)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, owner_phone, name, debt, notas, account_revision
-    `,
-    [id, normalizedOwnerPhone, titleCase(name), 0, normalizeNullableString(clientInput?.notas)],
-  );
-
-  return rowToClient(result.rows[0]);
+  return withTransaction((client) => executePartyPlanInTransaction(client, normalized, context));
 };
+
+const createPartyRecord = async (kind, input, ownerPhone, options) => {
+  const businessId = normalizeOwnerPhone(ownerPhone);
+  const plan = partyCreationToPlan(kind, input, businessId);
+  const result = await executePartyOperation(plan, { businessId, actorId: options.actorId ?? businessId,
+    permissions: [kind === 'client' ? 'clients:create' : 'suppliers:create'] });
+  return result.items[0].party;
+};
+
+export const createClientRecord = async (input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) =>
+  createPartyRecord('client', input, ownerPhone, options);
 
 export const updateClientRecord = async (clientId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
   if (updates?.debt !== undefined) throw new InventoryOperationError('ACCOUNT_OPERATION_REQUIRED', 'El saldo requiere un ajuste de cuenta explícito con motivo y revisión.');
@@ -1393,27 +1391,8 @@ export const mergeClientRecords = async (keepId, mergeId, ownerPhone = DEFAULT_O
   });
 };
 
-export const createProveedorRecord = async (proveedorInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
-  await ensureReady();
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-  const name = String(proveedorInput?.name ?? '').trim();
-
-  if (!name) {
-    return null;
-  }
-
-  const id = `proveedor-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const result = await getPool().query(
-    `
-      INSERT INTO proveedores (id, owner_phone, name, notas)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id, owner_phone, name, notas
-    `,
-    [id, normalizedOwnerPhone, titleCase(name), normalizeNullableString(proveedorInput?.notas)],
-  );
-
-  return rowToProveedor(result.rows[0]);
-};
+export const createProveedorRecord = async (input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) =>
+  createPartyRecord('supplier', input, ownerPhone, options);
 
 export const updateProveedorRecord = async (proveedorId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
   await ensureReady();
@@ -1758,7 +1737,8 @@ const applyOrderActions = async (actions, sourceText, ownerPhone, options) => {
       result = parseJsonValue(prior.result_json);
     } else {
       const context = { businessId, actorId: options.actorId ?? businessId, channel: options.channel ?? 'orders', internalOrderBatch: true,
-        permissions: ['orders:create','orders:update','orders:delete','inventory:receive','inventory:withdraw'], ownerPhoneVariants: getOwnerPhoneVariants(businessId) };
+        permissions: ['orders:create','orders:update','orders:delete','inventory:receive','inventory:withdraw','clients:create','suppliers:create'], ownerPhoneVariants: getOwnerPhoneVariants(businessId) };
+      await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
       const receipts = [];
       for (const [index, action] of actions.entries()) {
         const snapshot = await queryAllState(businessId, client);
@@ -1771,9 +1751,11 @@ const applyOrderActions = async (actions, sourceText, ownerPhone, options) => {
           const found = rows.filter((entry) => canonicalIdentityText(entry.name) === canonicalIdentityText(name));
           if (found.length > 1) throw new InventoryOperationError('PARTY_SELECTION_REQUIRED', 'Hay varios clientes/proveedores con ese nombre. Elegí su ID.');
           if (found.length) return found[0].id;
-          const newId = `${kind}-${crypto.randomUUID()}`;
-          await client.query(kind === 'client' ? 'INSERT INTO clients(id,owner_phone,name,debt) VALUES($1,$2,$3,0)' : 'INSERT INTO proveedores(id,owner_phone,name) VALUES($1,$2,$3)', [newId,businessId,name.trim()]);
-          return newId;
+          const partyId = `order-party:${crypto.createHash('sha256').update(JSON.stringify([businessId,batchId,index,kind])).digest('hex')}`;
+          const partyResult = await executePartyPlanInTransaction(client, {contractVersion:1,businessId,operationId:partyId,
+            source:{channel:context.channel,text:sourceText || 'Participante del pedido'},
+            actions:[{itemId:'party-1',type:kind === 'client' ? 'client.create' : 'supplier.create',name}]}, context);
+          return partyResult.items[0].party.id;
         };
         let receipt;
         if (action.type === 'client_order') {

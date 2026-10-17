@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 
 export async function runOrderReconciliationChecks({db,sql,check}) {
+  let partyFixtureSequence = 0;
+  const createFixtureClient = (input, businessId) => db.createClientRecord({ ...input, operationId: 'order-reconciliation-postgres-checks-party-' + ++partyFixtureSequence }, businessId);
+
   const a='59899000891',b='59899000892';let sequence=0;
   const id=()=>`order-reconcile-${++sequence}`;
-  const customer=await db.createClientRecord({name:'Cliente conciliación histórica'},a);
+  const customer=await createFixtureClient({name:'Cliente conciliación histórica'},a);
   const fixture=async()=>{
     const product=await db.createProductRecord({name:`SKU explícito histórico ${id()}`,stockAvailable:8,stockReserved:1,unit:'box'},a,{operationId:id()});
     const pedidoId=id();

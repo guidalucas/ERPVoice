@@ -34,20 +34,28 @@ export function ClientesPanel() {
     return map;
   }, [pedidos]);
 
+  const createAttemptRef = useRef<Parameters<typeof createClientRecord>[0] | null>(null);
+
   const handleCreate = async () => {
+    if (busyRef.current) return;
     if (!name.trim()) {
       return;
     }
+    busyRef.current = true;
     setSaving(true);
     setError(null);
     try {
-      await createClientRecord({ name: name.trim(), notas: notas.trim() || null });
+      const attempt = createAttemptRef.current ?? { operationId: crypto.randomUUID(), name: name.trim(), notas: notas.trim() || null };
+      createAttemptRef.current = attempt;
+      await createClientRecord(attempt);
+      createAttemptRef.current = null;
       setName('');
       setNotas('');
       setFormOpen(false);
     } catch (error) {
       setError(toUserFacingError(error,'No pude crear el cliente.'));
     } finally {
+      busyRef.current = false;
       setSaving(false);
     }
   };
@@ -63,9 +71,11 @@ export function ClientesPanel() {
   };
 
   const saveEdit = async () => {
+    if (busyRef.current) return;
     if (!editingId || !editName.trim()) {
       return;
     }
+    busyRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -74,6 +84,7 @@ export function ClientesPanel() {
     } catch (error) {
       setError(toUserFacingError(error,'No pude guardar el cliente.'));
     } finally {
+      busyRef.current = false;
       setSaving(false);
     }
   };
@@ -100,16 +111,18 @@ export function ClientesPanel() {
     } catch (error) {
       setError(toUserFacingError(error,'No pude fusionar los clientes.'));
     } finally {
-      setSaving(false);
       busyRef.current = false;
+      setSaving(false);
     }
   };
 
   const handleDelete = async (clientId: string) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setError(null); setSaving(true);
     try { await deleteClientRecord(clientId); }
     catch (error) { setError(toUserFacingError(error,'No pude eliminar el cliente.')); }
-    finally { setSaving(false); }
+    finally { busyRef.current = false; setSaving(false); }
   };
 
   return (
@@ -131,15 +144,15 @@ export function ClientesPanel() {
               <p className="mt-1 text-sm text-[color:var(--warning)]">Deuda total {formatCurrency(outstandingDebt)}</p>
             )}
           </div>
-          <button type="button" className="erp-button-primary min-h-11" onClick={() => setFormOpen((open) => !open)}>
+          <button type="button" className="erp-button-primary min-h-11" disabled={saving} onClick={() => setFormOpen((open) => !open)}>
             {formOpen ? 'Cerrar' : 'Nuevo cliente'}
           </button>
         </div>
 
         {formOpen && (
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-            <input className="erp-input min-h-11" placeholder="Nombre" value={name} onChange={(event) => setName(event.target.value)} />
-            <input className="erp-input min-h-11" placeholder="Notas (opcional)" value={notas} onChange={(event) => setNotas(event.target.value)} />
+            <input className="erp-input min-h-11" placeholder="Nombre" disabled={saving} value={name} onChange={(event) => { createAttemptRef.current = null; setName(event.target.value); }} />
+            <input className="erp-input min-h-11" placeholder="Notas (opcional)" disabled={saving} value={notas} onChange={(event) => { createAttemptRef.current = null; setNotas(event.target.value); }} />
             <button type="button" className="erp-button-primary min-h-11" disabled={saving || !name.trim()} onClick={() => void handleCreate()}>
               Agregar
             </button>

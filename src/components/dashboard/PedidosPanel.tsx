@@ -83,6 +83,8 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
   const [pedidoSkuChoices, setPedidoSkuChoices] = useState<Record<string, string>>({});
   const [pedidoErrors, setPedidoErrors] = useState<Record<string, string>>({});
   const createAttemptRef = useRef<{ key: string; body: Parameters<typeof createPedidoRecord>[0] } | null>(null);
+  const clientCreateAttemptRef = useRef<Parameters<typeof createClientRecord>[0] | null>(null);
+  const proveedorCreateAttemptRef = useRef<Parameters<typeof createProveedorRecord>[0] | null>(null);
   const statusAttemptsRef = useRef(new Map<string, { estado: PedidoEstado; productId?: string; operationId: string; expectedRevision: number }>());
   const busyRef = useRef(false);
   type ReconciliationRequest = Parameters<typeof reconcilePedidoRecord>[1];
@@ -231,6 +233,8 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
 
   const resetForm = () => {
     createAttemptRef.current = null;
+    clientCreateAttemptRef.current = null;
+    proveedorCreateAttemptRef.current = null;
     setClienteId('');
     setNewClientName('');
     setProveedorId('');
@@ -286,14 +290,20 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
           setFormError('Elegí un cliente o escribí un nombre nuevo.');
           return;
         }
-        const created = await createClientRecord({ name });
+        const attempt = clientCreateAttemptRef.current ?? { operationId: crypto.randomUUID(), name };
+        clientCreateAttemptRef.current = attempt;
+        const created = await createClientRecord(attempt);
+        clientCreateAttemptRef.current = null;
         resolvedClientId = created.id;
         setClienteId(created.id); setNewClientName('');
       }
 
       let resolvedProveedorId: string | null = proveedorId || null;
       if (!resolvedProveedorId && newProveedorName.trim()) {
-        const created = await createProveedorRecord({ name: newProveedorName.trim() });
+        const attempt = proveedorCreateAttemptRef.current ?? { operationId: crypto.randomUUID(), name: newProveedorName.trim() };
+        proveedorCreateAttemptRef.current = attempt;
+        const created = await createProveedorRecord(attempt);
+        proveedorCreateAttemptRef.current = null;
         resolvedProveedorId = created.id;
         setProveedorId(created.id); setNewProveedorName('');
       }
@@ -392,6 +402,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
                 className="erp-input min-h-11"
                 value={clienteId}
                 onChange={(event) => {
+                  clientCreateAttemptRef.current = null;
                   setClienteId(event.target.value);
                   if (event.target.value) {
                     setNewClientName('');
@@ -412,7 +423,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
                 className="erp-input min-h-11"
                 value={newClientName}
                 disabled={Boolean(clienteId)}
-                onChange={(event) => setNewClientName(event.target.value)}
+                onChange={(event) => { clientCreateAttemptRef.current = null; setNewClientName(event.target.value); }}
                 placeholder="Nombre"
               />
             </label>
@@ -422,6 +433,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
                 className="erp-input min-h-11"
                 value={proveedorId}
                 onChange={(event) => {
+                  proveedorCreateAttemptRef.current = null;
                   setProveedorId(event.target.value);
                   if (event.target.value) {
                     setNewProveedorName('');
@@ -442,7 +454,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
                 className="erp-input min-h-11"
                 value={newProveedorName}
                 disabled={Boolean(proveedorId)}
-                onChange={(event) => setNewProveedorName(event.target.value)}
+                onChange={(event) => { proveedorCreateAttemptRef.current = null; setNewProveedorName(event.target.value); }}
                 placeholder="Nombre"
               />
             </label>

@@ -11,6 +11,9 @@ import { getJwtSecret, issueJwt } from '../server/auth.js';
 
 /** Exercise the real HTTP boundary against the harness's disposable local PostgreSQL. */
 export async function runInventoryHttpChecks({ db, sql, check }) {
+  let partyFixtureSequence = 0;
+  const createFixtureClient = (input, businessId) => db.createClientRecord({ ...input, operationId: 'inventory-http-checks-party-' + ++partyFixtureSequence }, businessId);
+
   assert.equal(typeof db.getStateSnapshotStrict, 'function');
   const aliases = ['SUPABASE_DATABASE_URL', 'DATABASE_URL', 'POSTGRES_URL', 'POSTGRES_CONNECTION_STRING'];
   const connection = aliases.map((key) => process.env[key]).find(Boolean);
@@ -402,7 +405,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
     });
     await run('order endpoints require IDs/revisions, persist procurement and return immutable delete receipts', async () => {
       const product = await createHttpFixtureProduct({ name:'HTTP order explicit SKU',stockAvailable:0 },owner);
-      const customer = await db.createClientRecord({name:'HTTP order customer'},owner);
+      const customer = await createFixtureClient({name:'HTTP order customer'},owner);
       const body = {operationId:'http-order-create',clienteId:customer.id,producto:product.name,productId:product.id,qty:3};
       assert.equal((await request('/api/pedidos',{body,auth:false})).status,401);
       assert.equal((await request('/api/pedidos',{body:{...body,operationId:undefined}})).status,400);
@@ -424,7 +427,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
     });
     await run('signed WhatsApp order transitions use the bound SKU, outbox and terminal insufficiency', async () => {
       const product = await createHttpFixtureProduct({name:'Taladro Pedido HTTP',stockAvailable:0},owner);
-      const customer = await db.createClientRecord({name:'HTTP proveedor pedido'},owner);
+      const customer = await createFixtureClient({name:'HTTP proveedor pedido'},owner);
       await db.createPedidoRecord({operationId:'http-meta-order-create',clienteId:customer.id,producto:product.name,productId:product.id,qty:2},owner);
       const send = async (messageId,text) => {
         const raw = JSON.stringify({object:'whatsapp_business_account',entry:[{changes:[{value:{messages:[{id:messageId,from:owner,type:'text',text:{body:text}}]}}]}]});
@@ -450,8 +453,40 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.deepEqual(await send('http-order-meta-reject','Descartá el pedido Taladro Pedido HTTP'),rejected);
       assert.equal(Number((await stock(product.id))[0].stock_available),2);
     });
+    await run('party creation authenticates closed input and persists tenant scoped immutable receipts', async () => {
+      const foreignOwner = '59899000535';
+      for (const [route, table, kind] of [['/api/clients', 'clients', 'client'], ['/api/proveedores', 'proveedores', 'supplier']]) {
+        const body = { operationId: `http-party-${kind}`, name: `HTTP alta ${kind}`, notas: 'Nota de alta HTTP' };
+        assert.equal((await request(route, { body, auth: false })).status, 401);
+        const missing = await request(route, { body: { name: body.name } });
+        assert.equal(missing.status, 400); assert.equal(missing.json.code, 'OPERATION_ID_REQUIRED');
+        const unknown = await request(route, { body: { ...body, ownerPhone: foreignOwner } });
+        assert.equal(unknown.status, 400); assert.equal(unknown.json.code, 'INVALID_PARTY_OPERATION');
+        const [first, concurrent] = await Promise.all([request(route, { body }), request(route, { body })]);
+        assert.equal(first.status, 201); assert.equal(concurrent.status, 201); assert.deepEqual(first.json, concurrent.json);
+        assert.deepEqual((await request(route, { body })).json, first.json);
+        const persisted = (await sql.query(`SELECT * FROM ${table} WHERE owner_phone=$1 AND id=$2`, [owner, first.json.id])).rows[0];
+        assert.ok(persisted); assert.equal(persisted.name, first.json.name); assert.equal(persisted.notas, body.notas);
+        if (kind === 'client') assert.equal(Number(persisted.debt), 0);
+        assert.equal((await sql.query(`SELECT 1 FROM ${table} WHERE owner_phone=$1 AND name=$2`, [owner, first.json.name])).rowCount, 1);
+        const conflict = await request(route, { body: { ...body, notas: 'Cambio posterior' } });
+        assert.equal(conflict.status, 409); assert.equal(conflict.json.code, 'IDEMPOTENCY_CONFLICT');
+        const foreign = await request(route, { body, headers: { Authorization: `Bearer ${issueJwt({ phoneNumber: foreignOwner })}` } });
+        assert.equal(foreign.status, 201); assert.notEqual(foreign.json.id, first.json.id);
+        assert.equal((await sql.query(`SELECT 1 FROM ${table} WHERE owner_phone=$1 AND id=$2`, [foreignOwner, foreign.json.id])).rowCount, 1);
+        await sql.query(`UPDATE ${table} SET notas='Nota actualizada' WHERE owner_phone=$1 AND id=$2`, [owner, first.json.id]);
+        assert.deepEqual((await request(route, { body })).json, first.json);
+        await sql.query(`DELETE FROM ${table} WHERE owner_phone=$1 AND id=$2`, [owner, first.json.id]);
+        assert.deepEqual((await request(route, { body })).json, first.json);
+        assert.equal((await sql.query(`SELECT 1 FROM ${table} WHERE id=$1`, [first.json.id])).rowCount, 0);
+      }
+      const debt = await request('/api/clients', { body: { name: 'HTTP deuda inicial prohibida', debt: 1 } });
+      assert.equal(debt.status, 409); assert.equal(debt.json.code, 'ACCOUNT_OPERATION_REQUIRED');
+      const supplierDebt = await request('/api/proveedores', { body: { operationId: 'http-supplier-debt', name: 'HTTP deuda proveedor', debt: 0 } });
+      assert.equal(supplierDebt.status, 400); assert.equal(supplierDebt.json.code, 'INVALID_PARTY_OPERATION');
+    });
     await run('accounts HTTP validates explicit money/client scope, immutable receipts and closed debt writers',async()=>{
-      const customer=await db.createClientRecord({name:'HTTP cuentas'},owner);
+      const customer=await createFixtureClient({name:'HTTP cuentas'},owner);
       const charge={contractVersion:1,businessId:owner,operationId:'http-account-charge',actions:[{itemId:'one',type:'account.charge',target:{kind:'existing',clientId:customer.id},amount:{value:10,unit:'legacy-money'},reason:'Cargo explícito'}]};
       assert.equal((await request('/api/accounts/operations',{body:charge,auth:false})).status,401);
       assert.equal((await request('/api/accounts/operations',{body:{...charge,businessId:'foreign'}})).status,409);
@@ -468,7 +503,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(foreign.status,404);assert.equal(foreign.json.code,'CLIENT_NOT_FOUND');
     });
     await run('signed WhatsApp account payment replies come from receipts and excess rejection is terminal',async()=>{
-      const customer=await db.createClientRecord({name:'Cuenta HTTP'},owner);
+      const customer=await createFixtureClient({name:'Cuenta HTTP'},owner);
       const charge=(operationId,amount)=>({contractVersion:1,businessId:owner,operationId,actions:[{itemId:'one',type:'account.charge',target:{kind:'existing',clientId:customer.id},amount:{value:amount,unit:'legacy-money'},reason:'Saldo previo probado'}]});
       const context={businessId:owner,actorId:owner,permissions:['accounts:charge']};
       await db.executeAccountOperation(charge('http-account-meta-initial',10),context);
@@ -489,7 +524,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal((await sql.query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1',['http-account-meta-pay'])).rows[0].reply_text,applied.reply_text);
     });
     await run('historical order reconciliation authenticates a reviewed zero-delta proof and preserves its receipt',async()=>{
-      const customer=await db.createClientRecord({name:'HTTP conciliación histórica'},owner);
+      const customer=await createFixtureClient({name:'HTTP conciliación histórica'},owner);
       const product=await createHttpFixtureProduct({name:'SKU HTTP conciliación',stockAvailable:8,stockReserved:1,unit:'box'},owner);
       const pedidoId='http-historical-order';
       await sql.query("INSERT INTO pedidos(id,owner_phone,cliente_id,producto,qty,estado) VALUES($1,$2,$3,'Etiqueta histórica HTTP',5,'conseguido')",[pedidoId,owner,customer.id]);

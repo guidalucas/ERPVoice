@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 export async function runAccountChecks({ db, sql, check }) {
+  let partyFixtureSequence = 0;
+  const createFixtureClient = (input, businessId) => db.createClientRecord({ ...input, operationId: 'account-postgres-checks-party-' + ++partyFixtureSequence }, businessId);
+
     const a = '59899000881', b = '59899000882';
     let sequence = 0;
     const id = () => `account-test-${++sequence}`;
@@ -8,7 +11,7 @@ export async function runAccountChecks({ db, sql, check }) {
     const plan = (actions, operationId = id(), businessId = a) => ({ contractVersion: 1, businessId, operationId, actions });
     const run = (p, ctx = context()) => db.executeAccountOperation(p, ctx);
     const row = async (clientId) => (await sql.query('SELECT * FROM clients WHERE id=$1', [clientId])).rows[0];
-    const client = await db.createClientRecord({ name: 'Cuenta exacta A' }, a), other = await db.createClientRecord({ name: 'Cuenta exacta B' }, a), foreign = await db.createClientRecord({ name: 'Cuenta ajena' }, b);
+    const client = await createFixtureClient({ name: 'Cuenta exacta A' }, a), other = await createFixtureClient({ name: 'Cuenta exacta B' }, a), foreign = await createFixtureClient({ name: 'Cuenta ajena' }, b);
     await check('accounts concurrent replay applies once and receipt/history show exact final balances', async () => {
         const p = plan([action(client.id), action(client.id, 'account.payment', 30, { itemId: 'two' })]);
         const [one, two] = await Promise.all([run(p), run(p)]);
@@ -63,8 +66,8 @@ export async function runAccountChecks({ db, sql, check }) {
         assert.equal(applied.operationResult.items[0].balance, 27);
         assert.deepEqual((await db.applyActionsToDatabase([{ type: 'add_debt', clientId: other.id, clientName: 'ignored explicit id', productName: 'Account catalog name', qty: 5, amount: 7 }], 'Cargo de importe explícito', a, opts)).operationResult, applied.operationResult);
         await assert.rejects(db.applyActionsToDatabase([{ type: 'payment_received', clientName: 'Nobody', amount: 1 }], 'Unknown', a, { operationId: id() }), { code: 'CLIENT_SELECTION_REQUIRED' });
-        await db.createClientRecord({ name: 'Duplicate debt name' }, a);
-        await db.createClientRecord({ name: 'Duplicate debt name' }, a);
+        await createFixtureClient({ name: 'Duplicate debt name' }, a);
+        await createFixtureClient({ name: 'Duplicate debt name' }, a);
         await assert.rejects(db.applyActionsToDatabase([{ type: 'add_debt', clientName: 'Duplicate debt name', amount: 1 }], 'Ambiguous', a, { operationId: id() }), { code: 'CLIENT_SELECTION_REQUIRED' });
     });
     await check('account movement SQL failure rolls back balances, revisions and receipts before retry', async () => {
@@ -100,7 +103,7 @@ export async function runAccountChecks({ db, sql, check }) {
         assert.deepEqual(await row(other.id), actual);
     });
     await check('client merge failure rolls back transfer/orders/delete and concurrent retry stores one immutable receipt',async()=>{
-        const keep=await db.createClientRecord({name:'Merge rollback keeper'},a),source=await db.createClientRecord({name:'Merge rollback source'},a);
+        const keep=await createFixtureClient({name:'Merge rollback keeper'},a),source=await createFixtureClient({name:'Merge rollback source'},a);
         await run(plan([action(keep.id,'account.charge',7),action(source.id,'account.charge',5,{itemId:'two'})]));
         const pedido=await db.createPedidoRecord({operationId:id(),clienteId:source.id,producto:'Merge pending order'},a);
         const before=[await row(keep.id),await row(source.id)],input={operationId:id(),expectedKeepRevision:1,expectedMergeRevision:1};

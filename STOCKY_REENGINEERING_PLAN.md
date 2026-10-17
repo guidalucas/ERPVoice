@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.4b/c/d/e0 y lectura consistente sin fallback vacío (ver registro).
+- Último alcance integrado: H4.4e1a, altas idempotentes de clientes/proveedores, incluidos pedidos.
 
 ## Hitos y dependencias
 
@@ -18,7 +18,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Hasta H4.4d y H4.4e0 verificados; CRUD de metadatos siguiente |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Hasta H4.4e1a verificado; edición/baja/fusión de metadatos siguiente |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -54,13 +54,12 @@
 
 ## Próximo paso exacto
 
-H4.4e1: idempotencia del CRUD de metadatos de clientes y proveedores, incluidos los creados
-desde pedidos. Revisar solo createClientRecord/updateClientRecord/deleteClientRecord y
-createProveedorRecord/updateProveedorRecord/deleteProveedorRecord/mergeProveedorRecords,
-sus rutas y formularios. IDs estables/cuerpos capturados, recibos inmutables y revisión de
-entidades; nunca escribir saldo fuera de accountPostgres ni invalidar postings de pedidos.
-Prestar atención a respuesta perdida tras crear cliente/proveedor antes de crear el pedido,
-refresco fallido y replay después de eliminar entidad. Probar SQL/HTTP/Edge y guardar hito.
+H4.4e1b: migrar edición de nombre/notas de clientes y proveedores al contrato party v1.
+Agregar metadataRevision independiente de accountRevision; exigir revisión + operationId,
+recibo inmutable y rollback. Conservar saldo financiero concurrente, rechazar campos ajenos,
+actualizar formularios con cuerpos capturados/retry tras hidratación. Luego H4.4e1c: bajas y
+fusión de proveedores con IDs/revisiones, invalidación de pedidos y protección de saldos.
+Las altas ya están cerradas; no reimplementar ni rediseñar pedidos/cuentas.
 El escritor local ya fue retirado; no reintroducir fallback optimista ni simulaciones.
 H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
 El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
@@ -415,13 +414,32 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   Suites puras permanecen en 47 y motor en 50; build y Edge ya aprobados en e0, sin cambios
   frontend aquí. Consultas de WhatsApp/ingresos también usan la lectura estricta compartida.
 
+- H4.4e1a (2026-10-17): partyOperations/partyPostgres usan OperationPlan v1 cerrado para
+  client.create/supplier.create, individual o lote atómico. party_operations conserva
+  hash/plan/actor/recibo inmutable; historia se proyecta desde filas persistidas. Cliente
+  inicia con saldo cero; no hay movimientos de stock/cuenta. HTTP exige operationId,
+  deriva negocio/actor y rechaza campos desconocidos; replay devuelve original incluso
+  tras editar/borrar, sin resucitar entidad. Migración aditiva/repetible con RLS.
+- H4.4e1a: pedidos compatibles crean participantes por el mismo ejecutor dentro de su
+  transacción; IDs order-party reservados y lock compartido antes de resolver evitan la
+  doble creación concurrente por igualdad exacta. Fallo de outbox revierte también recibos
+  de participantes. Panel y pedidos retienen cuerpo/UUID ante 503/refresco fallido, muestran
+  errores, bloquean doble envío y renuevan intento solo al editar o cancelar explícitamente.
+- H4.4e1a verificado: 171 checks PG/HTTP, 50 tests puros y 50 regresiones del motor; build,
+  Edge party-create-ui y order-ui aprobados. Incluye concurrencia, ámbito/permisos antes
+  de replay, deuda prohibida, campos cerrados y fallos inducidos de recibo/segunda entidad/
+  nombre/deuda persistidos con rollback total. Edge usa API simulada y PG base temporal.
+- H4.4e1a límites: los intentos UI viven en memoria del componente (no sobreviven recarga
+  completa); recibos backend son persistentes. PUT/baja/fusión proveedor siguen pendientes
+  de migración, igual que composición universal y familias; no declarar H4/H5 terminados.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
 - H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
 - H4.4a `844b29b`; H4.4b `bf812ee` (incluye checkpoint parcial `600373f`); H4.4c `ba251e6`.
-- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente: siguiente commit (ver git log).
+- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a: ver git log.
   No volver a diseñar la política de aprovisionamiento/conciliación.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.

@@ -652,24 +652,18 @@ app.post('/api/accounts/operations',authenticateRequest,async(req,res)=>{
   } catch(error){accountHttpError(res,error);}
 });
 
+const partyHttpError = (res, error) => {
+  const known = error.name === 'InventoryOperationError';
+  const status = !known ? 500 : ['OPERATION_ID_REQUIRED','INVALID_PARTY_OPERATION'].includes(error.code) ? 400
+    : ['BUSINESS_SCOPE_REQUIRED','BUSINESS_SCOPE_MISMATCH','FORBIDDEN'].includes(error.code) ? 403 : 409;
+  return res.status(status).json({error:known ? error.message : 'No pude guardar el cliente/proveedor.',...(known ? {code:error.code} : {})});
+};
+
 app.post('/api/clients', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const client = await createClientRecord({
-      name: req.body?.name,
-      notas: req.body?.notas,
-      debt: req.body?.debt,
-    }, clientPhone);
-
-    if (!client) {
-      res.status(400).json({ error: 'Nombre de cliente requerido' });
-      return;
-    }
-
+    const client = await createClientRecord(req.body, tenantPhoneOf(req), {actorId:authPhoneOf(req)});
     res.status(201).json(client);
-  } catch (error) {
-    accountHttpError(res,error);
-  }
+  } catch (error) { partyHttpError(res,error); }
 });
 
 app.put('/api/clients/:id', authenticateRequest, async (req, res) => {
@@ -729,21 +723,9 @@ app.post('/api/clients/merge', authenticateRequest, async (req, res) => {
 
 app.post('/api/proveedores', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const proveedor = await createProveedorRecord({
-      name: req.body?.name,
-      notas: req.body?.notas,
-    }, clientPhone);
-
-    if (!proveedor) {
-      res.status(400).json({ error: 'Nombre de proveedor requerido' });
-      return;
-    }
-
+    const proveedor = await createProveedorRecord(req.body, tenantPhoneOf(req), {actorId:authPhoneOf(req)});
     res.status(201).json(proveedor);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+  } catch (error) { partyHttpError(res,error); }
 });
 
 app.put('/api/proveedores/:id', authenticateRequest, async (req, res) => {

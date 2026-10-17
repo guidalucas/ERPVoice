@@ -92,7 +92,7 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const createClientRecord = async (input: { name: string; notas?: string | null }) => {
+  const createClientRecord = async (input: Parameters<typeof createClient>[0]) => {
     const client = await createClient(input);
     await refreshState();
     return client;
@@ -113,7 +113,7 @@ export const useInventory = () => {
     hydrateFromSnapshot(snapshot);
   };
 
-  const createProveedorRecord = async (input: { name: string; notas?: string | null }) => {
+  const createProveedorRecord = async (input: Parameters<typeof createProveedor>[0]) => {
     const proveedor = await createProveedor(input);
     await refreshState();
     return proveedor;

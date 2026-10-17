@@ -3,6 +3,9 @@ import { inventoryProductFingerprint } from '../server/inventoryOperations.js';
 
 /** PostgreSQL integration checks for the inventory operation contract. */
 export async function runInventoryCoreChecks({ db, sql, check }) {
+  let partyFixtureSequence = 0;
+  const createFixtureClient = (input, businessId) => db.createClientRecord({ ...input, operationId: 'inventory-core-postgres-checks-party-' + ++partyFixtureSequence }, businessId);
+
   const context = (businessId) => ({ businessId, actorId: 'inventory-core-checks', permissions: ['inventory:receive'] });
   const plan = (businessId, operationId, actions) => ({ contractVersion: 1, businessId, operationId, actions });
   const fresh = (itemId, name, value = 2, extra = {}) => ({
@@ -106,7 +109,7 @@ export async function runInventoryCoreChecks({ db, sql, check }) {
   await run('account operations leave inventory quantities and metadata intact', async () => {
     const received = await db.executeInventoryOperation(plan(a, 'core-legacy-preserve', [fresh('item-1', 'Core legacy preserve', 1, { attributes: { finish: { state: 'known', type: 'text', value: 'mate' } }, unit: 'pack', price: { amount: 1250, currency: 'UYU', policy: 'initialize' } })]), context(a));
     const skuId = received.items[0].skuId;
-    await db.createClientRecord({name:'Metadata preservation check'},a);
+    await createFixtureClient({name:'Metadata preservation check'},a);
     await db.applyActionsToDatabase([{ type: 'add_debt', clientName: 'Metadata preservation check', amount: 1 }], 'Account metadata preservation', a, { messageId: 'core-legacy-preserve' });
     const row = await sql.query('SELECT attributes_json, inventory_unit, price_currency, stock_available FROM products WHERE owner_phone=$1 AND id=$2', [a, skuId]);
     assert.deepEqual(row.rows[0].attributes_json, { finish: { state: 'known', type: 'text', value: 'mate' } });

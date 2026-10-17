@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 
 export async function runOrderChecks({ db, sql, check }) {
+  let partyFixtureSequence = 0;
+  const createFixtureClient = (input, businessId) => db.createClientRecord({ ...input, operationId: 'order-postgres-checks-party-' + ++partyFixtureSequence }, businessId);
+  const createFixtureProveedor = (input, businessId) => db.createProveedorRecord({ ...input, operationId: 'order-postgres-checks-party-' + ++partyFixtureSequence }, businessId);
+
   const a = '59899000871', b = '59899000872';
   let sequence = 0;
   const id = (label) => `order-check-${label}-${++sequence}`;
-  const client = await db.createClientRecord({ name: 'Cliente pedidos core' }, a);
-  const foreign = await db.createClientRecord({ name: 'Cliente ajeno pedidos' }, b);
+  const client = await createFixtureClient({ name: 'Cliente pedidos core' }, a);
+  const foreign = await createFixtureClient({ name: 'Cliente ajeno pedidos' }, b);
   const seed = async (label, balance = 10) => db.createProductRecord({ name: `Order SKU ${label}`, stockAvailable: balance, unit: 'box', price: 11, priceCurrency: 'UYU' }, a, { operationId: id(label) });
   const create = (product, extra = {}) => db.createPedidoRecord({ operationId: id('create'), clienteId: client.id,
     producto: `Label ${product.id}`, productId: product.id, qty: 5, ...extra }, a);
@@ -98,22 +102,23 @@ export async function runOrderChecks({ db, sql, check }) {
     const applied = await update(pending,{estado:'conseguido'},op); assert.equal(applied.stockPosting.quantity,5);
   });
   await check('supplier deletion and client merge invalidate order revisions without changing stock provenance', async () => {
-    const product = await seed('indirect'), supplier = await db.createProveedorRecord({name:'Proveedor revisión pedidos'},a);
+    const product = await seed('indirect'), supplier = await createFixtureProveedor({name:'Proveedor revisión pedidos'},a);
     const pedido = await create(product,{estado:'conseguido',proveedorId:supplier.id});
     const before = await row(product);
     await db.deleteProveedorRecord(supplier.id,a);
     const withoutSupplier = await order(pedido); assert.equal(withoutSupplier.revision,pedido.revision+1); assert.equal(withoutSupplier.proveedorId,null);
     assert.deepEqual(withoutSupplier.stockPosting,pedido.stockPosting);
     await assert.rejects(update(pedido,{estado:'pendiente'}),{code:'ORDER_REVISION_MISMATCH'});
-    const keep = await db.createClientRecord({name:'Cliente conserva pedidos'},a);
+    const keep = await createFixtureClient({name:'Cliente conserva pedidos'},a);
     await db.mergeClientRecords(keep.id,client.id,a,{operationId:id('client-merge'),expectedKeepRevision:0,expectedMergeRevision:0});
     const moved = await order(pedido); assert.equal(moved.clienteId,keep.id); assert.equal(moved.revision,withoutSupplier.revision+1);
     assert.deepEqual(moved.stockPosting,pedido.stockPosting); assert.deepEqual(await row(product),before);
   });
   await check('outbox failure rolls back a whole order batch including auto-created parties and stock', async () => {
-    const localClient = await db.createClientRecord({name:'Cliente rollback outbox pedidos'},a);
+    const localClient = await createFixtureClient({name:'Cliente rollback outbox pedidos'},a);
     const product = await seed('outbox'), pending = await create(product,{clienteId:localClient.id});
     const before = await row(product);
+    const partyOperationsBefore = (await sql.query('SELECT * FROM party_operations WHERE owner_phone=$1 ORDER BY operation_id', [a])).rows;
     const opts = {operationId:id('outbox-batch'),messageId:id('outbox-message'),recipient:a,channel:'whatsapp'};
     const actions = [{type:'client_order',clientName:'Cliente transitorio rollback',productName:'Pending rollback item'},
       {type:'update_pedido',productName:pending.producto,estado:'conseguido'}];
@@ -123,6 +128,7 @@ export async function runOrderChecks({ db, sql, check }) {
     finally {await sql.query('DROP TRIGGER reject_order_outbox ON meta_reply_outbox; DROP FUNCTION reject_order_outbox()');}
     assert.deepEqual(await row(product),before); assert.deepEqual(await order(pending),pending);
     assert.equal((await db.getStateSnapshotStrict(a)).clients.some((c)=>c.name==='Cliente transitorio rollback'),false);
+    assert.deepEqual((await sql.query('SELECT * FROM party_operations WHERE owner_phone=$1 ORDER BY operation_id', [a])).rows, partyOperationsBefore);
     await db.applyActionsToDatabase(actions,'Atomic outbox failure',a,opts);
     assert.equal(Number((await row(product)).stock_available),15);
   });

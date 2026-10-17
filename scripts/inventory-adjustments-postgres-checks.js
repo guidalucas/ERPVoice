@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 
 /** The caller owns PostgreSQL startup, teardown and reporting. */
 export async function runInventoryAdjustmentsChecks({ db, sql, check }) {
+  let partyFixtureSequence = 0;
+  const createFixtureClient = (input, businessId) => db.createClientRecord({ ...input, operationId: 'inventory-adjustments-postgres-checks-party-' + ++partyFixtureSequence }, businessId);
+
   const a = '59899000909', b = '59899000919';
   const context = (businessId) => ({ businessId, actorId: 'inventory-adjustment-checks', permissions: ['inventory:receive', 'inventory:sell', 'inventory:adjust', 'inventory:update'] });
   const plan = (businessId, operationId, actions) => ({ contractVersion: 1, businessId, operationId, actions });
@@ -54,7 +57,7 @@ export async function runInventoryAdjustmentsChecks({ db, sql, check }) {
 
   await run('order core serializes stock effects with sales and advances revisions', async () => {
     const { skuId, revision } = await seed(a, 'adjust-legacy-direct-order');
-    const customer = await db.createClientRecord({ name: 'Cliente conteo directo' }, a);
+    const customer = await createFixtureClient({ name: 'Cliente conteo directo' }, a);
     const pedido = await db.createPedidoRecord({ operationId: 'order-adjust-direct-create', productId: skuId, clienteId: customer.id, producto: 'Adjustment check adjust-legacy-direct-order', qty: 2, estado: 'pendiente' }, a);
     await Promise.all([
       db.updatePedidoRecord(pedido.id, { operationId: 'order-adjust-direct-update', expectedRevision: pedido.revision, estado: 'conseguido' }, a),
@@ -69,7 +72,7 @@ export async function runInventoryAdjustmentsChecks({ db, sql, check }) {
   await run('order compatibility adapter advances revision without losing metadata', async () => {
     const { skuId, revision } = await seed(a, 'adjust-legacy-replace-order');
     const name = 'Adjustment check adjust-legacy-replace-order';
-    const customer = await db.createClientRecord({ name: 'Cliente conteo reemplazo' }, a);
+    const customer = await createFixtureClient({ name: 'Cliente conteo reemplazo' }, a);
     await db.createPedidoRecord({ operationId: 'order-adjust-batch-create', productId: skuId, clienteId: customer.id, producto: name, qty: 3, estado: 'pendiente' }, a);
     await db.applyActionsToDatabase([{ type: 'update_pedido', productName: name, estado: 'conseguido' }], 'Pedido confirmado', a,
       { messageId: 'adjust-legacy-replace-order' });

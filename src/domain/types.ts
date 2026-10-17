@@ -230,12 +230,15 @@ export type ProductCreatedAction = {
 export type StockWithdrawnAction = { type: 'withdraw_stock'; productId: string; qty: number; unit?: string; reason: string };
 export type AccountEventAction = { type: 'account_adjustment' | 'account_transfer'; clientId: string; clientName: string; amount: number; unit: 'legacy-money'; balance: number; reason: string };
 export type ClientMergedAction = { type: 'client_merge'; clientId: string; removedClientId: string; clientName: string; balance: number };
+/** Persisted metadata receipts; never accepted as interpreted voice commands. */
+export type PartyCreatedAction = { type: 'client.create'; itemId: string; clientId: string; clientName: string; notas: string | null }
+  | { type: 'supplier.create'; itemId: string; proveedorId: string; proveedorName: string; notas: string | null };
 
 export interface Transaction {
   id: string;
   timestamp: string;
   sourceText: string;
-  actions: Array<ParsedActionUnion | ProductCreatedAction | StockWithdrawnAction | AccountEventAction | ClientMergedAction>;
+  actions: Array<ParsedActionUnion | ProductCreatedAction | StockWithdrawnAction | AccountEventAction | ClientMergedAction | PartyCreatedAction>;
   summary: string;
 }
 

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
 import { EmptyState } from './EmptyState';
+import { toUserFacingError } from '../../services/apiClient';
 
 export function ProveedoresPanel() {
   const preset = useBusinessCategoryPreset();
@@ -24,6 +25,8 @@ export function ProveedoresPanel() {
   const [editNotas, setEditNotas] = useState('');
   const [mergeOpen, setMergeOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const busyRef = useRef(false);
 
   const pedidosByProveedor = useMemo(() => {
     const map: Record<string, typeof pedidos> = {};
@@ -37,17 +40,28 @@ export function ProveedoresPanel() {
     return map;
   }, [pedidos]);
 
+  const createAttemptRef = useRef<Parameters<typeof createProveedorRecord>[0] | null>(null);
+
   const handleCreate = async () => {
+    if (busyRef.current) return;
     if (!name.trim()) {
       return;
     }
+    busyRef.current = true;
     setSaving(true);
+    setError(null);
     try {
-      await createProveedorRecord({ name: name.trim(), notas: notas.trim() || null });
+      const attempt = createAttemptRef.current ?? { operationId: crypto.randomUUID(), name: name.trim(), notas: notas.trim() || null };
+      createAttemptRef.current = attempt;
+      await createProveedorRecord(attempt);
+      createAttemptRef.current = null;
       setName('');
       setNotas('');
       setFormOpen(false);
+    } catch (error) {
+      setError(toUserFacingError(error, 'No pude crear el proveedor.'));
     } finally {
+      busyRef.current = false;
       setSaving(false);
     }
   };
@@ -63,46 +77,65 @@ export function ProveedoresPanel() {
   };
 
   const saveEdit = async () => {
+    if (busyRef.current) return;
     if (!editingId || !editName.trim()) {
       return;
     }
-    setSaving(true);
+    busyRef.current = true;
+    setSaving(true); setError(null);
     try {
       await updateProveedorRecord(editingId, { name: editName.trim(), notas: editNotas.trim() || null });
       setEditingId(null);
+    } catch (error) {
+      setError(toUserFacingError(error, 'No pude guardar el proveedor.'));
     } finally {
+      busyRef.current = false;
       setSaving(false);
     }
   };
 
   const handleMerge = async () => {
+    if (busyRef.current) return;
     if (!mergeKeepId || !mergeOtherId || mergeKeepId === mergeOtherId) {
       return;
     }
-    setSaving(true);
+    busyRef.current = true;
+    setSaving(true); setError(null);
     try {
       await mergeProveedorRecords(mergeKeepId, mergeOtherId);
       setMergeKeepId('');
       setMergeOtherId('');
+    } catch (error) {
+      setError(toUserFacingError(error, 'No pude fusionar los proveedores.'));
     } finally {
+      busyRef.current = false;
       setSaving(false);
     }
   };
 
+  const handleDelete = async (proveedorId: string) => {
+    if (busyRef.current) return;
+    busyRef.current = true; setSaving(true); setError(null);
+    try { await deleteProveedorRecord(proveedorId); }
+    catch (error) { setError(toUserFacingError(error, 'No pude eliminar el proveedor.')); }
+    finally { busyRef.current = false; setSaving(false); }
+  };
+
   return (
     <div className="space-y-4">
+      {error && <p role="alert" className="erp-panel text-rose-700 dark:text-rose-200">{error}</p>}
       <article className="erp-panel">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h3 className="type-title text-xl text-[color:var(--text)]">Proveedores</h3>
-          <button type="button" className="erp-button-primary min-h-11" onClick={() => setFormOpen((open) => !open)}>
+          <button type="button" className="erp-button-primary min-h-11" disabled={saving} onClick={() => setFormOpen((open) => !open)}>
             {formOpen ? 'Cerrar' : 'Nuevo proveedor'}
           </button>
         </div>
 
         {formOpen && (
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-            <input className="erp-input min-h-11" placeholder="Nombre" value={name} onChange={(event) => setName(event.target.value)} />
-            <input className="erp-input min-h-11" placeholder="Notas (opcional)" value={notas} onChange={(event) => setNotas(event.target.value)} />
+            <input className="erp-input min-h-11" placeholder="Nombre" disabled={saving} value={name} onChange={(event) => { createAttemptRef.current = null; setName(event.target.value); }} />
+            <input className="erp-input min-h-11" placeholder="Notas (opcional)" disabled={saving} value={notas} onChange={(event) => { createAttemptRef.current = null; setNotas(event.target.value); }} />
             <button type="button" className="erp-button-primary min-h-11" disabled={saving || !name.trim()} onClick={() => void handleCreate()}>
               Agregar
             </button>
@@ -144,7 +177,7 @@ export function ProveedoresPanel() {
                       <button
                         type="button"
                         className="erp-button-danger min-h-11 px-3 text-sm"
-                        onClick={() => void deleteProveedorRecord(proveedor.id)}
+                        disabled={saving} onClick={() => void handleDelete(proveedor.id)}
                       >
                         Eliminar
                       </button>
