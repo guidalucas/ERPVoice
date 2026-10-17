@@ -17,7 +17,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Hasta H4.4d verificado; retiro de escritor local y CRUD de metadatos siguientes |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Hasta H4.4d y H4.4e0 verificados; CRUD de metadatos siguiente |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -53,13 +53,14 @@
 
 ## Próximo paso exacto
 
-H4.4e0: retirar src/services/transactionService.ts y la entrada APPLY_EXTERNAL_PROPOSAL /
-applyExternalProposal de AppStore.tsx. rg confirmó que no tienen consumidores fuera del
-propio store: conservan un escritor local con matching aproximado y recorte de stock,
-incompatible con el núcleo, aunque no se usa hoy. No reemplazarlo por otra simulación.
-Validar build, panel-draft-recovery y flujos del panel; confirmación debe seguir esperando
-snapshot/recibo persistidos. Después H4.4e1: idempotencia del CRUD de metadatos de clientes
-y proveedores (sin cambiar saldos fuera del ejecutor), incluidos creación desde pedidos.
+H4.4e1: idempotencia del CRUD de metadatos de clientes y proveedores, incluidos los creados
+desde pedidos. Revisar solo createClientRecord/updateClientRecord/deleteClientRecord y
+createProveedorRecord/updateProveedorRecord/deleteProveedorRecord/mergeProveedorRecords,
+sus rutas y formularios. IDs estables/cuerpos capturados, recibos inmutables y revisión de
+entidades; nunca escribir saldo fuera de accountPostgres ni invalidar postings de pedidos.
+Prestar atención a respuesta perdida tras crear cliente/proveedor antes de crear el pedido,
+refresco fallido y replay después de eliminar entidad. Probar SQL/HTTP/Edge y guardar hito.
+El escritor local ya fue retirado; no reintroducir fallback optimista ni simulaciones.
 H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
 El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
 H4.2b pendiente: conversación de conjuntos para otros verbos (bajas WhatsApp ya migradas).
@@ -391,6 +392,18 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   No se concilió ningún dato real. Conciliaciones masivas/WhatsApp, CRUD de metadatos,
   composición entre dominios, intérprete universal y esquemas configurables aún pendientes.
 
+- H4.4e0 (2026-10-17): retirado transactionService.ts completo (490 líneas) y API/acción
+  APPLY_EXTERNAL_PROPOSAL de AppStore. Búsqueda de consumidores confirmó que solo el store
+  lo importaba; no había llamadas activas. Se eliminó así el motor local con resolución
+  aproximada, creación implícita, recortes de stock y deuda, pedidos/borrados divergentes.
+  El panel conserva confirmación HTTP, snapshot persistido y borrador recuperable.
+- H4.4e0 verificado: build y Edge de inventario y panel-draft-recovery aprobados tras borrar
+  el módulo. Cubre 503+recarga con mismo ID/una escritura, cancelación, ámbito de negocio y
+  actor, snapshot inválido, propuesta concurrente y cuota de almacenamiento. rg no encuentra
+  transactionService/applyExternalProposal/applyConfirmedActions/APPLY_EXTERNAL_PROPOSAL
+  en src/scripts. Suites backend siguen en 158 checks PG/HTTP y 47 tests puros; sin cambios
+  backend en este retiro. No ejecutar tests que solo reproduzcan código eliminado.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
@@ -398,6 +411,7 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
 - H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
 - H4.4a `844b29b`; H4.4b `bf812ee` (incluye checkpoint parcial `600373f`); H4.4c `ba251e6`.
 - H4.4d: ver git log; no volver a diseñar la política de aprovisionamiento/conciliación.
+- H4.4d `cf25ea2`; H4.4e0: siguiente commit de retiro del ejecutor local.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
 - Frontend: `npm run test:inventory-ui` y `npm run test:panel-draft-recovery`.
