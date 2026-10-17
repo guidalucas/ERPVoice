@@ -127,36 +127,41 @@ const waLoginReplyText = (result) => {
   return 'No encontramos un inicio de sesión con ese código. Abrí el panel, tocá Iniciar sesión y mandá el mensaje nuevo.';
 };
 
-const handleIncomingWaLogin = async (body) => {
-  if (!body || body.object !== 'whatsapp_business_account') {
-    return false;
-  }
+const metaMessageText = (message) => (typeof message?.text?.body === 'string' ? message.text.body : '');
 
-  const entry = Array.isArray(body.entry) ? body.entry[0] : null;
-  const changes = entry?.changes?.[0]?.value;
-  const message = changes?.messages?.[0];
-
-  if (!message || message.type !== 'text') {
-    return false;
-  }
-
-  const textBody = typeof message.text?.body === 'string' ? message.text.body : '';
-  const loginToken = parseWaLoginToken(textBody);
-
-  if (!loginToken) {
-    return false;
-  }
-
+const consumeWaLoginMessage = async (message, rawBody) => {
+  const loginToken = parseWaLoginToken(metaMessageText(message));
   const fromNumber = typeof message.from === 'string' ? message.from : '';
+  const messageId = typeof message.id === 'string' ? message.id : null;
+  if (!loginToken) {
+    return;
+  }
+
+  let claimed = true;
+  if (hasDatabaseConfig() && messageId && fromNumber) {
+    const ownerPhone = await resolveTenant(fromNumber);
+    claimed = await claimMetaMessage({ messageId, ownerPhone, senderPhone: fromNumber, rawBody });
+  }
+
+  if (!claimed) {
+    return;
+  }
+
   const result = await authenticateWaLoginFromWebhook(loginToken, fromNumber);
   const replyText = waLoginReplyText(result);
-
   console.log('[auth:wa-login] webhook', {
     token: loginToken,
     from: fromNumber,
     ok: result?.ok,
     reason: result?.reason,
+    messageId,
   });
+
+  if (hasDatabaseConfig() && messageId && fromNumber) {
+    await enqueueMetaReply(messageId, fromNumber, replyText);
+    await completeMetaMessageClaim(messageId);
+    return;
+  }
 
   try {
     const replyResult = await sendMetaReply({ to: fromNumber, text: replyText });
@@ -166,8 +171,42 @@ const handleIncomingWaLogin = async (body) => {
   } catch (error) {
     console.error('[auth:wa-login] reply failed:', error);
   }
+};
 
-  return true;
+const stripAndConsumeWaLoginMessages = async (body) => {
+  if (!body || body.object !== 'whatsapp_business_account') {
+    return body;
+  }
+
+  const remaining = JSON.parse(JSON.stringify(body));
+  for (const entry of remaining.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      const value = change.value;
+      if (!Array.isArray(value?.messages)) {
+        continue;
+      }
+
+      const kept = [];
+      for (const message of value.messages) {
+        if (message?.type !== 'text' || !parseWaLoginToken(metaMessageText(message))) {
+          kept.push(message);
+          continue;
+        }
+
+        try {
+          await consumeWaLoginMessage(message, {
+            object: body.object,
+            entry: [{ ...entry, changes: [{ ...change, value: { ...value, messages: [message] } }] }],
+          });
+        } catch (error) {
+          console.error('[auth:wa-login] webhook handler failed:', error);
+        }
+      }
+      value.messages = kept;
+    }
+  }
+
+  return remaining;
 };
 
 const getRequestIp = (req) => {
@@ -932,18 +971,19 @@ const handleMetaWebhook = async (req, res) => {
   let processingBody = body;
 
   try {
-    const handledLogin = await handleIncomingWaLogin(body);
-    if (handledLogin) {
-      res.sendStatus(200);
-      return;
-    }
+    processingBody = await stripAndConsumeWaLoginMessages(body);
   } catch (error) {
     console.error('[auth:wa-login] webhook handler failed:', error);
   }
+  try {
+    await dispatchPendingMetaReplies();
+  } catch (error) {
+    console.error('[auth:wa-login] outbox dispatch failed:', error);
+  }
 
   try {
-    if (body.object === 'whatsapp_business_account') {
-      processingBody = JSON.parse(JSON.stringify(body));
+    if (processingBody.object === 'whatsapp_business_account') {
+      processingBody = JSON.parse(JSON.stringify(processingBody));
       for (const entry of processingBody.entry ?? []) {
         for (const change of entry.changes ?? []) {
           const value = change.value;
@@ -954,7 +994,7 @@ const handleMetaWebhook = async (req, res) => {
               continue;
             }
             const ownerPhone = await resolveTenant(message.from);
-            const rawBody = { ...body, entry: [{ ...entry, changes: [{ ...change, value: { ...value, messages: [message] } }] }] };
+            const rawBody = { ...processingBody, entry: [{ ...entry, changes: [{ ...change, value: { ...value, messages: [message] } }] }] };
             const claimed = await claimMetaMessage({ messageId: message.id, ownerPhone, senderPhone: message.from, rawBody });
             if (claimed) accepted.push(message);
           }
@@ -1006,6 +1046,13 @@ const handleMetaWebhook = async (req, res) => {
 };
 
 const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = new Set()) => {
+  try {
+    processingBody = await stripAndConsumeWaLoginMessages(processingBody);
+    await dispatchPendingMetaReplies();
+  } catch (error) {
+    console.error('[auth:wa-login] recovery handler failed:', error);
+  }
+
   try {
     const results = await processMetaWebhook(processingBody, {
       loadTranscript: loadMetaTranscript,

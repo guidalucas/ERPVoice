@@ -97,6 +97,45 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal((await request('/api/meta-webhook', { raw: raw + ' ', auth: false, headers: { 'X-Hub-Signature-256': signature } })).status, 401);
       assert.equal((await request('/api/meta-webhook', { raw, auth: false, headers: { 'X-Hub-Signature-256': signature } })).status, 200);
     });
+    await run('signed WhatsApp LOGIN authenticates via outbox and never enters inventory processing', async () => {
+      const loginToken = 'XY34ZK';
+      const sessionSecret = 'wa-login-http-session-secret';
+      const secretHash = crypto.createHash('sha256').update(sessionSecret).digest('hex');
+      const sender = '59899000999';
+      const messageId = 'http-meta-wa-login';
+      await db.createWaLoginChallenge({
+        loginToken, secretHash, expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      });
+      const body = { object: 'whatsapp_business_account', entry: [
+        { changes: [{ value: { statuses: [{ id: 'status-ignored', status: 'delivered' }] }, field: 'messages' }] },
+        { changes: [{ value: { messages: [
+          { id: messageId, from: sender, type: 'text', text: { body: `LOGIN ${loginToken}` } },
+        ] } }] },
+      ] };
+      const raw = JSON.stringify(body);
+      const headers = { 'X-Hub-Signature-256': `sha256=${crypto.createHmac('sha256', appSecret).update(Buffer.from(raw)).digest('hex')}` };
+      assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
+      const deadline = Date.now() + 5000;
+      let claim;
+      while (Date.now() < deadline) {
+        claim = (await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1', [messageId])).rows[0];
+        if (claim?.status === 'completed') break;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+      assert.equal(claim?.status, 'completed');
+      const poll = await request('/api/auth/wa-login/poll', {
+        body: { loginToken, sessionSecret }, auth: false,
+      });
+      assert.equal(poll.status, 200); assert.equal(poll.json.status, 'authenticated');
+      assert.equal(poll.json.phoneNumber, sender); assert.ok(poll.json.token);
+      const outbox = (await sql.query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1', [messageId])).rows[0];
+      assert.match(outbox.reply_text, /volver al panel/i);
+      assert.equal((await sql.query('SELECT 1 FROM meta_events WHERE id=$1', [messageId])).rowCount, 0);
+      assert.equal((await sql.query('SELECT 1 FROM inventory_movements WHERE operation_id=$1', [`whatsapp:${messageId}`])).rowCount, 0);
+      assert.equal(await db.claimMetaMessage({ messageId, ownerPhone: sender, senderPhone: sender, rawBody: body }), false);
+      assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
+      assert.equal((await sql.query('SELECT 1 FROM meta_events WHERE id=$1', [messageId])).rowCount, 0);
+    });
     await run('inventory authorization and contract validation', async () => {
       assert.equal((await request('/api/inventory/operations', { body: plan('http-no-auth', [fresh]), auth: false })).status, 401);
       const foreign = await request('/api/inventory/operations', { body: { ...plan('http-foreign', [fresh]), businessId: '59899000606' } });
