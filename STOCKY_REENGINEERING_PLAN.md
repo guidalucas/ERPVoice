@@ -17,7 +17,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Pendiente |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.0 implementado/verificado; H4.1 siguiente |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -53,12 +53,12 @@
 
 ## Próximo paso exacto
 
-H4.0 / integridad pendiente: migrar primero ventas/reservas al contrato y núcleo compartido,
-con SKU explícito, stock insuficiente, permisos, deltas, recibo/replay y transacción compatible.
-Revisar normalizePlan/planInventoryReceipt en inventoryOperations y el branch legacy de
-applyActionsToDatabase; NO resolver otra vez por nombre ni reutilizar precios de compra
-como política de venta. Agregar HTTP/panel retry después de commit y rollback multiítem.
-Conservar bloqueo de tabla hasta retirar el reemplazo legacy completo.
+H4.1: migrar actualizaciones y ajustes al mismo contrato/núcleo. Reutilizar SKU explícito,
+recibo/replay y bloqueo compatible. Definir ajuste absoluto con revisión esperada y motivo
+para impedir sobreescrituras obsoletas. Migrar updateProductRecord y update_product; revisar
+solo esos consumidores y sus contratos. Mantener distinción precio de catálogo/venta.
+Conservar bloqueo de tabla hasta retirar el reemplazo legacy completo. Después H4.2:
+selectores congelados y confirmaciones verificables; luego bajas y demás escritores.
 El intérprete universal y los esquemas configurables siguen pendientes; no abrir conjuntos
 ni optimización LLM antes de cerrar la integridad de estas mutaciones.
 
@@ -165,6 +165,32 @@ ni optimización LLM antes de cerrar la integridad de estas mutaciones.
   nuevamente: conserva los dos fallos de normalización preexistentes ("Camiseta Camisetas
   River" / modelo "Camisetas River"); obtiene los tres SKU esperados, pero el script falla.
   No se cambiaron sus expectativas ni se presenta la suite histórica completa como verde.
+
+- H4.0: ventas y reservas usan OperationPlan v1 y el mismo planner/adapter PostgreSQL.
+  SKU existente explícito, permisos por verbo, unidad/estado/fingerprint y enteros seguros.
+  Stock insuficiente rechaza todo el lote; nunca recorta cantidad ni crea un producto.
+  Movimientos conservan deltas por ítem; recibos y respuestas muestran balances finales
+  persistidos incluso si varias líneas afectan el mismo SKU. Replay no vuelve a aplicar.
+- H4.0: precio de venta opcional separado del catálogo; desconocido no equivale a cero.
+  Historial transaccional derivado del recibo comparte el commit. Panel envía ID/fingerprint
+  real y conserva operationId tras fallo. Totales separan monedas, importes desconocidos
+  y estimaciones históricas. No se revaloriza una venta nueva con el catálogo actual.
+- H4.0: grounding conservador de ventas/reservas antes de ejecutar; descarta IDs propuestos
+  por el parser y no autoriza nombres parciales/variantes omitidas. Dos líneas idénticas
+  siguen siendo dos efectos. La escritura solo usa los IDs ya resueltos.
+- H4.0: rechazo de dominio Meta queda terminal con acciones vacías y respuesta persistida;
+  reentrega después de reponer stock no ejecuta esa venta. Fallo técnico sigue recuperable.
+  Respuesta de consulta mixta y recibo comparten outbox; replay devuelve ese texto guardado.
+- H4.0 verificado: 88 checks PostgreSQL/HTTP, 50 del motor y 29 de suite pura; build y
+  Edge de ventas aprobados. Incluye operaciones múltiples/concurrentes, aislamiento,
+  rollback de movimiento/outbox, replay, cotización cero/desconocida y monedas separadas.
+  Edge usa API simulada; HTTP usa servidor y PostgreSQL temporales con firma Meta real.
+  Revisión independiente de las dos ventanas de respuesta/reintento cerrada sin hallazgos.
+  Audio largo aprobado. Evaluador offline de parser ejecutado (390 casos), sin proveedor
+  real: no equivale a 390 aprobados ni mide calidad LLM. River conserva fallos conocidos.
+- H4 restante: actualizaciones/ajustes, conjuntos, bajas, ABM con stock inicial, efectos de
+  pedidos y finanzas siguen pendientes. Un lote con stock y finanzas no migradas se rechaza
+  entero. Continúa bloqueo compatible con escritores históricos. No se desplegó.
 
 ## Continuación sin repetir investigación
 

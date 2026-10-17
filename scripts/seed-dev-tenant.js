@@ -119,6 +119,9 @@ const main = async () => {
     );
   }
 
+  const saleProduct = (await getStateSnapshot(ownerPhone)).products.find((product) =>
+    product.productType === 'Short' && product.productModel === 'Boca' && product.size === 'M');
+  if (!saleProduct) throw new Error('Falta el SKU de la venta demo.');
   await applyActionsToDatabase(
     [
       {
@@ -149,6 +152,8 @@ const main = async () => {
     [
       {
         type: 'sell',
+        productId: saleProduct.id,
+        expectedFingerprint: saleProduct.identityFingerprint,
         productName: 'Short Boca',
         productType: 'Short',
         productModel: 'Boca',
@@ -159,6 +164,7 @@ const main = async () => {
     ],
     'vendí 1 short boca M',
     ownerPhone,
+    { operationId: `seed-sale-${Date.now()}`, channel: 'seed', actorId: ownerPhone },
   );
 
   if (jere) {

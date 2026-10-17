@@ -1,4 +1,5 @@
 import { productMatchKey } from './productIdentity.js';
+import { bindStockConsumptionAction } from './stockOperationAdapter.js';
 import { VARIANT_KEYWORD_ALT } from './businessCategories.js';
 
 const MAX_CATALOG_PRODUCTS = 30;
@@ -534,6 +535,12 @@ const groundQueryStockAction = (action, products, sourceText) => {
 };
 
 const groundOneAction = (action, products, sourceText, bulkDelete = false) => {
+  if (action.type === 'sell' || action.type === 'reserve_stock') {
+    const bound = bindStockConsumptionAction(action, products);
+    return bound ? { actions: [bound], ambiguous: false }
+      : { actions: [action], ambiguous: true, candidates: rankProducts(products,
+        [action.productName, action.size].filter(Boolean).join(' ')).slice(0, 5).map((entry) => entry.product.name) };
+  }
   if (bulkDelete) return groundBulkDelete(action, products, sourceText);
   if (action.type === 'query_stock') {
     return groundQueryStockAction(action, products, sourceText);
@@ -647,6 +654,9 @@ export const groundActionsAgainstCatalog = (actions, catalog, sourceText) => {
   }
 
   if (!products.length) {
+    if (actions.some((action) => action.type === 'sell' || action.type === 'reserve_stock')) {
+      return { actions, requiresConfirmation: true, missingFields: ['productMatch'], suggestedPhrases: [] };
+    }
     return actions.some((action) => isBulkDelete(action, sourceText))
       ? { actions: [], requiresConfirmation: false, missingFields: ['scopeNotFound'], suggestedPhrases: [] }
       : { actions, requiresConfirmation: false, missingFields: [], suggestedPhrases: [] };
@@ -707,6 +717,12 @@ export const groundActionsAgainstCatalog = (actions, catalog, sourceText) => {
   const seen = new Map();
   const deduped = [];
   for (const action of next) {
+    if (action.type === 'sell' || action.type === 'reserve_stock') {
+      // Each proposed effect is a distinct operation item. Deduplicating by SKU
+      // and quantity can silently discard a second legitimate sale/reservation.
+      deduped.push(action);
+      continue;
+    }
     const key = JSON.stringify({
       type: action.type,
       productId: action.productId,

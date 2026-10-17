@@ -1,12 +1,16 @@
 # VoiceERP
 
 La transición a arquitectura C se sigue en [STOCKY_REENGINEERING_PLAN.md](STOCKY_REENGINEERING_PLAN.md).
-Los ingresos `add_stock` ya se ejecutan mediante un contrato `stock.receive`, recibos
-idempotentes y movimientos transaccionales. Las otras capacidades siguen en migración.
+Ingresos, ventas y reservas usan `stock.receive`, `stock.sell` y `stock.reserve` del
+mismo núcleo, con recibos idempotentes y movimientos transaccionales. Stock insuficiente
+rechaza todo el lote. Ventas y reservas requieren SKU explícito; el precio de venta
+opcional queda separado del catálogo y los totales separan monedas y precios desconocidos.
 `POST /api/inventory/operations` acepta el contrato v1 con autenticación; el negocio
 se verifica contra la sesión. `POST /api/state/apply` requiere `operationId` estable
-para ingresos. `npm run test:inventory` prueba dominio/contratos/seguridad y
+para estas tres operaciones. Los lotes mixtos con mutaciones aún no migradas se rechazan.
+`npm run test:inventory` prueba dominio/contratos/seguridad y
 `npm run test:voice-stock-postgres` agrega integración y HTTP en PostgreSQL temporal.
+`npm run test:sales-ui` comprueba identidad, retry y totales en el navegador con API simulada.
 
 Antes de desplegar: configurar `META_APP_SECRET` (firma POST Meta) y, en producción,
 `AUTH_JWT_SECRET` privado de al menos 32 bytes. `/api/health` publica readiness y el SHA

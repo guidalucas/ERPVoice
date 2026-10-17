@@ -73,6 +73,10 @@ export type ParsedAction =
     }
   | {
       type: 'reserve_stock';
+      productId?: string;
+      expectedFingerprint?: string;
+      unit?: string;
+      priceCurrency?: string;
       productName: string;
       productType?: string;
       productModel?: string;
@@ -154,6 +158,11 @@ export type ParsedAction =
 
 export type ParsedActionSell = {
   type: 'sell';
+  productId?: string;
+  expectedFingerprint?: string;
+  unit?: string;
+  priceCurrency?: string;
+  salePriceKnown?: boolean;
   productName: string;
   productType?: string;
   productModel?: string;

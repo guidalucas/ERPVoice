@@ -16,6 +16,25 @@ const receiveAction = (action, target, itemId) => ({
   ...(action.price != null ? { price: { amount: action.price, currency: action.priceCurrency ?? 'XXX', policy: 'initialize' } } : {}),
 });
 
+export const bindStockConsumptionAction = (action, products) => {
+  const sku = skuFromAction(action);
+  // Parser IDs/fingerprints are proposals, not server-issued identity authority.
+  const exact = products.filter((product) => productIdentity(product) === productIdentity({ ...sku,
+    // Legacy parsers may repeat the full name as a type/model. An absent stored
+    // descriptor cannot authorize another identity; keep its authoritative absence.
+    productType: product.productType == null ? undefined : sku.productType,
+    productModel: product.productModel == null ? undefined : sku.productModel,
+    unit: action.unit ?? product.unit ?? 'unit' }));
+  if (exact.length !== 1) return null;
+  const product = exact[0];
+  const bound = { ...action, productId: product.id,
+    expectedFingerprint: product.identityFingerprint ?? inventoryProductFingerprint(product),
+    productName: product.name, productType: product.productType ?? undefined, productModel: product.productModel ?? undefined,
+    size: product.size ?? undefined, unit: action.unit ?? product.unit ?? 'unit' };
+  delete bound.resolvedProductId;
+  return bound;
+};
+
 /** Compatibility boundary only; evidence and conversational decisions stay outside execution. */
 export const resolvedStockBatchToPlan = (batch) => ({
   contractVersion: 1, operationId: batch.id, businessId: batch.ownerPhone,
@@ -31,7 +50,19 @@ export const confirmedStockActionsToPlan = ({ actions, sourceText, ownerPhone, o
   contractVersion: 1, operationId, businessId: ownerPhone,
   source: { channel: 'panel', text: sourceText },
   actions: actions.map((action, index) => {
-    if (action.type !== 'add_stock') throw new InventoryOperationError('UNSUPPORTED_OPERATION', 'Separá los ingresos de las otras operaciones.');
+    if (action.type === 'sell' || action.type === 'reserve_stock') {
+      const explicitId = action.productId ?? action.resolvedProductId;
+      if (typeof explicitId !== 'string' || !explicitId.trim()) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Elegí un SKU explícito para vender o reservar; no apliqué cambios.');
+      const product = products.find((entry) => entry.id === explicitId);
+      if (!product) throw new InventoryOperationError('SKU_NOT_FOUND', 'El SKU seleccionado ya no está disponible.');
+      if (action.productId && action.resolvedProductId && action.productId !== action.resolvedProductId) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'La selección contiene IDs de SKU incompatibles.');
+      return { itemId: `item-${index + 1}`, type: action.type === 'sell' ? 'stock.sell' : 'stock.reserve',
+        target: { kind: 'existing', skuId: product.id,
+          expectedFingerprint: action.expectedFingerprint ?? product.identityFingerprint ?? inventoryProductFingerprint(product) },
+        quantity: { value: action.qty, unit: action.unit ?? product.unit ?? 'unit' },
+        ...(action.price != null ? { salePrice: { amount: action.price, currency: action.priceCurrency ?? 'XXX' } } : {}) };
+    }
+    if (action.type !== 'add_stock') throw new InventoryOperationError('UNSUPPORTED_OPERATION', 'La operación todavía no está migrada al núcleo.');
     const sku = skuFromAction(action);
     const explicitId = action.productId ?? action.resolvedProductId;
     const exact = explicitId ? products.filter((product) => product.id === explicitId)

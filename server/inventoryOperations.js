@@ -56,8 +56,8 @@ function normalizePlan(input) {
   result.actions = Array.from({ length: actions.length }, (_, index) => {
     const descriptor = Object.getOwnPropertyDescriptor(actions, String(index));
     if (!descriptor || !own(descriptor, 'value')) invalid('actions must contain data properties');
-    const action = record(descriptor.value, ['itemId', 'type', 'target', 'quantity', 'price'], 'action');
-    if (action.type !== 'stock.receive') fail('UNSUPPORTED_OPERATION', `Unsupported operation: ${String(action.type)}`);
+    const action = record(descriptor.value, ['itemId', 'type', 'target', 'quantity', 'price', 'salePrice'], 'action');
+    if (!['stock.receive', 'stock.sell', 'stock.reserve'].includes(action.type)) fail('UNSUPPORTED_OPERATION', `Unsupported operation: ${String(action.type)}`);
     const itemId = text(action.itemId, 'itemId');
     if (itemIds.has(itemId)) invalid('Duplicate itemId');
     itemIds.add(itemId);
@@ -68,16 +68,24 @@ function normalizePlan(input) {
       normalizedTarget = { kind: 'existing', skuId: text(target.skuId, 'skuId') };
       if (own(target, 'expectedFingerprint')) normalizedTarget.expectedFingerprint = text(target.expectedFingerprint, 'expectedFingerprint');
     } else if (target.kind === 'new') {
+      if (action.type !== 'stock.receive') invalid('Sales and reservations require an existing SKU');
       if (own(target, 'skuId') || own(target, 'expectedFingerprint')) invalid('New target cannot include existing SKU fields');
       normalizedTarget = { kind: 'new', sku: normalizeSku(target.sku) };
     } else invalid('Unsupported target kind');
     const quantity = record(action.quantity, ['value', 'unit'], 'quantity');
-    const normalized = { itemId, type: 'stock.receive', target: normalizedTarget, quantity: { value: integer(quantity.value, 'quantity.value', 1), unit: domain(() => normalizeUnit(text(quantity.unit, 'quantity.unit'))) } };
+    const normalized = { itemId, type: action.type, target: normalizedTarget, quantity: { value: integer(quantity.value, 'quantity.value', 1), unit: domain(() => normalizeUnit(text(quantity.unit, 'quantity.unit'))) } };
     if (own(action, 'price')) {
+      if (action.type !== 'stock.receive') invalid('Catalog price policies are only valid for receipts');
       const price = record(action.price, ['amount', 'currency', 'policy'], 'price');
       if (typeof price.currency !== 'string' || !/^[A-Z]{3}$/.test(price.currency)) invalid('price.currency must be three uppercase letters');
       if (!['initialize', 'set', 'preserve'].includes(price.policy)) invalid('Invalid price policy');
       normalized.price = { amount: integer(price.amount, 'price.amount'), currency: price.currency, policy: price.policy };
+    }
+    if (own(action, 'salePrice')) {
+      if (action.type === 'stock.receive') invalid('Sale price cannot initialize catalog price');
+      const price = record(action.salePrice, ['amount', 'currency'], 'salePrice');
+      if (typeof price.currency !== 'string' || !/^[A-Z]{3}$/.test(price.currency)) invalid('salePrice.currency must be three uppercase letters');
+      normalized.salePrice = { amount: integer(price.amount, 'salePrice.amount'), currency: price.currency };
     }
     return normalized;
   });
@@ -93,9 +101,13 @@ function normalizePlan(input) {
 
 export function validateOperationPlan(plan, context) {
   if (!context || typeof context.businessId !== 'string' || !context.businessId.trim() || context.businessId === '__default__' || typeof context.actorId !== 'string' || !context.actorId.trim()) fail('BUSINESS_SCOPE_REQUIRED', 'Explicit business and actor context is required');
-  if (!(Array.isArray(context.permissions) || context.permissions instanceof Set) || ![...context.permissions].includes('inventory:receive')) fail('FORBIDDEN', 'inventory:receive permission is required');
+  if (!(Array.isArray(context.permissions) || context.permissions instanceof Set)) fail('FORBIDDEN', 'Inventory permissions are required');
   const normalized = normalizePlan(plan);
   if (normalized.businessId !== context.businessId) fail('BUSINESS_SCOPE_MISMATCH', 'Operation business differs from authenticated business');
+  for (const action of normalized.actions) {
+    const permission = { 'stock.receive': 'inventory:receive', 'stock.sell': 'inventory:sell', 'stock.reserve': 'inventory:reserve' }[action.type];
+    if (![...context.permissions].includes(permission)) fail('FORBIDDEN', `${permission} permission is required`);
+  }
   return normalized;
 }
 function stable(value) {
@@ -128,7 +140,7 @@ export function inventoryProductFingerprint(product) {
   return hash({ identity: productIdentity(product), status: product.status ?? 'active' });
 }
 
-export function planInventoryReceipt(input, products, { createId } = {}) {
+export function planInventoryOperation(input, products, { createId } = {}) {
   const plan = normalizePlan(input);
   if (!Array.isArray(products)) invalid('products must be an array');
   const byId = new Map();
@@ -158,12 +170,19 @@ export function planInventoryReceipt(input, products, { createId } = {}) {
       product = { ...action.target.sku, attributes: JSON.parse(JSON.stringify(action.target.sku.attributes)), id, status: 'active', stockAvailable: 0, stockReserved: 0, price: 0, priceCurrency: 'XXX' };
       byId.set(id, product); identities.add(identity); created = true;
     }
-    if ((product.status ?? 'active') !== 'active') fail('SKU_INACTIVE', 'Cannot receive stock for an inactive SKU');
+    if ((product.status ?? 'active') !== 'active') fail('SKU_INACTIVE', 'Cannot mutate stock for an inactive SKU');
     const unit = domain(() => normalizeUnit(product.unit ?? 'unit'));
-    if (unit !== action.quantity.unit) fail('UNIT_MISMATCH', 'Receipt unit differs from SKU unit');
+    if (unit !== action.quantity.unit) fail('UNIT_MISMATCH', 'Operation unit differs from SKU unit');
     const available = integer(product.stockAvailable ?? 0, 'stockAvailable');
     const reserved = integer(product.stockReserved ?? 0, 'stockReserved');
-    if (!Number.isSafeInteger(available + action.quantity.value)) fail('STOCK_OVERFLOW', 'Receipt exceeds safe stock range');
+    const quantity = action.quantity.value;
+    const receiving = action.type === 'stock.receive';
+    const reserving = action.type === 'stock.reserve';
+    if (!receiving && available < quantity) fail('INSUFFICIENT_STOCK', 'Stock disponible insuficiente; no apliqué el lote.',
+      { skuId: product.id, requested: quantity, available });
+    const nextAvailable = receiving ? available + quantity : available - quantity;
+    const nextReserved = reserving ? reserved + quantity : reserved;
+    if (!Number.isSafeInteger(nextAvailable) || !Number.isSafeInteger(nextReserved)) fail('STOCK_OVERFLOW', 'Operation exceeds safe stock range');
     let price = integer(product.price ?? 0, 'product.price');
     let currency = product.priceCurrency ?? 'XXX';
     if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) invalid('Invalid stored currency');
@@ -173,10 +192,18 @@ export function planInventoryReceipt(input, products, { createId } = {}) {
       if (requested.policy === 'initialize' && price !== 0 && price !== requested.amount) fail('PRICE_CONFLICT', 'Existing SKU price differs from requested initialization');
       if (requested.policy === 'set' || (requested.policy === 'initialize' && price === 0)) { price = requested.amount; currency = requested.currency; }
     }
-    Object.assign(product, { stockAvailable: available + action.quantity.value, stockReserved: reserved, price, priceCurrency: currency });
+    const totalAmount = action.salePrice ? action.salePrice.amount * quantity : null;
+    if (totalAmount !== null && !Number.isSafeInteger(totalAmount)) fail('MONEY_OVERFLOW', 'Sale value exceeds safe money range');
+    Object.assign(product, { stockAvailable: nextAvailable, stockReserved: nextReserved, price, priceCurrency: currency });
     changed.set(product.id, product);
-    items.push({ itemId: action.itemId, type: action.type, skuId: product.id, quantity: { ...action.quantity }, stockAvailable: product.stockAvailable, stockReserved: reserved, price, currency, created });
-    movements.push({ itemId: action.itemId, skuId: product.id, deltaAvailable: action.quantity.value, deltaReserved: 0, unit });
+    items.push({ itemId: action.itemId, type: action.type, skuId: product.id, quantity: { ...action.quantity },
+      stockAvailable: nextAvailable, stockReserved: nextReserved,
+      price: receiving ? price : action.salePrice?.amount ?? null, currency: receiving ? currency : action.salePrice?.currency ?? null, created,
+      ...(!receiving ? { catalogPrice: price, catalogCurrency: currency, totalAmount } : {}) });
+    movements.push({ itemId: action.itemId, skuId: product.id, deltaAvailable: receiving ? quantity : -quantity, deltaReserved: reserving ? quantity : 0, unit });
   }
   return { changedProducts: [...changed.values()], items, movements };
 }
+
+// Compatibility name; receipts, sales and reservations share the same planner.
+export const planInventoryReceipt = planInventoryOperation;

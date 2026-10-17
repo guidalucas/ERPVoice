@@ -7,6 +7,7 @@ import { validateStockDraft, hasExplicitStockSize, productFingerprint, stockRefe
 import { INVENTORY_SCHEMA_SQL, executeInventoryPlanInTransaction } from './inventoryPostgres.js';
 import { validateOperationPlan, InventoryOperationError } from './inventoryOperations.js';
 import { resolvedStockBatchToPlan, confirmedStockActionsToPlan } from './stockOperationAdapter.js';
+import { inventoryResultActions, inventoryResultReply } from './inventoryResults.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -1346,16 +1347,6 @@ const applyPedidoEstadoStockEffect = (products, pedido, previousEstado, nextEsta
   };
 };
 
-const calculateSaleDebt = (products, sellAction) => {
-  const product = resolveProduct(products, sellAction.productName);
-
-  if (!product) {
-    return 0;
-  }
-
-  return Number(product.price) * sellAction.qty;
-};
-
 const calculateProductDebt = (products, debtAction) => {
   if (!debtAction.productName || typeof debtAction.qty !== 'number' || debtAction.qty <= 0) {
     return null;
@@ -2158,9 +2149,13 @@ export const deletePedidoRecord = async (pedidoId, ownerPhone = DEFAULT_OWNER_PH
 export const executeInventoryOperation = async (plan, context) => {
   const normalized = validateOperationPlan(plan, context);
   await ensureReady();
-  return withTransaction((client) => executeInventoryPlanInTransaction(client, normalized, {
-    ...context, ownerPhoneVariants: getOwnerPhoneVariants(context.businessId),
-  }));
+  return withTransaction(async (client) => {
+    const result = await executeInventoryPlanInTransaction(client, normalized, {
+      ...context, ownerPhoneVariants: getOwnerPhoneVariants(context.businessId),
+    });
+    await persistInventoryTransactions(client, normalized, result);
+    return result;
+  });
 };
 
 export const getStateSnapshot = async (ownerPhone = DEFAULT_OWNER_PHONE) => {
@@ -2180,10 +2175,22 @@ export const getStateSnapshot = async (ownerPhone = DEFAULT_OWNER_PHONE) => {
   }
 };
 
+const persistInventoryTransactions = async (client, plan, result, originalActions = []) => {
+  const appliedActions = inventoryResultActions(result, originalActions);
+  for (const [index, item] of result.items.entries()) {
+    const transactionId = `inventory-${crypto.createHash('sha256').update(JSON.stringify([plan.businessId,plan.operationId,item.itemId])).digest('hex')}`;
+    await client.query(`INSERT INTO transactions (id,owner_phone,timestamp,source_text,summary,actions_json,batch_id,item_id)
+      SELECT $1,$2,created_at,$3,$4,$5::jsonb,$6,$7 FROM inventory_operations
+      WHERE owner_phone=$2 AND operation_id=$8 ON CONFLICT (id) DO NOTHING`,
+    [transactionId,plan.businessId,plan.source?.text ?? '',summarizeAction(appliedActions[index]),JSON.stringify([appliedActions[index]]),
+      `${plan.businessId}:${plan.operationId}`,item.itemId,plan.operationId]);
+  }
+};
+
 const applyConfirmedStockActions = async (actions, sourceText, ownerPhone, options) => {
   const operationId = options.operationId ?? options.messageId;
   if (typeof operationId !== 'string' || !operationId.trim()) {
-    throw new InventoryOperationError('OPERATION_ID_REQUIRED', 'El ingreso necesita un ID estable para poder reintentarse sin duplicar stock.');
+    throw new InventoryOperationError('OPERATION_ID_REQUIRED', 'La operación necesita un ID estable para poder reintentarse sin duplicar efectos.');
   }
   await ensureReady();
   const businessId = normalizeOwnerPhone(ownerPhone);
@@ -2191,37 +2198,38 @@ const applyConfirmedStockActions = async (actions, sourceText, ownerPhone, optio
   const requestHash = crypto.createHash('sha256').update(JSON.stringify({ actions, sourceText })).digest('hex');
   return withTransaction(async (client) => {
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify([businessId, id])]);
-    const prior = await queryRow('SELECT plan_json FROM inventory_operations WHERE owner_phone=$1 AND operation_id=$2', [businessId, id], client);
+    const prior = await queryRow('SELECT plan_json,result_json FROM inventory_operations WHERE owner_phone=$1 AND operation_id=$2', [businessId, id], client);
     if (prior) {
-      if (parseJsonValue(prior.plan_json)?.source?.requestHash !== requestHash) throw new InventoryOperationError('IDEMPOTENCY_CONFLICT', 'El ID ya corresponde a otro ingreso.');
-      return queryAllState(businessId, client);
+      if (parseJsonValue(prior.plan_json)?.source?.requestHash !== requestHash) throw new InventoryOperationError('IDEMPOTENCY_CONFLICT', 'El ID ya corresponde a otra operación.');
+      const result = parseJsonValue(prior.result_json);
+      const sent = options.messageId ? await queryRow('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1 AND recipient=$2',
+        [options.messageId, normalizePhone(options.recipient)], client) : null;
+      return { ...await queryAllState(businessId, client), operationResult: result,
+        replyText: sent?.reply_text ?? [options.replyPrefix, inventoryResultReply(result)].filter(Boolean).join('\n\n') };
     }
     await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
     const snapshot = await queryAllState(businessId, client);
     const plan = confirmedStockActionsToPlan({ actions, sourceText, ownerPhone: businessId, operationId: id, products: snapshot.products });
+    plan.source.channel = options.channel ?? 'confirmed';
     plan.source.requestHash = requestHash;
     const result = await executeInventoryPlanInTransaction(client, plan, {
-      businessId, actorId: options.actorId ?? ownerPhone, permissions: ['inventory:receive'],
+      businessId, actorId: options.actorId ?? ownerPhone, permissions: ['inventory:receive', 'inventory:sell', 'inventory:reserve'],
       ownerPhoneVariants: getOwnerPhoneVariants(ownerPhone),
     });
-    for (const [index, item] of result.items.entries()) {
-      const transactionId = `inventory-${crypto.createHash('sha256').update(JSON.stringify([businessId,id,item.itemId])).digest('hex')}`;
-      const applied = { ...actions[index], resolvedProductId: item.skuId, qty: item.quantity.value, price: item.price, priceCurrency: item.currency };
-      await client.query(`INSERT INTO transactions (id,owner_phone,timestamp,source_text,summary,actions_json,batch_id,item_id)
-        VALUES ($1,$2,NOW(),$3,$4,$5::jsonb,$6,$7)`,
-      [transactionId,businessId,sourceText,summarizeAction(applied),JSON.stringify([applied]),`${businessId}:${id}`,item.itemId]);
-    }
-    if (options.messageId && options.replyText && options.recipient) {
+    await persistInventoryTransactions(client, plan, result, actions);
+    const replyText = [options.replyPrefix, inventoryResultReply(result)].filter(Boolean).join('\n\n');
+    if (options.messageId && options.recipient) {
       await client.query(`INSERT INTO meta_reply_outbox (event_id,recipient,reply_text) VALUES ($1,$2,$3)
-        ON CONFLICT (event_id) DO NOTHING`, [options.messageId,normalizePhone(options.recipient),options.replyText]);
+        ON CONFLICT (event_id) DO NOTHING`, [options.messageId,normalizePhone(options.recipient),replyText]);
     }
-    return queryAllState(businessId, client);
+    return { ...await queryAllState(businessId, client), operationResult: result, replyText };
   });
 };
 
 export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
-  if (actions.some((action) => action.type === 'add_stock')) {
-    if (actions.some((action) => action.type !== 'add_stock')) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION', 'Separá el ingreso de las otras operaciones; no apliqué cambios.');
+  const migrated = new Set(['add_stock', 'sell', 'reserve_stock']);
+  if (actions.some((action) => migrated.has(action.type))) {
+    if (actions.some((action) => !migrated.has(action.type))) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION', 'El lote combina operaciones todavía no migradas; no apliqué cambios.');
     return applyConfirmedStockActions(actions, sourceText, ownerPhone, options);
   }
   await ensureReady();
@@ -2245,25 +2253,9 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     const newTransactions = [];
     const originalPedidoIds = new Set(currentSnapshot.pedidos.map((pedido) => pedido.id));
 
-    const lastSellAction = [...actions].reverse().find((action) => action.type === 'sell');
-    const computedDebtAmount = lastSellAction ? calculateSaleDebt(nextProducts, lastSellAction) : null;
-
     actions.forEach((action, index) => {
       if (action.type === 'query_stock' || action.type === 'query_pedidos') {
         return;
-      }
-
-      if (action.type === 'reserve_stock') {
-        const product = ensureProduct(nextProducts, action);
-        const reservationQty = Math.min(product.stockAvailable, action.qty);
-        product.stockAvailable -= reservationQty;
-        product.stockReserved += reservationQty;
-      }
-
-      if (action.type === 'sell') {
-        const product = ensureProduct(nextProducts, action);
-        const sellQty = Math.min(product.stockAvailable, action.qty);
-        product.stockAvailable -= sellQty;
       }
 
       if (action.type === 'add_debt') {
@@ -2272,9 +2264,7 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
           const productDebtAmount = calculateProductDebt(nextProducts, action);
           const amountToApply = productDebtAmount && productDebtAmount > 0
             ? productDebtAmount
-            : computedDebtAmount && computedDebtAmount > 0
-              ? computedDebtAmount
-              : action.amount;
+            : action.amount;
 
           clientEntry.debt += amountToApply;
           action = {

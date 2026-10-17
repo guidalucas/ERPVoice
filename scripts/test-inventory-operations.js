@@ -55,7 +55,7 @@ for (const bad of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity, '2'])
 for (const actions of [[], Array(101).fill(existing()), [existing(), existing()], [undefined]]) throws(() => validateOperationPlan(plan(actions), context));
 throws(() => validateOperationPlan({ ...plan(), extra: true }, context));
 throws(() => validateOperationPlan({ ...plan(), source: { channel: 'web', text: undefined } }, context));
-throws(() => validateOperationPlan(plan([{ ...existing(), type: 'stock.reserve' }]), context), 'UNSUPPORTED_OPERATION');
+throws(() => validateOperationPlan(plan([{ ...existing(), type: 'stock.unknown' }]), context), 'UNSUPPORTED_OPERATION');
 throws(() => validateOperationPlan(plan(), { ...context, businessId: 'other' }), 'BUSINESS_SCOPE_MISMATCH');
 throws(() => validateOperationPlan(plan(), { ...context, businessId: '__default__' }), 'BUSINESS_SCOPE_REQUIRED');
 throws(() => validateOperationPlan(plan(), { ...context, actorId: '' }), 'BUSINESS_SCOPE_REQUIRED');

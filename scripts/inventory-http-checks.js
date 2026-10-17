@@ -139,13 +139,63 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(response.status, 409); assert.equal(response.json.code, 'PRICE_CONFLICT');
       assert.deepEqual(await stock(skuId), before); assert.equal((await ledger('http-price-conflict')).length, 0);
     });
-    await run('mixed intake and sale reject atomically', async () => {
+    await run('mixed inventory and unmigrated operation reject atomically', async () => {
       const before = await db.getStateSnapshotStrict(owner);
       const response = await request('/api/state/apply', { body: { operationId: 'http-mixed', sourceText: 'mixed', actions: [
-        { type: 'add_stock', productName: 'HTTP mixed must not exist', qty: 4 }, { type: 'sell', productId: skuId, productName: fresh.target.sku.name, qty: 1 },
+        { type: 'add_stock', productName: 'HTTP mixed must not exist', qty: 4 }, { type: 'update_product', productName: fresh.target.sku.name, price: 1 },
       ] } });
       assert.equal(response.status, 409); assert.equal(response.json.code, 'UNSUPPORTED_MIXED_OPERATION');
       assert.deepEqual(await db.getStateSnapshotStrict(owner), before); assert.equal((await ledger('panel:http-mixed')).length, 0);
+    });
+    await run('canonical sale and panel reservation share receipt effects and reject insufficient stock', async () => {
+      const seeded = await request('/api/inventory/operations', { body: plan('http-consume-seed', [{ ...fresh,
+        target: { kind: 'new', sku: { name: 'Venta HTTP precisa' } }, quantity: { value: 2, unit: 'unit' } }]) });
+      const id = seeded.json.items[0].skuId;
+      const sale = { itemId: 'sale', type: 'stock.sell', target: { kind: 'existing', skuId: id }, quantity: { value: 1, unit: 'unit' } };
+      const sold = await request('/api/inventory/operations', { body: plan('http-sell', [sale]) });
+      assert.equal(sold.status, 200); assert.equal(sold.json.items[0].price, null);
+      assert.deepEqual((await request('/api/inventory/operations', { body: plan('http-sell', [sale]) })).json, sold.json);
+      assert.equal(sold.json.items[0].stockAvailable, 1); assert.equal(sold.json.items[0].catalogPrice, 450);
+      const product = (await db.getStateSnapshotStrict(owner)).products.find((row) => row.id === id);
+      const body = { operationId: 'http-reserve', sourceText: 'Reservar SKU confirmado', actions: [{ type: 'reserve_stock',
+        productId: id, productName: 'Etiqueta no autoritativa', expectedFingerprint: product.identityFingerprint, qty: 1, unit: 'unit' }] };
+      const reserved = await request('/api/state/apply', { body });
+      assert.equal(reserved.status, 200); assert.match(reserved.json.replyText, /Reserva registrada/);
+      assert.match(reserved.json.replyText, /Venta HTTP precisa/); assert.doesNotMatch(reserved.json.replyText, /Etiqueta no autoritativa/);
+      assert.equal(reserved.json.products.find((row) => row.id === id).stockReserved, 1);
+      assert.deepEqual((await request('/api/state/apply', { body })).json.operationResult, reserved.json.operationResult);
+      assert.equal((await ledger('http-sell')).length, 1); assert.equal((await ledger('panel:http-reserve')).length, 1);
+      const denied = await request('/api/inventory/operations', { body: plan('http-insufficient', [sale]) });
+      assert.equal(denied.status, 409); assert.equal(denied.json.code, 'INSUFFICIENT_STOCK');
+      assert.equal((await ledger('http-insufficient')).length, 0);
+      assert.deepEqual(await stock(id), [{ stock_available: '0', stock_reserved: '1', price: '450', price_currency: 'UYU' }]);
+    });
+    await run('signed WhatsApp insufficient sale completes rejection and cannot execute after replenishment', async () => {
+      const product = await db.createProductRecord({ name: 'Taladro Delta', stockAvailable: 2, price: 900 }, owner);
+      const messageId = 'http-meta-insufficient-terminal';
+      const body = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [{
+        id: messageId, from: owner, type: 'text', text: { body: 'Vendí 50 Taladro Delta' },
+      }] } }] }] };
+      const raw = JSON.stringify(body);
+      const headers = { 'X-Hub-Signature-256': `sha256=${crypto.createHmac('sha256', appSecret).update(Buffer.from(raw)).digest('hex')}` };
+      assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
+      const deadline = Date.now() + 5000;
+      let claim;
+      while (Date.now() < deadline) {
+        claim = (await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1', [messageId])).rows[0];
+        if (claim?.status === 'completed') break;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+      assert.equal(claim?.status, 'completed');
+      const event = (await sql.query('SELECT error,actions_json,reply_text,processed FROM meta_events WHERE id=$1', [messageId])).rows[0];
+      assert.equal(event.error, 'INSUFFICIENT_STOCK'); assert.deepEqual(event.actions_json, []); assert.equal(event.processed, true);
+      assert.match(event.reply_text, /insuficiente/);
+      assert.equal((await sql.query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1', [messageId])).rows[0].reply_text, event.reply_text);
+      await sql.query('UPDATE products SET stock_available=100 WHERE owner_phone=$1 AND id=$2', [owner, product.id]);
+      assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
+      assert.equal(Number((await stock(product.id))[0].stock_available), 100);
+      assert.equal((await ledger(`whatsapp:${messageId}`)).length, 0);
+      assert.equal(await db.claimMetaMessage({ messageId, ownerPhone: owner, senderPhone: owner, rawBody: body }), false);
     });
     return completed;
   } catch (error) {

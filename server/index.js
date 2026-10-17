@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { getBusinessCategoryPreset } from './businessCategories.js';
 import { hasProductMatchHold } from './voiceCatalogContext.js';
+import { inventoryResultActions } from './inventoryResults.js';
 import { answerPedidosQuery } from './pedidoQuery.js';
 import {
   createProductRecord,
@@ -872,7 +873,7 @@ app.get('/api/meta-webhook', (req, res) => {
 app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
   try {
     const result = await executeInventoryOperation(req.body, {
-      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:receive'],
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:receive', 'inventory:sell', 'inventory:reserve'],
     });
     res.json(result);
   } catch (error) {
@@ -1156,17 +1157,31 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
           .join('\n\n');
       }
 
+      let mutationOutcome = null;
+      let mutationRejected = false;
       if (!stockBatchResponse && !legacyStockHold && mutationActions.length && !hasProductMatchHold(result.parsed)) {
-        await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber, {
-          messageId: incomingId, recipient: result.fromNumber,
-          replyText: [overrideReplyText, result.replyText].filter(Boolean).join('\n\n'),
-        });
+        try {
+          mutationOutcome = await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber, {
+            messageId: incomingId, recipient: result.fromNumber,
+            actorId: result.fromNumber, channel: 'whatsapp', replyPrefix: overrideReplyText,
+            replyText: [overrideReplyText, result.replyText].filter(Boolean).join('\n\n'),
+          });
+        } catch (error) {
+          if (error.name !== 'InventoryOperationError') throw error;
+          // A business rejection is terminal. Never retry a rejected sale later
+          // merely because replenishment made it executable in the meantime.
+          mutationRejected = true;
+          eventRecord.error = error.code;
+          mutationOutcome = { replyText: [overrideReplyText, error.message].filter(Boolean).join('\n\n') };
+        }
       }
 
-      const finalReplyText = stockBatchResponse?.replyText ?? [overrideReplyText, result.replyText].filter(Boolean).join('\n\n');
+      const finalReplyText = stockBatchResponse?.replyText ?? mutationOutcome?.replyText
+        ?? [overrideReplyText, result.replyText].filter(Boolean).join('\n\n');
 
       eventRecord.replyText = finalReplyText;
-      eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? result.parsed?.actions ?? []);
+      eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? (mutationRejected ? [] : mutationOutcome?.operationResult
+        ? inventoryResultActions(mutationOutcome.operationResult, mutationActions) : result.parsed?.actions ?? []));
       eventRecord.processed = Boolean(stockBatchResponse || queryActions.length || mutationActions.length);
 
       console.log('[MetaWebhook] response debug:', {

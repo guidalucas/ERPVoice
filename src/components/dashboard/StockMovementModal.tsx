@@ -30,9 +30,11 @@ const productLabel = (product: Product, includeSize: boolean) => {
 export function StockMovementModal({ mode, products, onClose, onSubmit }: StockMovementModalProps) {
   const preset = useBusinessCategoryPreset();
   const isIngreso = mode === 'ingreso';
+  const includeSize = !isIngreso || preset.useVariants;
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [qtyText, setQtyText] = useState('1');
+  const [salePriceText, setSalePriceText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef<{ key: string; id: string } | null>(null);
@@ -46,7 +48,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
   const filteredProducts = useMemo(() => {
     const normalizedQuery = normalizeSearch(searchQuery);
     const sorted = [...products].sort((a, b) =>
-      productLabel(a, preset.useVariants).localeCompare(productLabel(b, preset.useVariants), 'es', { sensitivity: 'base' }),
+      productLabel(a, includeSize).localeCompare(productLabel(b, includeSize), 'es', { sensitivity: 'base' }),
     );
 
     if (!normalizedQuery) {
@@ -56,19 +58,22 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
     return sorted
       .filter((product) => {
         const haystack = normalizeSearch(
-          [product.name, product.productType, product.productModel, preset.useVariants ? product.size : null]
+          [product.name, product.productType, product.productModel, includeSize ? product.size : null]
             .filter(Boolean)
             .join(' '),
         );
         return haystack.includes(normalizedQuery);
       })
       .slice(0, 40);
-  }, [products, searchQuery, preset.useVariants]);
+  }, [products, searchQuery, includeSize]);
 
   const qty = Number(qtyText);
   const qtyValid = Number.isSafeInteger(qty) && qty > 0;
+  const hasSalePrice = salePriceText.trim() !== '';
+  const salePrice = Number(salePriceText);
+  const salePriceValid = !hasSalePrice || (Number.isSafeInteger(salePrice) && salePrice >= 0);
   const exceedsStock = !isIngreso && selectedProduct != null && qtyValid && qty > selectedProduct.stockAvailable;
-  const canSubmit = Boolean(selectedProduct) && qtyValid && !exceedsStock && !submitting;
+  const canSubmit = Boolean(selectedProduct) && qtyValid && (isIngreso || salePriceValid) && !exceedsStock && !submitting;
 
   const handleSubmit = async () => {
     if (inFlightRef.current) return;
@@ -79,6 +84,11 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
 
     if (!isIngreso && qty > selectedProduct.stockAvailable) {
       setError(`Stock insuficiente. Disponible: ${selectedProduct.stockAvailable}.`);
+      return;
+    }
+
+    if (!isIngreso && !salePriceValid) {
+      setError('El precio de venta debe ser un entero seguro mayor o igual a cero.');
       return;
     }
 
@@ -102,17 +112,21 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
         }
       : {
           type: 'sell',
+          productId: selectedProduct.id,
+          expectedFingerprint: selectedProduct.identityFingerprint,
+          unit: selectedProduct.unit ?? 'unit',
+          priceCurrency: selectedProduct.priceCurrency ?? 'XXX',
           productName: selectedProduct.name,
           productType: selectedProduct.productType ?? undefined,
           productModel: selectedProduct.productModel ?? undefined,
-          size: preset.useVariants ? selectedProduct.size ?? undefined : undefined,
+          size: selectedProduct.size ?? undefined,
           qty,
-          price: selectedProduct.price,
+          ...(hasSalePrice ? { price: salePrice } : {}),
         };
 
     const sourceText = isIngreso
-      ? `Ingreso manual: +${qty} ${productLabel(selectedProduct, preset.useVariants)}`
-      : `Venta manual: -${qty} ${productLabel(selectedProduct, preset.useVariants)}`;
+      ? `Ingreso manual: +${qty} ${productLabel(selectedProduct, includeSize)}`
+      : `Venta manual: -${qty} ${productLabel(selectedProduct, includeSize)}`;
 
     try {
       const key = JSON.stringify({ sourceText, action });
@@ -134,7 +148,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
+      <div role="dialog" aria-modal="true" aria-label={isIngreso ? 'Registrar ingreso' : 'Registrar venta'} className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-y-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h4 className="type-title text-[1.55rem] leading-none text-[color:var(--text)]">
@@ -180,7 +194,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
                       : 'border border-transparent text-[color:var(--text)] hover:bg-[color:var(--card-hover)]'
                   }`}
                 >
-                  <span className="type-body-strong">{productLabel(product, preset.useVariants)}</span>
+                  <span className="type-body-strong">{productLabel(product, includeSize)}</span>
                   <span className="type-metric shrink-0 text-xs text-[color:var(--muted)]">{product.stockAvailable} disp.</span>
                 </button>
               );
@@ -203,10 +217,31 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
           />
         </label>
 
+        {!isIngreso && (
+          <label className="mt-4 block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
+            Precio de venta unitario (opcional)
+            <input
+              className="erp-input h-11 rounded-xl text-[15px]"
+              type="number"
+              min={0}
+              step={1}
+              value={salePriceText}
+              onChange={(event) => {
+                setSalePriceText(event.target.value);
+                setError(null);
+              }}
+              aria-invalid={!salePriceValid}
+              placeholder="Sin precio registrado"
+            />
+            <span className="block text-xs text-[color:var(--muted)]">Dejalo vacío si no conocés el precio de esta venta.</span>
+            {!salePriceValid && <span className="block text-xs text-rose-700 dark:text-rose-200">Ingresá un entero seguro mayor o igual a cero.</span>}
+          </label>
+        )}
+
         {selectedProduct && (
           <p className="mt-2 text-xs text-[color:var(--muted)]">
             Seleccionado:{' '}
-            <span className="text-[color:var(--text)]">{productLabel(selectedProduct, preset.useVariants)}</span>
+            <span className="text-[color:var(--text)]">{productLabel(selectedProduct, includeSize)}</span>
             {!isIngreso && ` · Disponible: ${selectedProduct.stockAvailable}`}
           </p>
         )}

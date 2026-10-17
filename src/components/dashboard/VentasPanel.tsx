@@ -1,25 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
-import type { ParsedActionSell, Product, Transaction } from '../../domain/types';
+import { flattenSales, formatSaleAmount, formatSalesGroup, summarizeSales, type SaleRow } from '../../domain/salesMetrics';
 import { EmptyState } from './EmptyState';
 import { VoiceQuote } from '../ui/VoiceQuote';
 
 type PeriodFilter = 'hoy' | '7d' | '30d' | 'todo';
-
-type SaleRow = {
-  id: string;
-  timestamp: string;
-  productName: string;
-  productType?: string;
-  productModel?: string;
-  size?: string;
-  qty: number;
-  unitPrice: number;
-  subtotal: number;
-  sourceText: string;
-  summary: string;
-};
 
 const PERIOD_OPTIONS: { id: PeriodFilter; label: string }[] = [
   { id: 'hoy', label: 'Hoy' },
@@ -27,8 +13,6 @@ const PERIOD_OPTIONS: { id: PeriodFilter; label: string }[] = [
   { id: '30d', label: '30 días' },
   { id: 'todo', label: 'Todo' },
 ];
-
-const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
 
 const startOfTodayMs = () => {
   const now = new Date();
@@ -44,81 +28,6 @@ const periodSinceMs = (filter: PeriodFilter): number | null => {
   }
   const days = filter === '7d' ? 7 : 30;
   return Date.now() - days * 24 * 60 * 60 * 1000;
-};
-
-const normalizeText = (value: string) =>
-  String(value ?? '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '');
-
-const resolveUnitPrice = (action: ParsedActionSell, products: Product[]): number => {
-  if (typeof action.price === 'number' && Number.isFinite(action.price) && action.price > 0) {
-    return action.price;
-  }
-
-  const actionName = normalizeText(action.productName);
-  const actionType = normalizeText(action.productType ?? '');
-  const actionModel = normalizeText(action.productModel ?? '');
-  const actionSize = normalizeText(action.size ?? '');
-
-  let best: Product | null = null;
-  let bestScore = 0;
-
-  for (const product of products) {
-    let score = 0;
-    const productName = normalizeText(product.name);
-    if (actionName && (productName.includes(actionName) || actionName.includes(productName))) {
-      score += 3;
-    }
-    if (actionType && normalizeText(product.productType ?? '') === actionType) {
-      score += 2;
-    }
-    if (actionModel && normalizeText(product.productModel ?? '') === actionModel) {
-      score += 2;
-    }
-    if (actionSize && normalizeText(product.size ?? '') === actionSize) {
-      score += 1;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      best = product;
-    }
-  }
-
-  return best && best.price > 0 ? best.price : 0;
-};
-
-const flattenSales = (transactions: Transaction[], products: Product[]): SaleRow[] => {
-  const rows: SaleRow[] = [];
-
-  for (const transaction of transactions) {
-    transaction.actions.forEach((action, index) => {
-      if (action.type !== 'sell') {
-        return;
-      }
-
-      const sell = action as ParsedActionSell;
-      const unitPrice = resolveUnitPrice(sell, products);
-      const qty = Math.max(0, Number(sell.qty) || 0);
-
-      rows.push({
-        id: `${transaction.id}-sell-${index}`,
-        timestamp: transaction.timestamp,
-        productName: sell.productName,
-        productType: sell.productType,
-        productModel: sell.productModel,
-        size: sell.size,
-        qty,
-        unitPrice,
-        subtotal: qty * unitPrice,
-        sourceText: transaction.sourceText,
-        summary: transaction.summary,
-      });
-    });
-  }
-
-  return rows.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 };
 
 const productLabel = (
@@ -150,15 +59,7 @@ export function VentasPanel() {
     });
   }, [allSales, period]);
 
-  const totals = useMemo(() => {
-    let units = 0;
-    let amount = 0;
-    for (const sale of filteredSales) {
-      units += sale.qty;
-      amount += sale.subtotal;
-    }
-    return { units, amount };
-  }, [filteredSales]);
+  const totals = useMemo(() => summarizeSales(filteredSales), [filteredSales]);
 
   const trend = useMemo(() => {
     const dayCount = period === 'hoy' ? 1 : period === '7d' ? 7 : 14;
@@ -201,10 +102,11 @@ export function VentasPanel() {
 
       <div className="grid gap-3 lg:grid-cols-3">
         <div className="kpi-card kpi-card-hero">
-          <p className="text-sm type-subtitle text-[color:var(--muted)]">Total facturado</p>
+          <p className="text-sm type-subtitle text-[color:var(--muted)]">{totals.unknown || totals.historical ? 'Importes parciales por moneda' : 'Total por moneda'}</p>
           <p className="mt-5 type-metric-strong text-[2rem] leading-none erp-brand-gradient-text">
-            {totals.amount > 0 ? formatCurrency(totals.amount) : '—'}
+            {totals.groups.length ? totals.groups.map((group) => <span key={group.id} className="block text-2xl">{formatSalesGroup(group)}</span>) : '—'}
           </p>
+          {totals.unknown > 0 && <p className="mt-2 text-xs text-[color:var(--muted)]">{totals.unknown} {totals.unknown === 1 ? 'venta sin precio registrado' : 'ventas sin precio registrado'}</p>}
         </div>
         <div className="kpi-card">
           <p className="text-sm type-subtitle text-[color:var(--muted)]">Unidades</p>
@@ -276,15 +178,15 @@ export function VentasPanel() {
                   <p className="mt-1 text-xs text-[color:var(--muted)]">
                     {new Date(sale.timestamp).toLocaleString('es-AR')}
                   </p>
-                  {sale.sourceText ? <VoiceQuote text={sale.sourceText} /> : null}
+                  {sale.historical && <p className="mt-1 text-xs text-[color:var(--muted)]">Registro histórico · importe estimado</p>}{sale.sourceText ? <VoiceQuote text={sale.sourceText} /> : null}
                 </div>
                 <div className="text-right">
                   <p className="type-subtitle text-sm text-[color:var(--text)]">
                     ×{sale.qty}
-                    {sale.unitPrice > 0 ? ` · ${formatCurrency(sale.unitPrice)}` : ''}
+                    {sale.unitPrice !== null ? ` · ${formatSaleAmount(sale.unitPrice, sale.priceCurrency)}` : ''}
                   </p>
                   <p className="mt-1 text-sm font-semibold text-rose-700 dark:text-rose-200">
-                    {sale.subtotal > 0 ? formatCurrency(sale.subtotal) : sale.summary}
+                    {sale.subtotal !== null ? formatSaleAmount(sale.subtotal, sale.priceCurrency) : 'Importe desconocido · Sin precio registrado'}
                   </p>
                 </div>
               </div>

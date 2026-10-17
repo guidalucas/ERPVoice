@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { runInventoryCoreChecks } from './inventory-core-postgres-checks.js';
+import { runInventorySalesChecks } from './inventory-sales-postgres-checks.js';
 import { runInventoryHttpChecks } from './inventory-http-checks.js';
 import os from 'node:os';
 import path from 'node:path';
@@ -50,6 +51,7 @@ try {
   await db.migrateDatabase();
   sql = new Client({ connectionString: connection }); await sql.connect();
   await runInventoryCoreChecks({ db, sql, check });
+  await runInventorySalesChecks({ db, sql, check });
   await runInventoryHttpChecks({ db, sql, check });
 
   await check('migración repetible y RLS', async () => {
@@ -1016,9 +1018,9 @@ try {
   await check('recuperación de otros intents tampoco repite una mutación ya confirmada', async () => {
     const product = await db.createProductRecord({ name: 'Producto de venta', stockAvailable: 10 }, owner);
     const options = { messageId: 'legacy-sale-once', recipient: owner, replyText: 'Venta registrada.' };
-    await Promise.all(Array.from({ length: 3 }, () => db.applyActionsToDatabase([{ type: 'sell', productName: product.name, qty: 2 }], 'Vendí dos Producto de venta', owner, options)));
+    await Promise.all(Array.from({ length: 3 }, () => db.applyActionsToDatabase([{ type: 'sell', productId: product.id, productName: product.name, qty: 2 }], 'Vendí dos Producto de venta', owner, options)));
     assert.equal((await db.getStateSnapshotStrict(owner)).products.find((entry) => entry.id === product.id).stockAvailable, 8);
-    assert.equal((await sql.query('SELECT id FROM transactions WHERE batch_id = $1', ['meta:legacy-sale-once'])).rowCount, 1);
+    assert.equal((await sql.query('SELECT id FROM transactions WHERE batch_id = $1', [`${owner}:confirmed:legacy-sale-once`])).rowCount, 1);
     assert.equal((await sql.query('SELECT event_id FROM meta_reply_outbox WHERE event_id = $1', [options.messageId])).rowCount, 1);
   });
   await check('historial del remitente queda limitado al negocio actual', async () => {

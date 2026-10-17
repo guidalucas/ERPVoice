@@ -1,16 +1,16 @@
 # Ingresos por WhatsApp: operación y validación
 
 > Reingeniería C en curso: [estado y próximos pasos](STOCKY_REENGINEERING_PLAN.md).
-> La ejecución de `add_stock` de WhatsApp y panel ya usa `stock.receive` y el núcleo
-> determinista. La interpretación y las demás operaciones aún no completaron la migración.
-> Un ingreso del panel requiere `operationId` estable. En producción se requieren
+> Ingresos, ventas y reservas de WhatsApp y panel comparten el núcleo determinista
+> (`stock.receive`, `stock.sell`, `stock.reserve`). La interpretación universal sigue pendiente.
+> Estas operaciones del panel requieren `operationId` estable. En producción se requieren
 > `META_APP_SECRET` y `AUTH_JWT_SECRET` privado de al menos 32 bytes.
 
 ## Alcance de la entrega
 
 El motor de ingresos `add_stock` admite cualquier rubro. `voiceStockEngine.js` extrae sin inventario, audita cobertura sin inventario y luego resuelve identidad usando candidatos del mismo negocio. `voiceStockWorkflow.js` conserva el lote, interpreta aclaraciones y gobierna las transiciones. El webhook solo adapta mensajes, transcripciones y respuestas.
 
-Ventas, reservas y pedidos mantienen su interpretación actual. El panel mantiene propuestas que la persona confirma manualmente antes de llamar a `/api/state/apply`; todavía no usa el diálogo persistente de WhatsApp. Esta es la separación de alcance prevista en el plan original.
+Ventas y reservas mantienen su interpretación actual, pero la resolución conservadora emite un SKU explícito antes de escribir. La ejecución rechaza stock insuficiente sin aplicar una parte del lote, no crea productos y no busca nuevamente por nombre. El precio de venta informado no cambia el precio del catálogo; sin precio informado el recibo lo marca desconocido. Los pedidos siguen pendientes. El panel mantiene propuestas que la persona confirma manualmente antes de llamar a `/api/state/apply`; todavía no usa el diálogo persistente de WhatsApp.
 
 ## Persistencia y recuperación
 

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { validateOperationPlan, operationDigest, planInventoryReceipt, InventoryOperationError } from './inventoryOperations.js';
+import { validateOperationPlan, operationDigest, planInventoryOperation, InventoryOperationError } from './inventoryOperations.js';
 
 // Additive metadata; numeric widening preserves the existing integer values.
 export const INVENTORY_SCHEMA_SQL = `
@@ -54,7 +54,7 @@ export async function executeInventoryPlanInTransaction(client, input, context) 
   const loaded = await client.query('SELECT * FROM products WHERE owner_phone = ANY($1) ORDER BY id FOR UPDATE', [owners]);
   const products = loaded.rows.map(inventoryRowToProduct);
   const existingIds = new Set(products.map((product) => product.id));
-  const effect = planInventoryReceipt(plan, products, { createId: () => `sku-${crypto.randomUUID()}` });
+  const effect = planInventoryOperation(plan, products, { createId: () => `sku-${crypto.randomUUID()}` });
   const persisted = new Map();
   for (const product of effect.changedProducts) {
     const values = [product.id, context.businessId, product.name, product.productType ?? null,
@@ -81,9 +81,13 @@ export async function executeInventoryPlanInTransaction(client, input, context) 
   }
   const result = { contractVersion: 1, operationId: plan.operationId, businessId: context.businessId,
     status: 'applied', items: effect.items.map((item) => ({ ...item,
+      skuName: persisted.get(item.skuId).name, productType: persisted.get(item.skuId).productType,
+      productModel: persisted.get(item.skuId).productModel, size: persisted.get(item.skuId).size,
       stockAvailable: persisted.get(item.skuId).stockAvailable,
       stockReserved: persisted.get(item.skuId).stockReserved,
-      price: persisted.get(item.skuId).price, currency: persisted.get(item.skuId).priceCurrency,
+      ...(item.type === 'stock.receive'
+        ? { price: persisted.get(item.skuId).price, currency: persisted.get(item.skuId).priceCurrency }
+        : { catalogPrice: persisted.get(item.skuId).price, catalogCurrency: persisted.get(item.skuId).priceCurrency }),
     })) };
   await client.query(`INSERT INTO inventory_operations
     (owner_phone,operation_id,contract_version,actor_id,request_hash,plan_json,result_json)
