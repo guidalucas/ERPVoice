@@ -3,7 +3,7 @@ export const inventoryResultActions = (result, originalActions = []) => result.i
   const sourceIndex = /^item-(\d+)(?:-(?:adjust|update))?$/.exec(item.itemId);
   const original = originalActions[sourceIndex ? Number(sourceIndex[1]) - 1 : index] ?? {};
   const action = { ...original,
-    type: { 'stock.receive': 'add_stock', 'stock.sell': 'sell', 'stock.reserve': 'reserve_stock', 'stock.adjust': 'update_product', 'sku.update': 'update_product', 'sku.deactivate': 'delete_product', 'sku.create': 'create_product' }[item.type],
+    type: { 'stock.receive': 'add_stock', 'stock.sell': 'sell', 'stock.reserve': 'reserve_stock', 'stock.withdraw': 'withdraw_stock', 'stock.adjust': 'update_product', 'sku.update': 'update_product', 'sku.deactivate': 'delete_product', 'sku.create': 'create_product' }[item.type],
     productId: item.skuId, resolvedProductId: item.skuId,
     productName: item.skuName ?? original.productName ?? item.skuId,
     productType: item.productType ?? undefined, productModel: item.productModel ?? undefined, size: item.size ?? undefined,
@@ -11,6 +11,10 @@ export const inventoryResultActions = (result, originalActions = []) => result.i
   };
   delete action.price;
   delete action.priceCurrency;
+  if (item.type === 'stock.withdraw') {
+    action.reason = item.reason; action.stockAvailable = item.stockAvailable; action.stockReserved = item.stockReserved;
+    return action;
+  }
   if (item.type === 'sku.deactivate') {
     delete action.qty; delete action.stockAvailable; delete action.stockReserved;
     action.status = item.status; action.revision = item.revision; action.reason = item.reason;
@@ -48,7 +52,7 @@ export const inventoryResultReply = (result) => result.items.map((item) => {
     const changes = item.changes ? ` Cambios: ${Object.entries(item.changes).map(([key,value]) => `${key}=${JSON.stringify(value)}`).join(', ')}.` : '';
     return `${item.type === 'stock.adjust' ? 'Ajuste aplicado' : 'SKU actualizado'}: ${item.skuName ?? item.skuId}${item.size ? ` (${item.size})` : ''}. Disponible: ${item.stockAvailable}; reservado: ${item.stockReserved}; revisión: ${item.revision}.${changes}`;
   }
-  const verb = { 'stock.receive': 'Ingreso aplicado', 'stock.sell': 'Venta registrada', 'stock.reserve': 'Reserva registrada' }[item.type];
+  const verb = { 'stock.receive': 'Ingreso aplicado', 'stock.sell': 'Venta registrada', 'stock.reserve': 'Reserva registrada', 'stock.withdraw': 'Retiro aplicado' }[item.type];
   const price = item.type === 'stock.sell' ? item.price === null
     ? '; precio de venta no informado' : `; precio de venta ${item.currency} ${item.price} c/u` : '';
   return `${verb}: ${item.quantity.value} ${item.quantity.unit} de ${item.skuName ?? item.skuId}${item.size ? ` (${item.size})` : ''}. Disponible: ${item.stockAvailable}; reservado: ${item.stockReserved}${price}.`;

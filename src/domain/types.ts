@@ -40,6 +40,9 @@ export type PedidoEstado = 'pendiente' | 'conseguido' | 'descartado';
 
 export interface Pedido {
   id: string;
+  revision?: number;
+  productId?: string | null;
+  stockPosting?: { skuId: string; quantity: number; unit: string } | null;
   clienteId: string;
   proveedorId?: string | null;
   producto: string;
@@ -221,11 +224,13 @@ export type ProductCreatedAction = {
   reason: string;
 };
 
+export type StockWithdrawnAction = { type: 'withdraw_stock'; productId: string; qty: number; unit?: string; reason: string };
+
 export interface Transaction {
   id: string;
   timestamp: string;
   sourceText: string;
-  actions: Array<ParsedActionUnion | ProductCreatedAction>;
+  actions: Array<ParsedActionUnion | ProductCreatedAction | StockWithdrawnAction>;
   summary: string;
 }
 

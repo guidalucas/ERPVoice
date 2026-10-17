@@ -134,6 +134,8 @@ export const useInventory = () => {
   };
 
   const createPedidoRecord = async (input: {
+    operationId: string;
+    productId?: string | null;
     clienteId: string;
     proveedorId?: string | null;
     producto: string;
@@ -148,8 +150,11 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const updatePedidoRecord = async (pedidoId: string, input: Partial<Omit<Pedido, 'id' | 'fechaPedido'>>) => {
+  const updatePedidoRecord = async (pedidoId: string, input: Partial<Omit<Pedido, 'id' | 'fechaPedido' | 'revision' | 'stockPosting'>> & { operationId: string; expectedRevision: number }) => {
     await updatePedido(pedidoId, {
+      operationId: input.operationId,
+      expectedRevision: input.expectedRevision,
+      productId: input.productId,
       clienteId: input.clienteId,
       proveedorId: input.proveedorId,
       producto: input.producto,
@@ -163,8 +168,8 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const deletePedidoRecord = async (pedidoId: string) => {
-    await deletePedido(pedidoId);
+  const deletePedidoRecord = async (pedidoId: string, metadata: { operationId: string; expectedRevision: number }) => {
+    await deletePedido(pedidoId, metadata);
     await refreshState();
   };
 

@@ -101,7 +101,7 @@ export async function executeInventoryPlanInTransaction(client, input, context) 
         ...(item.changes ? { changes: Object.fromEntries(Object.keys(item.changes).map((key) => [key, persisted.get(item.skuId)[key] ?? null])) } : {}),
         ...(item.balances ? { balances: Object.fromEntries(Object.keys(item.balances).map((key) => [key, persisted.get(item.skuId)[key === 'available' ? 'stockAvailable' : 'stockReserved']])) } : {}),
       } : {}),
-      ...(['stock.receive', 'stock.adjust', 'sku.update', 'sku.deactivate', 'sku.create'].includes(item.type)
+      ...(item.type === 'stock.withdraw' ? {} : ['stock.receive', 'stock.adjust', 'sku.update', 'sku.deactivate', 'sku.create'].includes(item.type)
         ? { price: persisted.get(item.skuId).price, currency: persisted.get(item.skuId).priceCurrency }
         : { catalogPrice: persisted.get(item.skuId).price, catalogCurrency: persisted.get(item.skuId).priceCurrency }),
     })) };

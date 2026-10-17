@@ -41,6 +41,8 @@ export type ProveedorInput = {
 };
 
 export type PedidoInput = {
+  operationId: string;
+  productId?: string | null;
   clienteId: string;
   proveedorId?: string | null;
   producto: string;
@@ -201,13 +203,16 @@ export const createPedido = async (pedido: PedidoInput) =>
     body: JSON.stringify(pedido),
   });
 
-export const updatePedido = async (pedidoId: string, pedido: Partial<PedidoInput>) =>
+export type PedidoUpdateInput = Partial<PedidoInput> & { operationId: string; expectedRevision: number };
+
+export const updatePedido = async (pedidoId: string, pedido: PedidoUpdateInput) =>
   requestJson<Pedido>(`/api/pedidos/${pedidoId}`, {
     method: 'PUT',
     body: JSON.stringify(pedido),
   });
 
-export const deletePedido = async (pedidoId: string) =>
+export const deletePedido = async (pedidoId: string, input: { operationId: string; expectedRevision: number }) =>
   requestJson<void>(`/api/pedidos/${pedidoId}`, {
     method: 'DELETE',
+    body: JSON.stringify(input),
   });

@@ -63,7 +63,7 @@ function normalizePlan(input) {
     const descriptor = Object.getOwnPropertyDescriptor(actions, String(index));
     if (!descriptor || !own(descriptor, 'value')) invalid('actions must contain data properties');
     const action = record(descriptor.value, ['itemId', 'type', 'target', 'quantity', 'price', 'salePrice', 'balances', 'changes', 'reason', 'initialStock'], 'action');
-    if (!['stock.receive', 'stock.sell', 'stock.reserve', 'stock.adjust', 'sku.update', 'sku.deactivate', 'sku.create'].includes(action.type)) fail('UNSUPPORTED_OPERATION', `Unsupported operation: ${String(action.type)}`);
+    if (!['stock.receive', 'stock.sell', 'stock.reserve', 'stock.withdraw', 'stock.adjust', 'sku.update', 'sku.deactivate', 'sku.create'].includes(action.type)) fail('UNSUPPORTED_OPERATION', `Unsupported operation: ${String(action.type)}`);
     const updating = ['stock.adjust', 'sku.update', 'sku.deactivate'].includes(action.type);
     const itemId = text(action.itemId, 'itemId');
     if (itemIds.has(itemId)) invalid('Duplicate itemId');
@@ -124,9 +124,13 @@ function normalizePlan(input) {
       }
       return normalized;
     }
-    if (own(action, 'balances') || own(action, 'changes') || own(action, 'reason')) invalid('Unexpected update fields on stock operation');
+    if (own(action, 'balances') || own(action, 'changes') || (own(action, 'reason') && action.type !== 'stock.withdraw')) invalid('Unexpected update fields on stock operation');
     const quantity = record(action.quantity, ['value', 'unit'], 'quantity');
     const normalized = { itemId, type: action.type, target: normalizedTarget, quantity: { value: integer(quantity.value, 'quantity.value', 1), unit: domain(() => normalizeUnit(text(quantity.unit, 'quantity.unit'))) } };
+    if (action.type === 'stock.withdraw') {
+      if (own(action, 'price') || own(action, 'salePrice')) invalid('Withdrawal cannot include prices');
+      normalized.reason = text(action.reason, 'reason');
+    }
     if (own(action, 'price')) {
       if (action.type !== 'stock.receive') invalid('Catalog price policies are only valid for receipts');
       normalized.price = catalogPrice(action.price, ['initialize', 'set', 'preserve']);
@@ -155,7 +159,7 @@ export function validateOperationPlan(plan, context) {
   const normalized = normalizePlan(plan);
   if (normalized.businessId !== context.businessId) fail('BUSINESS_SCOPE_MISMATCH', 'Operation business differs from authenticated business');
   for (const action of normalized.actions) {
-    const permission = { 'stock.receive': 'inventory:receive', 'stock.sell': 'inventory:sell', 'stock.reserve': 'inventory:reserve', 'stock.adjust': 'inventory:adjust', 'sku.update': 'inventory:update', 'sku.deactivate': 'inventory:deactivate', 'sku.create': 'inventory:create' }[action.type];
+    const permission = { 'stock.receive': 'inventory:receive', 'stock.sell': 'inventory:sell', 'stock.reserve': 'inventory:reserve', 'stock.withdraw': 'inventory:withdraw', 'stock.adjust': 'inventory:adjust', 'sku.update': 'inventory:update', 'sku.deactivate': 'inventory:deactivate', 'sku.create': 'inventory:create' }[action.type];
     if (![...context.permissions].includes(permission)) fail('FORBIDDEN', `${permission} permission is required`);
     if (action.type === 'sku.create' && action.initialStock.reserved > 0 && ![...context.permissions].includes('inventory:reserve')) fail('FORBIDDEN', 'inventory:reserve permission is required for initial reservations');
   }
@@ -299,6 +303,12 @@ export function planInventoryOperation(input, products, { createId } = {}) {
     if (totalAmount !== null && !Number.isSafeInteger(totalAmount)) fail('MONEY_OVERFLOW', 'Sale value exceeds safe money range');
     Object.assign(product, { stockAvailable: nextAvailable, stockReserved: nextReserved, price, priceCurrency: currency });
     changed.set(product.id, product);
+    if (action.type === 'stock.withdraw') {
+      items.push({ itemId: action.itemId, type: action.type, skuId: product.id, quantity: { ...action.quantity },
+        reason: action.reason, stockAvailable: nextAvailable, stockReserved: nextReserved, unit, created: false });
+      movements.push({ itemId: action.itemId, skuId: product.id, deltaAvailable: -quantity, deltaReserved: 0, unit });
+      continue;
+    }
     items.push({ itemId: action.itemId, type: action.type, skuId: product.id, quantity: { ...action.quantity },
       stockAvailable: nextAvailable, stockReserved: nextReserved,
       price: receiving ? price : action.salePrice?.amount ?? null, currency: receiving ? currency : action.salePrice?.currency ?? null, created,
