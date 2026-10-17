@@ -144,7 +144,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(invalid.status, 400); assert.equal(invalid.json.code, 'INVALID_OPERATION_PLAN');
       assert.equal((await ledger('http-foreign')).length, 0); assert.equal((await ledger('http-invalid')).length, 0);
     });
-    await run('universal endpoint authenticates business scope and rejects malformed, unsupported and mixed plans', async () => {
+    await run('universal endpoint authenticates business scope and rejects malformed, unsupported and reentrant plans', async () => {
       const body = plan('http-universal-contract', [{ itemId: 'party', type: 'client.create', name: 'HTTP Universal Contrato' }]);
       const before = (await sql.query('SELECT * FROM universal_operations WHERE owner_phone=$1 ORDER BY operation_id', [owner])).rows;
       assert.equal((await request('/api/operations', { body, auth: false })).status, 401);
@@ -156,8 +156,8 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
         const invalid = await request('/api/operations', { body: { ...body, ...extra } });
         assert.equal(invalid.status, 400); assert.equal(invalid.json.code, 'INVALID_OPERATION_PLAN');
       }
-      const mixed = await request('/api/operations', { body: { ...body, actions: [...body.actions, fresh] } });
-      assert.equal(mixed.status, 400); assert.equal(mixed.json.code, 'MIXED_OPERATION_PLAN_UNSUPPORTED');
+      const mixed = await request('/api/operations', { body: { ...body, actions: [...body.actions, fresh, { itemId: 'party-again', type: 'client.create', name: 'Reentrada inválida' }] } });
+      assert.equal(mixed.status, 400); assert.equal(mixed.json.code, 'UNSUPPORTED_OPERATION_ORDER');
       assert.deepEqual((await sql.query('SELECT * FROM universal_operations WHERE owner_phone=$1 ORDER BY operation_id', [owner])).rows, before);
       assert.equal((await sql.query("SELECT 1 FROM clients WHERE owner_phone=$1 AND name='HTTP Universal Contrato'", [owner])).rowCount, 0);
     });
@@ -204,6 +204,46 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(staleAccount.status, 409); assert.equal(staleAccount.json.code, 'ACCOUNT_REVISION_MISMATCH');
       const conflict = await request('/api/operations', { body: { ...charge, actions: [{ ...charge.actions[0], amount: { value: 11, unit: 'legacy-money' } }] } });
       assert.equal(conflict.status, 409); assert.equal(conflict.json.code, 'IDEMPOTENCY_CONFLICT');
+    });
+    await run('universal mixed HTTP blocks commit ordered receipts once and roll back earlier stock on later account failure', async () => {
+      const product = await createHttpFixtureProduct({ name: 'HTTP Composición Stock', stockAvailable: 2, price: 90 }, owner);
+      const customer = await createFixtureClient({ name: 'HTTP Composición Cuenta' }, owner);
+      const receive = { itemId: 'stock', type: 'stock.receive', target: { kind: 'existing', skuId: product.id }, quantity: { value: 3, unit: 'unit' } };
+      const charge = { itemId: 'money', type: 'account.charge', target: { kind: 'existing', clientId: customer.id }, amount: { value: 7, unit: 'legacy-money' }, reason: 'Cargo explícito junto al stock' };
+      const body = plan('http-universal-composition', [receive, charge]);
+      const [one, two] = await Promise.all([request('/api/operations', { body }), request('/api/operations', { body })]);
+      assert.equal(one.status, 200); assert.equal(two.status, 200); assert.deepEqual(one.json, two.json);
+      assert.equal(one.json.domain, 'mixed'); assert.equal(one.json.operationId, body.operationId);
+      assert.deepEqual(one.json.receipts.map(({ items }) => items[0].type), ['stock.receive', 'account.charge']);
+      assert.equal(Number((await stock(product.id))[0].stock_available), 5);
+      const accountRow = async () => (await sql.query('SELECT debt,account_revision FROM clients WHERE owner_phone=$1 AND id=$2', [owner, customer.id])).rows[0];
+      assert.deepEqual(Object.values(await accountRow()).map(Number), [7, 1]);
+      const roots = (await sql.query('SELECT result_json FROM universal_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, body.operationId])).rows;
+      assert.equal(roots.length, 1); assert.deepEqual(roots[0].result_json, one.json);
+      for (const [index, table] of ['inventory_operations', 'account_operations'].entries()) {
+        const child = one.json.receipts[index]; assert.ok(child.operationId.startsWith('universal-child:'));
+        assert.deepEqual((await sql.query(`SELECT result_json FROM ${table} WHERE owner_phone=$1 AND operation_id=$2`, [owner, child.operationId])).rows[0].result_json, child);
+        if (index === 0) assert.equal((await sql.query('SELECT 1 FROM transactions WHERE owner_phone=$1 AND batch_id=$2', [owner, `${owner}:${child.operationId}`])).rowCount, 1);
+        else {
+          const historyId = `account-${crypto.createHash('sha256').update(JSON.stringify([owner, child.operationId, child.items[0].itemId])).digest('hex')}`;
+          assert.equal((await sql.query('SELECT 1 FROM transactions WHERE owner_phone=$1 AND id=$2', [owner, historyId])).rowCount, 1);
+        }
+      }
+      assert.equal((await ledger(one.json.receipts[0].operationId)).length, 1);
+      assert.equal((await sql.query('SELECT 1 FROM account_movements WHERE owner_phone=$1 AND operation_id=$2', [owner, one.json.receipts[1].operationId])).rowCount, 1);
+      const collision = await request('/api/operations', { body: { ...body, actions: [receive, { ...charge, amount: { value: 8, unit: 'legacy-money' } }] } });
+      assert.equal(collision.status, 409); assert.equal(collision.json.code, 'IDEMPOTENCY_CONFLICT');
+      const paid = await request('/api/operations', { body: plan('http-universal-composition-later-payment', [{ ...charge, type: 'account.payment', amount: { value: 2, unit: 'legacy-money' } }]) });
+      assert.equal(paid.status, 200); assert.equal(Number((await accountRow()).debt), 5);
+      assert.deepEqual((await request('/api/operations', { body })).json, one.json);
+      const persisted = async () => {
+        const result = {};
+        for (const table of ['products', 'clients', 'universal_operations', 'inventory_operations', 'account_operations', 'inventory_movements', 'account_movements', 'transactions']) result[table] = (await sql.query(`SELECT * FROM ${table} WHERE owner_phone=$1 ORDER BY 1`, [owner])).rows;
+        return result;
+      };
+      const before = await persisted();
+      const failed = await request('/api/operations', { body: plan('http-universal-composition-late-failure', [receive, { ...charge, type: 'account.payment', amount: { value: 6, unit: 'legacy-money' } }]) });
+      assert.equal(failed.status, 409); assert.equal(failed.json.code, 'PAYMENT_EXCEEDS_DEBT'); assert.deepEqual(await persisted(), before);
     });
     await run('universal inventory preserves reviewed selection boundaries and forbids public stock withdrawal', async () => {
       const products = await Promise.all(['A', 'B'].map((suffix) => createHttpFixtureProduct({ name: `HTTP universal selección ${suffix}`, stockAvailable: 4 }, owner)));

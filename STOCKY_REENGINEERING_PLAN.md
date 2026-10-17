@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.2b2, cambios/ajustes/bajas conversacionales confirmados por plan persistido.
+- Último alcance integrado: H4.5b1, composición atómica de inventario/cuentas/entidades.
 - Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; código de b1 en `e22a459`.
 
 ## Hitos y dependencias
@@ -55,13 +55,12 @@
 
 ## Próximo paso exacto
 
-H4.5b1: composición atómica de planes universales de inventario, cuentas y entidades.
-Reutilizar validadores y adapters existentes; orden explícito de bloques por dominio,
-IDs de ítem únicos y childreceipts reservados por bloque. Preflight de todo el contrato
-antes de escribir; fallo de un bloque revierte efectos/recibos/historia de los anteriores.
-Preservar hashes/replay de planes homogéneos ya guardados y guards de selecciones masivas.
-Luego ampliar contrato universal a pedidos y desacoplar interpretación/conversación de
-proveedores; H4.6 familias configurables y H5 externo permanecen pendientes.
+H4.5b2: pedidos en OperationPlan universal (order.create/update/delete/reconcile),
+normalizando datos con normalizeOrderRequest y ejecutando exclusivamente orderPostgres.
+Contexto interno habilita solo los movimientos derivados de pedidos; stock.withdraw
+explícito del cliente sigue prohibido. Conservar revisiones/postings, recibos raíz/bloque/
+ítem, composición y rollback. Probar HTTP y concurrencia, luego intérprete universal,
+conversación compartida y H4.6 familias configurables. H5 externo sigue pendiente.
 El escritor local ya fue retirado; no reintroducir fallback optimista ni simulaciones.
 H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
 El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
@@ -542,6 +541,27 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
 - H4.2b2 límites: conjuntos con efectos diferentes o ficha+saldo se revisan por separado;
   selección desde texto aún depende del adapter grounded existente. No es todavía el
   intérprete universal. No hubo proveedor/WhatsApp real ni despliegue en este hito.
+
+- H4.5b1 (2026-10-17): universalOperations admite bloques contiguos de inventario/cuentas/
+  entidades en el orden declarado. Cada dominio aparece una vez; reentrada se rechaza con
+  UNSUPPORTED_OPERATION_ORDER. Todos los bloques se normalizan/autorizan antes de escribir;
+  IDs únicos tanto crudos como normalizados. No hay referencias implícitas a entidades nuevas.
+- H4.5b1: universalPostgres ejecuta cada bloque por su adapter existente dentro de una sola
+  transacción; child IDs privados por raíz/dominio/ordinal, recibos ordenados e historia
+  común. Fallo del último bloque o del recibo padre revierte stock/cuenta/entidades y todos
+  los recibos/movimientos previos. Pago seguido de baja permite revisión financiera futura
+  explícita; invertir el orden rechaza saldo positivo. No reordena silenciosamente acciones.
+- H4.5b1: forma/hash/replay homogéneos anteriores se conservan. Hash mixto incluye bloques
+  y orden; cambiar un importe o reordenar con mismo ID es conflicto. Guard de selección
+  masiva sigue vigente. El resultado mixto expone receipts por bloque y proyección existente.
+- H4.5b1 verificado: 247 checks PG/HTTP y 75 pruebas puras; revisión independiente enfocada
+  sin hallazgos. Incluye triple dominio, concurrencia, replay tras cambios, scopes/permisos,
+  validación previa, rollback por falla tardía/SQL padre, orden y colisión. Build de b2
+  conversacional sigue vigente, sin cambios frontend aquí. Sin despliegue/LLM real.
+- H4.5b1 límites: cada recibo refleja el punto de ejecución de su bloque. Reentradas,
+  aliases a entidades recién creadas, pedidos y client.merge aún no están en esta entrada.
+  Las rutas compatibles conservan esas capacidades; no declarar intérprete/composición
+  universal completos por esta ampliación.
 
 ## Continuación sin repetir investigación
 
