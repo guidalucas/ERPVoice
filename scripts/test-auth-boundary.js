@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHmac, randomBytes } from 'node:crypto';
 import test from 'node:test';
 import { AuthConfigurationError, getJwtSecret, issueJwt, verifyJwt } from '../server/auth.js';
+import { parseWaLoginToken } from '../server/waLogin.js';
 
 const secret = randomBytes(32).toString('hex');
 const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -105,4 +106,12 @@ test('rejects malformed encoding, length mismatches and tampering without throwi
       assert.equal(verifyJwt(malformed), null);
     }
   });
+});
+
+test('WhatsApp login parser accepts LOGIN tokens in any inbound text slot', () => {
+  assert.equal(parseWaLoginToken('LOGIN XY34ZK'), 'XY34ZK');
+  assert.equal(parseWaLoginToken('  login   xy34zk  '), 'XY34ZK');
+  assert.equal(parseWaLoginToken('Hola\nLOGIN XY34ZK\n'), 'XY34ZK');
+  assert.equal(parseWaLoginToken('XY34ZK'), null);
+  assert.equal(parseWaLoginToken('LOGIN 123456'), null);
 });
