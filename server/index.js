@@ -76,6 +76,7 @@ import {
   createWaLoginSession,
   getWhatsAppLoginNumber,
   isWaLoginCreateRateLimited,
+  looksLikeWaLoginMessage,
   parseWaLoginToken,
 } from './waLogin.js';
 
@@ -130,10 +131,11 @@ const waLoginReplyText = (result) => {
 const metaMessageText = (message) => (typeof message?.text?.body === 'string' ? message.text.body : '');
 
 const consumeWaLoginMessage = async (message, rawBody) => {
-  const loginToken = parseWaLoginToken(metaMessageText(message));
+  const textBody = metaMessageText(message);
+  const loginToken = parseWaLoginToken(textBody);
   const fromNumber = typeof message.from === 'string' ? message.from : '';
   const messageId = typeof message.id === 'string' ? message.id : null;
-  if (!loginToken) {
+  if (!loginToken && !looksLikeWaLoginMessage(textBody)) {
     return;
   }
 
@@ -188,7 +190,7 @@ const stripAndConsumeWaLoginMessages = async (body) => {
 
       const kept = [];
       for (const message of value.messages) {
-        if (message?.type !== 'text' || !parseWaLoginToken(metaMessageText(message))) {
+        if (message?.type !== 'text' || !looksLikeWaLoginMessage(metaMessageText(message))) {
           kept.push(message);
           continue;
         }
@@ -287,6 +289,14 @@ app.use('/api/meta-webhook', express.json({
 }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use((error, req, res, next) => {
+  if (error?.type === 'entity.parse.failed' || (error instanceof SyntaxError && Number(error.status) === 400)) {
+    console.warn('[http] invalid JSON body', { method: req.method, path: req.path });
+    res.status(400).json({ error: 'JSON inválido' });
+    return;
+  }
+  next(error);
+});
 
 const recentEvents = [];
 
@@ -1252,6 +1262,14 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`[MetaWebhook] listening on port ${port}`);
   console.log('[MetaWebhook] GET /api/meta-webhook for verification');
   console.log('[MetaWebhook] POST /api/meta-webhook for WhatsApp Cloud API messages');
+  if (!hasMetaWebhookAppSecret(process.env.META_APP_SECRET)) {
+    console.error('[MetaWebhook] META_APP_SECRET no está configurado. Meta recibe 503 y el login por WhatsApp no entra.');
+  }
+  try {
+    getJwtSecret();
+  } catch {
+    console.error('[auth] AUTH_JWT_SECRET ausente o corto. El panel no puede emitir la sesión después del LOGIN.');
+  }
   if (isAuthDevBypassEnabled()) {
     console.log(`[auth:dev] Bypass local activo. Teléfono demo: ${DEV_LOGIN_PHONE}`);
   }
