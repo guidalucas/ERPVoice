@@ -10,7 +10,8 @@ import { normalizePhone } from './phone.js';
 const LOGIN_TOKEN_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const LOGIN_TOKEN_LENGTH = 6;
 const LOGIN_TOKEN_PATTERN = new RegExp(`\\blogin\\s+([${LOGIN_TOKEN_ALPHABET}]{${LOGIN_TOKEN_LENGTH}})\\b`, 'i');
-const DEFAULT_TTL_SECONDS = 5 * 60;
+const LOGIN_LOOKALIKE_PATTERN = /\blogin\s+\S+/i;
+const DEFAULT_TTL_SECONDS = 10 * 60;
 const CREATE_RATE_WINDOW_MS = 15 * 60 * 1000;
 const CREATE_RATE_MAX = 8;
 
@@ -46,6 +47,15 @@ export const parseWaLoginToken = (text) => {
 
   const match = LOGIN_TOKEN_PATTERN.exec(normalized);
   return match ? normalizeLoginToken(match[1]) : null;
+};
+
+export const looksLikeWaLoginMessage = (text) => {
+  const normalized = String(text ?? '')
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return LOGIN_LOOKALIKE_PATTERN.test(normalized);
 };
 
 export const createLoginToken = () => {

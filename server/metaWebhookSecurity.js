@@ -37,6 +37,7 @@ export const createMetaWebhookSignatureMiddleware = ({
   }
 
   if (!hasMetaWebhookAppSecret(appSecret)) {
+    console.error('[MetaWebhook] POST rejected: META_APP_SECRET is not configured');
     res.status(503).json({ error: 'Meta webhook signing is not configured' });
     return;
   }
@@ -46,6 +47,7 @@ export const createMetaWebhookSignatureMiddleware = ({
     signature: req.headers?.['x-hub-signature-256'],
     appSecret,
   })) {
+    console.warn('[MetaWebhook] POST rejected: invalid signature');
     res.status(401).json({ error: 'Invalid Meta webhook signature' });
     return;
   }
