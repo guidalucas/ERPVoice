@@ -47,10 +47,13 @@ Los pedidos ya ejecutan sus efectos en ese núcleo. POST `/api/pedidos` requiere
 explícito (`productId`); revertir o borrar retira la cantidad neta ingresada del SKU original.
 Stock insuficiente rechaza toda la transición. DELETE devuelve un recibo y conserva su replay.
 Pedidos históricos conseguidos sin procedencia verificable requieren conciliación explícita
-antes de cambiar su stock; un nombre no alcanza para atribuirles un ingreso.
+antes de cambiar su stock; un nombre no alcanza para atribuirles un ingreso. El panel permite
+elegir SKU y motivo, revisar balances/cantidad y confirmar que el stock existente incluye ese
+pedido. POST `/api/pedidos/:id/reconcile` valida las revisiones/identidad/cantidades revisadas;
+liga el pedido y registra auditoría con delta cero, sin sumar mercadería otra vez.
 WhatsApp exige un pedido único y un SKU ya vinculado para conseguirlo; el panel permite
 elegir el SKU exacto. `npm run test:order-ui` cubre reintentos y revisiones del panel.
-Se retiró el reemplazo completo de tablas; la conciliación histórica sigue pendiente.
+Se retiró el reemplazo completo de tablas; las conciliaciones masivas siguen pendientes.
 
 Las cuentas usan `account.charge`, `account.payment`, `account.adjust` y `account.transfer`
 mediante `POST /api/accounts/operations` con OperationPlan v1, cliente por ID, motivo e

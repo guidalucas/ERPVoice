@@ -1526,7 +1526,7 @@ export const executeOrderOperation = async (kind, pedidoId, input, ownerPhone = 
   const businessId = normalizeOwnerPhone(ownerPhone);
   return withTransaction((client) => executeOrderInTransaction(client, kind, pedidoId, input, {
     businessId, actorId: options.actorId ?? businessId, channel: options.channel ?? 'panel',
-    permissions: ['orders:create', 'orders:update', 'orders:delete', 'inventory:receive', 'inventory:withdraw'],
+    permissions: ['orders:create', 'orders:update', 'orders:delete', 'orders:reconcile', 'inventory:receive', 'inventory:withdraw', 'inventory:adjust'],
     ownerPhoneVariants: getOwnerPhoneVariants(businessId),
   }, persistInventoryTransactions));
 };

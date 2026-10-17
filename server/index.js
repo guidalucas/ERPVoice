@@ -22,6 +22,7 @@ import {
   applyActionsToDatabase,
   executeInventoryOperation,
   executeAccountOperation,
+  executeOrderOperation,
   answerStockQuery,
   findMetaEventById,
   claimMetaMessage,
@@ -813,6 +814,12 @@ app.put('/api/pedidos/:id', authenticateRequest, async (req, res) => {
     const pedido = await updatePedidoRecord(req.params.id, req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req) });
     res.json(pedido);
   } catch (error) { orderHttpError(res, error); }
+});
+app.post('/api/pedidos/:id/reconcile',authenticateRequest,async(req,res)=>{
+  try {
+    const result=await executeOrderOperation('reconcile',req.params.id,req.body,tenantPhoneOf(req),{actorId:authPhoneOf(req)});
+    res.json(result);
+  } catch(error){orderHttpError(res,error);}
 });
 app.delete('/api/pedidos/:id', authenticateRequest, async (req, res) => {
   try {

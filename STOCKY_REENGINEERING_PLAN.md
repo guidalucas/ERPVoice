@@ -17,7 +17,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Hasta H4.4c verificado; conciliación histórica siguiente |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Hasta H4.4d verificado; retiro de escritor local y CRUD de metadatos siguientes |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -53,17 +53,15 @@
 
 ## Próximo paso exacto
 
-H4.4d: conciliación explícita de pedidos históricos conseguidos sin procedencia de stock;
-hoy fallan con ORDER_RECONCILIATION_REQUIRED al modificar stock o borrar, sin inventar SKU.
-Extender orderOperations/orderPostgres con una operación de adopción auditada que exija
-pedido/revisión, SKU/revisión/fingerprint, motivo y confirmación explícita de que el saldo
-revisado incluye esa cantidad histórica. No sumar otra vez ni atribuir un movimiento antiguo
-por nombre. Reutilizar stock.adjust con balance idéntico para auditar cero y guardar posting
-en la misma transacción; preview/revisión visible en panel, rollback y replay congelado.
+H4.4e0: retirar src/services/transactionService.ts y la entrada APPLY_EXTERNAL_PROPOSAL /
+applyExternalProposal de AppStore.tsx. rg confirmó que no tienen consumidores fuera del
+propio store: conservan un escritor local con matching aproximado y recorte de stock,
+incompatible con el núcleo, aunque no se usa hoy. No reemplazarlo por otra simulación.
+Validar build, panel-draft-recovery y flujos del panel; confirmación debe seguir esperando
+snapshot/recibo persistidos. Después H4.4e1: idempotencia del CRUD de metadatos de clientes
+y proveedores (sin cambiar saldos fuera del ejecutor), incluidos creación desde pedidos.
 H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
 El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
-H4.4e: terminar idempotencia de CRUD de metadatos de clientes/proveedores (sin tocar saldos
-fuera del ejecutor) y retirar cualquier escritor local todavía usado por el panel.
 H4.2b pendiente: conversación de conjuntos para otros verbos (bajas WhatsApp ya migradas).
 H4.5: intérprete universal y composición de planes entre dominios; hoy stock+cuenta/pedido
 en un mismo lote se rechaza entero. H4.6: familias/esquemas configurables persistentes y
@@ -370,12 +368,36 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   inválidos requieren conciliación. CRUD de metadatos, conciliación de pedidos, planes
   mixtos entre dominios, intérprete universal y familias configurables siguen pendientes.
 
+- H4.4d (2026-10-17): conciliación histórica individual en orderOperations/orderPostgres,
+  sin nuevo escritor ni tabla. POST /api/pedidos/:id/reconcile exige operationId, revisión
+  del pedido y reconciliation con SKU/revisión/fingerprint, disponibles/reservados vistos,
+  cantidad/unidad, motivo y confirmed=true. Verifica igualdad con lo persistido y disponible
+  suficiente para atribuir toda la cantidad; solo pedidos conseguidos sin posting previo.
+- H4.4d: registra stock.adjust con balance idéntico (delta cero) y liga posting en la misma
+  transacción. No atribuye recibos antiguos por nombre ni vuelve a recibir mercadería.
+  Después se puede revertir el pedido con stock.withdraw exacto; cambios concurrentes,
+  SKU ajeno/inactivo, balances forjados o falta de confirmación rechazan todo.
+- H4.4d: OrderReconciliationForm presenta SKU/motivo, revisión congelada, balances y cantidad
+  a atribuir; checkbox explícito antes de confirmar. Cambiar revisión crea intento nuevo.
+  Pendiente de respuesta conserva cuerpo/UUID/consentimiento; retry sigue disponible tras
+  hidratar posting aplicado y desmontar el formulario. Pedido sin conciliar no puede usar
+  botones de reversión. Decisión humana queda en request_json y motivo del movimiento cero.
+- H4.4d verificado: 158 checks PostgreSQL/HTTP, 47 tests puros, build y Edge de pedidos con
+  conciliación aprobados. Prueba replay concurrente y tras cambios/borrado, cero exacto,
+  reversión posterior, aislamiento, stale/fingerprint/cantidades alteradas y rollback al
+  persistir el vínculo después del movimiento. HTTP real con JWT prueba confirmación y
+  revisión; Edge verifica preview sin escritura, checkbox, 503 y retry tras hidratar.
+- H4.4d límites: requiere revisión humana; no certifica un ingreso histórico desconocido.
+  No se concilió ningún dato real. Conciliaciones masivas/WhatsApp, CRUD de metadatos,
+  composición entre dominios, intérprete universal y esquemas configurables aún pendientes.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
 - H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
-- H4.4a `844b29b`; H4.4b `bf812ee` (incluye checkpoint parcial `600373f`). H4.4c: ver git log.
+- H4.4a `844b29b`; H4.4b `bf812ee` (incluye checkpoint parcial `600373f`); H4.4c `ba251e6`.
+- H4.4d: ver git log; no volver a diseñar la política de aprovisionamiento/conciliación.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
 - Frontend: `npm run test:inventory-ui` y `npm run test:panel-draft-recovery`.

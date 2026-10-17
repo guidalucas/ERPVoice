@@ -212,6 +212,13 @@ export const updatePedido = async (pedidoId: string, pedido: PedidoUpdateInput) 
     body: JSON.stringify(pedido),
   });
 
+export type OrderReconciliationRequest = { operationId: string; expectedRevision: number; reconciliation: {
+  productId: string; expectedProductRevision: number; expectedFingerprint: string; available: number; reserved: number;
+  quantity: number; unit: string; reason: string; confirmed: true;
+} };
+export const reconcilePedido = async (pedidoId: string, input: OrderReconciliationRequest) =>
+  requestJson<{pedido: Pedido; inventoryResult: unknown}>(`/api/pedidos/${pedidoId}/reconcile`, {method:'POST',body:JSON.stringify(input)});
+
 export const deletePedido = async (pedidoId: string, input: { operationId: string; expectedRevision: number }) =>
   requestJson<void>(`/api/pedidos/${pedidoId}`, {
     method: 'DELETE',

@@ -17,6 +17,7 @@ import {
   previewInventorySelection,
   updateClient,
   updatePedido,
+  reconcilePedido,
   updateProduct,
   updateProductModel,
   updateProveedor,
@@ -172,6 +173,11 @@ export const useInventory = () => {
     await deletePedido(pedidoId, metadata);
     await refreshState();
   };
+  const reconcilePedidoRecord = async (pedidoId: string, input: Parameters<typeof reconcilePedido>[1]) => {
+    const receipt = await reconcilePedido(pedidoId,input);
+    await refreshState();
+    return receipt;
+  };
 
   return {
     products: state.products,
@@ -202,5 +208,6 @@ export const useInventory = () => {
     createPedidoRecord,
     updatePedidoRecord,
     deletePedidoRecord,
+    reconcilePedidoRecord,
   };
 };

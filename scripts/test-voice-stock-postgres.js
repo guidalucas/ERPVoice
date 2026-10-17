@@ -1,3 +1,4 @@
+import { runOrderReconciliationChecks } from './order-reconciliation-postgres-checks.js';
 import { runAccountChecks } from './account-postgres-checks.js';
 import { runOrderChecks } from './order-postgres-checks.js';
 import assert from 'node:assert/strict';
@@ -75,6 +76,7 @@ try {
   await runInventoryCreateChecks({ db, sql, check });
   await runAccountChecks({ db, sql, check });
   await runOrderChecks({ db, sql, check });
+  await runOrderReconciliationChecks({ db, sql, check });
   await runInventoryHttpChecks({ db, sql, check });
 
   await check('migración repetible y RLS', async () => {

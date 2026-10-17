@@ -488,6 +488,25 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(Number((await sql.query('SELECT debt FROM clients WHERE id=$1',[customer.id])).rows[0].debt),27);
       assert.equal((await sql.query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1',['http-account-meta-pay'])).rows[0].reply_text,applied.reply_text);
     });
+    await run('historical order reconciliation authenticates a reviewed zero-delta proof and preserves its receipt',async()=>{
+      const customer=await db.createClientRecord({name:'HTTP conciliación histórica'},owner);
+      const product=await createHttpFixtureProduct({name:'SKU HTTP conciliación',stockAvailable:8,stockReserved:1,unit:'box'},owner);
+      const pedidoId='http-historical-order';
+      await sql.query("INSERT INTO pedidos(id,owner_phone,cliente_id,producto,qty,estado) VALUES($1,$2,$3,'Etiqueta histórica HTTP',5,'conseguido')",[pedidoId,owner,customer.id]);
+      const path=`/api/pedidos/${pedidoId}/reconcile`,body={operationId:'http-order-reconcile',expectedRevision:0,reconciliation:{
+        productId:product.id,expectedProductRevision:product.revision,expectedFingerprint:product.identityFingerprint,available:8,reserved:1,quantity:5,unit:'box',reason:'Conteo contrastado por el operador',confirmed:true}};
+      assert.equal((await request(path,{body,auth:false})).status,401);
+      assert.equal((await request(path,{body:{...body,reconciliation:{...body.reconciliation,confirmed:false}}})).status,400);
+      assert.equal((await request(path,{body:{...body,reconciliation:{...body.reconciliation,available:9}}})).status,409);
+      const foreign=await request(path,{body,headers:{Authorization:`Bearer ${issueJwt({phoneNumber:'59899000515'})}`}});assert.equal(foreign.status,404);
+      const [one,two]=await Promise.all([request(path,{body}),request(path,{body})]);assert.equal(one.status,200);assert.deepEqual(one.json,two.json);
+      assert.equal(one.json.pedido.productId,product.id);assert.equal(one.json.pedido.stockPosting.quantity,5);
+      assert.deepEqual((await ledger(one.json.inventoryResult.operationId)).map((m)=>[Number(m.delta_available),Number(m.delta_reserved)]),[[0,0]]);
+      assert.equal(Number((await stock(product.id))[0].stock_available),8);
+      const reversal=await request(`/api/pedidos/${pedidoId}`,{method:'PUT',body:{operationId:'http-order-after-reconcile',expectedRevision:1,estado:'pendiente'}});
+      assert.equal(reversal.status,200);assert.equal(Number((await stock(product.id))[0].stock_available),3);
+      assert.deepEqual((await request(path,{body})).json,one.json);
+    });
     return completed;
   } catch (error) {
     let safeLogs = logs;

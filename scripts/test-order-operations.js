@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeOrderRequest, planOrderTransition, orderRequestDigest } from '../server/orderOperations.js';
-import { validateOperationPlan, planInventoryOperation } from '../server/inventoryOperations.js';
+import { validateOperationPlan, planInventoryOperation, inventoryProductFingerprint } from '../server/inventoryOperations.js';
 import { inventoryResultActions } from '../server/inventoryResults.js';
 
 const products = [{ id: 'sku-a', name: 'A', unit: 'box', stockAvailable: 10, stockReserved: 2, price: 30, priceCurrency: 'UYU' },
@@ -56,4 +56,22 @@ test('withdrawals use same deterministic stock arithmetic with exact deltas and 
   assert.throws(() => validateOperationPlan(plan, { ...context, permissions: ['inventory:sell'] }), { code: 'FORBIDDEN' });
   for (const extra of [{ reason: '' }, { price: { amount: 0, currency: 'UYU', policy: 'preserve' } }, { salePrice: { amount: 1, currency: 'UYU' } }, { quantity: { value: 0, unit: 'box' } }]) assert.throws(() => validateOperationPlan({ ...plan, actions: [{ ...actions[0], ...extra }] }, context), { code: 'INVALID_OPERATION_PLAN' });
   assert.throws(() => validateOperationPlan({ ...plan, operationId: 'order-stock:reserved' }, context), { code: 'FORBIDDEN' });
+});
+test('historical reconciliation binds only reviewed quantities/identity and audits zero without another receipt of stock',()=>{
+  const legacy={...current,stockPosting:null,productId:null};
+  const proof={productId:'sku-a',expectedProductRevision:0,expectedFingerprint:inventoryProductFingerprint(products[0]),available:10,reserved:2,quantity:5,unit:'box',reason:'Conteo físico contrastado con pedido',confirmed:true};
+  const input={operationId:'reconcile',expectedRevision:2,reconciliation:proof};
+  const normalized=normalizeOrderRequest('reconcile',legacy.id,input),before=JSON.stringify({legacy,products,input});
+  const planned=planOrderTransition(normalized,legacy,products);
+  assert.deepEqual(planned.next.stockPosting,{skuId:'sku-a',quantity:5,unit:'box'});
+  const p={contractVersion:1,operationId:'reconciliation-stock',businessId:'tenant',actions:planned.actions};
+  const effect=planInventoryOperation(validateOperationPlan(p,{...context,permissions:['inventory:adjust']}),products);
+  assert.equal(effect.changedProducts[0].stockAvailable,10);assert.equal(effect.changedProducts[0].stockReserved,2);
+  assert.deepEqual(effect.movements.map((m)=>[m.deltaAvailable,m.deltaReserved]),[[0,0]]);
+  assert.equal(JSON.stringify({legacy,products,input}),before);
+  for(const [change,code] of [[{available:9},'ORDER_RECONCILIATION_MISMATCH'],[{quantity:4},'ORDER_RECONCILIATION_MISMATCH'],[{unit:'unit'},'ORDER_RECONCILIATION_MISMATCH'],[{expectedProductRevision:1},'REVISION_MISMATCH'],[{expectedFingerprint:'forged'},'SKU_FINGERPRINT_MISMATCH'],[{productId:'foreign'},'SKU_NOT_FOUND']]){
+    assert.throws(()=>planOrderTransition(normalizeOrderRequest('reconcile',legacy.id,{...input,reconciliation:{...proof,...change}}),legacy,products),{code});
+  }
+  for(const change of [{confirmed:false},{confirmed:undefined},{available:'10'},{reason:''},{stockPosting:{}}])assert.throws(()=>normalizeOrderRequest('reconcile',legacy.id,{...input,reconciliation:{...proof,...change}}),{code:'INVALID_ORDER_OPERATION'});
+  assert.throws(()=>planOrderTransition(normalized,planned.next,products),{code:'ORDER_RECONCILIATION_NOT_REQUIRED'});
 });

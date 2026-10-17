@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 
 const browser = await chromium.launch(process.platform === 'win32' ? {channel:'msedge',headless:true} : {headless:true});
 const page = await browser.newPage({viewport:{width:1440,height:1000}});
-const product = {id:'sku-order',name:'Producto pedido UI',unit:'box',stockAvailable:10,stockReserved:0,price:20,revision:0};
+const product = {id:'sku-order',name:'Producto pedido UI',unit:'box',stockAvailable:10,stockReserved:0,price:20,revision:0,identityFingerprint:'order-ui-fingerprint'};
 const pedidos = [], attempts = [], receipts = new Map();
 let mode = 'ok', failRefresh = false, release;
 const snapshot = () => ({products:[product],clients:[{id:'client-order',name:'Cliente UI',debt:0}],proveedores:[],pedidos,transactions:[]});
@@ -18,6 +18,19 @@ await page.route('**/api/**',async(route) => {
   const json = (body,status=200) => route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   if (path==='/api/auth/me') return json({phoneNumber:'5491100000000',tenantPhone:'5491100000000',role:'owner',businessName:'Pedidos UI',businessCategory:'general',needsOnboarding:false,hasOwnBusiness:true});
   if (path==='/api/state') { if(failRefresh){failRefresh=false;return json({error:'No pude refrescar pedidos.'},503);}return json(snapshot()); }
+  if(path.endsWith('/reconcile')&&request.method()==='POST'){
+    const input=request.postDataJSON();attempts.push({path,input});
+    if(receipts.has(input.operationId)){const prior=receipts.get(input.operationId);assert.deepEqual({path,input},prior.request);return json(prior.result);}
+    const pedido=pedidos.find((p)=>p.id===path.split('/').at(-2)),proof=input.reconciliation;
+    assert.equal(input.expectedRevision,pedido.revision);assert.equal(proof.confirmed,true);assert.equal(proof.quantity,pedido.qty);
+    assert.equal(proof.productId,product.id);assert.equal(proof.expectedProductRevision,product.revision);assert.equal(proof.available,product.stockAvailable);assert.equal(proof.reserved,product.stockReserved);
+    assert.equal(proof.expectedFingerprint,product.identityFingerprint);assert.equal(proof.unit,product.unit);
+    pedido.productId=product.id;pedido.stockPosting={skuId:product.id,quantity:pedido.qty,unit:product.unit};pedido.revision++;product.revision++;
+    const result={pedido:structuredClone(pedido),inventoryResult:{items:[{type:'stock.adjust',stockAvailable:product.stockAvailable,stockReserved:product.stockReserved,deltaAvailable:0,deltaReserved:0}]}};
+    receipts.set(input.operationId,{request:{path,input},result});
+    if(mode==='lost'){mode='ok';return json({error:'Conciliación aplicada con respuesta incierta.'},503);}
+    return json(result);
+  }
   if (path.startsWith('/api/pedidos') && ['POST','PUT'].includes(request.method())) {
     const input=request.postDataJSON(); attempts.push({path,input});
     assert.equal(typeof input.operationId,'string');
@@ -98,5 +111,23 @@ try{
   await statusGroup('Pedido sin SKU').getByRole('button',{name:'Conseguido',exact:true}).click();
   await page.waitForFunction(()=>Array.from(document.querySelectorAll('[data-estado="conseguido"][aria-pressed="true"]')).length===1);
   assert.equal(attempts.at(-1).input.productId,product.id);assert.equal(product.stockAvailable,12);
-  console.log('Order UI passed: explicit SKU, create/transition applied503 retries, frozen revision after failed refresh/hydration, conflict review, reversal and in-flight controls.');
+  pedidos.push({id:'historical-order',clienteId:'client-order',producto:'Pedido histórico',qty:3,estado:'conseguido',revision:0,productId:null,stockPosting:null,fechaPedido:new Date().toISOString()});
+  await page.getByLabel('SKU histórico para Pedido histórico').waitFor({timeout:12000});
+  assert.equal(await statusGroup('Pedido histórico').getByRole('button',{name:'Pendiente',exact:true}).isDisabled(),true);
+  await page.getByLabel('SKU histórico para Pedido histórico').selectOption(product.id);
+  await page.getByLabel('Motivo histórico para Pedido histórico').fill('Conteo físico revisado con pedido original');
+  const beforeReview=attempts.length,stockBeforeReview=product.stockAvailable;
+  await page.getByRole('button',{name:'Revisar conciliación',exact:true}).click();
+  assert.equal(attempts.length,beforeReview);assert.equal(product.stockAvailable,stockBeforeReview);
+  assert.equal(await page.getByRole('button',{name:'Confirmar conciliación',exact:true}).isDisabled(),true);
+  await page.getByRole('checkbox',{name:/Confirmo que el stock revisado/}).check();mode='lost';
+  await page.getByRole('button',{name:'Confirmar conciliación',exact:true}).click();
+  await retry().waitFor();assert.equal(product.stockAvailable,stockBeforeReview);
+  await page.getByText('Conciliar pedido histórico',{exact:true}).waitFor({state:'hidden',timeout:12000});
+  await retry().click();await retry().waitFor({state:'hidden'});
+  assert.deepEqual(attempts[beforeReview],attempts[beforeReview+1]);assert.equal(product.stockAvailable,stockBeforeReview);
+  await statusGroup('Pedido histórico').getByRole('button',{name:'Pendiente',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('[data-estado="conseguido"][aria-pressed="true"]').length===1);
+  assert.equal(product.stockAvailable,stockBeforeReview-3);
+  console.log('Order UI passed: explicit SKU, applied503 retries, frozen revisions, conflict review, reversal, in-flight controls, historical zero-delta review/confirmation and retry after hydration.');
 }finally{await browser.close();}

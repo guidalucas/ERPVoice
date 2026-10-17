@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { InventoryOperationError } from './inventoryOperations.js';
+import { InventoryOperationError, inventoryProductFingerprint } from './inventoryOperations.js';
 
 const fail = (code, message) => { throw new InventoryOperationError(code, message); };
 const invalid = (message) => fail('INVALID_ORDER_OPERATION', message);
@@ -16,9 +16,10 @@ const text = (value, field) => { if (typeof value !== 'string' || !value.trim())
 
 /** Closed request, normalized without reading current state, so replay also works after delete. */
 export function normalizeOrderRequest(kind, pedidoId, input) {
-  if (!['create', 'update', 'delete'].includes(kind)) invalid('Operación de pedido desconocida.');
+  if (!['create', 'update', 'delete', 'reconcile'].includes(kind)) invalid('Operación de pedido desconocida.');
   if (!input || typeof input !== 'object' || ![Object.prototype, null].includes(Object.getPrototypeOf(input))) invalid('Pedido debe ser un objeto.');
-  const allowed = ['operationId', ...(kind !== 'create' ? ['expectedRevision'] : []), ...(kind !== 'delete' ? dataFields : [])];
+  const allowed = ['operationId', ...(kind !== 'create' ? ['expectedRevision'] : []),
+    ...(kind === 'reconcile' ? ['reconciliation'] : kind !== 'delete' ? dataFields : [])];
   const patch = {};
   for (const key of Reflect.ownKeys(input)) {
     const property = Object.getOwnPropertyDescriptor(input, key);
@@ -30,6 +31,22 @@ export function normalizeOrderRequest(kind, pedidoId, input) {
   if (kind !== 'create') {
     if (!Number.isSafeInteger(patch.expectedRevision) || patch.expectedRevision < 0) invalid('expectedRevision debe ser un entero no negativo.');
     result.expectedRevision = patch.expectedRevision;
+  }
+  if (kind === 'reconcile') {
+    const proof = patch.reconciliation;
+    const fields = ['productId','expectedProductRevision','expectedFingerprint','available','reserved','quantity','unit','reason','confirmed'];
+    if (!proof || typeof proof !== 'object' || ![Object.prototype,null].includes(Object.getPrototypeOf(proof))) invalid('Se requiere una revisión explícita de stock histórico.');
+    const normalized = {};
+    for (const key of Reflect.ownKeys(proof)) {
+      const property = Object.getOwnPropertyDescriptor(proof,key);
+      if (!fields.includes(key) || !property.enumerable || !Object.hasOwn(property,'value')) invalid('Campo de conciliación no permitido.');
+      normalized[key] = property.value;
+    }
+    for (const key of ['expectedProductRevision','available','reserved','quantity']) if (!Number.isSafeInteger(normalized[key]) || normalized[key] < (key === 'quantity' ? 1 : 0)) invalid('La conciliación requiere cantidades y revisiones enteras seguras.');
+    for (const key of ['productId','expectedFingerprint','unit','reason']) normalized[key] = text(normalized[key],key);
+    if (normalized.confirmed !== true) invalid('Confirmá explícitamente que el stock revisado incluye el pedido histórico.');
+    result.reconciliation = normalized;
+    return result;
   }
   for (const field of dataFields) {
     if (!Object.hasOwn(patch, field)) continue;
@@ -50,6 +67,20 @@ export function normalizeOrderRequest(kind, pedidoId, input) {
 export function planOrderTransition(request, current, products) {
   if (request.kind !== 'create' && !current) fail('ORDER_NOT_FOUND', 'Pedido no encontrado.');
   if (current && current.revision !== request.expectedRevision) fail('ORDER_REVISION_MISMATCH', 'El pedido cambió. Revisá su estado antes de confirmar.');
+  if (request.kind === 'reconcile') {
+    if (current.estado !== 'conseguido' || current.stockPosting) fail('ORDER_RECONCILIATION_NOT_REQUIRED','El pedido no requiere una conciliación histórica.');
+    const proof = request.reconciliation, product = products.find((entry) => entry.id === proof.productId);
+    if (!product) fail('SKU_NOT_FOUND','El SKU revisado no pertenece al negocio.');
+    if ((product.status ?? 'active') !== 'active') fail('SKU_INACTIVE','El SKU revisado está desactivado.');
+    if ((product.revision ?? 0) !== proof.expectedProductRevision) fail('REVISION_MISMATCH','El stock cambió después de revisarlo. Prepará una conciliación nueva.');
+    if (inventoryProductFingerprint(product) !== proof.expectedFingerprint) fail('SKU_FINGERPRINT_MISMATCH','La identidad del SKU revisado cambió.');
+    if (proof.quantity !== current.qty || proof.unit !== (product.unit ?? 'unit') || proof.available !== product.stockAvailable || proof.reserved !== product.stockReserved) fail('ORDER_RECONCILIATION_MISMATCH','La revisión no coincide con las cantidades guardadas.');
+    if (proof.available < proof.quantity) fail('INSUFFICIENT_STOCK','El disponible revisado no alcanza para atribuir el ingreso histórico completo.');
+    return {next:{...current,productId:product.id,stockPosting:{skuId:product.id,quantity:current.qty,unit:proof.unit}},actions:[{
+      itemId:'reconciliation',type:'stock.adjust',target:{kind:'existing',skuId:product.id,expectedRevision:proof.expectedProductRevision,expectedFingerprint:proof.expectedFingerprint},
+      balances:{available:proof.available,reserved:proof.reserved},reason:`Conciliación histórica de pedido: ${proof.reason}`,
+    }]};
+  }
   const next = request.kind === 'delete' ? null : { ...(current ?? {}), ...request.changes };
   const old = current?.stockPosting ?? null;
   if (old && (current.estado !== 'conseguido' || old.skuId !== current.productId || old.quantity !== current.qty || !Number.isSafeInteger(old.quantity) || old.quantity < 1 || typeof old.unit !== 'string')) fail('ORDER_POSTING_INVALID', 'La procedencia del stock del pedido requiere revisión.');
