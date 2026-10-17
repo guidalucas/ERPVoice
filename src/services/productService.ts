@@ -86,7 +86,8 @@ export const updateProduct = async (productId: string, product: Partial<ProductI
 
 export type InventorySelectionMutation =
   | { type: 'sku.update'; changes: { name: string; productType: string; productModel: string }; reason: string }
-  | { type: 'sku.deactivate'; reason: string };
+  | { type: 'sku.deactivate'; reason: string }
+  | { type: 'stock.adjust'; balances: { available?: number; reserved?: number }; reason: string };
 
 export type InventorySelectionReference = { selectionId: string; digest: string };
 
@@ -101,7 +102,7 @@ export type InventorySelectionPreview = {
   digest: string;
   expiresAt: string;
   status: 'pending';
-  members: Array<{ skuId: string; name: string; size: string | null; revision: number; stockAvailable: number; stockReserved: number; price: number; priceCurrency: string }>;
+  members: Array<{ skuId: string; name: string; size: string | null; revision: number; stockAvailable: number; stockReserved: number; price: number; priceCurrency: string; unit?: string; finalAvailable?: number; finalReserved?: number }>;
   mutation: InventorySelectionRequest['mutation'];
 };
 
@@ -113,6 +114,16 @@ export const previewInventorySelection = async (input: InventorySelectionRequest
   const mutationMatches = (mutation: InventorySelectionMutation | undefined) => {
     if (!mutation || mutation.type !== input.mutation.type || mutation.reason !== input.mutation.reason) return false;
     if (mutation.type === 'sku.deactivate') return Object.keys(mutation).sort().join(',') === 'reason,type';
+    if (mutation.type === 'stock.adjust') {
+      if (input.mutation.type !== 'stock.adjust' || Object.keys(mutation).sort().join(',') !== 'balances,reason,type'
+        || !mutation.balances || typeof mutation.balances !== 'object' || Array.isArray(mutation.balances)) return false;
+      const keys = Object.keys(mutation.balances);
+      const expected = input.mutation.balances;
+      return keys.length > 0 && keys.length <= 2 && keys.sort().join(',') === Object.keys(expected).sort().join(',')
+        && keys.every((key) => (key === 'available' || key === 'reserved')
+          && Number.isSafeInteger(mutation.balances[key]) && mutation.balances[key]! >= 0
+          && mutation.balances[key] === expected[key]);
+    }
     if (input.mutation.type !== 'sku.update' || Object.keys(mutation).sort().join(',') !== 'changes,reason,type'
       || !mutation.changes || Object.keys(mutation.changes).sort().join(',') !== 'name,productModel,productType') return false;
     return (['name', 'productType', 'productModel'] as const).every((key) => mutation.changes[key] === (input.mutation as Extract<InventorySelectionMutation, { type: 'sku.update' }>).changes[key]);
@@ -126,12 +137,21 @@ export const previewInventorySelection = async (input: InventorySelectionRequest
       || !(member.size === null || typeof member.size === 'string')
       || !Number.isSafeInteger(member.revision) || member.revision < 0
       || ![member.stockAvailable, member.stockReserved, member.price].every((value) => Number.isSafeInteger(value) && value >= 0)
+      || (input.mutation.type === 'stock.adjust' && (typeof member.unit !== 'string' || !member.unit.trim()
+        || !Number.isSafeInteger(member.finalAvailable) || !Number.isSafeInteger(member.finalReserved)
+        || member.finalAvailable !== (input.mutation.balances.available ?? member.stockAvailable)
+        || member.finalReserved !== (input.mutation.balances.reserved ?? member.stockReserved)))
       || typeof member.priceCurrency !== 'string' || !member.priceCurrency.trim())
     || !mutationMatches(preview.mutation)) {
     throw new Error('La vista previa no coincide con la selección solicitada. No se aplicaron cambios.');
   }
   return preview;
 };
+
+export const confirmInventorySelection = async ({ selectionId, digest }: InventorySelectionReference) =>
+  requestJson<unknown>(`/api/inventory/selections/${selectionId}/confirm`, {
+    method: 'POST', body: JSON.stringify({ digest }),
+  });
 
 export const updateProductModel = async (input: { selectionId: string; digest: string }) =>
   requestJson<Product[]>('/api/products/model', {

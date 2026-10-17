@@ -817,7 +817,7 @@ app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
 app.post('/api/inventory/selections', authenticateRequest, async (req, res) => {
   try {
     const preview = await previewInventorySelection(req.body, {
-      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate'],
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate','inventory:adjust'],
     });
     res.json(preview);
   } catch (error) {
@@ -834,7 +834,7 @@ app.post('/api/inventory/selections/:id/confirm', authenticateRequest, async (re
       res.status(400).json({ error: 'Confirmá únicamente la selección revisada.', code: 'INVALID_SELECTION' }); return;
     }
     const result = await confirmInventorySelection(req.params.id, req.body.digest, {
-      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate'],
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate','inventory:adjust'],
     });
     res.json(result);
   } catch (error) {

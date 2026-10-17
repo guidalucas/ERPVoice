@@ -4,6 +4,7 @@ import { getVariantWord, type BusinessCategoryPreset } from '../../domain/busine
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
 import { LOW_STOCK_THRESHOLD } from './dashboardTypes';
+import { StockSetAdjustmentForm } from './StockSetAdjustmentForm';
 
 type ProductDraft = {
   name: string;
@@ -474,6 +475,7 @@ export function ProductsAbmPanel({
   const preset = useBusinessCategoryPreset();
   const variantWord = getVariantWord(preset);
   const variantLabelPlural = pluralizeVariantLabel(preset.variantLabel);
+  const [stockSetOpen, setStockSetOpen] = useState(false);
   const [draft, setDraft] = useState<ProductDraft>(() => emptyDraft());
   const [newVariants, setNewVariants] = useState<NewVariantDraft[]>(() => [emptyVariantDraft()]);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -969,9 +971,12 @@ export function ProductsAbmPanel({
                 : 'Seleccioná productos para acciones en lote o editalos desde su fila.'}
             </p>
           </div>
+          <div className="flex flex-wrap gap-2">
+          <button type="button" className="erp-button-secondary" disabled={saving || savingModel || deleting || products.length === 0} onClick={() => setStockSetOpen(true)}>Ajustar conjunto</button>
           <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2 self-start">
             + {preset.useVariants ? 'Nuevo modelo' : 'Nuevo producto'}
           </button>
+          </div>
         </div>
 
         <div className="mt-4 flex flex-col gap-3">
@@ -1182,6 +1187,8 @@ export function ProductsAbmPanel({
           stale={modelStale}
           onRefreshPreview={() => { void handleModelSubmit(true); }}
         />}
+
+        {stockSetOpen && <StockSetAdjustmentForm onClose={() => setStockSetOpen(false)} />}
 
         {deactivation && <DeactivateModal
           ids={deactivation.ids}

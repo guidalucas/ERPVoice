@@ -179,6 +179,63 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       for (const product of products) assert.equal(Number((await stock(product.id))[0].stock_available), 4);
       assert.equal((await sql.query('SELECT 1 FROM universal_operations WHERE owner_phone=$1 AND operation_id=ANY($2)', [owner, ['http-universal-selection-bypass', 'http-universal-archive-bypass', 'http-universal-withdraw-forbidden']])).rowCount, 0);
     });
+    await run('SET adjustment previews reject unsafe or open fields and bulk direct execution requires selection', async () => {
+      const products = [await createHttpFixtureProduct({ name: 'HTTP SET validación A', stockAvailable: 8, stockReserved: 2 }, owner), await createHttpFixtureProduct({ name: 'HTTP SET validación B', stockAvailable: 6, stockReserved: 1 }, owner)];
+      const body = { requestId: 'http-set-invalid', selector: { kind: 'ids', skuIds: products.map(({ id }) => id) }, mutation: { type: 'stock.adjust', balances: { available: 0 }, reason: 'Conteo de conjunto HTTP' } };
+      assert.equal((await request('/api/inventory/selections', { body, auth: false })).status, 401);
+      for (const balances of [{}, { available: -1 }, { reserved: '2' }, { available: 0.5 }, { available: null }, { available: Number.MAX_SAFE_INTEGER + 1 }, { available: 0, price: 1 }]) {
+        assert.equal((await request('/api/inventory/selections', { body: { ...body, mutation: { ...body.mutation, balances } } })).status, 400);
+      }
+      for (const extra of [{ ownerPhone: 'foreign' }, { mutation: { ...body.mutation, changes: { price: 0 } } }]) assert.equal((await request('/api/inventory/selections', { body: { ...body, ...extra } })).status, 400);
+      const actions = products.map((product, index) => ({ itemId: `adjust-${index}`, type: 'stock.adjust', target: { kind: 'existing', skuId: product.id, expectedRevision: product.revision }, balances: { available: 0 }, reason: body.mutation.reason }));
+      for (const route of ['/api/inventory/operations', '/api/operations']) {
+        const direct = await request(route, { body: plan(`http-set-bypass-${route === '/api/operations' ? 'universal' : 'inventory'}`, actions) });
+        assert.equal(direct.status, 409); assert.equal(direct.json.code, 'SELECTION_REQUIRED');
+      }
+      for (const product of products) assert.equal(Number((await stock(product.id))[0].stock_available), product.stockAvailable);
+      assert.equal((await sql.query('SELECT 1 FROM inventory_selections WHERE owner_phone=$1 AND request_id=$2', [owner, body.requestId])).rowCount, 0);
+    });
+    await run('SET adjustment HTTP freezes exact units and members then confirms once with immutable replay', async () => {
+      const name = 'HTTP SET Conjunto Congelado';
+      const products = [await createHttpFixtureProduct({ name, size: 'S', unit: 'box', stockAvailable: 8, stockReserved: 2 }, owner), await createHttpFixtureProduct({ name, size: 'M', unit: 'unit', stockAvailable: 6, stockReserved: 1 }, owner)];
+      const body = { requestId: 'http-set-frozen', selector: { kind: 'filter', equals: { name } }, mutation: { type: 'stock.adjust', balances: { available: 0 }, reason: 'Conteo físico de conjunto HTTP' } };
+      const preview = await request('/api/inventory/selections', { body });
+      assert.equal(preview.status, 200); assert.equal(preview.json.status, 'pending'); assert.equal(preview.json.members.length, 2);
+      for (const product of products) {
+        const member = preview.json.members.find(({ skuId }) => skuId === product.id);
+        assert.deepEqual([member.stockAvailable, member.stockReserved, member.finalAvailable, member.finalReserved, member.unit], [product.stockAvailable, product.stockReserved, 0, product.stockReserved, product.unit]);
+        assert.equal(Number((await stock(product.id))[0].stock_available), product.stockAvailable);
+      }
+      const later = await createHttpFixtureProduct({ name, size: 'L', unit: 'box', stockAvailable: 9 }, owner);
+      assert.deepEqual((await request('/api/inventory/selections', { body })).json, preview.json);
+      const route = `/api/inventory/selections/${preview.json.selectionId}/confirm`, reference = { digest: preview.json.digest };
+      assert.equal((await request(route, { body: reference, auth: false })).status, 401);
+      const foreign = await request(route, { body: reference, headers: { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000575' })}` } });
+      assert.equal(foreign.status, 409); assert.equal(foreign.json.code, 'SELECTION_NOT_FOUND');
+      const bad = await request(route, { body: { digest: 'wrong' } }); assert.equal(bad.status, 409); assert.equal(bad.json.code, 'SELECTION_CONFIRMATION_MISMATCH');
+      assert.equal((await request(route, { body: { ...reference, balances: { available: 99 } } })).status, 400);
+      const [one, two] = await Promise.all([request(route, { body: reference }), request(route, { body: reference })]);
+      assert.equal(one.status, 200); assert.deepEqual(one.json, two.json); assert.equal(one.json.items.length, 2);
+      for (const product of products) { const actual = (await stock(product.id))[0]; assert.equal(Number(actual.stock_available), 0); assert.equal(Number(actual.stock_reserved), product.stockReserved); }
+      assert.equal(Number((await stock(later.id))[0].stock_available), 9);
+      assert.equal((await ledger(one.json.operationId)).length, 2);
+      assert.equal((await sql.query('SELECT status FROM inventory_selections WHERE owner_phone=$1 AND selection_id=$2', [owner, preview.json.selectionId])).rows[0].status, 'applied');
+      const receive = await request('/api/inventory/operations', { body: plan('http-set-later-receive', [{ itemId: 'receive', type: 'stock.receive', target: { kind: 'existing', skuId: products[0].id }, quantity: { value: 2, unit: products[0].unit } }]) });
+      assert.equal(receive.status, 200);
+      await sql.query("UPDATE inventory_selections SET expires_at=NOW()-INTERVAL '1 minute' WHERE owner_phone=$1 AND selection_id=$2", [owner, preview.json.selectionId]);
+      assert.deepEqual((await request(route, { body: reference })).json, one.json); assert.equal(Number((await stock(products[0].id))[0].stock_available), 2); assert.equal((await ledger(one.json.operationId)).length, 2);
+    });
+    await run('SET adjustment HTTP rejects stale frozen membership without partial SKU changes', async () => {
+      const products = [await createHttpFixtureProduct({ name: 'HTTP SET obsoleto A', stockAvailable: 8 }, owner), await createHttpFixtureProduct({ name: 'HTTP SET obsoleto B', stockAvailable: 6 }, owner)];
+      const body = { requestId: 'http-set-stale', selector: { kind: 'ids', skuIds: products.map(({ id }) => id) }, mutation: { type: 'stock.adjust', balances: { available: 0, reserved: 0 }, reason: 'Conteo anterior al movimiento HTTP' } };
+      const preview = await request('/api/inventory/selections', { body }); assert.equal(preview.status, 200);
+      const changed = await request('/api/inventory/operations', { body: plan('http-set-stale-receive', [{ itemId: 'receive', type: 'stock.receive', target: { kind: 'existing', skuId: products[1].id }, quantity: { value: 1, unit: products[1].unit } }]) }); assert.equal(changed.status, 200);
+      const response = await request(`/api/inventory/selections/${preview.json.selectionId}/confirm`, { body: { digest: preview.json.digest } });
+      assert.equal(response.status, 409); assert.equal(response.json.code, 'REVISION_MISMATCH');
+      assert.equal(Number((await stock(products[0].id))[0].stock_available), 8); assert.equal(Number((await stock(products[1].id))[0].stock_available), 7);
+      const selected = (await sql.query('SELECT status,result_json FROM inventory_selections WHERE owner_phone=$1 AND selection_id=$2', [owner, preview.json.selectionId])).rows[0];
+      assert.equal(selected.status, 'pending'); assert.equal(selected.result_json, null); assert.equal((await ledger(`selection:${preview.json.selectionId}`)).length, 0);
+    });
     await run('canonical receive persists exact stock and replay creates no duplicate', async () => {
       const body = plan('http-receive', [fresh]);
       const response = await request('/api/inventory/operations', { body });

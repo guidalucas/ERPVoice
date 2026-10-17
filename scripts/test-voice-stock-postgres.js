@@ -4,6 +4,7 @@ import { runPartyCreateChecks } from './party-create-postgres-checks.js';
 import { runPartyEditChecks } from './party-edit-postgres-checks.js';
 import { runPartyDeleteMergeChecks } from './party-delete-merge-postgres-checks.js';
 import { runUniversalOperationChecks } from './universal-operation-postgres-checks.js';
+import { runInventorySetAdjustmentChecks } from './inventory-set-adjustment-postgres-checks.js';
 import { runOrderChecks } from './order-postgres-checks.js';
 import assert from 'node:assert/strict';
 import { runInventoryCoreChecks } from './inventory-core-postgres-checks.js';
@@ -82,6 +83,7 @@ try {
   await runPartyEditChecks({ db, sql, check });
   await runPartyDeleteMergeChecks({ db, sql, check });
   await runUniversalOperationChecks({ db, sql, check });
+  await runInventorySetAdjustmentChecks({ db, sql, check });
   await runAccountChecks({ db, sql, check });
   await runOrderChecks({ db, sql, check });
   await runOrderReconciliationChecks({ db, sql, check });

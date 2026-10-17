@@ -6,6 +6,7 @@ import {
   createProduct,
   createProductModel,
   createProveedor,
+  confirmInventorySelection,
   deleteClient,
   deletePedido,
   deleteProduct,
@@ -52,6 +53,12 @@ export const useInventory = () => {
   const applyActions = async (sourceText: string, actions: ParsedActionUnion[], operationId?: string) => {
     const snapshot = await applyStateActions(sourceText, actions, operationId);
     hydrateFromSnapshot(snapshot);
+  };
+
+  const confirmInventorySelectionRecord = async (reference: InventorySelectionReference) => {
+    const result = await confirmInventorySelection(reference);
+    await refreshState();
+    return result;
   };
 
   const createProductRecord = async (input: ProductInput, metadata: ProductCreation) => {
@@ -195,6 +202,7 @@ export const useInventory = () => {
     updateProductRecord,
     updateProductModelRecords,
     previewInventorySelection,
+    confirmInventorySelectionRecord,
     deleteProductRecord,
     deleteProductRecords,
     createClientRecord,

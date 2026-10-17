@@ -1421,7 +1421,7 @@ export const executeInventoryOperation = async (plan, context) => {
 const authorizeInventorySelection = (context, mutationType = 'sku.update') => validateOperationPlan({ contractVersion: 1,
   businessId: context?.businessId, operationId: 'selection-authorization',
   actions: [{ itemId: 'authorization', type: mutationType, target: { kind: 'existing', skuId: 'authorization', expectedRevision: 0 },
-    ...(mutationType === 'sku.update' ? { changes: { price: 0 } } : {}), reason: 'Authorization only' }],
+    ...(mutationType === 'sku.update' ? { changes: { price: 0 } } : mutationType === 'stock.adjust' ? {balances:{available:0}} : {}), reason: 'Authorization only' }],
 }, context);
 
 export const previewInventorySelection = async (input, context) => {
