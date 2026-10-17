@@ -507,6 +507,18 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(reversal.status,200);assert.equal(Number((await stock(product.id))[0].stock_available),3);
       assert.deepEqual((await request(path,{body})).json,one.json);
     });
+    await run('state read failures return unavailable without an empty snapshot and recover persisted data',async()=>{
+      const product=await createHttpFixtureProduct({name:'HTTP read outage retained',stockAvailable:7},owner);
+      await sql.query('ALTER TABLE products RENAME TO products_temporarily_unavailable');
+      try{
+        const failed=await request('/api/state',{method:'GET'});
+        assert.equal(failed.status,503);assert.equal(failed.json.code,'STATE_UNAVAILABLE');
+        assert.equal(Object.hasOwn(failed.json,'products'),false);assert.equal(Object.hasOwn(failed.json,'clients'),false);
+        assert.equal(failed.text.includes('products_temporarily_unavailable'),false);
+      }finally{await sql.query('ALTER TABLE products_temporarily_unavailable RENAME TO products');}
+      const recovered=await request('/api/state',{method:'GET'});assert.equal(recovered.status,200);
+      assert.equal(recovered.json.products.find((p)=>p.id===product.id).stockAvailable,7);
+    });
     return completed;
   } catch (error) {
     let safeLogs = logs;

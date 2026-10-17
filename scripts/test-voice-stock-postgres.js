@@ -77,6 +77,21 @@ try {
   await runAccountChecks({ db, sql, check });
   await runOrderChecks({ db, sql, check });
   await runOrderReconciliationChecks({ db, sql, check });
+  await check('database bootstrap failure never returns a fake empty snapshot and recovery retains state',async()=>{
+    const before=await db.getStateSnapshotStrict(owner);
+    const aliases=['SUPABASE_DATABASE_URL','DATABASE_URL','POSTGRES_URL','POSTGRES_CONNECTION_STRING'];
+    const saved=Object.fromEntries(aliases.map((key)=>[key,process.env[key]]));
+    const unavailable=new URL(connection);unavailable.port='1';
+    await db.closeDatabase();
+    try{
+      for(const key of aliases)process.env[key]=unavailable.toString();
+      await assert.rejects(db.getStateSnapshot(owner));
+    }finally{
+      await db.closeDatabase();
+      for(const key of aliases){if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}
+    }
+    assert.deepEqual(await db.getStateSnapshot(owner),before);
+  });
   await runInventoryHttpChecks({ db, sql, check });
 
   await check('migración repetible y RLS', async () => {

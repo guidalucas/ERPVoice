@@ -8,6 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
+- Último alcance integrado: H4.4b/c/d/e0 y lectura consistente sin fallback vacío (ver registro).
 
 ## Hitos y dependencias
 
@@ -404,14 +405,24 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   en src/scripts. Suites backend siguen en 158 checks PG/HTTP y 47 tests puros; sin cambios
   backend en este retiro. No ejecutar tests que solo reproduzcan código eliminado.
 
+- P0 de lecturas (2026-10-17): getStateSnapshot delega a lectura estricta en una transacción
+  REPEATABLE READ READ ONLY; inventario, cuentas, pedidos e historial comparten snapshot.
+  Retirados catch/fallback vacío y normalización con escrituras ocultas durante lectura.
+  Un fallo de conexión/arranque o SELECT se propaga; GET /api/state responde 503 genérico
+  STATE_UNAVAILABLE sin arrays vacíos ni detalles SQL. El panel conserva su estado anterior.
+- P0 de lecturas verificado: 160 checks PG/HTTP. Incluye conexión de arranque fallida seguida
+  de recuperación exacta y fallo real de tabla durante GET con recuperación de stock 7.
+  Suites puras permanecen en 47 y motor en 50; build y Edge ya aprobados en e0, sin cambios
+  frontend aquí. Consultas de WhatsApp/ingresos también usan la lectura estricta compartida.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
 - H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
 - H4.4a `844b29b`; H4.4b `bf812ee` (incluye checkpoint parcial `600373f`); H4.4c `ba251e6`.
-- H4.4d: ver git log; no volver a diseñar la política de aprovisionamiento/conciliación.
-- H4.4d `cf25ea2`; H4.4e0: siguiente commit de retiro del ejecutor local.
+- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente: siguiente commit (ver git log).
+  No volver a diseñar la política de aprovisionamiento/conciliación.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
 - Frontend: `npm run test:inventory-ui` y `npm run test:panel-draft-recovery`.

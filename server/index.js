@@ -539,7 +539,7 @@ app.get('/api/state', authenticateRequest, async (req, res) => {
     const snapshot = await getStateSnapshot(clientPhone);
     res.json(snapshot);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(503).json({ error: 'No pude leer el estado guardado. Conservá tu vista y reintentá.', code:'STATE_UNAVAILABLE' });
   }
 });
 

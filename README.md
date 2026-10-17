@@ -3,6 +3,8 @@
 La transición a arquitectura C se sigue en [STOCKY_REENGINEERING_PLAN.md](STOCKY_REENGINEERING_PLAN.md).
 El panel confirma contra el backend y solo hidrata snapshots persistidos; se retiró el
 ejecutor local anterior de inventario/cuentas/pedidos.
+Cada snapshot se lee en una transacción consistente. Si falla la base, `/api/state`
+responde 503; conserva la vista anterior y reintenta, sin sustituirla por inventario vacío.
 Ingresos, ventas y reservas usan `stock.receive`, `stock.sell` y `stock.reserve` del
 mismo núcleo, con recibos idempotentes y movimientos transaccionales. Stock insuficiente
 rechaza todo el lote. Ventas y reservas requieren SKU explícito; el precio de venta

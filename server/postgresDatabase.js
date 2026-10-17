@@ -71,15 +71,6 @@ const tenantSuffix = (ownerPhone) =>
     .replace(/^-+|-+$/g, '')
     .toLowerCase() || 'default';
 
-const DEFAULT_STATE_SNAPSHOT = {
-  products: [],
-  clients: [],
-  proveedores: [],
-  pedidos: [],
-  transactions: [],
-};
-
-
 export const hasDatabaseConfig = () => Boolean(getConnectionString());
 
 const getConnectionString = () =>
@@ -683,14 +674,6 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null, { 
     transactions: transactionsRows.map(rowToTransaction),
   };
 };
-
-const cloneDefaultStateSnapshot = () => ({
-  products: DEFAULT_STATE_SNAPSHOT.products.map((product) => ({ ...product })),
-  clients: DEFAULT_STATE_SNAPSHOT.clients.map((client) => ({ ...client })),
-  proveedores: DEFAULT_STATE_SNAPSHOT.proveedores.map((proveedor) => ({ ...proveedor })),
-  pedidos: [],
-  transactions: [],
-});
 
 const normalizeTextList = (value) =>
   String(value ?? '')
@@ -1661,22 +1644,8 @@ export const processMetaDeactivationCommand = async ({ sourceText, messageId, ow
   }
 };
 
-export const getStateSnapshot = async (ownerPhone = DEFAULT_OWNER_PHONE) => {
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-
-  try {
-    await ensureReady();
-
-    await withClient(async (client) => {
-      await ensureTenantState(client, normalizedOwnerPhone);
-    });
-
-    return queryAllState(normalizedOwnerPhone);
-  } catch (error) {
-    console.warn('[postgresDatabase] Falling back to default state snapshot:', error instanceof Error ? error.message : error);
-    return cloneDefaultStateSnapshot();
-  }
-};
+// All channels read the same persisted snapshot; storage failures are never empty inventory.
+export const getStateSnapshot = (ownerPhone = DEFAULT_OWNER_PHONE) => getStateSnapshotStrict(ownerPhone);
 
 const persistInventoryTransactions = async (client, plan, result, originalActions = []) => {
   const appliedActions = inventoryResultActions(result, originalActions);
@@ -2152,7 +2121,10 @@ export const claimRecoverableMetaMessages = async () => {
 
 export const getStateSnapshotStrict = async (ownerPhone) => {
   await ensureReady();
-  return queryAllState(normalizeOwnerPhone(ownerPhone));
+  return withTransaction(async (client) => {
+    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    return queryAllState(normalizeOwnerPhone(ownerPhone),client);
+  });
 };
 
 export const closeDatabase = async () => {
