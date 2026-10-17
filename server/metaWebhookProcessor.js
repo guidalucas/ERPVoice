@@ -6,7 +6,7 @@ import {
   formatVariantRef,
   getBusinessCategoryPreset,
 } from './businessCategories.js';
-import { formatCatalogPromptSection, groundActionsAgainstCatalog, hasBulkSelection, hasProductMatchHold } from './voiceCatalogContext.js';
+import { formatCatalogPromptSection, groundActionsAgainstCatalog, hasBulkSelection, hasProductMatchHold, missingVariantSelectionFromText } from './voiceCatalogContext.js';
 import {
   UNUSABLE_AUDIO_REPLY,
   appendTranscriptionOptions,
@@ -257,7 +257,7 @@ Convertí la frase del usuario en JSON con esta estructura:
     { "type": "update_product", "productName": string, "productType"?: string, "productModel"?: string, "size"?: string, "price"?: number, "stockAvailable"?: number },
     { "type": "update_pedido", "productName": string, "qty"?: number, "size"?: string, "estado"?: "pendiente" | "conseguido" | "descartado", "clientName"?: string },
     { "type": "delete_pedido", "productName": string, "clientName"?: string },
-    { "type": "delete_product", "productName": string }
+    { "type": "delete_product", "productName"?: string, "selection"?: { "field": "size", "operator": "missing" } }
   ],
   "missingFields"?: string[],
   "suggestedPhrases"?: string[]
@@ -278,6 +278,7 @@ Reglas:
 - "N mil" = N*1000. Price solo es plata, nunca gramos/ml/kg.
 - Ingreso / carga / compré / entraron / recibí = add_stock. En un listado, "vale/cuesta" es price del ingreso, NO update_product. qty 1 si no hay cantidad.
 - "eliminá / borrala / no existe / está de más / la de X / la que se llama X" = delete_product. Si hay inventario, usá el nombre exacto. Si el modelo tiene varias variantes y no dijo cuál, NO borres: missingFields ["productMatch"] y suggestedPhrases con cada SKU candidato.
+- Para borrar todos los productos que carecen de variante (sin talle/número/medida), usá delete_product con selection {"field":"size","operator":"missing"}. El sistema selecciona los registros reales del inventario.
 - "borrá el pedido de X" = delete_pedido. "conseguido/descartado" sobre un pedido = update_pedido.
 - Consulta de stock = query_stock (sin mutar). Consulta de pedidos = query_pedidos. Preguntas como "¿qué me pidió Juan?", "¿qué pedidos hay pendientes?", "mostrame los pedidos de María" son query_pedidos, NUNCA client_order.
 - Si pide todo el inventario / todos los productos / listado completo: query_stock con productName "*". Nunca uses "all" ni un producto inventado. Si pide agrupado por talle/número, groupBy: "size".
@@ -1005,10 +1006,10 @@ const parseAction = (value) => {
   }
 
   if (value.type === 'update_product' && typeof value.productName === 'string' && value.productName.trim()) {
-    const priceValue = Number.isFinite(Number(value.price)) ? Number(value.price) : amount;
+    const priceValue = value.price != null ? Number(value.price) : amount;
     const stockValue = Number(value.stockAvailable);
-    const hasPrice = Number.isFinite(priceValue) && priceValue > 0;
-    const hasStock = Number.isFinite(stockValue) && stockValue >= 0;
+    const hasPrice = Number.isFinite(priceValue);
+    const hasStock = value.stockAvailable != null && Number.isFinite(stockValue);
 
     if (!hasPrice && !hasStock) {
       return null;
@@ -1021,7 +1022,7 @@ const parseAction = (value) => {
       productModel: typeof value.productModel === 'string' ? value.productModel : undefined,
       size: typeof value.size === 'string' ? value.size : undefined,
       ...(hasPrice ? { price: priceValue } : {}),
-      ...(hasStock ? { stockAvailable: Math.trunc(stockValue) } : {}),
+      ...(hasStock ? { stockAvailable: stockValue } : {}),
     };
   }
 
@@ -1056,10 +1057,15 @@ const parseAction = (value) => {
     };
   }
 
-  if (value.type === 'delete_product' && typeof value.productName === 'string' && value.productName.trim()) {
+  if (value.type === 'delete_product') {
+    const productName = typeof value.productName === 'string' ? value.productName.trim() : '';
+    const selection = value.selection?.field === 'size' && value.selection?.operator === 'missing'
+      ? { field: 'size', operator: 'missing' } : null;
+    if (!productName && !selection) return null;
     return {
       type: 'delete_product',
-      productName: value.productName.trim(),
+      ...(productName ? { productName } : {}),
+      ...(selection ? { selection } : {}),
       productType: typeof value.productType === 'string' ? value.productType : undefined,
       productModel: typeof value.productModel === 'string' ? value.productModel : undefined,
       size: typeof value.size === 'string' ? value.size : undefined,
@@ -1359,7 +1365,7 @@ const tryParseMutationAction = (fragment) => {
   if (updatePriceMatch) {
     const productText = updatePriceMatch[1].trim().replace(/^(?:producto|precio de)\s+/i, '');
     const price = parsePrice(updatePriceMatch[2]) ?? Number(String(updatePriceMatch[2]).replace(/\./g, '').replace(',', '.'));
-    if (productText && Number.isFinite(price) && price > 0) {
+    if (productText && Number.isFinite(price) && price >= 0) {
       return { type: 'update_product', productName: productText, price };
     }
   }
@@ -1907,6 +1913,11 @@ const parseLocalText = (text, conversationTurns = [], catalog = null, preset = g
     return finish(buildPayload(text, [deleteAll], { intent: 'delete_product' }));
   }
 
+  const missingVariant = missingVariantSelectionFromText(text);
+  if (missingVariant && hasBulkSelection(text) && looksLikeDeleteProducts(text)) {
+    return finish(buildPayload(text, [{ type: 'delete_product', selection: missingVariant }], { intent: 'delete_product' }));
+  }
+
   const pendingBulkDelete = resolvePendingBulkDelete(text, conversationTurns);
   if (pendingBulkDelete) return finish(pendingBulkDelete);
 
@@ -2113,6 +2124,11 @@ const parseVoiceTextWithModel = async (
   const deleteAll = tryParseDeleteAllProductsAction(text);
   if (deleteAll) {
     return finish(buildPayload(text, [deleteAll], { intent: 'delete_product' }));
+  }
+
+  const missingVariant = missingVariantSelectionFromText(text);
+  if (missingVariant && hasBulkSelection(text) && looksLikeDeleteProducts(text)) {
+    return finish(buildPayload(text, [{ type: 'delete_product', selection: missingVariant }], { intent: 'delete_product' }));
   }
 
   const pendingBulkDelete = resolvePendingBulkDelete(text, conversationTurns);
@@ -2526,6 +2542,7 @@ const extractMetaMessages = (body) => {
           entryId: entry?.id ?? null,
           fromNumber: typeof message?.from === 'string' ? message.from : null,
           messageId: typeof message?.id === 'string' ? message.id : null,
+          replyToMessageId: typeof message?.context?.id === 'string' ? message.context.id : null,
           messageType: typeof message?.type === 'string' ? message.type : 'unknown',
           textBody: typeof message?.text?.body === 'string' ? message.text.body.trim() : '',
           audioId: typeof message?.audio?.id === 'string' ? message.audio.id : null,
@@ -2550,7 +2567,7 @@ const processMetaMessage = async (
     const response = await hooks.processStockText?.({ sourceText, businessCategory: preset.id, conversationTurns, metaMessage });
     if (!response) return null;
     return { ...metaMessage, kind, sourceText, transcript: kind === 'audio' ? sourceText : null,
-      parsed: { schemaVersion: 1, sourceText, intent: 'add_stock', actions: response.actions ?? [], requiresConfirmation: response.batchStatus !== 'applied' },
+      parsed: { schemaVersion: 1, sourceText, intent: response.intent ?? 'add_stock', actions: response.actions ?? [], requiresConfirmation: response.requiresConfirmation ?? response.batchStatus !== 'applied' },
       businessCategory: preset.id, replyText: response.replyText, stockBatchResponse: response };
   };
   if (metaMessage.messageType === 'audio' && metaMessage.audioId) {
@@ -2686,7 +2703,11 @@ export const sendMetaReply = async ({ to, text }) => {
     });
 
     if (response.ok) {
-      return { sent: true, recipientUsed: recipient };
+      // Sending succeeded even if the provider omitted its receipt. Without an ID,
+      // quoted replies will be held for an explicit answer rather than guessed.
+      const receipt = await response.json().catch(() => null);
+      return { sent: true, recipientUsed: recipient,
+        messageId: typeof receipt?.messages?.[0]?.id === 'string' ? receipt.messages[0].id : null };
     }
 
     const errorText = await response.text();

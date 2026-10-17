@@ -3,13 +3,39 @@ import { normalizePhone as normalizeCanonicalPhone } from './phone.js';
 
 const base64UrlEncode = (value) => Buffer.from(value).toString('base64url');
 
-const base64UrlDecode = (value) => Buffer.from(value, 'base64url').toString('utf8');
+const decodeJwtPart = (value) => {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new Error('Invalid JWT encoding');
+  }
+  const bytes = Buffer.from(value, 'base64url');
+  if (bytes.toString('base64url') !== value) {
+    throw new Error('Invalid JWT encoding');
+  }
+  return bytes;
+};
 
 export const normalizePhone = normalizeCanonicalPhone;
 
 export const normalizeLoginPhone = normalizeCanonicalPhone;
 
-export const getJwtSecret = () => process.env.AUTH_JWT_SECRET || process.env.META_VERIFY_TOKEN || 'erpvoice_dev_auth_secret';
+export class AuthConfigurationError extends Error {
+  constructor() {
+    super('Production authentication requires AUTH_JWT_SECRET with at least 32 UTF-8 bytes');
+    this.name = 'AuthConfigurationError';
+    this.code = 'AUTH_JWT_SECRET_INVALID';
+  }
+}
+
+export const getJwtSecret = () => {
+  const secret = process.env.AUTH_JWT_SECRET;
+  if (process.env.NODE_ENV === 'production') {
+    if (typeof secret !== 'string' || !secret.trim() || Buffer.byteLength(secret, 'utf8') < 32) {
+      throw new AuthConfigurationError();
+    }
+    return secret;
+  }
+  return secret || process.env.META_VERIFY_TOKEN || 'erpvoice_dev_auth_secret';
+};
 
 export const extractBearerToken = (authorizationHeader) => {
   const headerValue = String(authorizationHeader ?? '').trim();
@@ -42,38 +68,37 @@ export const issueJwt = (payload, expiresInSeconds = Number(process.env.AUTH_JWT
 };
 
 export const verifyJwt = (token) => {
-  const secret = getJwtSecret();
-  const rawToken = String(token ?? '').trim();
-
-  if (!rawToken) {
-    return null;
-  }
-
-  const parts = rawToken.split('.');
-
-  if (parts.length !== 3) {
-    return null;
-  }
-
-  const [encodedHeader, encodedPayload, signature] = parts;
-  const signingInput = `${encodedHeader}.${encodedPayload}`;
-  const expectedSignature = crypto.createHmac('sha256', secret).update(signingInput).digest('base64url');
-
-  const signatureBuffer = Buffer.from(signature, 'base64url');
-  const expectedBuffer = Buffer.from(expectedSignature, 'base64url');
-
-  if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
-    return null;
-  }
-
   try {
-    const payload = JSON.parse(base64UrlDecode(encodedPayload));
-    if (!payload || typeof payload !== 'object') {
+    const secret = getJwtSecret();
+    if (typeof token !== 'string' || !token.trim()) {
+      return null;
+    }
+    const parts = token.trim().split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+    const [encodedHeader, encodedPayload, signature] = parts;
+    const headerBytes = decodeJwtPart(encodedHeader);
+    const payloadBytes = decodeJwtPart(encodedPayload);
+    const signatureBuffer = decodeJwtPart(signature);
+    const expectedBuffer = crypto.createHmac('sha256', secret)
+      .update(`${encodedHeader}.${encodedPayload}`).digest();
+    if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
+      return null;
+    }
+
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    const header = JSON.parse(decoder.decode(headerBytes));
+    if (!header || Array.isArray(header) || header.alg !== 'HS256' || header.typ !== 'JWT') {
+      return null;
+    }
+    const payload = JSON.parse(decoder.decode(payloadBytes));
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || payload.iss !== 'ERPVoice') {
       return null;
     }
 
     const now = Math.floor(Date.now() / 1000);
-    if (typeof payload.exp === 'number' && payload.exp <= now) {
+    if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp) || payload.exp <= now) {
       return null;
     }
 

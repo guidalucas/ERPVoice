@@ -56,8 +56,8 @@ const main = async () => {
   }
 
   const products = [];
-  for (const product of seedProducts) {
-    const created = await createProductRecord(product, ownerPhone);
+  for (const [index, product] of seedProducts.entries()) {
+    const created = await createProductRecord(product, ownerPhone, { operationId: `dev-seed-product-${index + 1}`, channel: 'seed', actorId: ownerPhone });
     products.push(created);
     console.log(`[seed-dev] producto ${created.name} (stock ${created.stockAvailable})`);
   }
@@ -119,6 +119,9 @@ const main = async () => {
     );
   }
 
+  const saleProduct = (await getStateSnapshot(ownerPhone)).products.find((product) =>
+    product.productType === 'Short' && product.productModel === 'Boca' && product.size === 'M');
+  if (!saleProduct) throw new Error('Falta el SKU de la venta demo.');
   await applyActionsToDatabase(
     [
       {
@@ -142,12 +145,15 @@ const main = async () => {
     ],
     'compré 3 boca titular M y 2 river titular L',
     ownerPhone,
+    { operationId: `seed-intake-${Date.now()}`, channel: 'seed', actorId: ownerPhone },
   );
 
   await applyActionsToDatabase(
     [
       {
         type: 'sell',
+        productId: saleProduct.id,
+        expectedFingerprint: saleProduct.identityFingerprint,
         productName: 'Short Boca',
         productType: 'Short',
         productModel: 'Boca',
@@ -158,6 +164,7 @@ const main = async () => {
     ],
     'vendí 1 short boca M',
     ownerPhone,
+    { operationId: `seed-sale-${Date.now()}`, channel: 'seed', actorId: ownerPhone },
   );
 
   if (jere) {

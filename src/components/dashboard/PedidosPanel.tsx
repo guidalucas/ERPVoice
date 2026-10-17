@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
 import type { PedidoEstado } from '../../domain/types';
@@ -78,6 +78,10 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
   const [qtyText, setQtyText] = useState('1');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [pedidoSkuChoices, setPedidoSkuChoices] = useState<Record<string, string>>({});
+  const [pedidoErrors, setPedidoErrors] = useState<Record<string, string>>({});
+  const createAttemptRef = useRef<{ key: string; body: Parameters<typeof createPedidoRecord>[0] } | null>(null);
+  const statusAttemptsRef = useRef(new Map<string, { estado: PedidoEstado; productId?: string; operationId: string; expectedRevision: number }>());
 
   useEffect(() => {
     if (startWithForm) {
@@ -188,10 +192,25 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
     });
   }, [filtered, proveedoresById]);
 
-  const changeEstado = async (pedidoId: string, estado: PedidoEstado) => {
-    setUpdatingId(pedidoId);
+  const changeEstado = async (pedido: (typeof pedidos)[number], estado: PedidoEstado) => {
+    if (updatingId) return;
+    const productId = estado === 'conseguido' ? pedido.productId ?? pedidoSkuChoices[pedido.id] : pedido.productId ?? undefined;
+    if (estado === 'conseguido' && !productId) {
+      setPedidoErrors((current) => ({ ...current, [pedido.id]: 'Elegí el SKU exacto antes de marcar como conseguido.' }));
+      return;
+    }
+    const prior = statusAttemptsRef.current.get(pedido.id);
+    const attempt = prior?.estado === estado && prior.productId === productId
+      ? prior
+      : { estado, productId, operationId: crypto.randomUUID(), expectedRevision: pedido.revision ?? 0 };
+    statusAttemptsRef.current.set(pedido.id, attempt);
+    setUpdatingId(pedido.id);
     try {
-      await updatePedidoRecord(pedidoId, { estado });
+      setPedidoErrors((current) => ({ ...current, [pedido.id]: '' }));
+      await updatePedidoRecord(pedido.id, { estado, productId, operationId: attempt.operationId, expectedRevision: attempt.expectedRevision });
+      statusAttemptsRef.current.delete(pedido.id);
+    } catch (error) {
+      setPedidoErrors((current) => ({ ...current, [pedido.id]: toUserFacingError(error, 'No se pudo actualizar el pedido. Reintentá.') }));
     } finally {
       setUpdatingId(null);
     }
@@ -240,9 +259,12 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
         resolvedProveedorId = created.id;
       }
 
-      await createPedidoRecord({
+      const key = JSON.stringify([resolvedClientId, resolvedProveedorId, selectedProduct.id, qty]);
+      const captured: Parameters<typeof createPedidoRecord>[0] = createAttemptRef.current?.key === key ? createAttemptRef.current.body : {
+        operationId: crypto.randomUUID(),
         clienteId: resolvedClientId,
         proveedorId: resolvedProveedorId,
+        productId: selectedProduct.id,
         producto: selectedProduct.name,
         productType: selectedProduct.productType,
         productModel: selectedProduct.productModel,
@@ -250,7 +272,10 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
         qty,
         estado: 'pendiente',
         notas: 'Pedido manual',
-      });
+      };
+      createAttemptRef.current = { key, body: captured };
+      await createPedidoRecord(captured);
+      createAttemptRef.current = null;
 
       resetForm();
       setFormOpen(false);
@@ -266,6 +291,23 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
     preset.useVariants && preset.variantLabel
       ? `Producto + ${preset.variantLabel.toLowerCase()}`
       : 'Producto';
+
+  const renderStatusControls = (pedido: (typeof pedidos)[number]) => (
+    <div className="space-y-2 sm:text-right">
+      {pedido.estado === 'pendiente' && !pedido.productId && (
+        <label className="block text-xs text-[color:var(--muted)]">
+          SKU exacto para ingresar
+          <select className="erp-input mt-1 min-h-10" aria-label={`SKU para ${pedido.producto}`} value={pedidoSkuChoices[pedido.id] ?? ''}
+            onChange={(event) => setPedidoSkuChoices((current) => ({ ...current, [pedido.id]: event.target.value }))}>
+            <option value="">Elegir SKU…</option>
+            {sortedProducts.map((product) => <option key={product.id} value={product.id}>{productOptionLabel(product, true)} · {product.id}</option>)}
+          </select>
+        </label>
+      )}
+      <PedidoStatusControls estado={pedido.estado} disabled={updatingId === pedido.id} onChange={(next) => void changeEstado(pedido, next)} />
+      {pedidoErrors[pedido.id] && <p role="alert" className="text-xs text-rose-700 dark:text-rose-200">{pedidoErrors[pedido.id]}</p>}
+    </div>
+  );
 
   return (
     <article className="erp-panel space-y-4">
@@ -477,11 +519,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
                               {pedido.notas ? ` · ${pedido.notas}` : ''}
                             </p>
                           </div>
-                          <PedidoStatusControls
-                            estado={pedido.estado}
-                            disabled={updatingId === pedido.id}
-                            onChange={(estado) => void changeEstado(pedido.id, estado)}
-                          />
+                          {renderStatusControls(pedido)}
                         </div>
                       ))}
                     </div>
@@ -521,11 +559,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
                                 {pedido.notas ? ` · ${pedido.notas}` : ''}
                               </p>
                             </div>
-                            <PedidoStatusControls
-                              estado={pedido.estado}
-                              disabled={updatingId === pedido.id}
-                              onChange={(next) => void changeEstado(pedido.id, next)}
-                            />
+                            {renderStatusControls(pedido)}
                           </div>
                         ))}
                       </div>
@@ -566,11 +600,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
                               {pedido.notas ? ` · ${pedido.notas}` : ''}
                             </p>
                           </div>
-                          <PedidoStatusControls
-                            estado={pedido.estado}
-                            disabled={updatingId === pedido.id}
-                            onChange={(next) => void changeEstado(pedido.id, next)}
-                          />
+                          {renderStatusControls(pedido)}
                         </div>
                       ))}
                     </div>

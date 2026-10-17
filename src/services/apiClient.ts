@@ -66,7 +66,7 @@ export const requestJson = async <T>(path: string, init?: RequestInit): Promise<
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(parseErrorBody(errorText, response.status));
+    throw Object.assign(new Error(parseErrorBody(errorText, response.status)), { status: response.status });
   }
 
   if (response.status === 204) {

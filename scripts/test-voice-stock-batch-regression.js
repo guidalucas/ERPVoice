@@ -50,6 +50,20 @@ const prepare = (text = clarifiedText, actions = incidentActions, catalog = inci
   return prepareStockDraft({ sourceText: text, businessCategory: 'general', catalog });
 };
 try {
+  await run('validar y reordenar conserva IDs existentes sin colisionar con los nuevos', async () => {
+    const source = 'Aceite Aurora. Arroz Norte.';
+    const a = { type: 'add_stock', productName: 'Aceite Aurora', qty: 1, evidence: 'Aceite Aurora', itemId: 'stable-aurora' };
+    const b = { type: 'add_stock', productName: 'Arroz Norte', qty: 1, evidence: 'Arroz Norte', itemId: 'stable-norte' };
+    assert.deepEqual(validateStockDraft(source, [b, a]).actions.map((action) => action.itemId), ['stable-norte', 'stable-aurora']);
+    assert.equal(validateStockDraft(source, [a, { ...b, itemId: a.itemId }]).reason, 'invalid_or_duplicate_item_id');
+    assert.equal(validateStockDraft(source, [{ ...a, itemId: 'item-2' }, { ...b, itemId: undefined }]).actions[1].itemId, 'item-2-new');
+  });
+  await run('la identidad no confunde roles numéricos ni dirección', async () => {
+    const action = { type: 'add_stock', productName: 'Convertidor de 12 V a 24 V', qty: 1 };
+    const product = { id: 'reverse', name: 'Convertidor de 24 V a 12 V' };
+    assert.equal(stockMatchScore(action, product, [product]), 0);
+    assert.notEqual(productBaseName(action), productBaseName(product));
+  });
   await run('una orden explícita no cae al parser anterior cuando extract dice other', async () => {
     const draft = await prepare(incidentText, incidentActions, incidentCatalog, { extractOther: true, complete: false });
     assert.equal(draft.kind, 'stock_intake');
@@ -487,15 +501,15 @@ try {
     assert.equal(draft.actions[0].resolution.matchScore, 100);
     assert.equal(requests.some((body) => body.messages[0].content.includes('Etapa: resolve.')), false);
   });
-  await run('una sola variante compatible permite inferir talle omitido; dos variantes requieren elección', async () => {
+  await run('una variante omitida requiere elección aunque haya un solo candidato', async () => {
     const source = 'Cargué la camiseta de Racing titular 2026 en versión jugador.';
-    const actions = [{ type: 'add_stock', productName: 'Camiseta de Racing titular 2026 en versión jugador',
-      productType: 'Camiseta', productModel: 'titular', qty: 1, evidence: source, fieldEvidence: {} }];
+    const actions = [{ type: 'add_stock', productName: 'Camiseta Racing titular 2026 versión jugador',
+      productType: 'Camiseta', productModel: 'Racing titular 2026 versión jugador', qty: 1, evidence: source, fieldEvidence: {} }];
     const candidate = { id: 'racing-s', name: 'Camiseta Racing titular 2026 versión jugador',
       productType: 'Camiseta', productModel: 'Racing titular 2026 versión jugador', size: 'S' };
     const single = await prepare(source, actions, { products: [candidate] });
-    assert.equal(single.actions[0].resolution.kind, 'existing');
-    assert.equal(single.actions[0].resolution.matchScore, 94);
+    assert.equal(single.actions[0].resolution.kind, 'ambiguous');
+    assert.deepEqual(single.actions[0].resolution.candidateIds, [candidate.id]);
     assert.equal(stockMatchScore(single.actions[0], candidate, [candidate]), 94);
     const another = { ...candidate, id: 'racing-m', size: 'M' };
     const multiple = await prepare(source, actions, { products: [candidate, another] },

@@ -3,7 +3,8 @@ import { useMemo, useState } from 'react';
 import { ChartBar, ClipboardText, Package, Warning } from '@phosphor-icons/react';
 import { useInventory } from '../../hooks/useInventory';
 import { useAuth } from '../../store/AuthStore';
-import type { ParsedActionUnion, Transaction } from '../../domain/types';
+import type { Transaction } from '../../domain/types';
+import { flattenSales, formatSalesGroup, summarizeSales } from '../../domain/salesMetrics';
 import { ClientesPanel } from './ClientesPanel';
 import { DashboardShell } from './DashboardShell';
 import { EquipoPanel } from './EquipoPanel';
@@ -22,7 +23,7 @@ const SALES_PERIOD_DAYS = 7;
 
 type SummaryCardProps = {
   title: string;
-  value: string;
+  value: ReactNode;
   subtitle: string;
   icon: ReactNode;
   variant?: 'default' | 'hero' | 'alert';
@@ -91,10 +92,10 @@ type ActivityGroup = {
   kind: ActivityKind;
 };
 
-const actionKinds = (actions: ParsedActionUnion[]): ActivityKind[] => {
+const actionKinds = (actions: Transaction['actions']): ActivityKind[] => {
   const kinds = new Set<ActivityKind>();
   for (const action of actions) {
-    if (action.type === 'add_stock') kinds.add('ingreso');
+    if (action.type === 'add_stock' || action.type === 'create_product') kinds.add('ingreso');
     else if (action.type === 'sell') kinds.add('venta');
     else if (action.type === 'client_order' || action.type === 'update_pedido' || action.type === 'delete_pedido') kinds.add('pedido');
     else if (action.type === 'update_product' || action.type === 'delete_product') kinds.add('ingreso');
@@ -246,7 +247,7 @@ const matchesActivityFilter = (transaction: Transaction, filter: ActivityFilter)
   const actionTypes = transaction.actions.map((action) => action.type);
 
   if (filter === 'ingresos') {
-    return actionTypes.includes('add_stock');
+    return actionTypes.includes('add_stock') || actionTypes.includes('create_product');
   }
 
   if (filter === 'ventas') {
@@ -371,30 +372,6 @@ function ActivityFeed({
   );
 }
 
-const sumSellMetrics = (transactions: Transaction[], sinceMs: number) => {
-  let units = 0;
-  let amount = 0;
-
-  for (const transaction of transactions) {
-    const ts = new Date(transaction.timestamp).getTime();
-    if (Number.isNaN(ts) || ts < sinceMs) {
-      continue;
-    }
-
-    for (const action of transaction.actions) {
-      if (action.type !== 'sell') {
-        continue;
-      }
-      units += action.qty;
-      if (typeof action.price === 'number' && Number.isFinite(action.price)) {
-        amount += action.qty * action.price;
-      }
-    }
-  }
-
-  return { units, amount };
-};
-
 export function DashboardPanel() {
   const { products, transactions, pedidos, applyActions } = useInventory();
   const [activeSection, setActiveSection] = useState<DashboardSection>('inicio');
@@ -412,8 +389,8 @@ export function DashboardPanel() {
 
   const salesPeriod = useMemo(() => {
     const sinceMs = Date.now() - SALES_PERIOD_DAYS * 24 * 60 * 60 * 1000;
-    return sumSellMetrics(transactions, sinceMs);
-  }, [transactions]);
+    return summarizeSales(flattenSales(transactions, products).filter((sale) => new Date(sale.timestamp).getTime() >= sinceMs));
+  }, [transactions, products]);
 
   const handleSectionChange = (section: DashboardSection) => {
     setActiveSection(section);
@@ -480,10 +457,10 @@ export function DashboardPanel() {
             />
             <SummaryCard
               title="Ventas de la semana"
-              value={salesPeriod.amount > 0 ? formatCurrency(salesPeriod.amount) : '—'}
+              value={salesPeriod.groups.length ? salesPeriod.groups.map((group) => <span key={group.id} className="block text-xl">{formatSalesGroup(group)}</span>) : '—'}
               subtitle={
                 salesPeriod.units > 0
-                  ? `${salesPeriod.units} u. · últimos ${SALES_PERIOD_DAYS} días`
+                  ? `${salesPeriod.units} u. · últimos ${SALES_PERIOD_DAYS} días${salesPeriod.unknown ? ` · Importe parcial: ${salesPeriod.unknown} sin precio registrado` : ''}${salesPeriod.historical ? ` · ${salesPeriod.historical} históricos estimados` : ''}`
                   : `Sin ventas · últimos ${SALES_PERIOD_DAYS} días`
               }
               icon={<SalesIcon />}

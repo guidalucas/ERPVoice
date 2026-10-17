@@ -1,4 +1,15 @@
+export type InventoryAttribute = { unit?: string } & (
+  | { state: 'known'; type: 'text'; value: string }
+  | { state: 'known'; type: 'number'; value: number }
+  | { state: 'known'; type: 'boolean'; value: boolean }
+  | { state: 'unknown' | 'not_applicable' | 'missing'; type: 'text' | 'number' | 'boolean'; value?: never }
+);
+
+export type InventoryAttributes = Record<string, InventoryAttribute>;
+
 export interface Product {
+  revision?: number;
+  identityFingerprint?: string;
   id: string;
   name: string;
   productType?: string | null;
@@ -7,6 +18,9 @@ export interface Product {
   stockAvailable: number;
   stockReserved: number;
   price: number;
+  attributes?: InventoryAttributes;
+  unit?: string;
+  priceCurrency?: string;
 }
 
 export interface Client {
@@ -26,6 +40,9 @@ export type PedidoEstado = 'pendiente' | 'conseguido' | 'descartado';
 
 export interface Pedido {
   id: string;
+  revision?: number;
+  productId?: string | null;
+  stockPosting?: { skuId: string; quantity: number; unit: string } | null;
   clienteId: string;
   proveedorId?: string | null;
   producto: string;
@@ -57,15 +74,23 @@ export type VoiceIntent =
 export type ParsedAction =
   | {
       type: 'add_stock';
+      productId?: string;
+      expectedFingerprint?: string;
       productName: string;
       productType?: string;
       productModel?: string;
       size?: string;
       qty: number;
       price?: number;
+      unit?: string;
+      priceCurrency?: string;
     }
   | {
       type: 'reserve_stock';
+      productId?: string;
+      expectedFingerprint?: string;
+      unit?: string;
+      priceCurrency?: string;
       productName: string;
       productType?: string;
       productModel?: string;
@@ -117,12 +142,18 @@ export type ParsedAction =
     }
   | {
       type: 'update_product';
+      productId?: string;
+      expectedRevision?: number;
+      expectedFingerprint?: string;
+      reason?: string;
+      priceCurrency?: string;
       productName: string;
       productType?: string;
       productModel?: string;
       size?: string;
       price?: number;
       stockAvailable?: number;
+      stockReserved?: number;
     }
   | {
       type: 'update_pedido';
@@ -147,6 +178,11 @@ export type ParsedAction =
 
 export type ParsedActionSell = {
   type: 'sell';
+  productId?: string;
+  expectedFingerprint?: string;
+  unit?: string;
+  priceCurrency?: string;
+  salePriceKnown?: boolean;
   productName: string;
   productType?: string;
   productModel?: string;
@@ -161,6 +197,7 @@ export type ParsedActionExtended = ParsedAction | { type: 'sell'; productName: s
 
 export interface ParsedVoicePayload {
   schemaVersion: 1;
+  operationId?: string;
   sourceText: string;
   intent: VoiceIntent;
   confidence: number;
@@ -170,11 +207,30 @@ export interface ParsedVoicePayload {
   suggestedPhrases?: string[];
 }
 
+/** System creation receipt; never accepted as a parsed voice command. */
+export type ProductCreatedAction = {
+  type: 'create_product';
+  productId: string;
+  productName: string;
+  productType?: string;
+  productModel?: string;
+  size?: string;
+  stockAvailable: number;
+  stockReserved: number;
+  unit: string;
+  price: number;
+  priceCurrency: string;
+  revision: number;
+  reason: string;
+};
+
+export type StockWithdrawnAction = { type: 'withdraw_stock'; productId: string; qty: number; unit?: string; reason: string };
+
 export interface Transaction {
   id: string;
   timestamp: string;
   sourceText: string;
-  actions: ParsedActionUnion[];
+  actions: Array<ParsedActionUnion | ProductCreatedAction | StockWithdrawnAction>;
   summary: string;
 }
 

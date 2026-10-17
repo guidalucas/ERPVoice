@@ -14,6 +14,7 @@ import {
   fetchPersistedState,
   mergeClients,
   mergeProveedores,
+  previewInventorySelection,
   updateClient,
   updatePedido,
   updateProduct,
@@ -21,6 +22,7 @@ import {
   updateProveedor,
 } from '../services/productService';
 import type { Client, ParsedActionUnion, Pedido, PedidoEstado, Product, Proveedor } from '../domain/types';
+import type { InventorySelectionReference, ProductAdjustment, ProductCreation, ProductInput, ProductModelInput } from '../services/productService';
 
 export const useInventory = () => {
   const { state, confirmPendingProposal, clearPendingProposal, hydratePersistedState } = useAppStore();
@@ -46,48 +48,46 @@ export const useInventory = () => {
     hydrateFromSnapshot(snapshot);
   };
 
-  const applyActions = async (sourceText: string, actions: ParsedActionUnion[]) => {
-    const snapshot = await applyStateActions(sourceText, actions);
+  const applyActions = async (sourceText: string, actions: ParsedActionUnion[], operationId?: string) => {
+    const snapshot = await applyStateActions(sourceText, actions, operationId);
     hydrateFromSnapshot(snapshot);
   };
 
-  const createProductRecord = async (input: Omit<Product, 'id'> & { name: string }) => {
-    await createProduct({
-      ...input,
-      productType: input.productType ?? undefined,
-      productModel: input.productModel ?? undefined,
-      size: input.size ?? undefined,
-    });
+  const createProductRecord = async (input: ProductInput, metadata: ProductCreation) => {
+    await createProduct(input, metadata);
     await refreshState();
   };
 
-  const createProductModelRecords = async (input: { productType: string; productModel: string; variants: Array<{ size: string; stockAvailable: number; price: number }> }) => {
-    await createProductModel(input);
+  const createProductModelRecords = async (input: ProductModelInput, metadata: ProductCreation) => {
+    await createProductModel(input, metadata);
     await refreshState();
   };
 
-  const updateProductRecord = async (productId: string, input: Partial<Omit<Product, 'id'>>) => {
+  const updateProductRecord = async (productId: string, input: Partial<Omit<Product, 'id'>>, adjustment: ProductAdjustment) => {
+    if (!Number.isSafeInteger(adjustment.expectedRevision) || adjustment.expectedRevision < 0) {
+      throw new Error('Falta la revisión del producto. Actualizá la página y volvé a abrir el formulario.');
+    }
     await updateProduct(productId, {
       ...input,
       productType: input.productType ?? undefined,
       productModel: input.productModel ?? undefined,
       size: input.size ?? undefined,
-    });
+    }, adjustment);
     await refreshState();
   };
 
-  const updateProductModelRecords = async (input: { ids: string[]; name: string; productType: string; productModel: string }) => {
+  const updateProductModelRecords = async (input: { selectionId: string; digest: string }) => {
     await updateProductModel(input);
     await refreshState();
   };
 
-  const deleteProductRecord = async (productId: string) => {
-    await deleteProduct(productId);
+  const deleteProductRecord = async (productId: string, selection: InventorySelectionReference) => {
+    await deleteProduct(productId, selection);
     await refreshState();
   };
 
-  const deleteProductRecords = async (ids: string[]) => {
-    await deleteProducts(ids);
+  const deleteProductRecords = async (selection: InventorySelectionReference) => {
+    await deleteProducts(selection);
     await refreshState();
   };
 
@@ -134,6 +134,8 @@ export const useInventory = () => {
   };
 
   const createPedidoRecord = async (input: {
+    operationId: string;
+    productId?: string | null;
     clienteId: string;
     proveedorId?: string | null;
     producto: string;
@@ -148,8 +150,11 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const updatePedidoRecord = async (pedidoId: string, input: Partial<Omit<Pedido, 'id' | 'fechaPedido'>>) => {
+  const updatePedidoRecord = async (pedidoId: string, input: Partial<Omit<Pedido, 'id' | 'fechaPedido' | 'revision' | 'stockPosting'>> & { operationId: string; expectedRevision: number }) => {
     await updatePedido(pedidoId, {
+      operationId: input.operationId,
+      expectedRevision: input.expectedRevision,
+      productId: input.productId,
       clienteId: input.clienteId,
       proveedorId: input.proveedorId,
       producto: input.producto,
@@ -163,8 +168,8 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const deletePedidoRecord = async (pedidoId: string) => {
-    await deletePedido(pedidoId);
+  const deletePedidoRecord = async (pedidoId: string, metadata: { operationId: string; expectedRevision: number }) => {
+    await deletePedido(pedidoId, metadata);
     await refreshState();
   };
 
@@ -183,6 +188,7 @@ export const useInventory = () => {
     createProductModelRecords,
     updateProductRecord,
     updateProductModelRecords,
+    previewInventorySelection,
     deleteProductRecord,
     deleteProductRecords,
     createClientRecord,

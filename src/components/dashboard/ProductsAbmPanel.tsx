@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { InventorySelectionPreview, InventorySelectionRequest, ProductAdjustment, ProductInput, ProductModelInput } from '../../services/productService';
 import { getVariantWord, type BusinessCategoryPreset } from '../../domain/businessCategories';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
@@ -29,6 +30,8 @@ const emptyVariantDraft = (price = '0'): NewVariantDraft => ({
 });
 
 type ProductRow = {
+  revision?: number;
+  identityFingerprint?: string;
   id: string;
   name: string;
   productType?: string | null;
@@ -161,65 +164,35 @@ const buildProductName = (draft: ProductDraft) => {
   return parts.length ? parts.join(' ') : 'Nuevo Producto';
 };
 
-function ConfirmDeleteModal({
-  productName,
-  onCancel,
-  onConfirm,
-  confirming,
-}: {
-  productName: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-  confirming: boolean;
+function DeactivateModal({ ids, reason, onReasonChange, preview, stale, error, busy, onCancel, onSubmit }: {
+  ids: string[]; reason: string; onReasonChange: (reason: string) => void;
+  preview: InventorySelectionPreview | null; stale: boolean; error: string | null; busy: boolean;
+  onCancel: () => void; onSubmit: (refresh?: boolean) => Promise<void>;
 }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
-        <h4 className="type-title text-xl text-[color:var(--text)]">Eliminar producto</h4>
-        <p className="mt-3 text-sm leading-6 text-[color:var(--muted)]">
-          Vas a eliminar <span className="type-subtitle text-[color:var(--text)]">{productName}</span>. Esta acción no se puede deshacer.
-        </p>
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <button type="button" onClick={onCancel} className="erp-button-secondary">
-            Cancelar
-          </button>
-          <button type="button" onClick={onConfirm} disabled={confirming} className="erp-button-danger">
-            {confirming ? 'Eliminando...' : 'Eliminar'}
-          </button>
-        </div>
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
+    <div role="dialog" aria-modal="true" aria-label="Desactivar productos" className="max-h-full overflow-y-auto w-full max-w-lg rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl">
+      <h4 className="type-title text-xl">Desactivar {ids.length === 1 ? 'producto' : 'selección'}</h4>
+      <p className="mt-3 text-sm">Se desactivarán y saldrán del inventario activo; se conservan stock e historial.</p>
+      <p className="mt-2 text-sm">{ids.length} SKU seleccionados: {ids.join(', ')}</p>
+      <label className="mt-4 block text-sm">Motivo de la desactivación
+        <input className="erp-input" required disabled={busy} value={reason} onChange={(event) => onReasonChange(event.target.value)} />
+      </label>
+      {preview && <section aria-label="Vista previa de desactivación" className="mt-4 space-y-3 text-sm">
+        <p>Motivo: {preview.mutation.reason}</p>
+        <ul className="space-y-2">{preview.members.map((member) => <li key={member.skuId} className="rounded-xl border border-[color:var(--border)] p-3">
+          <strong>{member.name}</strong> · Variante: {member.size || 'Sin definir'}
+          <p>SKU: {member.skuId} · Revisión: {member.revision}</p>
+          <p>Disponible: {member.stockAvailable} · Reservado: {member.stockReserved} · Precio: {member.price} {member.priceCurrency}</p>
+        </li>)}</ul>
+        <p>Vence: {preview.expiresAt}</p>
+      </section>}
+      {error && <p role="alert" className="mt-4 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
+      <div className="mt-6 flex justify-end gap-3">
+        <button type="button" disabled={busy} onClick={onCancel} className="erp-button-secondary">Cancelar</button>
+        <button type="button" disabled={busy} onClick={() => void onSubmit(stale)} className="erp-button-danger">{busy ? 'Procesando...' : stale ? 'Revisar selección actualizada' : preview ? 'Confirmar desactivación' : 'Revisar desactivación'}</button>
       </div>
     </div>
-  );
-}
-
-function ConfirmBulkDeleteModal({
-  count,
-  variantWord,
-  onCancel,
-  onConfirm,
-  confirming,
-  error,
-}: {
-  count: number;
-  variantWord: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-  confirming: boolean;
-  error: string | null;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
-      <div role="dialog" aria-modal="true" aria-label="Eliminar selección" className="w-full max-w-md rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
-        <h4 className="type-title text-xl">Eliminar selección</h4>
-        <p className="mt-3 text-sm leading-6 text-[color:var(--muted)]">Vas a eliminar {count} {count === 1 ? variantWord : pluralizeVariantLabel(variantWord)} del inventario. Esta acción no se puede deshacer.</p>
-        {error && <p role="alert" className="mt-3 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
-        <div className="mt-6 flex justify-end gap-3">
-          <button type="button" onClick={onCancel} disabled={confirming} className="erp-button-secondary">Cancelar</button>
-          <button type="button" onClick={onConfirm} disabled={confirming} className="erp-button-danger">{confirming ? 'Eliminando...' : `Eliminar ${count}`}</button>
-        </div>
-      </div>
-    </div>
-  );
+  </div>;
 }
 
 function ProductFormModal({
@@ -236,6 +209,8 @@ function ProductFormModal({
   showReserved,
   requireVariant,
   error,
+  adjustmentReason,
+  onAdjustmentReasonChange,
 }: {
   title: string;
   description?: string;
@@ -250,19 +225,22 @@ function ProductFormModal({
   showReserved: boolean;
   requireVariant: boolean;
   error: string | null;
+  adjustmentReason?: string;
+  onAdjustmentReasonChange?: (reason: string) => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" role="presentation">
       <div role="dialog" aria-modal="true" aria-label={title} className="max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
         <div className="flex items-start justify-between gap-3">
           <h4 className="type-title text-[1.55rem] leading-none text-[color:var(--text)]">{title}</h4>
-          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" onClick={onClose}>
+          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" disabled={submitting} onClick={onClose}>
             ×
           </button>
         </div>
         {description && <p className="mt-2 text-sm text-[color:var(--muted)]">{description}</p>}
 
         <form id="product-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
+          <fieldset disabled={submitting} className="min-w-0 space-y-5">
           {!variantOnly && (
             <fieldset>
               {preset.useVariants && <legend className="mb-3 type-subtitle text-sm text-[color:var(--muted)]">1. Modelo</legend>}
@@ -308,11 +286,16 @@ function ProductFormModal({
             </div>
             {!showReserved && <p className="mt-2 text-xs text-[color:var(--muted)]">Podés cargar stock ahora o dejarlo en 0 y registrar un ingreso después.</p>}
           </fieldset>
+          {onAdjustmentReasonChange && <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
+            Motivo del ajuste
+            <input className="erp-input" required value={adjustmentReason ?? ''} onChange={(event) => onAdjustmentReasonChange(event.target.value)} placeholder="Por ejemplo: corrección por conteo físico" />
+          </label>}
+        </fieldset>
         </form>
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button type="button" onClick={onClose} className="erp-button-secondary">
+          <button type="button" disabled={submitting} onClick={onClose} className="erp-button-secondary">
             Cancelar
           </button>
           <button type="submit" form="product-form" disabled={submitting} className="erp-button-primary">
@@ -354,10 +337,11 @@ function NewModelModal({
       <div role="dialog" aria-modal="true" aria-label="Nuevo modelo" className="max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
         <div className="flex items-start justify-between gap-3">
           <h4 className="type-title text-[1.55rem] leading-none">Nuevo modelo</h4>
-          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" onClick={onClose}>×</button>
+          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" disabled={saving} onClick={onClose}>×</button>
         </div>
         <p className="mt-2 text-sm text-[color:var(--muted)]">Cargá el modelo y todos los {pluralizeVariantLabel(preset.variantLabel)} que quieras vender.</p>
         <form id="new-model-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
+          <fieldset disabled={saving} className="min-w-0 space-y-5">
           <fieldset>
             <legend className="mb-3 type-subtitle text-sm text-[color:var(--muted)]">Modelo</legend>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -400,10 +384,11 @@ function NewModelModal({
             <button type="button" className="erp-button-secondary mt-3" onClick={() => onVariantsChange([...variants, emptyVariantDraft(variants[variants.length - 1]?.price ?? '0')])}>+ Agregar otro {variantWord}</button>
             <p className="mt-2 text-xs text-[color:var(--muted)]">Podés dejar el stock en 0 y registrar un ingreso después.</p>
           </fieldset>
+        </fieldset>
         </form>
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button type="button" onClick={onClose} className="erp-button-secondary" disabled={saving}>Cancelar</button>
+          <button type="button" disabled={saving} onClick={onClose} className="erp-button-secondary">Cancelar</button>
           <button type="submit" form="new-model-form" disabled={saving} className="erp-button-primary">{saving ? 'Guardando...' : 'Crear modelo'}</button>
         </div>
       </div>
@@ -421,6 +406,7 @@ function ModelFormModal({
   onSubmit,
   saving,
   error,
+  reason, onReasonChange, preview, stale, onRefreshPreview,
 }: {
   group: ProductGroup;
   preset: BusinessCategoryPreset;
@@ -431,26 +417,46 @@ function ModelFormModal({
   onSubmit: () => Promise<void>;
   saving: boolean;
   error: string | null;
+  reason: string;
+  onReasonChange: (reason: string) => void;
+  preview: InventorySelectionPreview | null;
+  stale: boolean;
+  onRefreshPreview: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" role="presentation">
-      <div role="dialog" aria-modal="true" aria-label={`Editar modelo ${group.displayName}`} className="w-full max-w-lg rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label={`Editar modelo ${group.displayName}`} className="max-h-full overflow-y-auto w-full max-w-lg rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl">
         <h4 className="type-title text-xl">Editar modelo</h4>
         <p className="mt-2 text-sm text-[color:var(--muted)]">Los cambios de nombre se aplican a sus {group.products.length} {group.products.length === 1 ? getVariantWord(preset) : pluralizeVariantLabel(preset.variantLabel)}.</p>
         <form id="model-form" className="mt-5 space-y-3" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
           <label className="block space-y-1.5 text-sm type-subtitle">
             {preset.productTypeLabel}
-            <input className="erp-input" required value={productType} onChange={(event) => onChange({ productType: event.target.value, productModel })} />
+            <input className="erp-input" required disabled={saving} value={productType} onChange={(event) => onChange({ productType: event.target.value, productModel })} />
           </label>
           <label className="block space-y-1.5 text-sm type-subtitle">
             {preset.productModelLabel}
-            <input className="erp-input" required value={productModel} onChange={(event) => onChange({ productType, productModel: event.target.value })} />
+            <input className="erp-input" required disabled={saving} value={productModel} onChange={(event) => onChange({ productType, productModel: event.target.value })} />
+          </label>
+          <label className="block space-y-1.5 text-sm type-subtitle">Motivo del cambio
+            <input className="erp-input" required disabled={saving} value={reason} onChange={(event) => onReasonChange(event.target.value)} />
           </label>
         </form>
+        {preview && preview.mutation.type === 'sku.update' && <section aria-label="Vista previa de cambios" className="mt-4 space-y-3 text-sm">
+          <p className="font-semibold">{preview.members.length} SKU seleccionados · Nuevo nombre: {preview.mutation.changes.name}</p>
+          <p>Tipo: {preview.mutation.changes.productType} · Modelo: {preview.mutation.changes.productModel}</p>
+          <p>Motivo: {preview.mutation.reason}</p>
+          <ul className="space-y-2">{preview.members.map((member) => <li key={member.skuId} className="rounded-xl border border-[color:var(--border)] p-3">
+            <strong>{member.name}</strong> · Variante: {member.size || 'Sin definir'}
+            <p>SKU: {member.skuId} · Revisión: {member.revision}</p>
+            <p>Disponible: {member.stockAvailable} · Reservado: {member.stockReserved} · Precio: {member.price} {member.priceCurrency}</p>
+          </li>)}</ul>
+          <p>Vence: {preview.expiresAt}</p>
+        </section>}
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="erp-button-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
-          <button type="submit" form="model-form" className="erp-button-primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar modelo'}</button>
+          {stale ? <button type="button" className="erp-button-primary" disabled={saving} onClick={onRefreshPreview}>Revisar selección actualizada</button>
+            : <button type="submit" form="model-form" className="erp-button-primary" disabled={saving}>{saving ? 'Procesando...' : preview ? 'Confirmar cambios' : 'Revisar cambios'}</button>}
         </div>
       </div>
     </div>
@@ -464,7 +470,7 @@ export function ProductsAbmPanel({
   stockFilter?: 'all' | 'low-stock';
   onStockFilterChange?: (filter: 'all' | 'low-stock') => void;
 }) {
-  const { products, createProductRecord, createProductModelRecords, updateProductRecord, updateProductModelRecords, deleteProductRecord, deleteProductRecords } = useInventory();
+  const { products, createProductRecord, createProductModelRecords, updateProductRecord, updateProductModelRecords, previewInventorySelection, deleteProductRecord, deleteProductRecords } = useInventory();
   const preset = useBusinessCategoryPreset();
   const variantWord = getVariantWord(preset);
   const variantLabelPlural = pluralizeVariantLabel(preset.variantLabel);
@@ -472,19 +478,38 @@ export function ProductsAbmPanel({
   const [newVariants, setNewVariants] = useState<NewVariantDraft[]>(() => [emptyVariantDraft()]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [editSnapshot, setEditSnapshot] = useState<ProductRow | null>(null);
+  const [adjustmentReason, setAdjustmentReason] = useState('');
+  // Keep the exact operation through ambiguous failures, including a failed refresh after success.
+  const editOperation = useRef<{ key: string; adjustment: ProductAdjustment } | null>(null);
+  const createOperation = useRef<
+    | { kind: 'sku'; key: string; operationId: string; payload: ProductInput }
+    | { kind: 'model'; key: string; operationId: string; payload: ProductModelInput }
+    | null
+  >(null);
+  const formBusy = useRef(false);
   const [addingToGroup, setAddingToGroup] = useState<ProductGroup | null>(null);
   const [editingGroup, setEditingGroup] = useState<ProductGroup | null>(null);
   const [modelDraft, setModelDraft] = useState({ productType: '', productModel: '' });
   const [modelError, setModelError] = useState<string | null>(null);
   const [savingModel, setSavingModel] = useState(false);
+  const [modelReason, setModelReason] = useState('');
+  const [modelPreview, setModelPreview] = useState<InventorySelectionPreview | null>(null);
+  const [modelStale, setModelStale] = useState(false);
+  const modelRequest = useRef<InventorySelectionRequest | null>(null);
+  const modelRefreshRequestNeeded = useRef(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [pendingDeleteProduct, setPendingDeleteProduct] = useState<ProductRow | null>(null);
+  const [deactivation, setDeactivation] = useState<{ ids: string[]; single: boolean } | null>(null);
+  const [deactivationReason, setDeactivationReason] = useState('');
+  const [deactivationPreview, setDeactivationPreview] = useState<InventorySelectionPreview | null>(null);
+  const [deactivationStale, setDeactivationStale] = useState(false);
+  const [deactivationError, setDeactivationError] = useState<string | null>(null);
+  const deactivationRequest = useRef<InventorySelectionRequest | null>(null);
+  const deactivationRefreshNeeded = useRef(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
-  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const onlyLowStock = stockFilter === 'low-stock';
 
@@ -567,19 +592,56 @@ export function ProductsAbmPanel({
     });
   };
 
-  const handleBulkDelete = async () => {
-    if (!selectedCurrentIds.length) return;
-    setDeleting(true);
-    setBulkDeleteError(null);
-    try {
-      await deleteProductRecords(selectedCurrentIds);
-      setSelectedIds([]);
-      setConfirmBulkDelete(false);
-    } catch (error) {
-      setBulkDeleteError(error instanceof Error ? error.message : 'No se pudo eliminar la selección.');
-    } finally {
-      setDeleting(false);
+  const invalidateDeactivationPreview = () => {
+    setDeactivationPreview(null);
+    setDeactivationStale(false);
+    setDeactivationError(null);
+    deactivationRequest.current = null;
+    deactivationRefreshNeeded.current = false;
+  };
+
+  const openDeactivation = (ids: string[], single: boolean) => {
+    setDeactivation({ ids: [...ids], single });
+    setDeactivationReason('');
+    invalidateDeactivationPreview();
+  };
+
+  const handleDeactivation = async (refreshPreview = false) => {
+    if (!deactivation || deleting || (deactivationStale && !refreshPreview)) return;
+    if (!deactivationReason.trim()) {
+      setDeactivationError('Ingresá el motivo de la desactivación.');
+      return;
     }
+    setDeleting(true);
+    setDeactivationError(null);
+    try {
+      if (!deactivationPreview || refreshPreview) {
+        if (refreshPreview && deactivationRefreshNeeded.current) {
+          deactivationRequest.current = null;
+          deactivationRefreshNeeded.current = false;
+        }
+        deactivationRequest.current ??= {
+          requestId: crypto.randomUUID(),
+          selector: { kind: 'ids', skuIds: deactivation.ids },
+          mutation: { type: 'sku.deactivate', reason: deactivationReason.trim() },
+        };
+        setDeactivationPreview(await previewInventorySelection(deactivationRequest.current));
+        setDeactivationStale(false);
+        return;
+      }
+      const selection = { selectionId: deactivationPreview.selectionId, digest: deactivationPreview.digest };
+      if (deactivation.single) await deleteProductRecord(deactivation.ids[0]!, selection);
+      else await deleteProductRecords(selection);
+      setSelectedIds((current) => current.filter((id) => !deactivation.ids.includes(id)));
+      setDeactivation(null);
+    } catch (error) {
+      const stale = Boolean(deactivationPreview && error && typeof error === 'object' && 'status' in error && error.status === 409);
+      if (stale) {
+        setDeactivationStale(true);
+        deactivationRefreshNeeded.current = true;
+      }
+      setDeactivationError(stale ? 'El inventario cambió. Tu motivo y vista previa se conservan. Revisá una selección actualizada antes de confirmar.' : error instanceof Error ? error.message : 'No se pudo desactivar la selección.');
+    } finally { setDeleting(false); }
   };
 
   const lowStockGroupKeys = useMemo(
@@ -608,16 +670,20 @@ export function ProductsAbmPanel({
 
   useEffect(() => {
     if (!isFormOpen) {
+      createOperation.current = null;
       setEditingProductId(null);
       setAddingToGroup(null);
       setDraft(emptyDraft());
       setNewVariants([emptyVariantDraft()]);
+      formBusy.current = false;
       setSaving(false);
       setFormError(null);
     }
   }, [isFormOpen]);
 
   const openCreateForm = () => {
+    if (formBusy.current) return;
+    createOperation.current = null;
     setEditingProductId(null);
     setAddingToGroup(null);
     setFormError(null);
@@ -627,6 +693,9 @@ export function ProductsAbmPanel({
   };
 
   const handleCreateModel = async () => {
+    if (formBusy.current) return;
+    const key = JSON.stringify({ draft, newVariants });
+    const retry = createOperation.current?.kind === 'model' && createOperation.current.key === key;
     const productType = draft.productType.trim();
     const productModel = draft.productModel.trim();
     if (!productType || !productModel) {
@@ -634,7 +703,7 @@ export function ProductsAbmPanel({
       return;
     }
     const modelKey = `model||${normalizeSearch(productType)}||${normalizeSearch(productModel)}`;
-    if (groupedProducts.some((group) => group.key === modelKey)) {
+    if (!retry && groupedProducts.some((group) => group.key === modelKey)) {
       setFormError(`Ese modelo ya existe. Agregá el ${variantWord} desde su tarjeta.`);
       return;
     }
@@ -656,9 +725,10 @@ export function ProductsAbmPanel({
       }
     }
     setFormError(null);
+    formBusy.current = true;
     setSaving(true);
     try {
-      await createProductModelRecords({
+      if (!retry) createOperation.current = { kind: 'model', key, operationId: crypto.randomUUID(), payload: {
         productType,
         productModel,
         variants: newVariants.map((variant) => ({
@@ -666,17 +736,26 @@ export function ProductsAbmPanel({
           stockAvailable: Number(variant.stockAvailable),
           price: Number(variant.price),
         })),
-      });
+      } };
+      const operation = createOperation.current!;
+      if (operation.kind !== 'model') return;
+      await createProductModelRecords(operation.payload, operation);
       setExpandedGroups((current) => ({ ...current, [modelKey]: true }));
       setIsFormOpen(false);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'No se pudo crear el modelo.');
     } finally {
+      formBusy.current = false;
       setSaving(false);
     }
   };
 
   const openEditForm = (product: ProductRow) => {
+    if (formBusy.current) return;
+    createOperation.current = null;
+    setEditSnapshot({ ...product });
+    setAdjustmentReason('');
+    editOperation.current = null;
     setEditingProductId(product.id);
     setAddingToGroup(null);
     setFormError(null);
@@ -685,6 +764,8 @@ export function ProductsAbmPanel({
   };
 
   const openAddVariantForm = (group: ProductGroup) => {
+    if (formBusy.current) return;
+    createOperation.current = null;
     const reference = group.products[0];
     if (!reference) return;
     setEditingProductId(null);
@@ -695,45 +776,85 @@ export function ProductsAbmPanel({
   };
 
   const openEditModelForm = (group: ProductGroup) => {
-    setEditingGroup(group);
+    setEditingGroup({ ...group, products: group.products.map((product) => ({ ...product })) });
     setModelDraft({ productType: group.productType ?? '', productModel: group.productModel ?? '' });
+    setModelReason('');
+    setModelPreview(null);
+    setModelStale(false);
+    modelRequest.current = null;
+    modelRefreshRequestNeeded.current = false;
     setModelError(null);
   };
 
-  const handleModelSubmit = async () => {
-    if (!editingGroup) return;
+  const invalidateModelPreview = () => {
+    setModelPreview(null);
+    setModelStale(false);
+    modelRequest.current = null;
+    modelRefreshRequestNeeded.current = false;
+    setModelError(null);
+  };
+
+  const handleModelSubmit = async (refreshPreview = false) => {
+    if (!editingGroup || savingModel || (modelStale && !refreshPreview)) return;
     const productType = modelDraft.productType.trim();
     const productModel = modelDraft.productModel.trim();
     if (!productType || !productModel) {
       setModelError('Completá el tipo y el modelo.');
       return;
     }
+    if (!modelReason.trim()) {
+      setModelError('Ingresá el motivo del cambio.');
+      return;
+    }
     const nextKey = `model||${normalizeSearch(productType)}||${normalizeSearch(productModel)}`;
-    if (groupedProducts.some((group) => group.key === nextKey && group.key !== editingGroup.key)) {
+    if (!modelPreview && !modelRequest.current && groupedProducts.some((group) => group.key === nextKey && group.key !== editingGroup.key)) {
       setModelError('Ya existe un modelo con ese nombre.');
       return;
     }
     setSavingModel(true);
     setModelError(null);
     try {
-      const currentGroup = groupedProducts.find((group) => group.key === editingGroup.key);
-      if (!currentGroup) throw new Error('El modelo cambió. Actualizá la página e intentá de nuevo.');
-      await updateProductModelRecords({
-        ids: currentGroup.products.map((product) => product.id),
-        name: `${productType} ${productModel}`,
-        productType,
-        productModel,
-      });
+      if (!modelPreview || refreshPreview) {
+        if (refreshPreview && modelRefreshRequestNeeded.current) {
+          modelRequest.current = null;
+          modelRefreshRequestNeeded.current = false;
+        }
+        modelRequest.current ??= {
+          requestId: crypto.randomUUID(),
+          selector: { kind: 'ids', skuIds: editingGroup.products.map((product) => product.id) },
+          mutation: { type: 'sku.update', changes: { name: `${productType} ${productModel}`, productType, productModel }, reason: modelReason.trim() },
+        };
+        setModelPreview(await previewInventorySelection(modelRequest.current));
+        setModelStale(false);
+        return;
+      }
+      await updateProductModelRecords({ selectionId: modelPreview.selectionId, digest: modelPreview.digest });
       setExpandedGroups((current) => ({ ...current, [nextKey]: true }));
       setEditingGroup(null);
     } catch (error) {
-      setModelError(error instanceof Error ? error.message : 'No se pudo editar el modelo.');
+      const stale = Boolean(error && typeof error === 'object' && 'status' in error && error.status === 409);
+      if (stale) {
+        setModelStale(true);
+        modelRefreshRequestNeeded.current = true;
+      }
+      setModelError(stale ? 'El inventario cambió. Tu borrador y vista previa se conservan. Revisá una selección actualizada antes de confirmar.' : error instanceof Error ? error.message : 'No se pudo editar el modelo.');
     } finally {
       setSavingModel(false);
     }
   };
 
   const handleSubmit = async () => {
+    if (formBusy.current) return;
+    const createKey = JSON.stringify(draft);
+    const retry = createOperation.current?.kind === 'sku' && createOperation.current.key === createKey;
+    if (editingProductId && (!editSnapshot || !Number.isSafeInteger(editSnapshot.revision) || (editSnapshot.revision ?? -1) < 0)) {
+      setFormError('Falta la revisión del producto. Actualizá la página y volvé a abrir el formulario. Tu borrador se conserva.');
+      return;
+    }
+    if (editingProductId && !adjustmentReason.trim()) {
+      setFormError('Ingresá el motivo del ajuste.');
+      return;
+    }
     const size = draft.size.trim();
     const quantities = [draft.stockAvailable, draft.stockReserved, draft.price].map(Number);
     if (!editingProductId && preset.useVariants && !size) {
@@ -744,11 +865,11 @@ export function ProductsAbmPanel({
       setFormError('Completá el tipo de producto y el modelo.');
       return;
     }
-    if (quantities.some((value) => !Number.isSafeInteger(value) || value < 0)) {
+    if ([draft.stockAvailable, draft.stockReserved, draft.price].some((value) => !value.trim()) || quantities.some((value) => !Number.isSafeInteger(value) || value < 0)) {
       setFormError('Precio y stock deben ser números enteros mayores o iguales a cero.');
       return;
     }
-    if (preset.useVariants && size) {
+    if (preset.useVariants && size && !retry) {
       const sameModel = (addingToGroup ? groupedProducts.find((group) => group.key === addingToGroup.key)?.products : null) ?? products.filter((product) => {
         if (draft.productType.trim() || draft.productModel.trim()) {
           return normalizeSearch(product.productType ?? '') === normalizeSearch(draft.productType)
@@ -767,11 +888,12 @@ export function ProductsAbmPanel({
     }
 
     setFormError(null);
+    formBusy.current = true;
     setSaving(true);
     try {
       const payload = {
         name: editingProductId && !draft.name.trim()
-          ? products.find((product) => product.id === editingProductId)?.name ?? buildProductName(draft)
+          ? editSnapshot?.name ?? buildProductName(draft)
           : buildProductName(draft),
         productType: draft.productType.trim() || undefined,
         productModel: draft.productModel.trim() || undefined,
@@ -782,33 +904,36 @@ export function ProductsAbmPanel({
       };
 
       if (editingProductId) {
-        await updateProductRecord(editingProductId, preset.useVariants
+        const changes = preset.useVariants
           ? { size: payload.size, stockAvailable: payload.stockAvailable, stockReserved: payload.stockReserved, price: payload.price }
-          : payload);
+          : payload;
+        const reason = adjustmentReason.trim();
+        const key = JSON.stringify({ productId: editingProductId, changes, reason });
+        if (editOperation.current?.key !== key) {
+          editOperation.current = { key, adjustment: {
+            operationId: crypto.randomUUID(),
+            expectedRevision: editSnapshot!.revision!,
+            expectedFingerprint: editSnapshot!.identityFingerprint,
+            reason,
+          } };
+        }
+        await updateProductRecord(editingProductId, changes, editOperation.current.adjustment);
       } else {
-        await createProductRecord(payload as ProductRow & { name: string });
+        if (!retry) createOperation.current = { kind: 'sku', key: createKey, operationId: crypto.randomUUID(), payload };
+        const operation = createOperation.current!;
+        if (operation.kind !== 'sku') return;
+        await createProductRecord(operation.payload, operation);
       }
 
       setIsFormOpen(false);
       if (addingToGroup) setExpandedGroups((current) => ({ ...current, [addingToGroup.key]: true }));
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'No se pudo guardar el producto.');
+      setFormError(editingProductId && error instanceof Error && 'status' in error && error.status === 409
+        ? 'El producto cambió desde que abriste el formulario. Tu borrador se conserva. Actualizá la página y volvé a abrir el producto para revisar los valores antes de guardar.'
+        : error instanceof Error ? error.message : 'No se pudo guardar el producto.');
     } finally {
+      formBusy.current = false;
       setSaving(false);
-    }
-  };
-
-  const confirmDelete = async () => {
-    if (!pendingDeleteProduct) {
-      return;
-    }
-
-    setDeleting(true);
-    try {
-      await deleteProductRecord(pendingDeleteProduct.id);
-      setPendingDeleteProduct(null);
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -897,7 +1022,7 @@ export function ProductsAbmPanel({
             <span className="text-sm font-semibold text-[color:var(--text)]">{selectedCurrentIds.length} {preset.useVariants ? selectedCurrentIds.length === 1 ? variantWord : variantLabelPlural : selectedCurrentIds.length === 1 ? 'producto' : 'productos'} seleccionados</span>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="erp-button-secondary" onClick={() => setSelectedIds([])}>Limpiar selección</button>
-              <button type="button" className="erp-button-danger" onClick={() => { setBulkDeleteError(null); setConfirmBulkDelete(true); }}>Eliminar seleccionados</button>
+              <button type="button" className="erp-button-danger" onClick={() => openDeactivation(selectedCurrentIds, false)}>Desactivar seleccionados</button>
             </div>
           </div>
         )}
@@ -962,7 +1087,7 @@ export function ProductsAbmPanel({
                             <span className="font-semibold text-[color:var(--text)] sm:col-span-2">{formatCurrency(product.price)}</span>
                             <div className="col-span-2 flex flex-wrap gap-x-3 gap-y-2 sm:col-span-3 sm:justify-end">
                               <button type="button" className="erp-toggle-link min-h-9 text-sm" aria-label={`Editar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => openEditForm(product)}>Editar {variantWord}</button>
-                              <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" aria-label={`Eliminar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => setPendingDeleteProduct(product)}>Eliminar</button>
+                              <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" aria-label={`Desactivar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => openDeactivation([product.id], true)}>Desactivar</button>
                             </div>
                           </div>)}
                         </div>
@@ -987,7 +1112,7 @@ export function ProductsAbmPanel({
                     <span className="col-span-4 text-sm font-semibold lg:col-span-2"><span className="lg:hidden">Precio: </span>{formatCurrency(product.price)}</span>
                     <div className="col-span-11 col-start-2 flex gap-3 lg:col-span-2 lg:col-start-auto lg:justify-end">
                       <button type="button" className="erp-toggle-link min-h-9 text-sm" onClick={() => openEditForm(product)}>Editar</button>
-                      <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" onClick={() => setPendingDeleteProduct(product)}>Eliminar</button>
+                      <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" onClick={() => openDeactivation([product.id], true)}>Desactivar</button>
                     </div>
                   </div>
                 );
@@ -1009,9 +1134,9 @@ export function ProductsAbmPanel({
             draft={draft}
             variants={newVariants}
             preset={preset}
-            onDraftChange={(nextDraft) => { setDraft(nextDraft); setFormError(null); }}
-            onVariantsChange={(nextVariants) => { setNewVariants(nextVariants); setFormError(null); }}
-            onClose={() => setIsFormOpen(false)}
+            onDraftChange={(nextDraft) => { if (formBusy.current) return; createOperation.current = null; setDraft(nextDraft); setFormError(null); }}
+            onVariantsChange={(nextVariants) => { if (formBusy.current) return; createOperation.current = null; setNewVariants(nextVariants); setFormError(null); }}
+            onClose={() => { if (!formBusy.current) setIsFormOpen(false); }}
             onSubmit={handleCreateModel}
             saving={saving}
             error={formError}
@@ -1026,8 +1151,8 @@ export function ProductsAbmPanel({
               : editingProductId && preset.useVariants ? `Modelo: ${[draft.productType, draft.productModel].filter(Boolean).join(' ') || draft.name}. Acá editás solo este ${variantWord}.`
               : preset.useVariants && !editingProductId ? `Cargá el modelo y su primer ${variantWord}. Si ya existe, agregá el ${variantWord} desde su tarjeta.` : undefined}
             draft={draft}
-            onDraftChange={(nextDraft) => { setDraft(nextDraft); setFormError(null); }}
-            onClose={() => setIsFormOpen(false)}
+            onDraftChange={(nextDraft) => { if (formBusy.current) return; createOperation.current = null; setDraft(nextDraft); setFormError(null); }}
+            onClose={() => { if (!formBusy.current) setIsFormOpen(false); }}
             onSubmit={handleSubmit}
             submitLabel={editingProductId ? 'Guardar cambios' : addingToGroup ? `Agregar ${variantWord}` : preset.useVariants ? 'Crear modelo' : 'Crear producto'}
             submitting={saving}
@@ -1036,6 +1161,8 @@ export function ProductsAbmPanel({
             showReserved={Boolean(editingProductId) || !preset.useVariants}
             requireVariant={preset.useVariants && !editingProductId}
             error={formError}
+            adjustmentReason={adjustmentReason}
+            onAdjustmentReasonChange={editingProductId ? (reason) => { setAdjustmentReason(reason); setFormError(null); } : undefined}
           />
         )}
 
@@ -1044,33 +1171,29 @@ export function ProductsAbmPanel({
           preset={preset}
           productType={modelDraft.productType}
           productModel={modelDraft.productModel}
-          onChange={(nextDraft) => { setModelDraft(nextDraft); setModelError(null); }}
+          onChange={(nextDraft) => { setModelDraft(nextDraft); invalidateModelPreview(); }}
           onClose={() => setEditingGroup(null)}
           onSubmit={handleModelSubmit}
           saving={savingModel}
           error={modelError}
+          reason={modelReason}
+          onReasonChange={(reason) => { setModelReason(reason); invalidateModelPreview(); }}
+          preview={modelPreview}
+          stale={modelStale}
+          onRefreshPreview={() => { void handleModelSubmit(true); }}
         />}
 
-        {pendingDeleteProduct && (
-          <ConfirmDeleteModal
-            productName={preset.useVariants
-              ? `${productLineName(pendingDeleteProduct)} · ${preset.variantLabel ?? 'Variante'} ${pendingDeleteProduct.size || 'sin definir'}`
-              : pendingDeleteProduct.name}
-            onCancel={() => setPendingDeleteProduct(null)}
-            onConfirm={() => void confirmDelete()}
-            confirming={deleting}
-          />
-        )}
-        {confirmBulkDelete && (
-          <ConfirmBulkDeleteModal
-            count={selectedCurrentIds.length}
-            variantWord={preset.useVariants ? variantWord : 'producto'}
-            onCancel={() => setConfirmBulkDelete(false)}
-            onConfirm={() => void handleBulkDelete()}
-            confirming={deleting}
-            error={bulkDeleteError}
-          />
-        )}
+        {deactivation && <DeactivateModal
+          ids={deactivation.ids}
+          reason={deactivationReason}
+          onReasonChange={(reason) => { setDeactivationReason(reason); invalidateDeactivationPreview(); }}
+          preview={deactivationPreview}
+          stale={deactivationStale}
+          error={deactivationError}
+          busy={deleting}
+          onCancel={() => setDeactivation(null)}
+          onSubmit={handleDeactivation}
+        />}
       </article>
     </div>
   );

@@ -18,6 +18,8 @@ const products = [{
 const created = [];
 const createdModels = [];
 const modelUpdates = [];
+const selectionPreviews = [];
+const movementAttempts = [];
 const movements = [];
 const bulkDeletions = [];
 
@@ -39,12 +41,14 @@ await page.route('**/api/**', async (route) => {
   }
   if (path === '/api/state/apply' && request.method() === 'POST') {
     const input = request.postDataJSON();
-    movements.push(input);
+    movementAttempts.push(input);
+    if (movementAttempts.length === 1) return json({ error: 'No se pudo registrar el movimiento. Reintentá.' }, 503);
     for (const action of input.actions) {
       const product = products.find((item) => item.name === action.productName && item.size === action.size);
       if (!product) return json({ error: 'No se encontró el talle.' }, 404);
       product.stockAvailable += action.type === 'add_stock' ? action.qty : -action.qty;
     }
+    movements.push(input);
     return json({ products, clients: [], proveedores: [], pedidos: [], transactions: [] });
   }
   if (path === '/api/products' && request.method() === 'POST') {
@@ -70,19 +74,35 @@ await page.route('**/api/**', async (route) => {
     products.push(...newProducts);
     return json(newProducts, 201);
   }
+  if (path === '/api/inventory/selections' && request.method() === 'POST') {
+    const input = request.postDataJSON();
+    const preview = { selectionId: `selection-${selectionPreviews.length + 1}`, digest: 'local-preview-digest',
+      status: 'pending', expiresAt: '2030-01-01T00:00:00.000Z', mutation: input.mutation,
+      members: products.filter((product) => input.selector.skuIds.includes(product.id)).map((product) => ({
+        skuId: product.id, name: product.name, size: product.size ?? null, revision: 0,
+        stockAvailable: product.stockAvailable, stockReserved: product.stockReserved, price: product.price, priceCurrency: 'XXX',
+      })) };
+    selectionPreviews.push(preview);
+    return json(preview);
+  }
   if (path === '/api/products/model' && request.method() === 'PUT') {
     const input = request.postDataJSON();
     modelUpdates.push(input);
-    const matching = products.filter((product) => input.ids.includes(product.id));
-    for (const product of matching) Object.assign(product, { name: input.name, productType: input.productType, productModel: input.productModel });
+    const preview = selectionPreviews.find((entry) => entry.selectionId === input.selectionId && entry.digest === input.digest);
+    if (!preview) return json({ error: 'Selección no revisada.' }, 409);
+    const matching = products.filter((product) => preview.members.some((member) => member.skuId === product.id));
+    for (const product of matching) Object.assign(product, preview.mutation.changes);
     return json(matching);
   }
   if (path === '/api/products/batch' && request.method() === 'DELETE') {
     const input = request.postDataJSON();
-    bulkDeletions.push(input.ids);
-    if (input.ids.some((id) => !products.some((product) => product.id === id))) return json({ error: 'El inventario cambió.' }, 400);
-    for (const id of input.ids) products.splice(products.findIndex((product) => product.id === id), 1);
-    return json({ deleted: input.ids.length });
+    const preview = selectionPreviews.find((entry) => entry.selectionId === input.selectionId && entry.digest === input.digest && entry.mutation.type === 'sku.deactivate');
+    if (!preview) return json({ error: 'Selección de baja no revisada.' }, 409);
+    const ids = preview.members.map((member) => member.skuId);
+    bulkDeletions.push(ids);
+    if (ids.some((id) => !products.some((product) => product.id === id))) return json({ error: 'El inventario cambió.' }, 409);
+    for (const id of ids) products.splice(products.findIndex((product) => product.id === id), 1);
+    return json({ deleted: ids.length });
   }
   return json({});
 });
@@ -145,20 +165,43 @@ try {
   await page.getByRole('button', { name: 'Editar modelo Camiseta Argentina' }).click();
   const modelDialog = page.getByRole('dialog', { name: 'Editar modelo Camiseta Argentina' });
   await modelDialog.getByLabel('Modelo').fill('Argentina Selección');
-  await modelDialog.getByRole('button', { name: 'Guardar modelo' }).click();
+  await modelDialog.getByLabel('Motivo del cambio').fill('Corregir nombre del modelo');
+  await modelDialog.getByRole('button', { name: 'Revisar cambios' }).click();
+  assert.equal(modelUpdates.length, 0);
+  await modelDialog.getByRole('button', { name: 'Confirmar cambios' }).click();
   await modelDialog.waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Editar talle M de Camiseta Argentina Selección' }).waitFor();
   assert.equal(modelUpdates.length, 1);
-  assert.equal(modelUpdates[0].ids.length, 2);
+  assert.equal(selectionPreviews[0].members.length, 2);
+  assert.deepEqual(modelUpdates[0], { selectionId: selectionPreviews[0].selectionId, digest: selectionPreviews[0].digest });
 
   await page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name: 'Inicio' }).click();
   await page.getByRole('button', { name: 'Registrar ingreso' }).click();
   await page.getByRole('button', { name: /Camiseta Argentina Selección M/ }).click();
   await page.getByLabel('Cantidad').fill('3');
   await page.getByRole('button', { name: '+ Confirmar ingreso' }).click();
+  await page.getByText('Podés corregir y volver a confirmar.').waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Reintentar ingreso' }).isVisible(), true);
+  assert.equal(movementAttempts.length, 1);
+  assert.equal(movements.length, 0);
+  const selectedM = products.find((product) => product.size === 'M');
+  assert.equal(selectedM.stockAvailable, 4);
+
+  await page.getByRole('button', { name: 'Reintentar ingreso' }).click();
   await page.getByRole('button', { name: '+ Confirmar ingreso' }).waitFor({ state: 'hidden' });
+  assert.equal(movementAttempts.length, 2);
   assert.equal(movements.length, 1);
-  assert.equal(products.find((product) => product.size === 'M').stockAvailable, 7);
+  assert.equal(selectedM.stockAvailable, 7);
+  assert.equal(movementAttempts[0].operationId, movementAttempts[1].operationId);
+  assert.ok(movementAttempts[0].operationId);
+  for (const attempt of movementAttempts) {
+    assert.equal(attempt.actions.length, 1);
+    assert.equal(attempt.actions[0].type, 'add_stock');
+    assert.equal(attempt.actions[0].productId, selectedM.id);
+    assert.equal(attempt.actions[0].qty, 3);
+    assert.equal(attempt.actions[0].unit, 'unit');
+    assert.equal(attempt.actions[0].priceCurrency, 'XXX');
+  }
 
   await page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name: 'Inventario' }).click();
   await page.getByText('M: 7').waitFor();
@@ -205,10 +248,13 @@ try {
   await page.getByRole('checkbox', { name: 'Seleccionar modelo Camiseta Uruguay Titular' }).check();
   await page.getByRole('checkbox', { name: 'Seleccionar talle M de Camiseta Argentina Selección' }).check();
   await page.getByRole('toolbar', { name: 'Acciones de selección' }).getByText('3 talles seleccionados').waitFor();
-  await page.getByRole('button', { name: 'Eliminar seleccionados' }).click();
-  const bulkDialog = page.getByRole('dialog', { name: 'Eliminar selección' });
-  await bulkDialog.getByText(/Vas a eliminar 3 talles/).waitFor();
-  await bulkDialog.getByRole('button', { name: 'Eliminar 3' }).click();
+  await page.getByRole('button', { name: 'Desactivar seleccionados' }).click();
+  const bulkDialog = page.getByRole('dialog', { name: 'Desactivar productos' });
+  await bulkDialog.getByText(/3 SKU seleccionados/).waitFor();
+  await bulkDialog.getByLabel('Motivo de la desactivación').fill('Retiro del catálogo');
+  await bulkDialog.getByRole('button', { name: 'Revisar desactivación' }).click();
+  assert.equal(bulkDeletions.length, 0);
+  await bulkDialog.getByRole('button', { name: 'Confirmar desactivación' }).click();
   await bulkDialog.waitFor({ state: 'hidden' });
   assert.equal(bulkDeletions.length, 1);
   assert.equal(bulkDeletions[0].length, 3);

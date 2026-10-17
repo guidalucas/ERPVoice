@@ -101,6 +101,43 @@ const unavailableCatalog = await parseVoiceText('Borrá todos los taladros medid
 assert.deepEqual(unavailableCatalog.actions, []);
 assert.equal(unavailableCatalog.missingFields.includes('scopeNotFound'), true);
 
+const missingVariantCatalog = {
+  products: [
+    { id: 'shirt-unset', name: 'Camiseta Argentina', productType: 'Camiseta', size: null },
+    { id: 'shirt-unset-2', name: 'Camiseta Argentina', productType: 'Camiseta', size: null },
+    { id: 'shirt-sized', name: 'Camiseta Argentina', productType: 'Camiseta', size: 'L' },
+    { id: 'shirt-empty', name: 'Camiseta River', productType: 'Camiseta', size: '' },
+    { id: 'tool-unset', name: 'Taladro Bosch', productType: 'Taladro', size: null },
+    { id: 'tool-sized', name: 'Taladro Makita', productType: 'Taladro', size: '13mm' },
+  ],
+};
+const expectedMissingIds = ['shirt-unset', 'shirt-unset-2', 'shirt-empty', 'tool-unset'];
+for (const text of ['Borrá todo el stock que no tiene talle', 'Eliminá todos los productos sin medida']) {
+  for (const parsed of [parseLocalText(text, [], missingVariantCatalog), await parseVoiceText(text, { catalog: missingVariantCatalog })]) {
+    assert.deepEqual(parsed.actions.map((action) => action.productId), expectedMissingIds, text);
+    assert.ok(parsed.actions.every((action) => action.selection?.field === 'size' && action.selection?.operator === 'missing'));
+    assert.equal(Boolean(parsed.missingFields?.includes('productMatch')), false);
+  }
+}
+const missingShirts = await parseVoiceText('Borrá todas las camisetas sin talle', { catalog: missingVariantCatalog });
+assert.deepEqual(missingShirts.actions.map((action) => action.productId), ['shirt-unset', 'shirt-unset-2', 'shirt-empty']);
+const noMissingVariants = await parseVoiceText('Borrá todo el stock sin talle', { catalog: { products: [missingVariantCatalog.products[2]] } });
+assert.deepEqual(noMissingVariants.actions, []);
+assert.equal(noMissingVariants.missingFields.includes('scopeNotFound'), true);
+const unverifiableIds = await parseVoiceText('Borrá todo el stock sin talle', {
+  catalog: { products: [{ name: 'Camiseta sin ID', size: null }] },
+});
+assert.equal(unverifiableIds.missingFields.includes('productMatch'), true);
+const missingVariantWebhook = await processMetaWebhook({
+  object: 'whatsapp_business_account',
+  entry: [{ changes: [{ value: { messages: [{
+    id: 'missing-variant-delete', from: '5491111111111', type: 'text',
+    text: { body: 'borra todo el stock que no tiene talle' },
+  }] } }] }],
+}, { resolveCatalog: async () => missingVariantCatalog });
+assert.deepEqual(missingVariantWebhook[0].parsed.actions.map((action) => action.productId), expectedMissingIds);
+assert.doesNotMatch(missingVariantWebhook[0].replyText, /Necesito identificar/);
+
 const clarifiedWebhook = await processMetaWebhook({
   object: 'whatsapp_business_account',
   entry: [{ changes: [{ value: { messages: [{

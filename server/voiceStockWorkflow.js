@@ -3,10 +3,42 @@ import {
   createVoiceStockBatch, getActiveVoiceStockBatch, getVoiceStockBatchByMessage,
   updateVoiceStockBatch, applyResolvedVoiceStockBatch, getStateSnapshotStrict as getStateSnapshot, getVoiceStockBatchMode,
   saveVoiceStockShadowRun,
+  getMetaReplyQuestion,
 } from './postgresDatabase.js';
 import { prepareStockDraft, normalizeIdentity, hasExplicitStockSize, needsDistinctIdentity, productFingerprint, ENGINE_VERSION, interpretStockClarification, validateStockDraft, auditStockDraft, resolveStockDraft } from './voiceStockEngine.js';
+import { interpretStockDraftPatch, invalidateDraftItem } from './stockDraftPatches.js';
+import { reconcileDraftItemIds } from './stockDraftIdentity.js';
 
 const pendingItem = (batch) => batch.payload.actions?.find((action) => action.resolution?.kind === 'ambiguous');
+const canonicalJson = (value) => Array.isArray(value) ? value.map(canonicalJson)
+  : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalJson(value[key])])) : value;
+const draftAuditFingerprint = (payload) => crypto.createHash('sha256').update(JSON.stringify(canonicalJson({
+  sourceText: payload.evidenceSourceText, actions: payload.actions,
+}))).digest('hex');
+const withDraftQuestions = (payload) => {
+  const actions = payload.actions ?? [];
+  const sourceHash = crypto.createHash('sha256').update(payload.evidenceSourceText ?? '').digest('hex');
+  const questions = (payload.clarificationsNeeded ?? []).filter((issue) => issue.question && issue.evidence).map((issue) => {
+    const related = actions.filter((action) => action.evidence?.includes(issue.evidence) || issue.evidence.includes(action.evidence));
+    // A global/reference question may span the whole draft rather than one mention.
+    const itemIds = (related.length ? related : actions).map((action) => action.itemId);
+    const signature = JSON.stringify([issue.question, issue.evidence, itemIds, sourceHash]);
+    const prior = payload.pendingDraftQuestions?.find((entry) => entry.signature === signature);
+    return prior ?? { id: `question-${crypto.randomUUID()}`, kind: 'draft_clarification',
+      question: issue.question, evidence: issue.evidence, itemIds, signature };
+  });
+  const signature = JSON.stringify(questions.map((question) => question.id));
+  return { ...payload, pendingDraftQuestions: questions, draftQuestionSignature: signature,
+    pendingDraftQuestionSetId: questions.length ? payload.draftQuestionSignature === signature
+      ? payload.pendingDraftQuestionSetId : `questions-${crypto.randomUUID()}` : null };
+};
+const questionForItem = (batch, item) => {
+  const signature = JSON.stringify([item.itemId, item.resolution.candidateIds ?? [],
+    (item.candidates ?? []).map((candidate) => [candidate.id, candidate.fingerprint])]);
+  if (batch.payload.pendingQuestion?.signature === signature) return batch.payload.pendingQuestion;
+  return { id: `question-${crypto.randomUUID()}`, kind: 'sku_choice', itemId: item.itemId,
+    candidateIds: [...(item.resolution.candidateIds ?? [])], signature };
+};
 const choiceWithSize = (sourceText) => sourceText.trim().match(
   /^(?:(?:opci[oó]n|n[uú]mero)\s+)?(\d+)\s+(?:(?:en\s+)?(?:talle|talla|medida|tama[ñn]o|n[uú]mero|variante)\s+|en\s+)([\p{L}\p{N}/.-]+(?:\s+[\p{L}\p{N}/.-]+){0,2})$/iu,
 );
@@ -50,10 +82,18 @@ const concurrentResult = async (batch, ownerPhone) => {
   return asResult(latest ?? batch, latest?.replyText ?? 'Ya estoy procesando otra respuesta para ese lote.');
 };
 
-const saveTransition = async (batch, messageId, payload, status, replyText = null) => updateVoiceStockBatch(batch.id, {
-  expectedVersion: batch.version, status, replyText,
-  payload: { ...payload, replyMessageId: messageId, handledMessages: [...(payload.handledMessages ?? []).filter((entry) => entry.messageId !== messageId), { messageId, replyText }] },
-});
+const saveTransition = async (batch, messageId, payload, status, replyText = null) => {
+  if (status === 'awaiting_correction') payload = withDraftQuestions(payload);
+  const next = { ...batch, payload };
+  const pending = status === 'awaiting_choice' ? pendingItem(next) : null;
+  // Persist question rotation in the same CAS as the actions it describes. A crash
+  // before finish() sends the next prompt must never leave Q1 attached to item 2.
+  return updateVoiceStockBatch(batch.id, {
+    expectedVersion: batch.version, status, replyText,
+    payload: { ...payload, ...(pending ? { pendingQuestion: questionForItem(next, pending) } : {}),
+      replyMessageId: messageId, handledMessages: [...(payload.handledMessages ?? []).filter((entry) => entry.messageId !== messageId), { messageId, replyText }] },
+  });
+};
 
 const finish = async (batch, ownerPhone, messageId) => {
   const missingSizes = missingClothingSizes(batch);
@@ -68,7 +108,9 @@ const finish = async (batch, ownerPhone, messageId) => {
   const pending = pendingItem(batch);
   if (pending) {
     const reply = stockChoiceReply(pending);
-    const saved = await saveTransition(batch, messageId, batch.payload, 'awaiting_choice', reply);
+    const saved = await saveTransition(batch, messageId, { ...batch.payload,
+      pendingQuestion: questionForItem(batch, pending),
+    }, 'awaiting_choice', reply);
     return saved ? asResult(saved) : concurrentResult(batch, ownerPhone);
   }
   try {
@@ -94,8 +136,9 @@ const prepare = async (input) => {
   return draft;
 };
 
-const draftPayload = (draft, messageId, previous = {}, fallbackSourceText = '') => ({
+const draftPayload = (draft, messageId, previous = {}, fallbackSourceText = '') => withDraftQuestions({
   ...previous, actions: draft.actions ?? previous.actions ?? [], coverageVerified: Boolean(draft.ok && draft.coverageVerified),
+  pendingDraftPatch: null, pendingDraftAnswer: null, pendingChoiceReply: null, pendingQuestion: null,
   evidenceSourceText: draft.sourceText ?? previous.evidenceSourceText ?? fallbackSourceText, engineVersion: ENGINE_VERSION,
   initialActions: previous.initialActions ?? draft.actions ?? [],
   traces: [...(previous.traces ?? []), ...(draft.traces ?? [draft.trace]).filter(Boolean)],
@@ -103,6 +146,50 @@ const draftPayload = (draft, messageId, previous = {}, fallbackSourceText = '') 
   clarificationsNeeded: draft.clarifications ?? (draft.ok ? [] : previous.clarificationsNeeded ?? []),
   validationError: draft.ok ? null : { reason: draft.reason, itemIndex: draft.itemIndex, field: draft.field },
 });
+
+// A validated patch is saved before another model call. Recovery resumes its audit
+// and resolution using the same actions/IDs instead of extracting the list again.
+const verifyDraftPatch = async (batch, ownerPhone, messageId) => {
+  const pending = batch.payload.pendingDraftPatch;
+  const traces = [];
+  const fingerprint = draftAuditFingerprint(batch.payload);
+  const audit = pending.auditVerified && pending.auditFingerprint === fingerprint ? { ok: true } : await auditStockDraft({
+    sourceText: batch.payload.evidenceSourceText, actions: batch.payload.actions,
+  });
+  if (audit.trace) traces.push(audit.trace);
+  if (!audit.ok) {
+    const semanticQuestions = audit.clarifications?.length;
+    const payload = { ...batch.payload, coverageVerified: false,
+      pendingDraftPatch: semanticQuestions ? null : pending,
+      clarificationsNeeded: semanticQuestions ? audit.clarifications : batch.payload.clarificationsNeeded,
+      issues: audit.issues ?? batch.payload.issues, resolutionError: audit.reason,
+      traces: [...(batch.payload.traces ?? []), ...traces] };
+    const saved = await saveTransition(batch, messageId, payload, 'awaiting_correction', stockDraftFailureReply(audit));
+    return saved ? asResult(saved) : concurrentResult(batch, ownerPhone);
+  }
+  const catalog = await getStateSnapshot(ownerPhone);
+  const unresolved = batch.payload.actions.filter((action) => !action.resolution || action.resolution.kind === 'ambiguous');
+  const resolution = unresolved.length ? await resolveStockDraft({
+    sourceText: batch.payload.evidenceSourceText, actions: unresolved, catalog,
+  }) : { ok: true, actions: [] };
+  traces.push(...(resolution.traces ?? []));
+  if (!resolution.ok) {
+    const reply = 'Guardé la aclaración y todos los productos. No pude verificar el catálogo; escribí “reintentar” para continuar sin repetir la respuesta, o “cancelar”.';
+    const saved = await saveTransition(batch, messageId, { ...batch.payload,
+      pendingDraftPatch: { ...pending, auditVerified: true, auditFingerprint: fingerprint }, resolutionError: resolution.reason,
+      traces: [...(batch.payload.traces ?? []), ...traces],
+    }, 'awaiting_correction', reply);
+    return saved ? asResult(saved) : concurrentResult(batch, ownerPhone);
+  }
+  const byId = new Map(resolution.actions.map((action) => [action.itemId, action]));
+  const saved = await saveTransition(batch, messageId, { ...batch.payload,
+    actions: batch.payload.actions.map((action) => byId.get(action.itemId) ?? action),
+    coverageVerified: true, pendingDraftPatch: null, pendingDraftAnswer: null, pendingCorrectionText: null,
+    clarificationsNeeded: [], pendingDraftQuestions: [], pendingDraftQuestionSetId: null, issues: [], resolutionError: null,
+    traces: [...(batch.payload.traces ?? []), ...traces],
+  }, 'ready');
+  return saved ? finish(saved, ownerPhone, messageId) : concurrentResult(batch, ownerPhone);
+};
 
 export const stockDraftFailureReply = (draft) => {
   if (draft.reason === 'clarification_dropped_items') return `Conservé el borrador completo y no apliqué cambios. No pude vincular tu respuesta con todos los productos guardados. ${draft.clarifications?.map((issue) => issue.question).filter(Boolean).join(' ') ?? ''} También podés enviar “Lista completa corregida: …” con todos los productos, o escribir “cancelar”.`;
@@ -122,11 +209,14 @@ export const holdUnverifiedStockMessage = async ({ sourceText, businessCategory,
   return asResult(batch);
 };
 
-export const processStockBatchMessage = async ({ sourceText, businessCategory, ownerPhone, senderPhone, messageId }) => {
+export const processStockBatchMessage = async ({ sourceText, businessCategory, ownerPhone, senderPhone, messageId, replyToMessageId = null }) => {
   const replay = await getVoiceStockBatchByMessage(ownerPhone, messageId);
   if (replay) {
     if (replay.status === 'ready') return finish(replay, ownerPhone, replay.payload.replyMessageId ?? messageId);
     const prior = replay.payload.handledMessages?.find((entry) => entry.messageId === messageId);
+    if (replay.status === 'awaiting_correction' && replay.payload.pendingDraftPatch && prior && !prior.replyText) {
+      return verifyDraftPatch(replay, ownerPhone, messageId);
+    }
     if (!prior?.replyText && !replay.replyText && ['awaiting_choice', 'awaiting_correction'].includes(replay.status)) {
       if (pendingItem(replay)) return finish(replay, ownerPhone, messageId);
       const saved = await saveTransition(replay, messageId, replay.payload, 'awaiting_correction', stockDraftFailureReply({ clarifications: replay.payload.clarificationsNeeded }));
@@ -135,6 +225,41 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
     return asResult(replay, prior?.replyText ?? replay.replyText);
   }
   const active = await getActiveVoiceStockBatch(ownerPhone, senderPhone);
+  if (active?.status === 'ready') {
+    await finish(active, ownerPhone, active.payload.replyMessageId ?? active.sourceMessageId);
+    // Recover the committed ready decision before interpreting a later command.
+    return processStockBatchMessage({ sourceText, businessCategory, ownerPhone, senderPhone, messageId, replyToMessageId });
+  }
+  if (replyToMessageId) {
+    const quoted = await getMetaReplyQuestion(replyToMessageId, ownerPhone, senderPhone);
+    const pending = active && pendingItem(active);
+    const currentQuestionId = active?.status === 'awaiting_choice' && pending
+      ? questionForItem(active, pending).id : active?.status === 'awaiting_correction'
+        ? withDraftQuestions(active.payload).pendingDraftQuestionSetId : null;
+    if (!active && quoted) return { actions: [], batchId: quoted.batchId, batchStatus: 'ignored_reply',
+      replyText: 'Esa respuesta cita una pregunta de un lote cerrado. No cambié el inventario. Enviá una nueva operación para continuar.' };
+    if (active && (quoted?.batchId !== active.id
+      || quoted?.questionId !== currentQuestionId || !currentQuestionId)) {
+      const reply = 'Esa respuesta no corresponde a la pregunta pendiente. Conservé el lote sin cambios; respondé la pregunta actual sin citar mensajes anteriores.';
+      const saved = await saveTransition(active, messageId, { ...active.payload,
+        ignoredReplies: [...(active.payload.ignoredReplies ?? []), { messageId, replyToMessageId, text: sourceText }],
+      }, active.status, reply);
+      return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+    }
+  }
+  const retryChoice = active?.status === 'awaiting_choice' && /^(reintentar|reintenta|volver a intentar)$/.test(normalizeIdentity(sourceText))
+    && active.payload.pendingChoiceReply;
+  let answerMessageId = messageId;
+  if (retryChoice) {
+    if (active.payload.pendingChoiceReply.questionId !== active.payload.pendingQuestion?.id
+      || active.payload.pendingChoiceReply.itemId !== pendingItem(active)?.itemId) {
+      const reply = 'La pregunta pendiente cambió. Conservé el lote; respondé la pregunta actual para continuar.';
+      const saved = await saveTransition(active, messageId, active.payload, 'awaiting_choice', reply);
+      return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+    }
+    sourceText = active.payload.pendingChoiceReply.text;
+    answerMessageId = active.payload.pendingChoiceReply.messageId;
+  }
   const text = normalizeIdentity(sourceText);
   if (active && /^(cancelar|cancela|anular|dejalo|dejalo asi)$/.test(text)) {
     const reply = 'Listo, cancelé ese lote. No cambié el inventario.';
@@ -143,14 +268,9 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
   }
   const catalog = await getStateSnapshot(ownerPhone);
   if (active?.status === 'awaiting_choice' && active.payload.engineVersion !== ENGINE_VERSION) {
-    const reply = 'Conservé tu borrador anterior. Enviame la lista completa para verificarla con el nuevo flujo, o escribí “cancelar”.';
+    const reply = 'Conservé tu borrador anterior. Escribí “reintentar” para verificar el mensaje guardado con el nuevo flujo, o “cancelar”.';
     const saved = await saveTransition(active, messageId, active.payload, 'awaiting_correction', reply);
     return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
-  }
-  if (active?.status === 'ready') {
-    await finish(active, ownerPhone, active.payload.replyMessageId ?? active.sourceMessageId);
-    // A ready batch is recovered independently; the new incoming message still gets handled.
-    return processStockBatchMessage({ sourceText, businessCategory, ownerPhone, senderPhone, messageId });
   }
   if (active?.status === 'awaiting_correction' && active.payload.missingSizeItemIds?.length) {
     const actions = active.payload.actions.map((action) => ({ ...action }));
@@ -162,7 +282,9 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
       return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
     }
     for (const [index, size] of sizes) {
-      const action = actions.find((entry) => entry.itemId === missing[index].itemId);
+      const position = actions.findIndex((entry) => entry.itemId === missing[index].itemId);
+      const action = invalidateDraftItem(actions[position], { identityChanged: true });
+      actions[position] = action;
       action.size = size;
       action.clarificationEvidence = { text: sourceText, messageId };
     }
@@ -213,9 +335,70 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
     }, 'ready');
     return saved ? finish(saved, ownerPhone, messageId) : concurrentResult(active, ownerPhone);
   }
+  const retryDraft = /^(reintentar|reintenta|volver a intentar)$/.test(text);
+  const replacesDraft = /^(?:lista completa(?: corregida)?|reemplazo (?:la lista completa|el listado completo)|esta es la lista completa|este es el listado completo)\b/.test(text);
+  if (active?.status === 'awaiting_correction' && !replacesDraft) {
+    if (retryDraft && active.payload.pendingDraftPatch) return verifyDraftPatch(active, ownerPhone, messageId);
+    active.payload = withDraftQuestions(active.payload);
+    if (active.payload.actions?.length && active.payload.pendingDraftQuestions.length) {
+      const savedAnswer = retryDraft ? active.payload.pendingDraftAnswer : null;
+      if (savedAnswer && savedAnswer.questionSetId !== active.payload.pendingDraftQuestionSetId) {
+        const saved = await saveTransition(active, messageId, active.payload, 'awaiting_correction',
+          'La pregunta pendiente cambió. Conservé el lote; respondé las preguntas actuales.');
+        return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+      }
+      const answerText = savedAnswer?.text ?? sourceText;
+      const answerId = savedAnswer?.messageId ?? messageId;
+      const interpreted = await interpretStockDraftPatch({ sourceText: answerText,
+        actions: active.payload.actions, questions: active.payload.pendingDraftQuestions });
+      const traces = [...(active.payload.traces ?? []), ...(interpreted.trace ? [interpreted.trace] : [])];
+      if (!['patch', 'confirm'].includes(interpreted.kind)) {
+        const unrelated = interpreted.kind === 'unrelated';
+        const saved = await saveTransition(active, messageId, { ...active.payload, traces,
+          ...(unrelated ? {} : { pendingDraftAnswer: { messageId: answerId, text: answerText,
+            questionSetId: active.payload.pendingDraftQuestionSetId }, pendingCorrectionText: answerText }),
+          resolutionError: interpreted.reason ?? interpreted.kind,
+        }, 'awaiting_correction', unrelated ? stockDraftFailureReply({ clarifications: active.payload.clarificationsNeeded })
+          : 'Conservé tu respuesta y todos los ítems. No pude verificar la aclaración; escribí “reintentar” para procesar esa respuesta, o “cancelar”.');
+        return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+      }
+      const combined = `${active.payload.evidenceSourceText ?? active.sourceText}\n${answerText}`;
+      const valid = validateStockDraft(combined, interpreted.actions);
+      if (!valid.ok) {
+        const saved = await saveTransition(active, messageId, { ...active.payload, traces,
+          pendingDraftAnswer: { messageId: answerId, text: answerText, questionSetId: active.payload.pendingDraftQuestionSetId },
+          pendingCorrectionText: answerText, resolutionError: valid.reason,
+        }, 'awaiting_correction', 'Conservé tu respuesta. La aclaración no pasó la validación; escribí “reintentar” o “cancelar”.');
+        return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+      }
+      const saved = await saveTransition(active, messageId, { ...active.payload,
+        actions: valid.actions, evidenceSourceText: combined, coverageVerified: false, traces,
+        pendingDraftAnswer: null, pendingCorrectionText: null,
+        pendingDraftPatch: { messageId: answerId, questionId: interpreted.patch.questionId, auditVerified: false },
+        draftPatches: [...(active.payload.draftPatches ?? []), { messageId: answerId, text: answerText, patch: interpreted.patch }],
+      }, 'awaiting_correction');
+      return saved ? verifyDraftPatch(saved, ownerPhone, messageId) : concurrentResult(active, ownerPhone);
+    }
+  }
   if (active?.status === 'awaiting_choice') {
     const actions = active.payload.actions.map((action) => ({ ...action }));
-    const item = actions.find((action) => action.resolution.kind === 'ambiguous');
+    let item = actions.find((action) => action.resolution.kind === 'ambiguous');
+    const pendingSnapshot = { ...item };
+    const question = questionForItem(active, item);
+    // Compatibility for already pending v5 batches. Persist on the next transition.
+    active.payload = { ...active.payload, pendingQuestion: question };
+    const holdAnswer = async (reason, traces = []) => {
+      const reply = 'Conservé tu respuesta y el lote sin aplicar cambios. No pude verificar la aclaración; escribí “reintentar” para procesar esa misma respuesta, o “cancelar”.';
+      const saved = await saveTransition(active, messageId, { ...active.payload, actions,
+        pendingChoiceReply: { questionId: question.id, itemId: item.itemId, messageId: answerMessageId, text: sourceText },
+        interpreterError: reason,
+        traces: [...(active.payload.traces ?? []), ...traces.filter(Boolean)],
+      }, 'awaiting_choice', reply);
+      return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+    };
+    const holdUnverified = (reason, traces) => holdAnswer({
+      kind: /unavailable/.test(reason) ? 'unavailable' : 'invalid', reason,
+    }, traces);
     const ids = item.resolution.candidateIds ?? [];
     let resolution = null;
     let clarificationTrace = null;
@@ -237,6 +420,9 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
     if (!resolution && !selectedNumber && !newName) {
       const semantic = await interpretStockClarification({ sourceText, action: item });
       clarificationTrace = semantic.trace ?? null;
+      if (semantic.kind === 'unavailable' || semantic.kind === 'invalid') {
+        return holdAnswer({ kind: semantic.kind, reason: semantic.reason }, [clarificationTrace]);
+      }
       if (semantic.kind === 'new') resolution = { kind: 'new' };
       if (semantic.kind === 'existing') {
         const offered = item.candidates?.find((entry) => entry.id === semantic.productId);
@@ -245,7 +431,8 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
       }
       if (semantic.kind === 'correction' && semantic.correctedAction) {
         const patch = semantic.correctedAction;
-        const corrected = { ...item };
+        const identityChanged = ['productName', 'productType', 'productModel', 'size'].some((field) => patch[field] !== undefined && patch[field] !== item[field]);
+        const corrected = invalidateDraftItem(item, { identityChanged });
         for (const field of ['productName', 'productType', 'productModel', 'size', 'qty', 'price', 'fieldEvidence']) if (patch[field] !== undefined) corrected[field] = patch[field];
         corrected.evidence = item.evidence;
         const combined = `${active.payload.evidenceSourceText ?? active.sourceText}\nCorrección del usuario: ${sourceText}`;
@@ -256,17 +443,20 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
         if (resolved.ok) {
           const revised = correctedActions.map((action) => action.itemId === item.itemId ? resolved.actions[0] : action);
           const saved = await saveTransition(active, messageId, { ...active.payload, actions: revised, evidenceSourceText: combined,
+            pendingChoiceReply: null, interpreterError: null,
             traces: [...(active.payload.traces ?? []), ...(clarificationTrace ? [clarificationTrace] : []), audit.trace, resolved.trace],
-            clarifications: [...(active.payload.clarifications ?? []), { itemId: item.itemId, messageId, text: sourceText, correction: patch }],
+            clarifications: [...(active.payload.clarifications ?? []), { itemId: item.itemId, messageId, answerMessageId, questionId: question.id, text: sourceText, correction: patch }],
           }, revised.some((action) => action.resolution.kind === 'ambiguous') ? 'awaiting_choice' : 'ready');
           return saved ? finish(saved, ownerPhone, messageId) : concurrentResult(active, ownerPhone);
         }
+        return holdUnverified((!valid.ok ? valid.reason : !audit.ok ? audit.reason : resolved.reason) ?? 'correction_unverified',
+          [clarificationTrace, audit.trace, ...(resolved.traces ?? [])]);
       }
     }
     if (resolution?.kind === 'existing' && requestedSize) {
       const selected = catalog.products.find((product) => product.id === resolution.productId);
       if (selected && normalizeIdentity(selected.size) !== normalizeIdentity(requestedSize)) {
-        const corrected = { ...item, size: requestedSize,
+        const corrected = { ...invalidateDraftItem(item, { identityChanged: true }), size: requestedSize,
           clarificationEvidence: { text: sourceText, messageId } };
         const combined = `${active.payload.evidenceSourceText ?? active.sourceText}\n${sourceText}`;
         const valid = validateStockDraft(combined, [corrected]);
@@ -274,15 +464,15 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
         if (rerun.ok) {
           const revised = actions.map((action) => action.itemId === item.itemId ? rerun.actions[0] : action);
           const saved = await saveTransition(active, messageId, { ...active.payload, actions: revised, evidenceSourceText: combined,
+            pendingChoiceReply: null, interpreterError: null,
             traces: [...(active.payload.traces ?? []), ...(clarificationTrace ? [clarificationTrace] : []), ...(rerun.traces ?? [])],
-            clarifications: [...(active.payload.clarifications ?? []), { messageId, itemId: item.itemId, text: sourceText,
+            clarifications: [...(active.payload.clarifications ?? []), { messageId, answerMessageId, questionId: question.id, itemId: item.itemId, text: sourceText,
               requestedSize, selectedProductId: selected.id, resolution: rerun.actions[0].resolution }],
           }, revised.some((action) => action.resolution.kind === 'ambiguous') ? 'awaiting_choice' : 'ready');
           return saved ? finish(saved, ownerPhone, messageId) : concurrentResult(active, ownerPhone);
         }
-        const reply = 'Entendí la medida indicada, pero no pude verificar la variante. Conservé el lote sin aplicarlo; respondé con la medida otra vez o escribí “cancelar”.';
-        const saved = await saveTransition(active, messageId, { ...active.payload, actions }, 'awaiting_choice', reply);
-        return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
+        return holdUnverified(valid.reason ?? rerun.reason ?? 'variant_unverified',
+          [clarificationTrace, ...(rerun.traces ?? [])]);
       }
       item.size = requestedSize;
     }
@@ -292,21 +482,34 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
       item.clarificationEvidence = { text: sourceText, messageId };
       resolution = { kind: 'new' };
     }
+    if (requestedSize || newName) {
+      const revised = invalidateDraftItem(item, { identityChanged: true });
+      actions[actions.indexOf(item)] = revised;
+      item = revised;
+      item.clarificationEvidence = { text: sourceText, messageId };
+    }
     if (resolution?.kind === 'new' && catalog.products.some((product) => needsDistinctIdentity(item, product))) {
       item.needsDifferentiator = true; resolution = null;
     }
     if (!resolution) {
+      // An invalid choice cannot replace the pending SKU/candidate snapshot with
+      // an item whose derived resolution was invalidated during interpretation.
+      const held = { ...pendingSnapshot, ...(item.needsDifferentiator ? { needsDifferentiator: true } : {}) };
+      actions[actions.indexOf(item)] = held;
+      item = held;
       const reply = stockChoiceReply(item);
-      const saved = await saveTransition(active, messageId, { ...active.payload, actions }, 'awaiting_choice', reply);
+      const saved = await saveTransition(active, messageId, { ...active.payload, actions,
+        traces: [...(active.payload.traces ?? []), ...(clarificationTrace ? [clarificationTrace] : [])],
+      }, 'awaiting_choice', reply);
       return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
     }
     item.resolution = resolution;
     if (requestedSize) item.clarificationEvidence = { text: sourceText, messageId };
     const status = actions.some((entry) => entry.resolution.kind === 'ambiguous') ? 'awaiting_choice' : 'ready';
-    const payload = { ...active.payload, actions,
+    const payload = { ...active.payload, actions, pendingChoiceReply: null, interpreterError: null,
       evidenceSourceText: requestedSize ? `${active.payload.evidenceSourceText ?? active.sourceText}\n${sourceText}` : active.payload.evidenceSourceText,
       traces: [...(active.payload.traces ?? []), ...(clarificationTrace ? [clarificationTrace] : [])],
-      clarifications: [...(active.payload.clarifications ?? []), { messageId, itemId: item.itemId, text: sourceText, resolution }] };
+      clarifications: [...(active.payload.clarifications ?? []), { messageId, answerMessageId, questionId: question.id, itemId: item.itemId, text: sourceText, resolution }] };
     const saved = await saveTransition(active, messageId, payload, status);
     return saved ? finish(saved, ownerPhone, messageId) : concurrentResult(active, ownerPhone);
   }
@@ -328,6 +531,9 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
     return null;
   }
   const status = draft.ok ? 'ready' : 'awaiting_correction';
+  if (active && replacesDraft && draft.actions?.length) {
+    draft.actions = reconcileDraftItemIds(active.payload.actions ?? [], draft.actions);
+  }
   const payload = draftPayload(draft, messageId, active?.payload, retrySaved ? savedSource : sourceText);
   if (draft.ok || (draft.sourceText && draft.sourceText !== savedSource)) delete payload.pendingCorrectionText;
   else if (active && !retrySaved && !draft.ok) payload.pendingCorrectionText = sourceText;
@@ -339,7 +545,7 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
   if (!batch) return concurrentResult(active, ownerPhone);
   if (!draft.ok) {
     console.warn('[VoiceStockBatch] draft held', { batchId: batch.id, messageId, reason: draft.reason,
-      itemIndex: draft.itemIndex, field: draft.field, issues: draft.issues });
+      itemIndex: draft.itemIndex, field: draft.field, issueKinds: draft.issues?.map((issue) => issue.kind) });
     const reply = stockDraftFailureReply(draft);
     const saved = await saveTransition(batch, messageId, batch.payload, 'awaiting_correction', reply);
     return saved ? asResult(saved) : concurrentResult(batch, ownerPhone);

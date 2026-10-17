@@ -1,9 +1,12 @@
 import { holdUnverifiedStockMessage, processStockBatchMessage } from './voiceStockWorkflow.js';
+import { createMetaWebhookSignatureMiddleware, hasMetaWebhookAppSecret } from './metaWebhookSecurity.js';
 import express from 'express';
 import dotenv from 'dotenv';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { getBusinessCategoryPreset } from './businessCategories.js';
 import { hasProductMatchHold } from './voiceCatalogContext.js';
+import { inventoryResultActions } from './inventoryResults.js';
+import { requireReviewedUpdateSelection } from './inventorySelections.js';
 import { answerPedidosQuery } from './pedidoQuery.js';
 import {
   createProductRecord,
@@ -17,6 +20,7 @@ import {
   deleteProveedorRecord,
   deletePedidoRecord,
   applyActionsToDatabase,
+  executeInventoryOperation,
   answerStockQuery,
   findMetaEventById,
   claimMetaMessage,
@@ -42,6 +46,10 @@ import {
   upsertAuthUser,
   hasDatabaseConfig,
   updateProductRecord,
+  previewInventorySelection,
+  confirmInventorySelection,
+  prepareMetaDeactivation,
+  processMetaDeactivationCommand,
   updateProductModelRecords,
   updateClientRecord,
   updateProveedorRecord,
@@ -56,7 +64,7 @@ import {
   removeBusinessMember,
   getBusinessTeam,
 } from './postgresDatabase.js';
-import { extractBearerToken, issueJwt, normalizePhone, verifyJwt } from './auth.js';
+import { extractBearerToken, getJwtSecret, issueJwt, normalizePhone, verifyJwt } from './auth.js';
 import {
   authenticateWaLoginFromWebhook,
   buildWhatsAppLoginUrl,
@@ -82,6 +90,7 @@ const metaVerifyToken = process.env.META_VERIFY_TOKEN || 'erpvoice_token_secreto
 const authEnabled = true;
 const DEV_LOGIN_PHONE = normalizePhone(process.env.AUTH_DEV_PHONE || '5491100000000') || '5491100000000';
 const isAuthDevBypassEnabled = () => {
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1') return false;
   const flag = String(process.env.AUTH_DEV_BYPASS ?? '').trim().toLowerCase();
 
   if (['1', 'true', 'yes', 'on'].includes(flag)) {
@@ -229,6 +238,10 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use('/api/meta-webhook', express.json({
+  inflate: false,
+  verify: (req, _res, body) => { req.rawBody = Buffer.from(body); },
+}));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -239,7 +252,14 @@ app.get('/', (_req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'meta-webhook', port });
+  let authReady = true;
+  try { getJwtSecret(); } catch { authReady = false; }
+  res.json({ ok: true, service: 'meta-webhook', port,
+    deployment: process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT_SHA || null,
+    operationContractVersion: 1,
+    metaWebhookReady: hasMetaWebhookAppSecret(process.env.META_APP_SECRET),
+    authReady,
+  });
 });
 
 app.post('/api/auth/wa-login', async (req, res) => {
@@ -523,14 +543,11 @@ app.get('/api/state', authenticateRequest, async (req, res) => {
 
 app.post('/api/products/model', authenticateRequest, async (req, res) => {
   try {
-    const products = await createProductModelRecords({
-      productType: req.body?.productType,
-      productModel: req.body?.productModel,
-      variants: req.body?.variants,
-    }, tenantPhoneOf(req));
+    const products = await createProductModelRecords(req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req) });
     res.status(201).json(products);
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    const status = ['OPERATION_ID_REQUIRED', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400 : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude crear el modelo.' : error.message, code: error.code });
   }
 });
 
@@ -538,15 +555,7 @@ app.post('/api/products', authenticateRequest, async (req, res) => {
   try {
     const clientPhone = tenantPhoneOf(req);
 
-    const product = await createProductRecord({
-      name: req.body?.name,
-      productType: req.body?.productType,
-      productModel: req.body?.productModel,
-      size: req.body?.size,
-      stockAvailable: req.body?.stockAvailable,
-      stockReserved: req.body?.stockReserved,
-      price: req.body?.price,
-    }, clientPhone);
+    const product = await createProductRecord(req.body, clientPhone, { actorId: authPhoneOf(req) });
 
     if (!product) {
       res.status(400).json({ error: 'No se pudo crear el producto' });
@@ -555,21 +564,19 @@ app.post('/api/products', authenticateRequest, async (req, res) => {
 
     res.status(201).json(product);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    const status = ['OPERATION_ID_REQUIRED', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400 : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude crear el SKU.' : error.message, code: error.code });
   }
 });
 
 app.put('/api/products/model', authenticateRequest, async (req, res) => {
   try {
-    const products = await updateProductModelRecords({
-      ids: req.body?.ids,
-      name: req.body?.name,
-      productType: req.body?.productType,
-      productModel: req.body?.productModel,
-    }, tenantPhoneOf(req));
+    const products = await updateProductModelRecords(req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req) });
     res.json(products);
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    const status = ['SELECTION_REQUIRED', 'INVALID_SELECTION', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400
+      : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude guardar el modelo.' : error.message, code: error.code });
   }
 });
 
@@ -585,7 +592,10 @@ app.put('/api/products/:id', authenticateRequest, async (req, res) => {
       stockAvailable: req.body?.stockAvailable,
       stockReserved: req.body?.stockReserved,
       price: req.body?.price,
-    }, clientPhone);
+      priceCurrency: req.body?.priceCurrency,
+      attributes: req.body?.attributes,
+    }, clientPhone, { operationId: req.body?.operationId, expectedRevision: req.body?.expectedRevision,
+      expectedFingerprint: req.body?.expectedFingerprint, reason: req.body?.reason, actorId: authPhoneOf(req) });
 
     if (!product) {
       res.status(404).json({ error: 'Producto no encontrado' });
@@ -594,32 +604,38 @@ app.put('/api/products/:id', authenticateRequest, async (req, res) => {
 
     res.json(product);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    const status = error.code === 'SKU_NOT_FOUND' ? 404
+      : ['OPERATION_ID_REQUIRED', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400
+        : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude guardar la edición.' : error.message, code: error.code });
   }
 });
 
 app.delete('/api/products/batch', authenticateRequest, async (req, res) => {
   try {
-    const deleted = await deleteProductRecords(req.body?.ids, tenantPhoneOf(req));
-    res.json({ deleted });
+    const result = await deleteProductRecords(req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req), returnResult: true });
+    res.json({ deleted: result.items.length, operationResult: result });
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(error.name === 'InventoryOperationError' ? 409 : 500).json({ error: error.message, code: error.code });
   }
 });
 
 app.delete('/api/products/:id', authenticateRequest, async (req, res) => {
   try {
     const clientPhone = tenantPhoneOf(req);
-    const deleted = await deleteProductRecord(req.params.id, clientPhone);
+    if (!req.body || Object.keys(req.body).some((key) => !['selectionId', 'digest'].includes(key))) {
+      res.status(409).json({ error: 'Revisá la selección antes de confirmar la baja.', code: 'SELECTION_REQUIRED' }); return;
+    }
+    const deleted = await deleteProductRecord(req.params.id, clientPhone, { ...req.body, actorId: authPhoneOf(req), returnResult: true });
 
     if (!deleted) {
       res.status(404).json({ error: 'Producto no encontrado' });
       return;
     }
 
-    res.status(204).send();
+    res.json({ deleted: 1, operationResult: deleted });
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(error.name === 'InventoryOperationError' ? 409 : 500).json({ error: error.message, code: error.code });
   }
 });
 
@@ -855,6 +871,51 @@ app.get('/api/meta-webhook', (req, res) => {
   res.sendStatus(403);
 });
 
+app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
+  try {
+    requireReviewedUpdateSelection(req.body);
+    const result = await executeInventoryOperation(req.body, {
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:receive', 'inventory:sell', 'inventory:reserve', 'inventory:adjust', 'inventory:update', 'inventory:deactivate', 'inventory:create'],
+    });
+    res.json(result);
+  } catch (error) {
+    const status = ['FORBIDDEN', 'BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
+      : ['INVALID_OPERATION_PLAN', 'BUSINESS_SCOPE_REQUIRED', 'UNSUPPORTED_OPERATION'].includes(error.code) ? 400
+        : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude guardar la operación.' : error.message,
+      code: error.name === 'InventoryOperationError' ? error.code : 'INVENTORY_UNAVAILABLE' });
+  }
+});
+
+app.post('/api/inventory/selections', authenticateRequest, async (req, res) => {
+  try {
+    const preview = await previewInventorySelection(req.body, {
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate'],
+    });
+    res.json(preview);
+  } catch (error) {
+    const status = ['FORBIDDEN', 'BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
+      : ['INVALID_SELECTION', 'INVALID_OPERATION_PLAN', 'BUSINESS_SCOPE_REQUIRED', 'UNSUPPORTED_OPERATION'].includes(error.code) ? 400
+        : error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude preparar la selección.' : error.message, code: error.code });
+  }
+});
+
+app.post('/api/inventory/selections/:id/confirm', authenticateRequest, async (req, res) => {
+  try {
+    if (!req.body || Object.keys(req.body).some((key) => key !== 'digest')) {
+      res.status(400).json({ error: 'Confirmá únicamente la selección revisada.', code: 'INVALID_SELECTION' }); return;
+    }
+    const result = await confirmInventorySelection(req.params.id, req.body.digest, {
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate'],
+    });
+    res.json(result);
+  } catch (error) {
+    const status = error.name === 'InventoryOperationError' ? 409 : 500;
+    res.status(status).json({ error: status === 500 ? 'No pude confirmar la selección.' : error.message, code: error.code });
+  }
+});
+
 app.post('/api/state/apply', authenticateRequest, async (req, res) => {
   try {
     const clientPhone = tenantPhoneOf(req);
@@ -863,10 +924,12 @@ app.post('/api/state/apply', authenticateRequest, async (req, res) => {
     const mutationActions = actions.filter(
       (action) => action?.type !== 'query_stock' && action?.type !== 'query_pedidos',
     );
-    const snapshot = await applyActionsToDatabase(mutationActions, sourceText, clientPhone);
+    const snapshot = await applyActionsToDatabase(mutationActions, sourceText, clientPhone, {
+      operationId: req.body?.operationId, actorId: authPhoneOf(req), channel: 'panel',
+    });
     res.json(snapshot);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(error.name === 'InventoryOperationError' ? 409 : 500).json({ error: error instanceof Error ? error.message : String(error), code: error.code });
   }
 });
 
@@ -926,7 +989,7 @@ const dispatchPendingMetaReplies = async () => {
     try {
       const result = await sendMetaReply({ to: item.recipient, text: item.reply_text });
       if (result?.sent) {
-        await finishMetaReply(item.event_id);
+        await finishMetaReply(item.event_id, null, result.messageId);
       } else {
         await finishMetaReply(item.event_id, result?.reason ?? 'send_failed');
       }
@@ -991,14 +1054,14 @@ const handleMetaWebhook = async (req, res) => {
         const messageId = typeof message.id === 'string' ? message.id : null;
         const senderName = changes?.contacts?.[0]?.profile?.name || 'Usuario';
 
-        console.log(`Texto recibido. Intentando responder a: ${fromNumber}`);
+        console.log('[MetaWebhook] text accepted', { messageId });
 
         // ACK corto: la confirmación real del resultado se envía al terminar de procesar.
         const responseText = `Procesando tu mensaje, ${senderName}…`;
 
         // no await, pero capturamos errores para no bloquear el flujo
         sendMetaReply({ to: fromNumber, text: responseText })
-          .then((r) => console.log('[MetaWebhook] fast-reply result:', r))
+          .then((r) => console.log('[MetaWebhook] fast-reply result:', { sent: r?.sent, reason: r?.reason }))
           .catch((err) => {
             console.error('[MetaWebhook] fast-reply failed:', err);
           });
@@ -1020,10 +1083,15 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
     const results = await processMetaWebhook(processingBody, {
       loadTranscript: loadMetaTranscript,
       saveTranscript: saveMetaTranscript,
-      processStockText: async ({ sourceText, businessCategory, metaMessage }) => processStockBatchMessage({
-        sourceText, businessCategory, ownerPhone: await resolveTenant(metaMessage.fromNumber),
-        senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId(),
-      }),
+      processStockText: async ({ sourceText, businessCategory, metaMessage }) => {
+        const selectionReply = await processMetaDeactivationCommand({ sourceText, ownerPhone: await resolveTenant(metaMessage.fromNumber),
+          senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId() });
+        return selectionReply ?? processStockBatchMessage({
+          sourceText, businessCategory, ownerPhone: await resolveTenant(metaMessage.fromNumber),
+          senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId(),
+          replyToMessageId: metaMessage.replyToMessageId,
+        });
+      },
       resolveBusinessCategory: async (fromNumber) => {
         try {
           const profile = await getAuthUserProfile(fromNumber);
@@ -1124,27 +1192,44 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
           .join('\n\n');
       }
 
+      let mutationOutcome = null;
+      let mutationRejected = false;
       if (!stockBatchResponse && !legacyStockHold && mutationActions.length && !hasProductMatchHold(result.parsed)) {
-        await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber, {
-          messageId: incomingId, recipient: result.fromNumber,
-          replyText: [overrideReplyText, result.replyText].filter(Boolean).join('\n\n'),
-        });
+        try {
+          mutationOutcome = mutationActions.some((action) => action.type === 'delete_product')
+            ? await prepareMetaDeactivation({ actions: mutationActions, sourceText: result.sourceText, messageId: incomingId,
+              ownerPhone, senderPhone: result.fromNumber })
+            : await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber, {
+            messageId: incomingId, recipient: result.fromNumber,
+            actorId: result.fromNumber, channel: 'whatsapp', replyPrefix: overrideReplyText,
+            replyText: [overrideReplyText, result.replyText].filter(Boolean).join('\n\n'),
+          });
+          if (mutationOutcome?.pendingSelection && overrideReplyText) mutationOutcome.replyText = [overrideReplyText, mutationOutcome.replyText].join('\n\n');
+        } catch (error) {
+          if (error.name !== 'InventoryOperationError') throw error;
+          // A business rejection is terminal. Never retry a rejected sale later
+          // merely because replenishment made it executable in the meantime.
+          mutationRejected = true;
+          eventRecord.error = error.code;
+          mutationOutcome = { replyText: [overrideReplyText, error.message].filter(Boolean).join('\n\n') };
+        }
       }
 
-      const finalReplyText = stockBatchResponse?.replyText ?? [overrideReplyText, result.replyText].filter(Boolean).join('\n\n');
+      const finalReplyText = stockBatchResponse?.replyText ?? mutationOutcome?.replyText
+        ?? [overrideReplyText, result.replyText].filter(Boolean).join('\n\n');
 
       eventRecord.replyText = finalReplyText;
-      eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? result.parsed?.actions ?? []);
+      eventRecord.error ??= stockBatchResponse?.errorCode ?? null;
+      eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? (mutationRejected || mutationOutcome?.pendingSelection ? [] : mutationOutcome?.operationResult
+        ? inventoryResultActions(mutationOutcome.operationResult, mutationActions) : result.parsed?.actions ?? []));
       eventRecord.processed = Boolean(stockBatchResponse || queryActions.length || mutationActions.length);
 
       console.log('[MetaWebhook] response debug:', {
         messageId: incomingId,
-        from: result.fromNumber,
         kind: result.kind,
-        sourceText: result.sourceText,
-        transcript: result.transcript ?? null,
-        replyText: finalReplyText,
-        actions: stockBatchResponse?.actions ?? result.parsed?.actions ?? [],
+        batchId: stockBatchResponse?.batchId,
+        batchStatus: stockBatchResponse?.batchStatus,
+        actionCount: (stockBatchResponse?.actions ?? result.parsed?.actions ?? []).length,
       });
 
       await saveMetaEvent(eventRecord);
@@ -1161,9 +1246,8 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       }
 
       console.log('[MetaWebhook] processed event:', {
-        from: result.fromNumber,
+        messageId: incomingId,
         kind: result.kind,
-        sourceText: result.sourceText,
         actions: result.parsed?.actions?.length ?? 0,
       });
     }
@@ -1179,7 +1263,7 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
   }
 };
 
-app.post('/api/meta-webhook', handleMetaWebhook);
+app.post('/api/meta-webhook', createMetaWebhookSignatureMiddleware(), handleMetaWebhook);
 
 setInterval(() => {
   dispatchPendingMetaReplies().catch((error) => {
