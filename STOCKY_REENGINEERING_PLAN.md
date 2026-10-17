@@ -8,7 +8,8 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.5a, entrada común de planes con despacho/recibo universal.
+- Último alcance integrado: H4.5c2, correcciones universales por ítem con revisión versionada.
+- Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; código de b1 en `e22a459`.
 
 ## Hitos y dependencias
 
@@ -18,7 +19,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.4e1c verificado; conversación de conjuntos e intérprete universal pendientes |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.4e1c/H4.5a/H4.2b1 verificados; conversación e intérprete/composición pendientes |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -34,8 +35,8 @@
 - Precios: dinero entero; política explícita. Conflictos no se resuelven silenciosamente.
 - Contexto autorizado se recibe del backend; el LLM/cliente no elige otro negocio.
 - Operaciones atómicas por defecto; replay requiere mismo ID y mismo contenido.
-- Mantener el bloqueo compatible con el escritor legacy mientras siga reemplazando tablas.
-  No reducir locks sin migrar todos los escritores que compiten.
+- El escritor de tablas completas ya fue retirado. Conservar por ahora el bloqueo compartido
+  entre inventario, cuentas, pedidos y metadatos; reducirlo solo con pruebas de concurrencia.
 - Conservar fuente, evidencias, claims, control de versión y outbox. Migrar etapas sin
   reinterpretar mensajes ya aplicados ni descartar borradores activos.
 
@@ -54,18 +55,11 @@
 
 ## Próximo paso exacto
 
-H4.2b1: ampliar selecciones congeladas a stock.adjust, reutilizando el planner y la
-confirmación existentes. Mostrar antes/después por SKU y unidad, aplicar solo balances
-revisados con motivo, rechazar revisión vencida y rollback integral. Integrar ajuste de
-conjunto desde el panel con preview sin escritura y retry estable; probar PG/HTTP/Edge.
-Después H4.2b conversación de conjuntos, H4.5b intérprete desacoplado/composición y H4.6.
-El escritor local ya fue retirado; no reintroducir fallback optimista ni simulaciones.
-H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
-El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
-H4.2b pendiente: conversación de conjuntos para otros verbos (bajas WhatsApp ya migradas).
-H4.5: intérprete universal y composición de planes entre dominios; hoy stock+cuenta/pedido
-en un mismo lote se rechaza entero. H4.6: familias/esquemas configurables persistentes y
-validación de atributos; después optimización/evaluación LLM y H5 externo. No reauditar.
+H4.6a: familias/esquemas inmutables versionados, asociación explícita del SKU y validación
+en el Inventory Engine existente. Mantener hashes de productos sin familia, migración
+aditiva y replay antes de consultar schemas actuales. Después controles configurables del
+panel, canal WhatsApp compartido, migración de consumidores y evaluación/H5 real.
+No reauditar; reutilizar contratos, selecciones masivas y bloqueo amplio actuales.
 
 ## Registro de hitos
 
@@ -492,13 +486,145 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   compatibles. Idempotencia raíz global aplica a esta entrada, no reconcilia IDs ya usados
   en endpoints históricos de dominios distintos. No desplegado ni probado con LLM real.
 
+- H4.2b1 (2026-10-17): selecciones congeladas admiten stock.adjust con balances absolutos
+  parciales y motivo. El mismo planner calcula finalAvailable/finalReserved por SKU y unidad
+  en preview; no hay escritura de stock hasta confirmar digest/actor/TTL. Campo omitido
+  conserva saldo observado; nuevos SKU no se incorporan y cambio de revisión/fingerprint
+  rechaza todo. Se mantienen guards de ajuste masivo directo en APIs de dominio/universal.
+- H4.2b1: StockSetAdjustmentForm permite elegir 1–100 SKU, muestra antes/después y unidad,
+  exige consentimiento antes de confirmar y conserva referencia ante 503/refresco fallido.
+  Cambiar borrador invalida preview/consentimiento; 409 exige nueva revisión explícita.
+  Se bloquea doble envío. El servicio rechaza previews con saldos finales forjados o campos
+  que no coinciden con lo solicitado. Formularios previos de selección siguen compatibles.
+- H4.2b1 verificado sobre el estado del usuario d35145f: build, 60 tests puros, 228 checks
+  PostgreSQL/HTTP y 50 regresiones de motor aprobados. Edge stock-set-adjustment-ui e
+  inventory-selection-ui aprobados. SQL prueba rollback de movimiento/recibo/historia/
+  estado de selección; HTTP prueba scopes, confirmación concurrente, freeze y replay.
+- H4.2b1 recuperabilidad: código fue guardado por el usuario en e22a459; sus commits de
+  login 9801920/17763fa y talles d35145f se conservaron. Validación final incluye esos
+  cambios. test-river-stock-query mantiene dos fallas previas de representación
+  (Camiseta Camisetas River), con los tres productos correctos; casos nuevos de talles
+  pasan. No presentar esa suite como aprobada. No se verificó login contra Meta real.
+- Pendiente global: conversación de conjuntos para otros verbos, intérprete/composición
+  universal, familias/esquemas configurables y H5 externo. La reingeniería completa sigue
+  abierta. Intentos UI de este formulario viven en memoria; recibos/selecciones son
+  persistentes. No hubo despliegue ni evaluación LLM real en este cierre.
+
+- H4.2b2 (2026-10-17): inventoryMetaSelections generaliza comandos BAJA/CAMBIO/AJUSTE,
+  vista completa con cambios o balances antes/después/unidad y motivo; jamás trunca revisión.
+  Nuevos inventoryMetaSelectionPostgres y meta_selection_commands guardan resultado terminal
+  de cada comando y outbox en el mismo commit. SAVEPOINT revierte efectos parciales incluso
+  ante PERSISTED_EFFECT_MISMATCH antes de guardar un rechazo; fallos SQL revierten todo.
+- H4.2b2: preparar usa IDs grounded por backend y misma mutación para el conjunto; mezcla
+  de tipos/valores se rechaza explícitamente. Preview y respuesta comparten transacción.
+  Confirmación actor/negocio/código/tipo/TTL apunta a selección persistida, sin nuevo match.
+  Repetir mensaje reproduce primer recibo; nuevo ID puede confirmar selección aplicada sin
+  volver a ejecutar. Cancelar y confirmar se serializan. IDs conversacionales reservados.
+- H4.2b2: index usa contexto único por mensaje, resume preview persistido antes del parser
+  y dirige update_product al flujo revisado. Aliases de bajas y rutas del panel conservan
+  compatibilidad. Prefijo de consultas queda en primer outbox; conflicto de destinatario/
+  contenido rechaza la transacción en vez de enviar una respuesta ajena a lo aplicado.
+- H4.2b2 verificado: 238 checks PG/HTTP, 68 pruebas puras y build aprobados. HTTP firmado
+  demuestra precio cero pendiente -> CONFIRMAR CAMBIO -> precio/historia/evento exactos.
+  SQL prueba saldo SET individual/múltiple, concurrencia, rechazo terminal, cancelación,
+  scope/tipo/expiración, outbox fallido y trigger de efecto divergente con rollback.
+  La prueba anterior de dos aclaraciones ahora usa candidatos realmente ofrecidos, confirma
+  un solo movimiento y verifica todos los SKU; no depende de IDs aleatorios de dos variantes.
+- H4.2b2 límites: conjuntos con efectos diferentes o ficha+saldo se revisan por separado;
+  selección desde texto aún depende del adapter grounded existente. No es todavía el
+  intérprete universal. No hubo proveedor/WhatsApp real ni despliegue en este hito.
+
+- H4.5b1 (2026-10-17): universalOperations admite bloques contiguos de inventario/cuentas/
+  entidades en el orden declarado. Cada dominio aparece una vez; reentrada se rechaza con
+  UNSUPPORTED_OPERATION_ORDER. Todos los bloques se normalizan/autorizan antes de escribir;
+  IDs únicos tanto crudos como normalizados. No hay referencias implícitas a entidades nuevas.
+- H4.5b1: universalPostgres ejecuta cada bloque por su adapter existente dentro de una sola
+  transacción; child IDs privados por raíz/dominio/ordinal, recibos ordenados e historia
+  común. Fallo del último bloque o del recibo padre revierte stock/cuenta/entidades y todos
+  los recibos/movimientos previos. Pago seguido de baja permite revisión financiera futura
+  explícita; invertir el orden rechaza saldo positivo. No reordena silenciosamente acciones.
+- H4.5b1: forma/hash/replay homogéneos anteriores se conservan. Hash mixto incluye bloques
+  y orden; cambiar un importe o reordenar con mismo ID es conflicto. Guard de selección
+  masiva sigue vigente. El resultado mixto expone receipts por bloque y proyección existente.
+- H4.5b1 verificado: 247 checks PG/HTTP y 75 pruebas puras; revisión independiente enfocada
+  sin hallazgos. Incluye triple dominio, concurrencia, replay tras cambios, scopes/permisos,
+  validación previa, rollback por falla tardía/SQL padre, orden y colisión. Build de b2
+  conversacional sigue vigente, sin cambios frontend aquí. Sin despliegue/LLM real.
+- H4.5b1 límites: cada recibo refleja el punto de ejecución de su bloque. Reentradas,
+  aliases a entidades recién creadas, pedidos y client.merge aún no están en esta entrada.
+  Las rutas compatibles conservan esas capacidades; no declarar intérprete/composición
+  universal completos por esta ampliación.
+
+- H4.5b2 (2026-10-17): order.create/update/delete/reconcile usan el mismo envelope universal.
+  Normalización delegada a orderOperations; cada bloque/ítem delega exclusivamente a
+  orderPostgres e Inventory Engine existentes. Permisos derivados de stock solo existen
+  en el contexto interno de pedidos: stock.withdraw público sigue prohibido.
+- H4.5b2: recibos raíz/bloque/ítem, expectedRevision, postings y reconciliación histórica
+  conservan semántica. Lotes homogéneos o mixtos son atómicos; fallos SQL del padre/bloque
+  revierten pedidos, stock, historial, ledger y recibos. Replay precede lectura del catálogo.
+- H4.5b2 verificado: 255 checks PostgreSQL/HTTP y 81 pruebas puras aprobados; revisión
+  crítica independiente sin hallazgos. Incluye concurrencia, múltiples pedidos, reversión,
+  aislamiento, permisos, revisión obsoleta y reproducción tras borrar/cambiar entidades.
+  Sin cambios frontend en este hito; build anterior sigue vigente. Sin despliegue/LLM real.
+- Pendiente: intérprete/conversación universales, familias persistentes, migración de
+  consumidores y validación H5. Este checkpoint no cierra la reingeniería completa.
+
+- H4.5c1 (2026-10-17): universalIntentInterpreter usa proveedor inyectable y salida cerrada
+  propuesta/pregunta, diferenciando invalid/unavailable. El modelo no recibe tenant/actor/
+  permisos/operationId ni puede emitir precondiciones. Backend fija revisiones/fingerprints
+  y verifica IDs ofrecidos/evidencia literal antes de validar el contrato universal.
+- H4.5c1: universal_drafts y universal_draft_commands persisten revisión, versión, digest,
+  TTL y primera respuesta por requestId/actor/negocio. Preparar no muta inventario; confirmar
+  ejecuta el mismo motor y guarda estado applied en su transacción. Replay concurrente y
+  posterior a cambios devuelve recibo original; fallo de guardado revierte todos los efectos.
+  IDs draft-operation reservados a confirmar. RLS/revocaciones agregadas a ambas tablas.
+- H4.5c1: preguntas/respuestas viajan como historial estructurado, separado del texto de
+  evidencia del usuario. Catálogo usa identidad SQL cruda y snapshot coherente, sin nombres
+  de presentación ni historial innecesario. Revisión legible se genera en backend y persiste.
+- H4.5c1 panel: chat ofrece Revisar operación; modal recupera referencia e intentos por
+  tenant/actor, conserva IDs ante respuesta incierta, muestra revisión completa, requiere
+  consentimiento nuevo tras recuperación y permite cancelar borradores vencidos. Aplicado
+  con refresco fallido muestra el resultado persistido y reintenta solo la lectura.
+- H4.5c1 verificado: 265 checks PG/HTTP, 92 pruebas puras, build y Edge universal-draft-ui
+  aprobados. Revisión independiente encontró pérdida de pregunta; corregida y probada con
+  pregunta/respuesta estructuradas que no autorizan evidencia del asistente. Identidad cruda,
+  aislamiento, CAS, rollback del estado final y replay sin proveedor incluidos.
+- H4.5c1 límites: canal WhatsApp anterior conserva adapters; entrada nueva del panel es
+  explícita. Correcciones de planes listos requieren cancelar/nuevo borrador hasta c2.
+  Selecciones masivas mantienen su flujo revisado; reentradas, aliases nuevos y pago+baja
+  dependiente se rechazan conservadoramente. Catálogo/texto acotados se rechazan completos,
+  nunca se truncan. Proveedores en pruebas simulados; no hay evaluación real ni despliegue.
+
+- H4.5c2 (2026-10-17): respuestas a revisiones listas usan patches por itemId. No permiten
+  agregar, borrar, reordenar ni cambiar tipo/ID de acciones; target y attributes se reemplazan
+  enteros, otros campos se fusionan conservando lo no corregido. Evidencia del parche debe
+  pertenecer exclusivamente a la nueva respuesta; ítems intactos conservan su evidencia.
+- H4.5c2: backend valida plan previo antes del proveedor, renueva precondiciones desde
+  snapshot coherente y genera otra revisión completa. Pregunta intermedia conserva plan,
+  evidencia y revisión anteriores, bloqueando confirmar hasta resolverla. Versión/CAS y
+  comandos inmutables serializan correcciones simultáneas y compiten seguro con confirmar.
+- H4.5c2 panel: Corregir revisión conserva borrador e intento entre recargas, exige nuevo
+  consentimiento y oculta confirmar mientras se edita. Volver a revisión consulta el estado
+  y puede abandonar solo el parche; una respuesta tardía queda protegida por versión.
+- H4.5c2 revisión independiente encontró y se corrigieron dos defectos: limpieza recursiva
+  quitaba atributos legítimos expected_lifespan y Volver a revisión quedaba atrapado tras
+  error. Ahora se quitan solo precondiciones de target/destination/reconciliation; atributos
+  expected*/source se preservan y admiten corrección. Fallos 4xx de parche liberan su intento.
+- H4.5c2 verificado: 269 checks PG/HTTP, 99 pruebas puras, build y Edge universal-draft-ui
+  aprobados, incluidos rollback de cambio de versión/comando, corrección aplicada con
+  respuesta perdida, error 422/503 sin persistir, concurrencia, cero y conservación de otros
+  ítems. Revisión final de ambos fixes sin hallazgos nuevos. Proveedores simulados.
+- H4.5c2 límites: no cambia el tipo ni la cantidad de ítems del plan mediante corrección;
+  nueva intención independiente requiere otro borrador. Familias, migración del canal
+  WhatsApp al servicio universal y evaluación real/H5 continúan pendientes.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
 - H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
 - H4.4a `844b29b`; H4.4b `bf812ee` (incluye checkpoint parcial `600373f`); H4.4c `ba251e6`.
-- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a `f34ea14`; e1b `848632c`; e1c `ffa7809`; H4.5a: ver git log.
+- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a `f34ea14`; e1b `848632c`; e1c `ffa7809`; H4.5a `bed1336`; H4.2b1 `e22a459` (usuario), cierre documental: git log.
   No volver a diseñar la política de aprovisionamiento/conciliación.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
@@ -509,6 +635,7 @@ validación de atributos; después optimización/evaluación LLM y H5 externo. N
   Edge local; APIs/proveedores simulados. Ninguna de estas pruebas valida IA real.
 - Altas: `npm run test:inventory-create-ui`; contrato y rollback incluidos en suites pura/PG.
 - Pedidos: `npm run test:order-ui`; transacciones/HTTP/Meta en test:voice-stock-postgres.
+- Ajustes de conjunto: `npm run test:stock-set-adjustment-ui`; usa preview/confirm compartidos.
 - Metadatos: `npm run test:party-create-ui`, `npm run test:party-edit-ui` y
   `npm run test:party-delete-merge-ui`; PG/HTTP incluidos en suite compartida.
 - Cuentas: `npm run test:client-account-ui`; contratos/dominio en test:inventory y PG/HTTP/Meta

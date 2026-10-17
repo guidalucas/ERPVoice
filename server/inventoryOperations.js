@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { canonicalIdentityText, normalizeAttributes, normalizeUnit, skuIdentityKey } from './inventoryDomain.js';
+import { normalizeFamilyReference, validateProductFamily } from './productFamilySchemas.js';
 
 export class InventoryOperationError extends Error {
   constructor(code, message, details = {}) { super(message); this.name = 'InventoryOperationError'; this.code = code; this.details = details; }
@@ -27,20 +28,22 @@ function integer(value, label, minimum = 0) {
   return value;
 }
 function domain(fn) {
-  try { return fn(); } catch (error) { if (error.code === 'INVALID_INVENTORY_DOMAIN') invalid(error.message); throw error; }
+  try { return fn(); } catch (error) { if (error.code === 'INVALID_INVENTORY_DOMAIN') invalid(error.message);
+    if (error.name === 'ProductFamilySchemaError') fail(error.code,error.message); throw error; }
 }
 function freeze(value) {
   if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); }
   return value;
 }
 function normalizeSku(input) {
-  const sku = record(input, ['name', 'productType', 'productModel', 'size', 'attributes', 'unit'], 'SKU');
+  const sku = record(input, ['name', 'productType', 'productModel', 'size', 'attributes', 'unit','family'], 'SKU');
   const result = { name: text(sku.name, 'SKU.name') };
   for (const field of ['productType', 'productModel', 'size']) {
     if (own(sku, field)) { if (typeof sku[field] !== 'string') invalid(`SKU.${field} must be a string`); result[field] = sku[field]; }
   }
   result.attributes = domain(() => normalizeAttributes(own(sku, 'attributes') ? sku.attributes : {}));
   result.unit = domain(() => normalizeUnit(own(sku, 'unit') ? sku.unit : 'unit'));
+  if (own(sku,'family')) result.family=domain(()=>normalizeFamilyReference(sku.family));
   productIdentity(result);
   return result;
 }
@@ -106,7 +109,7 @@ function normalizePlan(input) {
         normalized.balances = Object.fromEntries(Object.entries(balances).map(([key, value]) => [key, integer(value, `balances.${key}`)]));
       } else {
         if (own(action, 'balances')) invalid('SKU updates cannot include balances');
-        const changes = record(action.changes, ['name', 'productType', 'productModel', 'size', 'attributes', 'price', 'priceCurrency'], 'changes');
+        const changes = record(action.changes, ['name', 'productType', 'productModel', 'size', 'attributes', 'price', 'priceCurrency','family'], 'changes');
         if (!Object.keys(changes).length) invalid('SKU update requires at least one change');
         normalized.changes = {};
         for (const [key, value] of Object.entries(changes)) {
@@ -116,6 +119,7 @@ function normalizePlan(input) {
             if (typeof value !== 'string' || !/^[A-Z]{3}$/.test(value)) invalid('changes.priceCurrency must be three uppercase letters');
             normalized.changes[key] = value;
           } else if (key === 'attributes') normalized.changes[key] = domain(() => normalizeAttributes(value));
+          else if (key === 'family') normalized.changes[key]=domain(()=>normalizeFamilyReference(value));
           else {
             if (value !== null && typeof value !== 'string') invalid(`changes.${key} must be a string or null`);
             normalized.changes[key] = value;
@@ -191,13 +195,15 @@ export function productIdentity(product) {
     if (typeof value !== 'string') invalid(`${field} must be a string`);
     return canonicalIdentityText(value);
   });
-  return domain(() => skuIdentityKey({ name: JSON.stringify([canonicalIdentityText(name), ...metadata]), attributes, unit: product.unit ?? 'unit' }));
+  const identity=domain(() => skuIdentityKey({ name: JSON.stringify([canonicalIdentityText(name), ...metadata]), attributes, unit: product.unit ?? 'unit' }));
+  return product.family == null ? identity : JSON.stringify([identity,{familyId:domain(()=>normalizeFamilyReference(product.family)).id}]);
 }
 export function inventoryProductFingerprint(product) {
-  return hash({ identity: productIdentity(product), status: product.status ?? 'active' });
+  return hash({ identity: productIdentity(product), status: product.status ?? 'active',
+    ...(product.family == null ? {} : {familyVersion:domain(()=>normalizeFamilyReference(product.family)).version}) });
 }
 
-export function planInventoryOperation(input, products, { createId } = {}) {
+export function planInventoryOperation(input, products, { createId, familySchemas=[] } = {}) {
   const plan = normalizePlan(input);
   if (!Array.isArray(products)) invalid('products must be an array');
   const byId = new Map();
@@ -232,6 +238,7 @@ export function planInventoryOperation(input, products, { createId } = {}) {
       byId.set(id, product); created = true;
     }
     if ((product.status ?? 'active') !== 'active') fail('SKU_INACTIVE', 'Cannot mutate stock for an inactive SKU');
+    if (action.type!=='sku.update') domain(()=>validateProductFamily(product,familySchemas));
     const unit = domain(() => normalizeUnit(product.unit ?? 'unit'));
     if (action.type === 'sku.create') {
       Object.assign(product, { stockAvailable: action.initialStock.available, stockReserved: action.initialStock.reserved,
@@ -267,6 +274,7 @@ export function planInventoryOperation(input, products, { createId } = {}) {
         next.stockReserved = action.balances.reserved ?? beforeReserved;
       } else {
         Object.assign(next, action.changes);
+        domain(()=>validateProductFamily(next,familySchemas));
         const identity = productIdentity(next);
         if (identity !== productIdentity(product) && [...byId.values()].some((entry) => entry.id !== product.id && productIdentity(entry) === identity)) fail('DUPLICATE_SKU_IDENTITY', 'An identical SKU already exists');
       }

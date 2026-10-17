@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { InventoryOperationError, validateOperationPlan, planInventoryOperation, operationDigest } from '../server/inventoryOperations.js';
 import { productCreationToPlan } from '../server/productCreationAdapter.js';
+import { confirmedStockActionsToPlan, bindStockConsumptionAction, resolvedStockBatchToPlan } from '../server/stockOperationAdapter.js';
 
 const context = { businessId: 'create-shop', actorId: 'create-tests', permissions: ['inventory:create', 'inventory:reserve', 'inventory:receive'] };
 const attributes = { material: { state: 'known', type: 'text', value: 'acero' }, width: { state: 'known', type: 'number', value: 12, unit: 'mm' } };
@@ -9,6 +10,19 @@ const action = (extra = {}) => ({ itemId: 'new', type: 'sku.create', target: { k
 const plan = (actions = [action()]) => ({ contractVersion: 1, operationId: 'create-operation', businessId: context.businessId, actions });
 const fail = (fn, code = 'INVALID_OPERATION_PLAN') => assert.throws(fn, (error) => error instanceof InventoryOperationError && error.code === code);
 const execute = (input = plan(), products = []) => planInventoryOperation(input, products, { createId: () => 'created-sku' });
+
+test('stock adapters preserve explicit family references and never change a pinned version implicitly',()=>{
+  const family={id:'electrical',version:1},input={type:'add_stock',itemId:'incoming',productName:'Converter',unit:'unit',qty:2,attributes:{},family};
+  const adapted=confirmedStockActionsToPlan({actions:[input],products:[],ownerPhone:context.businessId,sourceText:'Ingreso',operationId:'family-adapter'});
+  assert.deepEqual(adapted.actions[0].target.sku.family,family);
+  const resolved=resolvedStockBatchToPlan({id:'family-batch',ownerPhone:context.businessId,sourceText:'Ingreso',sourceMessageId:'message',payload:{actions:[{...input,resolution:{kind:'new'}}]}});
+  assert.deepEqual(resolved.actions[0].target.sku.family,family);
+  const sku={...adapted.actions[0].target.sku,id:'family-sku',stockAvailable:4,stockReserved:0,price:0,revision:1};
+  assert.equal(bindStockConsumptionAction({...input,type:'sell'},[sku]).productId,sku.id);
+  assert.equal(bindStockConsumptionAction({...input,type:'sell',family:{...family,version:2}},[sku]),null);
+  assert.throws(()=>confirmedStockActionsToPlan({actions:[{...input,productId:sku.id,family:{...family,version:2}}],products:[sku],ownerPhone:context.businessId,sourceText:'Ingreso',operationId:'changed-family'}),{code:'SKU_FAMILY_MISMATCH'});
+  assert.throws(()=>planInventoryOperation(adapted,[],{createId:()=> 'new-family-sku'}),{code:'PRODUCT_SCHEMA_NOT_FOUND'});
+});
 
 test('creation adapter validates names before coercion and rejects hidden or foreign fields', () => {
   let coerced = false;

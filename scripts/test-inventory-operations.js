@@ -18,6 +18,7 @@ assert.equal(productIdentity(product()), productIdentity(product({ productType: 
 assert.equal(productIdentity(product({ size: 'M' })), productIdentity(product({ attributes: { size: { state: 'known', type: 'text', value: 'm' } } })));
 throws(() => productIdentity(product({ size: 'M', attributes: { size: { state: 'known', type: 'text', value: 'l' } } })), 'SKU_IDENTITY_CONFLICT');
 assert.equal(inventoryProductFingerprint(product()), inventoryProductFingerprint(product({ price: 200, stockAvailable: 20 })));
+assert.equal(inventoryProductFingerprint(product()),'77e62fce94b7c0256fb1af995fb76ce9d6cc9e8fe0acee5ec81ba898b33b8fc1');
 assert.notEqual(inventoryProductFingerprint(product()), inventoryProductFingerprint(product({ status: 'inactive' })));
 
 const input = plan([existing(), existing('two')]);

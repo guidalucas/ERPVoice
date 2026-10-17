@@ -9,7 +9,8 @@ import { validateOperationPlan, InventoryOperationError } from './inventoryOpera
 import { resolvedStockBatchToPlan, confirmedStockActionsToPlan, productUpdateActions } from './stockOperationAdapter.js';
 import { inventoryResultActions, inventoryResultReply } from './inventoryResults.js';
 import { normalizeSelectionRequest, selectionRequestDigest, buildSelectionPreview, requireReviewedUpdateSelection } from './inventorySelections.js';
-import { parseMetaDeactivationCommand, deactivationPreviewReply, metaDeactivationReceiptReply } from './inventoryMetaSelections.js';
+import { parseMetaSelectionCommand, parseMetaDeactivationCommand, metaDeactivationReceiptReply } from './inventoryMetaSelections.js';
+import { META_SELECTION_SCHEMA_SQL, prepareMetaSelectionInTransaction, processMetaSelectionInTransaction } from './inventoryMetaSelectionPostgres.js';
 import { productCreationToPlan } from './productCreationAdapter.js';
 import { ORDER_SCHEMA_SQL, orderRowToPedido, executeOrderInTransaction } from './orderPostgres.js';
 import { canonicalIdentityText } from './inventoryDomain.js';
@@ -20,6 +21,12 @@ import { validateAccountPlan } from './accountOperations.js';
 import { mergeClientsInTransaction } from './clientMergePostgres.js';
 import { UNIVERSAL_SCHEMA_SQL, executeUniversalPlanInTransaction } from './universalPostgres.js';
 import { prepareUniversalOperation } from './universalOperations.js';
+import { interpretUniversalIntent } from './universalIntentInterpreter.js';
+import { buildUniversalOperationReview } from './universalOperationReview.js';
+import { PRODUCT_FAMILY_SCHEMA_SQL, authorizeProductFamilies, loadProductFamilySchemas, publishProductFamilyInTransaction } from './productFamilyPostgres.js';
+import { UNIVERSAL_CONVERSATION_SCHEMA_SQL, authorizeUniversalConversation, normalizeDraftRequest,
+  findDraftCommand, readUniversalDraft, persistUniversalInterpretation,
+  confirmUniversalDraftInTransaction, cancelUniversalDraftInTransaction } from './universalConversationPostgres.js';
 import { PARTY_SCHEMA_SQL, executePartyPlanInTransaction, partyRowToEntity } from './partyPostgres.js';
 import { partyCreationToPlan, partyUpdateToPlan, partyDeleteToPlan, supplierMergeToPlan, validatePartyPlan } from './partyOperations.js';
 
@@ -273,6 +280,7 @@ const rowToProduct = (row) => {
   status: row.inventory_status ?? 'active',
   revision: Number(row.inventory_revision ?? 0),
   priceCurrency: row.price_currency ?? 'XXX',
+  ...(row.family_id == null ? {} : {family:{id:row.family_id,version:Number(row.family_version)}}),
   };
   return { ...normalizeProductMetadata(product), identityFingerprint: productFingerprint(product) };
 };
@@ -544,6 +552,9 @@ const initializeDatabase = async () => {
     ${ACCOUNT_SCHEMA_SQL}
     ${PARTY_SCHEMA_SQL}
     ${UNIVERSAL_SCHEMA_SQL}
+    ${UNIVERSAL_CONVERSATION_SCHEMA_SQL}
+    ${PRODUCT_FAMILY_SCHEMA_SQL}
+    ${META_SELECTION_SCHEMA_SQL}
 
     DO $$
     DECLARE
@@ -559,10 +570,15 @@ const initializeDatabase = async () => {
         'inventory_operations',
         'party_operations',
         'universal_operations',
+        'universal_drafts',
+        'universal_draft_commands',
+        'product_family_schemas',
+        'product_family_operations',
         'order_operations',
         'account_operations',
         'account_movements',
         'inventory_selections',
+        'meta_selection_commands',
         'inventory_movements',
         'meta_message_claims',
         'meta_reply_outbox',
@@ -1406,6 +1422,78 @@ export const executeUniversalOperation = async (input, context) => {
   },persistInventoryTransactions));
 };
 
+// Interpretation happens outside any SQL transaction. Only validated, frozen
+// drafts reach the existing universal executor after an explicit confirmation.
+const interpretUniversalDraft = async (text,draftId,context,options,clarifications=[],previous=null) => {
+  const catalog=await withTransaction(async client=>{
+    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const owners=[getOwnerPhoneVariants(context.businessId)],catalog={};
+    // Use stored identities, never presentation-normalized product metadata.
+    catalog.products=(await client.query("SELECT * FROM products WHERE owner_phone=ANY($1) AND inventory_status='active' ORDER BY id",owners)).rows.map(inventoryRowToProduct);
+    catalog.clients=(await client.query('SELECT * FROM clients WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToClient);
+    catalog.proveedores=(await client.query('SELECT * FROM proveedores WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToProveedor);
+    catalog.pedidos=(await client.query('SELECT * FROM pedidos WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToPedido);
+    catalog.familySchemas=await loadProductFamilySchemas(client,owners[0]);
+    return catalog;
+  });
+  const result=await interpretUniversalIntent({sourceText:text,catalog,clarifications,
+    context:{...context,internalConversationOperation:true},operationId:`draft-operation:${draftId}`,
+    ...(previous?.plan ? {revision:{plan:previous.plan,evidence:previous.evidence,replyText:text.slice(previous.text.length+1)}} : {}),
+    channel:context.channel ?? 'panel',...(options?.complete ? {complete:options.complete} : {})});
+  if (result.kind==='invalid') throw new InventoryOperationError('INTERPRETATION_INVALID','La interpretación no cumple el contrato. No apliqué cambios.',{reason:result.reason});
+  if (result.kind==='unavailable') throw new InventoryOperationError('INTERPRETATION_UNAVAILABLE','No pude interpretar la solicitud. Conservá el mensaje para reintentar.',{reason:result.reason});
+  return result.kind==='ready' ? {...result,review:buildUniversalOperationReview(result.plan,catalog)}
+    : result.plan ? {...result,review:previous.review} : result;
+};
+
+export const prepareUniversalDraft = async (input,context,options={}) => {
+  authorizeUniversalConversation(context);
+  const request=normalizeDraftRequest(input);
+  await ensureReady();
+  const prior=await withTransaction(client=>findDraftCommand(client,request,context));
+  if (prior.response) return prior.response;
+  const draftId=crypto.randomUUID();
+  const interpretation=await interpretUniversalDraft(request.text,draftId,context,options);
+  return withTransaction(client=>persistUniversalInterpretation(client,request,interpretation,context,{draftId}));
+};
+export const replyUniversalDraft = async (draftId,input,context,options={}) => {
+  authorizeUniversalConversation(context);
+  const request=normalizeDraftRequest(input,true);
+  await ensureReady();
+  const pending=await withTransaction(async client=>{
+    const command=await findDraftCommand(client,request,context,'reply',draftId);
+    if (command.response) return {response:command.response};
+    const row=await readUniversalDraft(client,draftId,context);
+    if (row.version!==request.version) throw new InventoryOperationError('DRAFT_VERSION_MISMATCH','El borrador cambió. Revisá la versión actual.');
+    if (!row.status.startsWith('awaiting_')) throw new InventoryOperationError('DRAFT_NOT_PENDING','El borrador ya tiene un resultado definitivo.');
+    if (row.expired) throw new InventoryOperationError('DRAFT_EXPIRED','El borrador venció. Prepará uno nuevo.');
+    const text=`${row.preview_json.text}\n${request.text}`;
+    if (row.version>=20 || text.length>12000) throw new InventoryOperationError('INVALID_DRAFT_REQUEST','La conversación excede el límite. Prepará un borrador nuevo.');
+    return {text,previous:row.preview_json,clarifications:[...(row.preview_json.clarifications ?? []),
+      ...(row.preview_json.question ? [{question:row.preview_json.question,answer:request.text}] : [])]};
+  });
+  if (pending.response) return pending.response;
+  const interpretation=await interpretUniversalDraft(pending.text,draftId,context,options,pending.clarifications,pending.previous);
+  return withTransaction(client=>persistUniversalInterpretation(client,request,interpretation,context,{draftId,reply:true}));
+};
+export const getUniversalDraft = async (draftId,context) => {
+  authorizeUniversalConversation(context); await ensureReady();
+  return withTransaction(async client=>{
+    const row=await readUniversalDraft(client,draftId,context);
+    if (row.preview_json.plan) prepareUniversalOperation(row.preview_json.plan,{...context,internalConversationOperation:true});
+    return row.preview_json;
+  });
+};
+export const confirmUniversalDraft = async (draftId,input,context) => {
+  authorizeUniversalConversation(context); await ensureReady();
+  return withTransaction(client=>confirmUniversalDraftInTransaction(client,draftId,input,
+    {...context,ownerPhoneVariants:getOwnerPhoneVariants(context.businessId)},persistInventoryTransactions));
+};
+export const cancelUniversalDraft = async (draftId,input,context) => {
+  authorizeUniversalConversation(context); await ensureReady();
+  return withTransaction(client=>cancelUniversalDraftInTransaction(client,draftId,input,context));
+};
+
 export const executeInventoryOperation = async (plan, context) => {
   const normalized = validateOperationPlan(plan, context);
   await ensureReady();
@@ -1418,17 +1506,25 @@ export const executeInventoryOperation = async (plan, context) => {
   });
 };
 
+export const publishProductFamily = async (input,context) => {
+  authorizeProductFamilies(context,true); await ensureReady();
+  return withTransaction(client=>publishProductFamilyInTransaction(client,input,context));
+};
+export const listProductFamilies = async context => {
+  authorizeProductFamilies(context); await ensureReady();
+  return withTransaction(client=>loadProductFamilySchemas(client,getOwnerPhoneVariants(context.businessId)));
+};
+
 const authorizeInventorySelection = (context, mutationType = 'sku.update') => validateOperationPlan({ contractVersion: 1,
   businessId: context?.businessId, operationId: 'selection-authorization',
   actions: [{ itemId: 'authorization', type: mutationType, target: { kind: 'existing', skuId: 'authorization', expectedRevision: 0 },
     ...(mutationType === 'sku.update' ? { changes: { price: 0 } } : mutationType === 'stock.adjust' ? {balances:{available:0}} : {}), reason: 'Authorization only' }],
 }, context);
 
-export const previewInventorySelection = async (input, context) => {
+const previewInventorySelectionInTransaction = async (client,input,context) => {
   const request = normalizeSelectionRequest(input), requestHash = selectionRequestDigest(request);
-  authorizeInventorySelection(context, request.mutation.type);
-  await ensureReady();
-  return withTransaction(async (client) => {
+  authorizeInventorySelection(context,request.mutation.type);
+
     const scope = [context.businessId, context.actorId, request.requestId];
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify(['selection-preview', ...scope])]);
     const existing = await queryRow('SELECT request_hash,preview_json FROM inventory_selections WHERE owner_phone=$1 AND actor_id=$2 AND request_id=$3', scope, client);
@@ -1441,19 +1537,28 @@ export const previewInventorySelection = async (input, context) => {
     // Keep raw persisted metadata; presentation normalization cannot select another identity.
     const products = rows.rows.map(inventoryRowToProduct);
     const expiresAt = (await client.query("SELECT NOW() + INTERVAL '15 minutes' AS expires_at")).rows[0].expires_at.toISOString();
-    const { preview, plan } = buildSelectionPreview(request, products, { ...context, selectionId: `selection-${crypto.randomUUID()}`, expiresAt });
+    const usesFamilies=products.some(product=>product.family)||request.mutation.changes?.family;
+    const familySchemas=usesFamilies ? await loadProductFamilySchemas(client,getOwnerPhoneVariants(context.businessId)) : [];
+    const { preview, plan } = buildSelectionPreview(request, products, { ...context, familySchemas,selectionId: `selection-${crypto.randomUUID()}`, expiresAt });
     await client.query(`INSERT INTO inventory_selections (owner_phone,selection_id,request_id,actor_id,request_hash,preview_json,plan_json,expires_at)
       VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8)`,
     [context.businessId,preview.selectionId,request.requestId,context.actorId,requestHash,JSON.stringify(preview),JSON.stringify(plan),expiresAt]);
     return preview;
-  });
+
 };
 
-export const confirmInventorySelection = async (selectionId, digest, context, options = {}) => {
+export const previewInventorySelection = async (input,context) => {
+  const request = normalizeSelectionRequest(input);
+  authorizeInventorySelection(context,request.mutation.type);
+  if (/^meta-(?:selection|deactivate):/.test(request.requestId)) throw new InventoryOperationError('FORBIDDEN','Las selecciones conversacionales se preparan desde el mensaje original.');
+  await ensureReady();
+  return withTransaction((client) => previewInventorySelectionInTransaction(client,request,context));
+};
+
+const confirmInventorySelectionInTransaction = async (client,selectionId,digest,context,options = {}) => {
   if (!context || !context.businessId || !context.actorId) throw new InventoryOperationError('BUSINESS_SCOPE_REQUIRED', 'Falta el contexto autorizado de negocio y actor.');
   if (typeof selectionId !== 'string' || !selectionId.trim() || typeof digest !== 'string' || !digest.trim()) throw new InventoryOperationError(options.requireReference ? 'SELECTION_REQUIRED' : 'SELECTION_CONFIRMATION_MISMATCH', 'Falta la confirmación de la selección revisada.');
-  await ensureReady();
-  return withTransaction(async (client) => {
+
     const selected = await queryRow(`SELECT *,expires_at <= NOW() AS expired FROM inventory_selections
       WHERE owner_phone=$1 AND selection_id=$2 AND actor_id=$3 FOR UPDATE`, [context.businessId,selectionId,context.actorId], client);
     if (!selected) throw new InventoryOperationError('SELECTION_NOT_FOUND', 'La selección no está disponible para esta sesión.');
@@ -1462,7 +1567,7 @@ export const confirmInventorySelection = async (selectionId, digest, context, op
     if (options.mutationType && plan.actions.some((action) => action.type !== options.mutationType)) throw new InventoryOperationError('SELECTION_OPERATION_MISMATCH', 'La selección revisada corresponde a otra operación.');
     if (options.skuIds && (plan.actions.length !== options.skuIds.length || plan.actions.some((action) => !options.skuIds.includes(action.target.skuId)))) throw new InventoryOperationError('SELECTION_SCOPE_MISMATCH', 'La selección no corresponde a los SKU de esta operación.');
     validateOperationPlan(plan, context);
-    if (selected.cancelled_at) throw new InventoryOperationError('SELECTION_CANCELLED', 'La baja fue cancelada. Pedí una nueva selección antes de confirmar.');
+    if (selected.cancelled_at) throw new InventoryOperationError('SELECTION_CANCELLED', 'La selección fue cancelada. Pedí una nueva selección antes de confirmar.');
     let result;
     if (selected.status === 'applied') result = parseJsonValue(selected.result_json);
     else {
@@ -1474,58 +1579,42 @@ export const confirmInventorySelection = async (selectionId, digest, context, op
     if (options.messageId && options.recipient) await client.query(`INSERT INTO meta_reply_outbox(event_id,recipient,reply_text) VALUES($1,$2,$3) ON CONFLICT(event_id) DO NOTHING`,
       [options.messageId,normalizePhone(options.recipient),options.mutationType === 'sku.deactivate' ? metaDeactivationReceiptReply(result) : inventoryResultReply(result)]);
     return result;
-  });
+
 };
 
-/** Conversation adapter only: execution always confirms the persisted universal plan. */
-export const prepareMetaDeactivation = async ({ actions, sourceText, messageId, ownerPhone, senderPhone }) => {
+export const confirmInventorySelection = async (selectionId,digest,context,options = {}) => {
+  if (!context || !context.businessId || !context.actorId) throw new InventoryOperationError('BUSINESS_SCOPE_REQUIRED','Falta el contexto autorizado.');
   await ensureReady();
-  const context = { businessId: normalizeOwnerPhone(ownerPhone), actorId: normalizePhone(senderPhone), permissions: ['inventory:deactivate'] };
-  const requestId = `meta-deactivate:${messageId}`;
-  const stored = await queryRow('SELECT preview_json FROM inventory_selections WHERE owner_phone=$1 AND actor_id=$2 AND request_id=$3',
-    [context.businessId,context.actorId,requestId]);
-  let preview = stored ? parseJsonValue(stored.preview_json) : null;
-  if (!preview) {
-    if (!actions.length || actions.some((action) => action.type !== 'delete_product')) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION', 'La baja necesita una selección independiente; no apliqué el lote mixto.');
-    const all = actions.length === 1 && actions[0].productName === '*';
-    if (!all && actions.some((action) => typeof action.productId !== 'string' || !action.productId.trim())) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Falta identificar los SKU que querés dar de baja.');
-    preview = await previewInventorySelection({ requestId,
-      selector: all ? { kind: 'all' } : { kind: 'ids', skuIds: [...new Set(actions.map((action) => action.productId))] },
-      mutation: { type: 'sku.deactivate', reason: sourceText },
-    }, context);
-  }
-  return { replyText: deactivationPreviewReply(preview), pendingSelection: true, actions: [], selectionId: preview.selectionId };
+  return withTransaction((client) => confirmInventorySelectionInTransaction(client,selectionId,digest,context,options));
 };
 
-export const processMetaDeactivationCommand = async ({ sourceText, messageId, ownerPhone, senderPhone }) => {
-  const command = parseMetaDeactivationCommand(sourceText);
+const metaSelectionContext = ({ownerPhone,senderPhone}) => ({businessId:normalizeOwnerPhone(ownerPhone),actorId:normalizePhone(senderPhone),
+  permissions:['inventory:deactivate','inventory:update','inventory:adjust']});
+
+export const prepareMetaInventorySelection = async (input) => {
+  await ensureReady();
+  return withTransaction((client) => prepareMetaSelectionInTransaction(client,input,metaSelectionContext(input),previewInventorySelectionInTransaction));
+};
+
+export const resumeMetaInventorySelection = async (input) => {
+  const result = await prepareMetaInventorySelection({...input,resumeOnly:true});
+  if (!result) return null;
+  return {...result,handled:true,requiresConfirmation:true};
+};
+
+export const prepareMetaDeactivation = async (input) => {
+  if (!Array.isArray(input.actions) || input.actions.some((action) => action.type !== 'delete_product')) throw new InventoryOperationError('UNSUPPORTED_MIXED_OPERATION','La baja necesita una selección independiente.');
+  return prepareMetaInventorySelection(input);
+};
+
+export const processMetaInventorySelectionCommand = async (input) => {
+  const command = parseMetaSelectionCommand(input.sourceText);
   if (!command) return null;
   await ensureReady();
-  const context = { businessId: normalizeOwnerPhone(ownerPhone), actorId: normalizePhone(senderPhone), permissions: ['inventory:deactivate'] };
-  try {
-    const candidates = await queryRows(`SELECT selection_id,preview_json FROM inventory_selections
-      WHERE owner_phone=$1 AND actor_id=$2 AND request_id LIKE 'meta-deactivate:%'
-      AND left(preview_json->>'digest',8)=$3`, [context.businessId,context.actorId,command.code]);
-    if (candidates.length !== 1) throw new InventoryOperationError('SELECTION_NOT_FOUND', 'No encontré una baja con ese código para este negocio y remitente. Pedí una nueva selección.');
-    const selected = candidates[0], preview = parseJsonValue(selected.preview_json);
-    if (!command.confirm) {
-      await withTransaction(async (client) => {
-        const row = await queryRow('SELECT status FROM inventory_selections WHERE owner_phone=$1 AND selection_id=$2 AND actor_id=$3 FOR UPDATE',
-          [context.businessId,selected.selection_id,context.actorId], client);
-        if (row.status === 'applied') throw new InventoryOperationError('SELECTION_ALREADY_APPLIED', 'La baja ya estaba aplicada. El historial conserva el recibo.');
-        await client.query('UPDATE inventory_selections SET cancelled_at=COALESCE(cancelled_at,NOW()) WHERE owner_phone=$1 AND selection_id=$2', [context.businessId,selected.selection_id]);
-        await client.query('INSERT INTO meta_reply_outbox(event_id,recipient,reply_text) VALUES($1,$2,$3) ON CONFLICT(event_id) DO NOTHING', [messageId,context.actorId,'Baja cancelada. No desactivé ningún SKU.']);
-      });
-      return { handled: true, intent: 'delete_product', requiresConfirmation: false, replyText: 'Baja cancelada. No desactivé ningún SKU.', actions: [] };
-    }
-    const result = await confirmInventorySelection(selected.selection_id, preview.digest, context,
-      { mutationType: 'sku.deactivate', messageId, recipient: context.actorId });
-    return { handled: true, intent: 'delete_product', requiresConfirmation: false, replyText: metaDeactivationReceiptReply(result), actions: inventoryResultActions(result), operationResult: result };
-  } catch (error) {
-    if (error.name !== 'InventoryOperationError') throw error;
-    return { handled: true, intent: 'delete_product', requiresConfirmation: false, replyText: error.message, actions: [], errorCode: error.code };
-  }
+  return withTransaction((client) => processMetaSelectionInTransaction(client,input,command,metaSelectionContext(input),confirmInventorySelectionInTransaction));
 };
+
+export const processMetaDeactivationCommand = async (input) => parseMetaDeactivationCommand(input.sourceText) ? processMetaInventorySelectionCommand(input) : null;
 
 // All channels read the same persisted snapshot; storage failures are never empty inventory.
 export const getStateSnapshot = (ownerPhone = DEFAULT_OWNER_PHONE) => getStateSnapshotStrict(ownerPhone);

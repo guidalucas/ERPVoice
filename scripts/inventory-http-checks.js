@@ -144,7 +144,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(invalid.status, 400); assert.equal(invalid.json.code, 'INVALID_OPERATION_PLAN');
       assert.equal((await ledger('http-foreign')).length, 0); assert.equal((await ledger('http-invalid')).length, 0);
     });
-    await run('universal endpoint authenticates business scope and rejects malformed, unsupported and mixed plans', async () => {
+    await run('universal endpoint authenticates business scope and rejects malformed, unsupported and reentrant plans', async () => {
       const body = plan('http-universal-contract', [{ itemId: 'party', type: 'client.create', name: 'HTTP Universal Contrato' }]);
       const before = (await sql.query('SELECT * FROM universal_operations WHERE owner_phone=$1 ORDER BY operation_id', [owner])).rows;
       assert.equal((await request('/api/operations', { body, auth: false })).status, 401);
@@ -152,12 +152,12 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(foreign.status, 403); assert.equal(foreign.json.code, 'BUSINESS_SCOPE_MISMATCH');
       const missing = await request('/api/operations', { body: { ...body, operationId: undefined } });
       assert.equal(missing.status, 400); assert.equal(missing.json.code, 'OPERATION_ID_REQUIRED');
-      for (const extra of [{ contractVersion: 2 }, { ownerPhone: 'foreign' }, { actions: [] }, { actions: [{ itemId: 'unknown', type: 'client_order' }] }, { actions: [{ itemId: 'merge', type: 'client.merge' }] }]) {
+      for (const extra of [{ contractVersion: 2 }, { ownerPhone: 'foreign' }, { actions: [] }, { actions: [{ itemId: 'unknown', type: 'order.unknown' }] }, { actions: [{ itemId: 'merge', type: 'client.merge' }] }]) {
         const invalid = await request('/api/operations', { body: { ...body, ...extra } });
         assert.equal(invalid.status, 400); assert.equal(invalid.json.code, 'INVALID_OPERATION_PLAN');
       }
-      const mixed = await request('/api/operations', { body: { ...body, actions: [...body.actions, fresh] } });
-      assert.equal(mixed.status, 400); assert.equal(mixed.json.code, 'MIXED_OPERATION_PLAN_UNSUPPORTED');
+      const mixed = await request('/api/operations', { body: { ...body, actions: [...body.actions, fresh, { itemId: 'party-again', type: 'client.create', name: 'Reentrada inválida' }] } });
+      assert.equal(mixed.status, 400); assert.equal(mixed.json.code, 'UNSUPPORTED_OPERATION_ORDER');
       assert.deepEqual((await sql.query('SELECT * FROM universal_operations WHERE owner_phone=$1 ORDER BY operation_id', [owner])).rows, before);
       assert.equal((await sql.query("SELECT 1 FROM clients WHERE owner_phone=$1 AND name='HTTP Universal Contrato'", [owner])).rowCount, 0);
     });
@@ -204,6 +204,181 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(staleAccount.status, 409); assert.equal(staleAccount.json.code, 'ACCOUNT_REVISION_MISMATCH');
       const conflict = await request('/api/operations', { body: { ...charge, actions: [{ ...charge.actions[0], amount: { value: 11, unit: 'legacy-money' } }] } });
       assert.equal(conflict.status, 409); assert.equal(conflict.json.code, 'IDEMPOTENCY_CONFLICT');
+    });
+    await run('universal mixed HTTP blocks commit ordered receipts once and roll back earlier stock on later account failure', async () => {
+      const product = await createHttpFixtureProduct({ name: 'HTTP Composición Stock', stockAvailable: 2, price: 90 }, owner);
+      const customer = await createFixtureClient({ name: 'HTTP Composición Cuenta' }, owner);
+      const receive = { itemId: 'stock', type: 'stock.receive', target: { kind: 'existing', skuId: product.id }, quantity: { value: 3, unit: 'unit' } };
+      const charge = { itemId: 'money', type: 'account.charge', target: { kind: 'existing', clientId: customer.id }, amount: { value: 7, unit: 'legacy-money' }, reason: 'Cargo explícito junto al stock' };
+      const body = plan('http-universal-composition', [receive, charge]);
+      const [one, two] = await Promise.all([request('/api/operations', { body }), request('/api/operations', { body })]);
+      assert.equal(one.status, 200); assert.equal(two.status, 200); assert.deepEqual(one.json, two.json);
+      assert.equal(one.json.domain, 'mixed'); assert.equal(one.json.operationId, body.operationId);
+      assert.deepEqual(one.json.receipts.map(({ items }) => items[0].type), ['stock.receive', 'account.charge']);
+      assert.equal(Number((await stock(product.id))[0].stock_available), 5);
+      const accountRow = async () => (await sql.query('SELECT debt,account_revision FROM clients WHERE owner_phone=$1 AND id=$2', [owner, customer.id])).rows[0];
+      assert.deepEqual(Object.values(await accountRow()).map(Number), [7, 1]);
+      const roots = (await sql.query('SELECT result_json FROM universal_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, body.operationId])).rows;
+      assert.equal(roots.length, 1); assert.deepEqual(roots[0].result_json, one.json);
+      for (const [index, table] of ['inventory_operations', 'account_operations'].entries()) {
+        const child = one.json.receipts[index]; assert.ok(child.operationId.startsWith('universal-child:'));
+        assert.deepEqual((await sql.query(`SELECT result_json FROM ${table} WHERE owner_phone=$1 AND operation_id=$2`, [owner, child.operationId])).rows[0].result_json, child);
+        if (index === 0) assert.equal((await sql.query('SELECT 1 FROM transactions WHERE owner_phone=$1 AND batch_id=$2', [owner, `${owner}:${child.operationId}`])).rowCount, 1);
+        else {
+          const historyId = `account-${crypto.createHash('sha256').update(JSON.stringify([owner, child.operationId, child.items[0].itemId])).digest('hex')}`;
+          assert.equal((await sql.query('SELECT 1 FROM transactions WHERE owner_phone=$1 AND id=$2', [owner, historyId])).rowCount, 1);
+        }
+      }
+      assert.equal((await ledger(one.json.receipts[0].operationId)).length, 1);
+      assert.equal((await sql.query('SELECT 1 FROM account_movements WHERE owner_phone=$1 AND operation_id=$2', [owner, one.json.receipts[1].operationId])).rowCount, 1);
+      const collision = await request('/api/operations', { body: { ...body, actions: [receive, { ...charge, amount: { value: 8, unit: 'legacy-money' } }] } });
+      assert.equal(collision.status, 409); assert.equal(collision.json.code, 'IDEMPOTENCY_CONFLICT');
+      const paid = await request('/api/operations', { body: plan('http-universal-composition-later-payment', [{ ...charge, type: 'account.payment', amount: { value: 2, unit: 'legacy-money' } }]) });
+      assert.equal(paid.status, 200); assert.equal(Number((await accountRow()).debt), 5);
+      assert.deepEqual((await request('/api/operations', { body })).json, one.json);
+      const persisted = async () => {
+        const result = {};
+        for (const table of ['products', 'clients', 'universal_operations', 'inventory_operations', 'account_operations', 'inventory_movements', 'account_movements', 'transactions']) result[table] = (await sql.query(`SELECT * FROM ${table} WHERE owner_phone=$1 ORDER BY 1`, [owner])).rows;
+        return result;
+      };
+      const before = await persisted();
+      const failed = await request('/api/operations', { body: plan('http-universal-composition-late-failure', [receive, { ...charge, type: 'account.payment', amount: { value: 6, unit: 'legacy-money' } }]) });
+      assert.equal(failed.status, 409); assert.equal(failed.json.code, 'PAYMENT_EXCEEDS_DEBT'); assert.deepEqual(await persisted(), before);
+    });
+    await run('universal orders HTTP creates, updates and deletes with exact stock receipts and frozen concurrent replay', async () => {
+      const customer = await createFixtureClient({ name: 'HTTP Pedido Universal Cliente' }, owner);
+      const product = await createHttpFixtureProduct({ name: 'HTTP Pedido Universal SKU', stockAvailable: 0, stockReserved: 2 }, owner);
+      const action = { itemId: 'order', type: 'order.create', order: { clienteId: customer.id, producto: 'Etiqueta pedido universal HTTP', productId: product.id, qty: 3, estado: 'conseguido' } };
+      const body = plan('http-universal-order-create', [action]);
+      const [one, two] = await Promise.all([request('/api/operations', { body }), request('/api/operations', { body })]);
+      assert.equal(one.status, 200); assert.equal(two.status, 200); assert.deepEqual(one.json, two.json); assert.equal(one.json.domain, 'orders');
+      const block = one.json.domainResult, created = block.receipts[0]; assert.equal(created.itemId, 'order');
+      assert.equal(created.inventoryResult.items[0].type, 'stock.receive'); assert.deepEqual(created.pedido.stockPosting, { skuId: product.id, quantity: 3, unit: 'unit' });
+      assert.deepEqual((await sql.query('SELECT result_json FROM universal_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, body.operationId])).rows[0].result_json, one.json);
+      assert.deepEqual((await sql.query('SELECT result_json FROM order_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, block.operationId])).rows[0].result_json, block);
+      assert.equal((await ledger(created.inventoryResult.operationId)).length, 1);
+      assert.deepEqual([Number((await stock(product.id))[0].stock_available), Number((await stock(product.id))[0].stock_reserved)], [3, 2]);
+      const target = (pedido) => ({ kind: 'existing', pedidoId: pedido.id, expectedRevision: pedido.revision });
+      const updated = await request('/api/operations', { body: plan('http-universal-order-update', [{ itemId: 'update', type: 'order.update', target: target(created.pedido), changes: { qty: 5 } }]) });
+      assert.equal(updated.status, 200); const changed = updated.json.domainResult.receipts[0].pedido;
+      assert.equal(changed.revision, 1); assert.equal(Number((await stock(product.id))[0].stock_available), 5);
+      const deletedBody = plan('http-universal-order-delete', [{ itemId: 'delete', type: 'order.delete', target: target(changed) }]);
+      const deleted = await request('/api/operations', { body: deletedBody }); assert.equal(deleted.status, 200);
+      assert.equal(deleted.json.domainResult.receipts[0].deleted, true); assert.equal(deleted.json.domainResult.receipts[0].inventoryResult.items[0].type, 'stock.withdraw');
+      assert.deepEqual([Number((await stock(product.id))[0].stock_available), Number((await stock(product.id))[0].stock_reserved)], [0, 2]);
+      assert.equal((await sql.query('SELECT 1 FROM pedidos WHERE owner_phone=$1 AND id=$2', [owner, changed.id])).rowCount, 0);
+      assert.deepEqual((await request('/api/operations', { body })).json, one.json);
+      assert.deepEqual((await request('/api/operations', { body: deletedBody })).json, deleted.json);
+      const before = (await sql.query('SELECT * FROM order_operations WHERE owner_phone=$1 ORDER BY operation_id', [owner])).rows;
+      const unbound = await request('/api/operations', { body: plan('http-universal-order-unbound', [{ ...action, order: { ...action.order, productId: null } }]) });
+      assert.equal(unbound.status, 409); assert.equal(unbound.json.code, 'SKU_SELECTION_REQUIRED');
+      const mixed = await request('/api/operations', { body: plan('http-universal-order-raw-withdraw', [action, { itemId: 'withdraw', type: 'stock.withdraw', target: { kind: 'existing', skuId: product.id }, quantity: { value: 1, unit: 'unit' }, reason: 'Retiro explícito' }]) });
+      assert.equal(mixed.status, 403); assert.equal(mixed.json.code, 'FORBIDDEN');
+      assert.deepEqual((await sql.query('SELECT * FROM order_operations WHERE owner_phone=$1 ORDER BY operation_id', [owner])).rows, before);
+      assert.equal(Number((await stock(product.id))[0].stock_available), 0);
+    });
+    await run('draft HTTP validates auth/body and reports unavailable interpretation without persisting mutations', async () => {
+      const snapshot = async () => {
+        const result = {};
+        for (const table of ['products', 'clients', 'pedidos', 'universal_operations', 'universal_drafts', 'universal_draft_commands', 'inventory_operations', 'account_operations', 'inventory_movements', 'account_movements', 'transactions']) result[table] = (await sql.query(`SELECT * FROM ${table} WHERE owner_phone=$1 ORDER BY 1,2`, [owner])).rows;
+        return result;
+      };
+      const before = await snapshot(), body = { requestId: 'http-draft-unavailable', text: 'Ingresaron tres unidades del producto existente.' };
+      assert.equal((await request('/api/operation-drafts', { body, auth: false })).status, 401);
+      const invalid = await request('/api/operation-drafts', { body: { ...body, text: '' } });
+      assert.equal(invalid.status, 400); assert.equal(invalid.json.code, 'INVALID_DRAFT_REQUEST');
+      const unavailable = await request('/api/operation-drafts', { body });
+      assert.equal(unavailable.status, 503); assert.equal(unavailable.json.code, 'INTERPRETATION_UNAVAILABLE'); assert.deepEqual(await snapshot(), before);
+    });
+    await run('draft HTTP reads exact preview, forbids plan bypass and isolates concurrent confirmation with immutable replay', async () => {
+      const product = await createHttpFixtureProduct({ name: 'HTTP Draft SKU', stockAvailable: 2 }, owner), customer = await createFixtureClient({ name: 'HTTP Draft Cuenta' }, owner);
+      const text = 'Ingresaron tres unidades y cargá siete a la cuenta.';
+      const actions = [{ itemId: 'stock', type: 'stock.receive', target: { kind: 'existing', skuId: product.id }, quantity: { value: 3, unit: 'unit' } },
+        { itemId: 'money', type: 'account.charge', target: { kind: 'existing', clientId: customer.id }, amount: { value: 7, unit: 'legacy-money' }, reason: 'Cargo explícito' }];
+      const ctx = { businessId: owner, actorId: owner, channel: 'panel', permissions: ['inventory:receive', 'accounts:charge'] };
+      const preview = await db.prepareUniversalDraft({ requestId: 'http-draft-ready', text }, ctx, { complete: async () => ({ ok: true, json: { contractVersion: 1, kind: 'proposal', actions, evidence: actions.map(({ itemId }) => ({ itemId, quote: text })) } }) });
+      const route = `/api/operation-drafts/${preview.draftId}`, body = { version: preview.version, digest: preview.digest };
+      const fetched = await request(route, { method: 'GET' }); assert.equal(fetched.status, 200); assert.deepEqual(fetched.json, preview);
+      assert.equal((await request(route, { method: 'GET', auth: false })).status, 401);
+      const foreignHeaders = { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000516' })}` };
+      for (const [path, method] of [[route, 'GET'], [`${route}/confirm`, 'POST'], [`${route}/cancel`, 'POST']]) {
+        const foreign = await request(path, { method, ...(method === 'POST' ? { body } : {}), headers: foreignHeaders }); assert.equal(foreign.status, 404); assert.equal(foreign.json.code, 'DRAFT_NOT_FOUND');
+      }
+      const bypass = await request('/api/operations', { body: preview.plan }); assert.equal(bypass.status, 403); assert.equal(bypass.json.code, 'FORBIDDEN');
+      assert.equal(Number((await stock(product.id))[0].stock_available), 2);
+      const [one, two] = await Promise.all([request(`${route}/confirm`, { body }), request(`${route}/confirm`, { body })]);
+      assert.equal(one.status, 200); assert.equal(two.status, 200); assert.deepEqual(one.json, two.json); assert.equal(one.json.status, 'applied'); assert.equal(one.json.result.domain, 'mixed');
+      assert.deepEqual(one.json.result.receipts.map(({ items }) => items[0].type), ['stock.receive', 'account.charge']);
+      assert.equal(Number((await stock(product.id))[0].stock_available), 5); assert.equal(Number((await sql.query('SELECT debt FROM clients WHERE owner_phone=$1 AND id=$2', [owner, customer.id])).rows[0].debt), 7);
+      assert.deepEqual((await sql.query('SELECT result_json FROM universal_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, preview.plan.operationId])).rows[0].result_json, one.json.result);
+      const inventoryId = one.json.result.receipts[0].operationId, accountId = one.json.result.receipts[1].operationId;
+      assert.equal((await ledger(inventoryId)).length, 1); assert.equal((await sql.query('SELECT 1 FROM account_movements WHERE owner_phone=$1 AND operation_id=$2', [owner, accountId])).rowCount, 1);
+      await sql.query('UPDATE products SET price=123,inventory_revision=inventory_revision+1 WHERE owner_phone=$1 AND id=$2', [owner, product.id]);
+      const storedDraft = (await sql.query('SELECT preview_json FROM universal_drafts WHERE owner_phone=$1 AND draft_id=$2', [owner, preview.draftId])).rows[0].preview_json;
+      assert.deepEqual(storedDraft, one.json); assert.deepEqual((await request(`${route}/confirm`, { body })).json, one.json);
+      assert.equal((await ledger(inventoryId)).length, 1); assert.equal((await sql.query('SELECT 1 FROM account_movements WHERE owner_phone=$1 AND operation_id=$2', [owner, accountId])).rowCount, 1);
+    });
+    await run('draft HTTP rejects stale clarification reply before provider access and cancellation prevents confirmation', async () => {
+      const ctx = { businessId: owner, actorId: owner, channel: 'panel', permissions: ['inventory:receive'] };
+      const preview = await db.prepareUniversalDraft({ requestId: 'http-draft-clarification', text: 'Recibí mercadería.' }, ctx, { complete: async () => ({ ok: true, json: { contractVersion: 1, kind: 'clarification', question: '¿Cuántas unidades?' } }) });
+      const route = `/api/operation-drafts/${preview.draftId}`, body = { version: preview.version, digest: preview.digest };
+      const before = (await sql.query('SELECT * FROM universal_draft_commands WHERE owner_phone=$1 ORDER BY request_id', [owner])).rows;
+      const stale = await request(`${route}/replies`, { body: { requestId: 'http-draft-stale-reply', text: 'Tres unidades.', version: preview.version + 1 } });
+      assert.equal(stale.status, 409); assert.equal(stale.json.code, 'DRAFT_VERSION_MISMATCH');
+      assert.deepEqual((await sql.query('SELECT * FROM universal_draft_commands WHERE owner_phone=$1 ORDER BY request_id', [owner])).rows, before);
+      const cancelled = await request(`${route}/cancel`, { body }); assert.equal(cancelled.status, 200); assert.equal(cancelled.json.status, 'cancelled');
+      assert.deepEqual((await request(`${route}/cancel`, { body })).json, cancelled.json);
+      const confirm = await request(`${route}/confirm`, { body }); assert.equal(confirm.status, 409); assert.equal(confirm.json.code, 'DRAFT_NOT_PENDING');
+      const reply = await request(`${route}/replies`, { body: { requestId: 'http-draft-after-cancel', text: 'Tres unidades.', version: preview.version } }); assert.equal(reply.status, 409); assert.equal(reply.json.code, 'DRAFT_NOT_PENDING');
+      assert.deepEqual((await request(route, { method: 'GET' })).json, cancelled.json);
+    });
+    await run('family HTTP publication authenticates, isolates tenants and serializes immutable version receipts', async () => {
+      const schema = { name: 'HTTP Componentes', unit: 'unit', attributes: { voltage: { type: 'number', required: true, unit: 'v', values: [12, 24] }, direction: { type: 'text', required: true, values: ['entrada', 'salida'] } }, allowAdditionalAttributes: false };
+      const body = { operationId: 'http-family-publication', familyId: 'http-family-auth', expectedVersion: 0, schema };
+      assert.equal((await request('/api/inventory/families', { method: 'GET', auth: false })).status, 401);
+      assert.equal((await request('/api/inventory/families', { body, auth: false })).status, 401);
+      const override = await request('/api/inventory/families', { body: { ...body, businessId: '59899000517' } }); assert.equal(override.status, 400); assert.equal(override.json.code, 'INVALID_PRODUCT_SCHEMA');
+      const [one, two] = await Promise.all([request('/api/inventory/families', { body }), request('/api/inventory/families', { body })]);
+      assert.equal(one.status, 200); assert.equal(two.status, 200); assert.deepEqual(one.json, two.json); assert.equal(one.json.family.version, 1);
+      const listed = await request('/api/inventory/families', { method: 'GET' }); assert.equal(listed.status, 200); assert.deepEqual(listed.json.families.find(({ familyId }) => familyId === body.familyId), one.json.family);
+      const foreignHeaders = { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000517' })}` };
+      const foreign = await request('/api/inventory/families', { method: 'GET', headers: foreignHeaders }); assert.equal(foreign.status, 200); assert.equal(foreign.json.families.some(({ familyId }) => familyId === body.familyId), false);
+      const stale = await request('/api/inventory/families', { body: { ...body, operationId: 'http-family-stale-version' } }); assert.equal(stale.status, 409); assert.equal(stale.json.code, 'PRODUCT_SCHEMA_VERSION_MISMATCH');
+      assert.equal((await sql.query('SELECT 1 FROM product_family_schemas WHERE owner_phone=$1 AND family_id=$2', [owner, body.familyId])).rowCount, 1);
+      assert.deepEqual((await sql.query('SELECT result_json FROM product_family_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, body.operationId])).rows[0].result_json, one.json);
+    });
+    await run('family HTTP SKU creation and explicit metadata upgrade preserve schema validation and exact persisted family', async () => {
+      const schema = { name: 'HTTP Electrónica validada', unit: 'unit', attributes: { voltage: { type: 'number', required: true, unit: 'v', values: [12, 24] }, direction: { type: 'text', required: true, values: ['entrada', 'salida'] } }, allowAdditionalAttributes: false };
+      const publication = { operationId: 'http-family-sku-publish', familyId: 'http-family-sku', expectedVersion: 0, schema };
+      const first = await request('/api/inventory/families', { body: publication }); assert.equal(first.status, 200);
+      const attributes = { voltage: { type: 'number', state: 'known', value: 12, unit: 'v' }, direction: { type: 'text', state: 'known', value: 'entrada' } };
+      const action = { itemId: 'create', type: 'sku.create', target: { kind: 'new', sku: { name: 'HTTP Componente familia', unit: 'unit', family: { id: publication.familyId, version: 1 }, attributes } }, initialStock: { available: 3, reserved: 0 }, reason: 'Alta explícita de familia HTTP' };
+      const created = await request('/api/operations', { body: plan('http-family-sku-create', [action]) }); assert.equal(created.status, 200);
+      const item = created.json.domainResult.items[0], skuId = item.skuId; assert.deepEqual(item.product.family, action.target.sku.family);
+      const familyRow = async () => {
+        const row = (await sql.query('SELECT family_id,family_version,inventory_revision FROM products WHERE owner_phone=$1 AND id=$2', [owner, skuId])).rows[0];
+        return { ...row, family_version: Number(row.family_version), inventory_revision: Number(row.inventory_revision) };
+      };
+      assert.deepEqual(await familyRow(), { family_id: publication.familyId, family_version: 1, inventory_revision: 0 });
+      const snapshot = async () => {
+        const result = {};
+        for (const table of ['products', 'inventory_operations', 'inventory_movements', 'transactions', 'universal_operations']) result[table] = (await sql.query(`SELECT * FROM ${table} WHERE owner_phone=$1 ORDER BY 1,2`, [owner])).rows;
+        return result;
+      };
+      const before = await snapshot();
+      for (const [index, extra] of [{ unit: 'box' }, { attributes: { ...attributes, voltage: { ...attributes.voltage, value: 36 } } }].entries()) {
+        const invalid = { ...action, target: { kind: 'new', sku: { ...action.target.sku, name: `HTTP Invalid family ${index}`, ...extra } } };
+        const response = await request('/api/operations', { body: plan(`http-family-invalid-${index}`, [invalid]) }); assert.equal(response.status, 409); assert.equal(response.json.code, 'PRODUCT_SCHEMA_MISMATCH');
+      }
+      const outsider = await request('/api/inventory/families', { body: { ...publication, operationId: 'http-family-foreign-publish', familyId: 'http-family-foreign-only' }, headers: { Authorization: `Bearer ${issueJwt({ phoneNumber: '59899000517' })}` } }); assert.equal(outsider.status, 200);
+      const foreignSku = { ...action, target: { kind: 'new', sku: { ...action.target.sku, name: 'HTTP Family foreign SKU', family: { id: 'http-family-foreign-only', version: 1 } } } };
+      const refused = await request('/api/operations', { body: plan('http-family-foreign-sku', [foreignSku]) }); assert.equal(refused.status, 404); assert.equal(refused.json.code, 'PRODUCT_SCHEMA_NOT_FOUND'); assert.deepEqual(await snapshot(), before);
+      const v2 = await request('/api/inventory/families', { body: { ...publication, operationId: 'http-family-sku-v2', expectedVersion: 1, schema: { ...schema, attributes: { ...schema.attributes, certified: { type: 'boolean', required: true } } } } }); assert.equal(v2.status, 200); assert.equal((await familyRow()).family_version, 1);
+      const current = (await db.getStateSnapshotStrict(owner)).products.find(({ id }) => id === skuId);
+      const upgradeBody = { operationId: 'http-family-sku-upgrade', expectedRevision: current.revision, expectedFingerprint: current.identityFingerprint, reason: 'Adopción explícita de contrato v2', family: { id: publication.familyId, version: 2 }, attributes: { ...attributes, certified: { type: 'boolean', state: 'known', value: true } } };
+      const upgraded = await request(`/api/products/${skuId}`, { method: 'PUT', body: upgradeBody }); assert.equal(upgraded.status, 200); assert.deepEqual(await familyRow(), { family_id: publication.familyId, family_version: 2, inventory_revision: 1 });
+      assert.deepEqual((await db.getStateSnapshotStrict(owner)).products.find(({ id }) => id === skuId).family, upgradeBody.family);
+      assert.deepEqual((await request('/api/operations', { body: plan('http-family-sku-create', [action]) })).json, created.json);
     });
     await run('universal inventory preserves reviewed selection boundaries and forbids public stock withdrawal', async () => {
       const products = await Promise.all(['A', 'B'].map((suffix) => createHttpFixtureProduct({ name: `HTTP universal selección ${suffix}`, stockAvailable: 4 }, owner)));
@@ -522,29 +697,37 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(foreign.status, 404);
       assert.equal(Number((await stock(id))[0].stock_available), 4);
     });
-    await run('signed WhatsApp catalog update uses exact SKU and accepts zero without changing stock', async () => {
+    await run('signed WhatsApp catalog update previews exact SKU then confirms zero price once', async () => {
       const product = await createHttpFixtureProduct({ name: 'Taladro Contador', stockAvailable: 3, price: 900 }, owner);
       const messageId = 'http-meta-update-zero';
-      const body = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [{
-        id: messageId, from: owner, type: 'text', text: { body: 'El Taladro Contador vale 0' },
-      }] } }] }] };
-      const raw = JSON.stringify(body);
-      const headers = { 'X-Hub-Signature-256': `sha256=${crypto.createHmac('sha256', appSecret).update(Buffer.from(raw)).digest('hex')}` };
-      assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
-      const deadline = Date.now() + 5000;
-      let claim;
-      while (Date.now() < deadline) {
-        claim = (await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1', [messageId])).rows[0];
-        if (claim?.status === 'completed') break;
-        await new Promise((resolve) => setTimeout(resolve, 30));
-      }
-      assert.equal(claim?.status, 'completed');
-      const event = (await sql.query('SELECT error,actions_json,reply_text FROM meta_events WHERE id=$1', [messageId])).rows[0];
+      const sendText = async (id, text) => {
+        const body = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [{ id, from: owner, type: 'text', text: { body: text } }] } }] }] };
+        const raw = JSON.stringify(body), headers = { 'X-Hub-Signature-256': `sha256=${crypto.createHmac('sha256', appSecret).update(Buffer.from(raw)).digest('hex')}` };
+        assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+          if ((await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1', [id])).rows[0]?.status === 'completed') return (await sql.query('SELECT error,actions_json,reply_text FROM meta_events WHERE id=$1', [id])).rows[0];
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        }
+        assert.fail('WhatsApp selection message did not complete');
+      };
+      const before = (await sql.query('SELECT * FROM inventory_movements WHERE owner_phone=$1 ORDER BY 1', [owner])).rows;
+      const pending = await sendText(messageId, 'El Taladro Contador vale 0');
+      assert.equal(pending.error, null); assert.deepEqual(pending.actions_json, []); assert.match(pending.reply_text, /CONFIRMAR CAMBIO/);
+      const selection = (await sql.query('SELECT preview_json FROM inventory_selections WHERE owner_phone=$1 AND request_id=$2', [owner, `meta-selection:${messageId}`])).rows[0].preview_json;
+      assert.deepEqual(selection.members.map(({ skuId }) => skuId), [product.id]); assert.equal(selection.mutation.changes.price, 0);
+      assert.equal(Number((await stock(product.id))[0].price), 900);
+      assert.deepEqual((await sql.query('SELECT * FROM inventory_movements WHERE owner_phone=$1 ORDER BY 1', [owner])).rows, before);
+      assert.equal((await sql.query('SELECT 1 FROM inventory_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, `selection:${selection.selectionId}`])).rowCount, 0);
+      const confirmId = 'http-meta-update-zero-confirm', text = `CONFIRMAR CAMBIO ${selection.digest.slice(0, 8).toUpperCase()}`;
+      const event = await sendText(confirmId, text);
       assert.equal(event.error, null); assert.equal(event.actions_json[0].productId, product.id); assert.equal(event.actions_json[0].price, 0);
-      assert.match(event.reply_text, /SKU actualizado/); assert.equal((await ledger(`whatsapp:${messageId}`)).length, 1);
+      assert.equal(event.actions_json.length, 1); assert.match(event.reply_text, /SKU actualizado/);
+      assert.equal((await ledger(`selection:${selection.selectionId}`)).length, 1);
+      assert.equal((await sql.query('SELECT 1 FROM transactions WHERE owner_phone=$1 AND batch_id=$2', [owner, `${owner}:selection:${selection.selectionId}`])).rowCount, 1);
       assert.equal(Number((await stock(product.id))[0].stock_available), 3); assert.equal(Number((await stock(product.id))[0].price), 0);
-      assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
-      assert.equal((await ledger(`whatsapp:${messageId}`)).length, 1);
+      assert.deepEqual(await sendText(confirmId, text), event);
+      assert.equal((await ledger(`selection:${selection.selectionId}`)).length, 1);
     });
     await run('signed WhatsApp insufficient sale completes rejection and cannot execute after replenishment', async () => {
       const product = await createHttpFixtureProduct({ name: 'Taladro Delta', stockAvailable: 2, price: 900 }, owner);

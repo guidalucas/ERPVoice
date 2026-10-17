@@ -23,6 +23,13 @@ import {
   applyActionsToDatabase,
   executeInventoryOperation,
   executeUniversalOperation,
+  publishProductFamily,
+  listProductFamilies,
+  prepareUniversalDraft,
+  replyUniversalDraft,
+  getUniversalDraft,
+  confirmUniversalDraft,
+  cancelUniversalDraft,
   executeAccountOperation,
   executeOrderOperation,
   answerStockQuery,
@@ -52,8 +59,9 @@ import {
   updateProductRecord,
   previewInventorySelection,
   confirmInventorySelection,
-  prepareMetaDeactivation,
-  processMetaDeactivationCommand,
+  prepareMetaInventorySelection,
+  processMetaInventorySelectionCommand,
+  resumeMetaInventorySelection,
   updateProductModelRecords,
   updateClientRecord,
   updateProveedorRecord,
@@ -647,6 +655,7 @@ app.put('/api/products/:id', authenticateRequest, async (req, res) => {
       price: req.body?.price,
       priceCurrency: req.body?.priceCurrency,
       attributes: req.body?.attributes,
+      family: req.body?.family,
     }, clientPhone, { operationId: req.body?.operationId, expectedRevision: req.body?.expectedRevision,
       expectedFingerprint: req.body?.expectedFingerprint, reason: req.body?.reason, actorId: authPhoneOf(req) });
 
@@ -828,23 +837,58 @@ app.get('/api/meta-webhook', (req, res) => {
   res.sendStatus(403);
 });
 
+const universalRequestContext = (req) => ({
+  businessId:tenantPhoneOf(req),actorId:authPhoneOf(req),channel:'panel',permissions:[
+    'inventory:read','inventory:schema','inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
+    'accounts:charge','accounts:payment','accounts:adjust','accounts:transfer',
+    'clients:create','clients:update','clients:delete','suppliers:create','suppliers:update','suppliers:delete','suppliers:merge',
+    'orders:create','orders:update','orders:delete','orders:reconcile',
+  ],
+});
+const universalHttpError = (res,error) => {
+  const known = ['InventoryOperationError','ProductFamilySchemaError'].includes(error.name);
+  const status = !known ? 500 : ['FORBIDDEN','BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
+    : error.code==='INTERPRETATION_UNAVAILABLE' ? 503 : error.code==='INTERPRETATION_INVALID' ? 422
+    : ['INVALID_OPERATION_PLAN','INVALID_ACCOUNT_OPERATION','INVALID_PARTY_OPERATION','INVALID_ORDER_OPERATION','INVALID_DRAFT_REQUEST','INVALID_PRODUCT_SCHEMA','BUSINESS_SCOPE_REQUIRED','UNSUPPORTED_OPERATION','OPERATION_ID_REQUIRED','MIXED_OPERATION_PLAN_UNSUPPORTED','UNSUPPORTED_OPERATION_ORDER'].includes(error.code) ? 400
+    : ['CLIENT_NOT_FOUND','PARTY_NOT_FOUND','SKU_NOT_FOUND','ORDER_NOT_FOUND','SUPPLIER_NOT_FOUND','DRAFT_NOT_FOUND','PRODUCT_SCHEMA_NOT_FOUND'].includes(error.code) ? 404 : 409;
+  res.status(status).json({error:known ? error.message : 'No pude guardar la operación.',code:known ? error.code : 'OPERATION_UNAVAILABLE'});
+};
+app.post('/api/operation-drafts', authenticateRequest, async (req,res) => {
+  try { res.json(await prepareUniversalDraft(req.body,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
+});
+app.get('/api/operation-drafts/:id', authenticateRequest, async (req,res) => {
+  try { res.json(await getUniversalDraft(req.params.id,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
+});
+app.post('/api/operation-drafts/:id/replies', authenticateRequest, async (req,res) => {
+  try { res.json(await replyUniversalDraft(req.params.id,req.body,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
+});
+app.post('/api/operation-drafts/:id/confirm', authenticateRequest, async (req,res) => {
+  try { res.json(await confirmUniversalDraft(req.params.id,req.body,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
+});
+app.post('/api/operation-drafts/:id/cancel', authenticateRequest, async (req,res) => {
+  try { res.json(await cancelUniversalDraft(req.params.id,req.body,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
+});
 app.post('/api/operations', authenticateRequest, async (req,res) => {
   try {
-    const result = await executeUniversalOperation(req.body, {
-      businessId:tenantPhoneOf(req),actorId:authPhoneOf(req),permissions:[
-        'inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
-        'accounts:charge','accounts:payment','accounts:adjust','accounts:transfer',
-        'clients:create','clients:update','clients:delete','suppliers:create','suppliers:update','suppliers:delete','suppliers:merge',
-      ],
-    });
+    const result = await executeUniversalOperation(req.body,universalRequestContext(req));
     res.json(result);
   } catch (error) {
-    const known = error.name === 'InventoryOperationError';
-    const status = !known ? 500 : ['FORBIDDEN','BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
-      : ['INVALID_OPERATION_PLAN','INVALID_ACCOUNT_OPERATION','INVALID_PARTY_OPERATION','BUSINESS_SCOPE_REQUIRED','UNSUPPORTED_OPERATION','OPERATION_ID_REQUIRED','MIXED_OPERATION_PLAN_UNSUPPORTED'].includes(error.code) ? 400
-      : ['CLIENT_NOT_FOUND','PARTY_NOT_FOUND','SKU_NOT_FOUND'].includes(error.code) ? 404 : 409;
-    res.status(status).json({error:known ? error.message : 'No pude guardar la operación.',code:known ? error.code : 'OPERATION_UNAVAILABLE'});
+    universalHttpError(res,error);
   }
+});
+
+app.get('/api/inventory/families', authenticateRequest, async (req,res) => {
+  try { res.json({families:await listProductFamilies(universalRequestContext(req))}); }
+  catch(error) { universalHttpError(res,error); }
+});
+app.post('/api/inventory/families', authenticateRequest, async (req,res) => {
+  try { res.json(await publishProductFamily(req.body,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
 });
 
 app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
@@ -1068,13 +1112,12 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       loadTranscript: loadMetaTranscript,
       saveTranscript: saveMetaTranscript,
       processStockText: async ({ sourceText, businessCategory, metaMessage }) => {
-        const selectionReply = await processMetaDeactivationCommand({ sourceText, ownerPhone: await resolveTenant(metaMessage.fromNumber),
-          senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId() });
-        return selectionReply ?? processStockBatchMessage({
-          sourceText, businessCategory, ownerPhone: await resolveTenant(metaMessage.fromNumber),
-          senderPhone: metaMessage.fromNumber, messageId: metaMessage.messageId ?? createEventId(),
-          replyToMessageId: metaMessage.replyToMessageId,
-        });
+        const scope = {sourceText,ownerPhone:await resolveTenant(metaMessage.fromNumber),senderPhone:metaMessage.fromNumber,
+          messageId:metaMessage.messageId ?? createEventId()};
+        const selectionReply = await processMetaInventorySelectionCommand(scope);
+        if (selectionReply) return selectionReply;
+        const prepared = await resumeMetaInventorySelection(scope);
+        return prepared ?? processStockBatchMessage({...scope,businessCategory,replyToMessageId:metaMessage.replyToMessageId});
       },
       resolveBusinessCategory: async (fromNumber) => {
         try {
@@ -1180,9 +1223,9 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       let mutationRejected = false;
       if (!stockBatchResponse && !legacyStockHold && mutationActions.length && !hasProductMatchHold(result.parsed)) {
         try {
-          mutationOutcome = mutationActions.some((action) => action.type === 'delete_product')
-            ? await prepareMetaDeactivation({ actions: mutationActions, sourceText: result.sourceText, messageId: incomingId,
-              ownerPhone, senderPhone: result.fromNumber })
+          mutationOutcome = mutationActions.some((action) => ['delete_product','update_product'].includes(action.type))
+            ? await prepareMetaInventorySelection({ actions: mutationActions, sourceText: result.sourceText, messageId: incomingId,
+              ownerPhone, senderPhone: result.fromNumber, replyPrefix: overrideReplyText })
             : await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber, {
             messageId: incomingId, recipient: result.fromNumber,
             actorId: result.fromNumber, channel: 'whatsapp', replyPrefix: overrideReplyText,

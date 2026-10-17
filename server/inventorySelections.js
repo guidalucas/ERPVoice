@@ -106,7 +106,7 @@ export function selectInventoryProducts(selector, products) {
   return selected;
 }
 
-export function buildSelectionPreview(input, products, { businessId, actorId, selectionId, expiresAt, permissions = ['inventory:update', 'inventory:deactivate','inventory:adjust'] }) {
+export function buildSelectionPreview(input, products, { businessId, actorId, selectionId, expiresAt, familySchemas=[],permissions = ['inventory:update', 'inventory:deactivate','inventory:adjust'] }) {
   const request = normalizeSelectionRequest(input);
   text(selectionId, 'selectionId');
   if (typeof expiresAt !== 'string' || !Number.isFinite(Date.parse(expiresAt))) invalid('Invalid selection expiry');
@@ -118,11 +118,12 @@ export function buildSelectionPreview(input, products, { businessId, actorId, se
         expectedFingerprint: inventoryProductFingerprint(product) } })),
   }, { businessId, actorId, permissions });
   // Preflight uses the SAME planner; preview never persists its effects.
-  const effect = planInventoryOperation(plan, products);
+  const effect = planInventoryOperation(plan, products,{familySchemas});
   const finalById = new Map(effect.changedProducts.map((product) => [product.id,product]));
   const members = selected.map((product) => ({ skuId: product.id, name: product.name, size: product.size ?? null,
     revision: product.revision, stockAvailable: product.stockAvailable, stockReserved: product.stockReserved,
     price: product.price, priceCurrency: product.priceCurrency ?? 'XXX',
+    ...(product.family ? {family:product.family} : {}),
     ...(request.mutation.type === 'stock.adjust' ? {unit:product.unit ?? 'unit',finalAvailable:finalById.get(product.id).stockAvailable,finalReserved:finalById.get(product.id).stockReserved} : {}) }));
   const digest = createHash('sha256').update(JSON.stringify({ businessId, actorId, selectionId, expiresAt, members,
     operation: operationDigest(plan) })).digest('hex');

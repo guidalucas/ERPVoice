@@ -15,6 +15,7 @@ export type ProductInput = {
   productModel?: string | null;
   size?: string | null;
   attributes?: InventoryAttributes;
+  family?: Product['family'];
   unit?: string;
   priceCurrency?: string;
   stockAvailable?: number;
