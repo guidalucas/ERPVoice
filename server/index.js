@@ -21,6 +21,7 @@ import {
   deletePedidoRecord,
   applyActionsToDatabase,
   executeInventoryOperation,
+  executeAccountOperation,
   answerStockQuery,
   findMetaEventById,
   claimMetaMessage,
@@ -639,6 +640,17 @@ app.delete('/api/products/:id', authenticateRequest, async (req, res) => {
   }
 });
 
+const accountHttpError = (res,error) => res.status(error.name === 'InventoryOperationError'
+  ? error.code === 'INVALID_ACCOUNT_OPERATION' ? 400 : error.code === 'CLIENT_NOT_FOUND' ? 404 : 409 : 500)
+  .json({error:error.name === 'InventoryOperationError' ? error.message : 'No pude guardar la cuenta.',code:error.code});
+
+app.post('/api/accounts/operations',authenticateRequest,async(req,res)=>{
+  try {
+    const result=await executeAccountOperation(req.body,{businessId:tenantPhoneOf(req),actorId:authPhoneOf(req),permissions:['accounts:charge','accounts:payment','accounts:adjust','accounts:transfer']});
+    res.json(result);
+  } catch(error){accountHttpError(res,error);}
+});
+
 app.post('/api/clients', authenticateRequest, async (req, res) => {
   try {
     const clientPhone = tenantPhoneOf(req);
@@ -655,7 +667,7 @@ app.post('/api/clients', authenticateRequest, async (req, res) => {
 
     res.status(201).json(client);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    accountHttpError(res,error);
   }
 });
 
@@ -675,7 +687,7 @@ app.put('/api/clients/:id', authenticateRequest, async (req, res) => {
 
     res.json(client);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    accountHttpError(res,error);
   }
 });
 
@@ -691,14 +703,17 @@ app.delete('/api/clients/:id', authenticateRequest, async (req, res) => {
 
     res.status(204).send();
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    accountHttpError(res,error);
   }
 });
 
 app.post('/api/clients/merge', authenticateRequest, async (req, res) => {
   try {
     const clientPhone = tenantPhoneOf(req);
-    const snapshot = await mergeClientRecords(req.body?.keepId, req.body?.mergeId, clientPhone);
+    const snapshot = await mergeClientRecords(req.body?.keepId, req.body?.mergeId, clientPhone, {
+      operationId:req.body?.operationId,expectedKeepRevision:req.body?.expectedKeepRevision,
+      expectedMergeRevision:req.body?.expectedMergeRevision,actorId:authPhoneOf(req),
+    });
 
     if (!snapshot) {
       res.status(400).json({ error: 'No se pudieron fusionar los clientes' });
@@ -707,7 +722,7 @@ app.post('/api/clients/merge', authenticateRequest, async (req, res) => {
 
     res.json(snapshot);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    accountHttpError(res,error);
   }
 });
 

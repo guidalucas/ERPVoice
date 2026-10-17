@@ -103,10 +103,11 @@ export async function runInventoryCoreChecks({ db, sql, check }) {
     }
   });
 
-  await run('legacy whole-table writer retains inventory metadata', async () => {
+  await run('account operations leave inventory quantities and metadata intact', async () => {
     const received = await db.executeInventoryOperation(plan(a, 'core-legacy-preserve', [fresh('item-1', 'Core legacy preserve', 1, { attributes: { finish: { state: 'known', type: 'text', value: 'mate' } }, unit: 'pack', price: { amount: 1250, currency: 'UYU', policy: 'initialize' } })]), context(a));
     const skuId = received.items[0].skuId;
-    await db.applyActionsToDatabase([{ type: 'payment_received', clientName: 'Metadata preservation check', amount: 0 }], 'legacy metadata preservation', a, { messageId: 'core-legacy-preserve' });
+    await db.createClientRecord({name:'Metadata preservation check'},a);
+    await db.applyActionsToDatabase([{ type: 'add_debt', clientName: 'Metadata preservation check', amount: 1 }], 'Account metadata preservation', a, { messageId: 'core-legacy-preserve' });
     const row = await sql.query('SELECT attributes_json, inventory_unit, price_currency, stock_available FROM products WHERE owner_phone=$1 AND id=$2', [a, skuId]);
     assert.deepEqual(row.rows[0].attributes_json, { finish: { state: 'known', type: 'text', value: 'mate' } });
     assert.equal(row.rows[0].inventory_unit, 'pack'); assert.equal(row.rows[0].price_currency, 'UYU'); assert.equal(Number(row.rows[0].stock_available), 1);

@@ -168,10 +168,11 @@ export const deleteClient = async (clientId: string) =>
     method: 'DELETE',
   });
 
-export const mergeClients = async (keepId: string, mergeId: string) =>
+export type ClientMergeRequest = { operationId: string; expectedKeepRevision: number; expectedMergeRevision: number };
+export const mergeClients = async (keepId: string, mergeId: string, metadata: ClientMergeRequest) =>
   requestJson<PersistedState>('/api/clients/merge', {
     method: 'POST',
-    body: JSON.stringify({ keepId, mergeId }),
+    body: JSON.stringify({ keepId, mergeId, operationId:metadata.operationId, expectedKeepRevision:metadata.expectedKeepRevision, expectedMergeRevision:metadata.expectedMergeRevision }),
   });
 
 export const createProveedor = async (proveedor: ProveedorInput) =>

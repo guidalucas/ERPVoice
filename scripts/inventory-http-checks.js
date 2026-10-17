@@ -450,6 +450,44 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.deepEqual(await send('http-order-meta-reject','Descartá el pedido Taladro Pedido HTTP'),rejected);
       assert.equal(Number((await stock(product.id))[0].stock_available),2);
     });
+    await run('accounts HTTP validates explicit money/client scope, immutable receipts and closed debt writers',async()=>{
+      const customer=await db.createClientRecord({name:'HTTP cuentas'},owner);
+      const charge={contractVersion:1,businessId:owner,operationId:'http-account-charge',actions:[{itemId:'one',type:'account.charge',target:{kind:'existing',clientId:customer.id},amount:{value:10,unit:'legacy-money'},reason:'Cargo explícito'}]};
+      assert.equal((await request('/api/accounts/operations',{body:charge,auth:false})).status,401);
+      assert.equal((await request('/api/accounts/operations',{body:{...charge,businessId:'foreign'}})).status,409);
+      assert.equal((await request('/api/accounts/operations',{body:{...charge,actions:[{...charge.actions[0],amount:{value:'10',unit:'legacy-money'}}]}})).status,400);
+      const applied=await request('/api/accounts/operations',{body:charge});assert.equal(applied.status,200);assert.equal(applied.json.items[0].balance,10);
+      const payment={...charge,operationId:'http-account-payment',actions:[{...charge.actions[0],type:'account.payment',amount:{value:3,unit:'legacy-money'}}]};
+      assert.equal((await request('/api/accounts/operations',{body:payment})).json.items[0].balance,7);
+      assert.deepEqual((await request('/api/accounts/operations',{body:charge})).json,applied.json);
+      const excess=await request('/api/accounts/operations',{body:{...payment,operationId:'http-account-excess',actions:[{...payment.actions[0],amount:{value:8,unit:'legacy-money'}}]}});
+      assert.equal(excess.status,409);assert.equal(excess.json.code,'PAYMENT_EXCEEDS_DEBT');
+      assert.equal((await request(`/api/clients/${customer.id}`,{method:'PUT',body:{debt:0}})).json.code,'ACCOUNT_OPERATION_REQUIRED');
+      assert.equal((await request(`/api/clients/${customer.id}`,{method:'DELETE'})).json.code,'CLIENT_HAS_BALANCE');
+      const foreign=await request('/api/accounts/operations',{body:{...charge,businessId:'59899000515'},headers:{Authorization:`Bearer ${issueJwt({phoneNumber:'59899000515'})}`}});
+      assert.equal(foreign.status,404);assert.equal(foreign.json.code,'CLIENT_NOT_FOUND');
+    });
+    await run('signed WhatsApp account payment replies come from receipts and excess rejection is terminal',async()=>{
+      const customer=await db.createClientRecord({name:'Cuenta HTTP'},owner);
+      const charge=(operationId,amount)=>({contractVersion:1,businessId:owner,operationId,actions:[{itemId:'one',type:'account.charge',target:{kind:'existing',clientId:customer.id},amount:{value:amount,unit:'legacy-money'},reason:'Saldo previo probado'}]});
+      const context={businessId:owner,actorId:owner,permissions:['accounts:charge']};
+      await db.executeAccountOperation(charge('http-account-meta-initial',10),context);
+      const send=async(messageId,text)=>{
+        const raw=JSON.stringify({object:'whatsapp_business_account',entry:[{changes:[{value:{messages:[{id:messageId,from:owner,type:'text',text:{body:text}}]}}]}]});
+        assert.equal((await request('/api/meta-webhook',{raw,auth:false,headers:{'X-Hub-Signature-256':`sha256=${crypto.createHmac('sha256',appSecret).update(Buffer.from(raw)).digest('hex')}`}})).status,200);
+        const deadline=Date.now()+5000;
+        while(Date.now()<deadline){if((await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1',[messageId])).rows[0]?.status==='completed')return(await sql.query('SELECT error,actions_json,reply_text FROM meta_events WHERE id=$1',[messageId])).rows[0];await new Promise((resolve)=>setTimeout(resolve,30));}
+        assert.fail('Account event did not finish');
+      };
+      const applied=await send('http-account-meta-pay','Cuenta HTTP me pagó 3');assert.equal(applied.error,null);assert.match(applied.reply_text,/Pago registrado:.*saldo 7/);
+      assert.equal(applied.actions_json[0].clientId,customer.id);assert.equal(applied.actions_json[0].balance,7);
+      assert.deepEqual(await send('http-account-meta-pay','Cuenta HTTP me pagó 3'),applied);
+      const rejected=await send('http-account-meta-excess','Cuenta HTTP me pagó 9');assert.equal(rejected.error,'PAYMENT_EXCEEDS_DEBT');assert.deepEqual(rejected.actions_json,[]);
+      await db.executeAccountOperation(charge('http-account-meta-later',20),context);
+      assert.deepEqual(await send('http-account-meta-excess','Cuenta HTTP me pagó 9'),rejected);
+      assert.equal(Number((await sql.query('SELECT debt FROM clients WHERE id=$1',[customer.id])).rows[0].debt),27);
+      assert.equal((await sql.query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1',['http-account-meta-pay'])).rows[0].reply_text,applied.reply_text);
+    });
     return completed;
   } catch (error) {
     let safeLogs = logs;

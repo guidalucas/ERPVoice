@@ -106,7 +106,7 @@ export async function runOrderChecks({ db, sql, check }) {
     assert.deepEqual(withoutSupplier.stockPosting,pedido.stockPosting);
     await assert.rejects(update(pedido,{estado:'pendiente'}),{code:'ORDER_REVISION_MISMATCH'});
     const keep = await db.createClientRecord({name:'Cliente conserva pedidos'},a);
-    await db.mergeClientRecords(keep.id,client.id,a);
+    await db.mergeClientRecords(keep.id,client.id,a,{operationId:id('client-merge'),expectedKeepRevision:0,expectedMergeRevision:0});
     const moved = await order(pedido); assert.equal(moved.clienteId,keep.id); assert.equal(moved.revision,withoutSupplier.revision+1);
     assert.deepEqual(moved.stockPosting,pedido.stockPosting); assert.deepEqual(await row(product),before);
   });

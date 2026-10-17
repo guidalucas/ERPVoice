@@ -50,7 +50,20 @@ Pedidos históricos conseguidos sin procedencia verificable requieren conciliaci
 antes de cambiar su stock; un nombre no alcanza para atribuirles un ingreso.
 WhatsApp exige un pedido único y un SKU ya vinculado para conseguirlo; el panel permite
 elegir el SKU exacto. `npm run test:order-ui` cubre reintentos y revisiones del panel.
-Se retiró el reemplazo completo de tablas; finanzas y conciliación histórica siguen pendientes.
+Se retiró el reemplazo completo de tablas; la conciliación histórica sigue pendiente.
+
+Las cuentas usan `account.charge`, `account.payment`, `account.adjust` y `account.transfer`
+mediante `POST /api/accounts/operations` con OperationPlan v1, cliente por ID, motivo e
+importe `{value,unit:"legacy-money"}`. Ajustes y transferencias exigen revisión de cuentas;
+se conservan las unidades monetarias históricas, sin asumir una moneda nueva.
+Pagos excesivos rechazan todo el lote. Recibo, movimientos, historial y outbox son atómicos;
+no se recalculan cargos por nombre o precio de productos. Altas de cliente inician en cero;
+para cargar saldo usá un cargo explícito, y para corregirlo un ajuste con revisión.
+`POST /api/clients/merge` requiere `operationId`, `expectedKeepRevision` y
+`expectedMergeRevision`: transfiere deuda, pedidos y notas en la misma transacción, con
+replay aun después de borrar el origen. No se elimina un cliente con saldo o pedidos.
+`npm run test:client-account-ui` verifica la fusión recuperable. Lotes que mezclan dominios
+todavía se rechazan enteros; el intérprete universal y esquemas configurables siguen pendientes.
 
 Antes de desplegar: configurar `META_APP_SECRET` (firma POST Meta) y, en producción,
 `AUTH_JWT_SECRET` privado de al menos 32 bytes. `/api/health` publica readiness y el SHA

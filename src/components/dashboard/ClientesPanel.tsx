@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
 import { EmptyState } from './EmptyState';
+import { toUserFacingError } from '../../services/apiClient';
 
 export function ClientesPanel() {
   const preset = useBusinessCategoryPreset();
@@ -17,6 +18,9 @@ export function ClientesPanel() {
   const [editNotas, setEditNotas] = useState('');
   const [mergeOpen, setMergeOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mergeAttemptRef = useRef<{ keepId: string; mergeId: string; metadata: Parameters<typeof mergeClientRecords>[2] } | null>(null);
+  const busyRef = useRef(false);
 
   const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
   const outstandingDebt = clients.reduce((total, client) => total + (Number.isFinite(client.debt) ? client.debt : 0), 0);
@@ -35,11 +39,14 @@ export function ClientesPanel() {
       return;
     }
     setSaving(true);
+    setError(null);
     try {
       await createClientRecord({ name: name.trim(), notas: notas.trim() || null });
       setName('');
       setNotas('');
       setFormOpen(false);
+    } catch (error) {
+      setError(toUserFacingError(error,'No pude crear el cliente.'));
     } finally {
       setSaving(false);
     }
@@ -60,30 +67,62 @@ export function ClientesPanel() {
       return;
     }
     setSaving(true);
+    setError(null);
     try {
       await updateClientRecord(editingId, { name: editName.trim(), notas: editNotas.trim() || null });
       setEditingId(null);
+    } catch (error) {
+      setError(toUserFacingError(error,'No pude guardar el cliente.'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleMerge = async () => {
+    if (busyRef.current) return;
     if (!mergeKeepId || !mergeOtherId || mergeKeepId === mergeOtherId) {
       return;
     }
-    setSaving(true);
+    busyRef.current = true; setSaving(true);
+    setError(null);
     try {
-      await mergeClientRecords(mergeKeepId, mergeOtherId);
+      const prior = mergeAttemptRef.current;
+      const attempt = prior?.keepId === mergeKeepId && prior.mergeId === mergeOtherId ? prior : {
+        keepId: mergeKeepId, mergeId: mergeOtherId,
+        metadata: { operationId: crypto.randomUUID(), expectedKeepRevision: clients.find((c) => c.id === mergeKeepId)?.accountRevision ?? 0,
+          expectedMergeRevision: clients.find((c) => c.id === mergeOtherId)?.accountRevision ?? 0 },
+      };
+      mergeAttemptRef.current = attempt;
+      await mergeClientRecords(attempt.keepId, attempt.mergeId, attempt.metadata);
+      mergeAttemptRef.current = null;
       setMergeKeepId('');
       setMergeOtherId('');
+    } catch (error) {
+      setError(toUserFacingError(error,'No pude fusionar los clientes.'));
     } finally {
       setSaving(false);
+      busyRef.current = false;
     }
+  };
+
+  const handleDelete = async (clientId: string) => {
+    setError(null); setSaving(true);
+    try { await deleteClientRecord(clientId); }
+    catch (error) { setError(toUserFacingError(error,'No pude eliminar el cliente.')); }
+    finally { setSaving(false); }
   };
 
   return (
     <div className="space-y-4">
+      {error && <p role="alert" className="erp-panel text-rose-700 dark:text-rose-200">{error}</p>}
+      {error && mergeAttemptRef.current && (
+        <div className="flex gap-2">
+          <button type="button" className="erp-button-primary" disabled={saving} onClick={() => void handleMerge()}>Reintentar fusión</button>
+          <button type="button" className="erp-button-secondary" disabled={saving} onClick={() => {
+            mergeAttemptRef.current = null; setError(null); setMergeKeepId(''); setMergeOtherId('');
+          }}>Revisar clientes actuales</button>
+        </div>
+      )}
       <article className="erp-panel">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -150,7 +189,8 @@ export function ClientesPanel() {
                       <button
                         type="button"
                         className="erp-button-danger min-h-11 px-3 text-sm"
-                        onClick={() => void deleteClientRecord(client.id)}
+                        disabled={saving}
+                        onClick={() => void handleDelete(client.id)}
                       >
                         Eliminar
                       </button>
@@ -213,7 +253,7 @@ export function ClientesPanel() {
           </button>
           {mergeOpen && (
             <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-              <select className="erp-input min-h-11" value={mergeKeepId} onChange={(event) => setMergeKeepId(event.target.value)}>
+              <select aria-label="Cliente que se conserva" disabled={saving} className="erp-input min-h-11" value={mergeKeepId} onChange={(event) => { mergeAttemptRef.current = null; setMergeKeepId(event.target.value); }}>
                 <option value="">Conservar…</option>
                 {clients.map((client) => (
                   <option key={client.id} value={client.id}>
@@ -221,7 +261,7 @@ export function ClientesPanel() {
                   </option>
                 ))}
               </select>
-              <select className="erp-input min-h-11" value={mergeOtherId} onChange={(event) => setMergeOtherId(event.target.value)}>
+              <select aria-label="Cliente que se fusiona" disabled={saving} className="erp-input min-h-11" value={mergeOtherId} onChange={(event) => { mergeAttemptRef.current = null; setMergeOtherId(event.target.value); }}>
                 <option value="">Fusionar y eliminar…</option>
                 {clients
                   .filter((client) => client.id !== mergeKeepId)
@@ -231,6 +271,10 @@ export function ClientesPanel() {
                     </option>
                   ))}
               </select>
+              {mergeKeepId && mergeOtherId && <p className="text-sm text-[color:var(--muted)] sm:col-span-3">
+                Saldo del cliente conservado: {formatCurrency(clients.find((c) => c.id === mergeKeepId)?.debt ?? 0)}.
+                {' '}Se trasladará el saldo del cliente de origen: {formatCurrency(clients.find((c) => c.id === mergeOtherId)?.debt ?? 0)}.
+              </p>}
               <button
                 type="button"
                 className="erp-button-secondary min-h-11"

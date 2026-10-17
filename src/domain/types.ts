@@ -27,6 +27,7 @@ export interface Client {
   id: string;
   name: string;
   debt: number;
+  accountRevision?: number;
   notas?: string | null;
 }
 
@@ -101,6 +102,7 @@ export type ParsedAction =
     }
   | {
       type: 'add_debt';
+      clientId?: string;
       clientName: string;
       amount: number;
       productName?: string;
@@ -111,6 +113,7 @@ export type ParsedAction =
     }
   | {
       type: 'payment_received';
+      clientId?: string;
       clientName: string;
       amount: number;
     }
@@ -225,12 +228,14 @@ export type ProductCreatedAction = {
 };
 
 export type StockWithdrawnAction = { type: 'withdraw_stock'; productId: string; qty: number; unit?: string; reason: string };
+export type AccountEventAction = { type: 'account_adjustment' | 'account_transfer'; clientId: string; clientName: string; amount: number; unit: 'legacy-money'; balance: number; reason: string };
+export type ClientMergedAction = { type: 'client_merge'; clientId: string; removedClientId: string; clientName: string; balance: number };
 
 export interface Transaction {
   id: string;
   timestamp: string;
   sourceText: string;
-  actions: Array<ParsedActionUnion | ProductCreatedAction | StockWithdrawnAction>;
+  actions: Array<ParsedActionUnion | ProductCreatedAction | StockWithdrawnAction | AccountEventAction | ClientMergedAction>;
   summary: string;
 }
 

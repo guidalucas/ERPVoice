@@ -14,6 +14,10 @@ import { productCreationToPlan } from './productCreationAdapter.js';
 import { ORDER_SCHEMA_SQL, orderRowToPedido, executeOrderInTransaction } from './orderPostgres.js';
 import { canonicalIdentityText } from './inventoryDomain.js';
 import { orderRequestDigest } from './orderOperations.js';
+import { ACCOUNT_SCHEMA_SQL, executeAccountPlanInTransaction } from './accountPostgres.js';
+import { operationRequestDigest } from './operationHash.js';
+import { validateAccountPlan } from './accountOperations.js';
+import { mergeClientsInTransaction } from './clientMergePostgres.js';
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
@@ -75,7 +79,6 @@ const DEFAULT_STATE_SNAPSHOT = {
   transactions: [],
 };
 
-const PEDIDO_ESTADOS = new Set(['pendiente', 'conseguido', 'descartado']);
 
 export const hasDatabaseConfig = () => Boolean(getConnectionString());
 
@@ -284,6 +287,7 @@ const rowToClient = (row) => ({
   ownerPhone: row.owner_phone,
   name: row.name,
   debt: Number(row.debt ?? 0),
+  accountRevision: Number(row.account_revision ?? 0),
   notas: row.notas ?? null,
 });
 
@@ -555,6 +559,7 @@ const initializeDatabase = async () => {
 
     ${INVENTORY_SCHEMA_SQL}
     ${ORDER_SCHEMA_SQL}
+    ${ACCOUNT_SCHEMA_SQL}
 
     DO $$
     DECLARE
@@ -648,7 +653,7 @@ const queryAllState = async (ownerPhone = DEFAULT_OWNER_PHONE, client = null, { 
     client,
   );
   const clientsRows = await queryRows(
-    'SELECT id, owner_phone, name, debt, notas FROM clients WHERE owner_phone = ANY($1) ORDER BY name ASC',
+    'SELECT * FROM clients WHERE owner_phone = ANY($1) ORDER BY name ASC',
     [ownerPhoneVariants],
     client,
   );
@@ -1193,20 +1198,6 @@ export const answerStockQuery = (products, action, options = {}) => {
   return truncateStockReply(`${header}\n${lines.join('\n')}${reservedLine}`);
 };
 
-const calculateProductDebt = (products, debtAction) => {
-  if (!debtAction.productName || typeof debtAction.qty !== 'number' || debtAction.qty <= 0) {
-    return null;
-  }
-
-  const product = resolveProduct(products, debtAction.productName);
-
-  if (!product) {
-    return null;
-  }
-
-  return Number(product.price) * debtAction.qty;
-};
-
 const summarizeAction = (action) => {
   if (action.type === 'withdraw_stock') return `Retiro de ${action.qty} ${action.unit}: ${action.productName}; disponible ${action.stockAvailable}; reservado ${action.stockReserved}`;
   if (action.type === 'create_product') return `SKU creado: ${action.productName}; disponible ${action.stockAvailable}; reservado ${action.stockReserved}`;
@@ -1340,6 +1331,7 @@ export const deleteProductRecords = async (idsInput, ownerPhone = DEFAULT_OWNER_
 };
 
 export const createClientRecord = async (clientInput, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  if (clientInput?.debt !== undefined && clientInput.debt !== 0) throw new InventoryOperationError('ACCOUNT_OPERATION_REQUIRED', 'Creá el cliente con saldo cero y registrá el cargo con un plan de cuenta explícito.');
   await ensureReady();
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
   const name = String(clientInput?.name ?? '').trim();
@@ -1353,20 +1345,21 @@ export const createClientRecord = async (clientInput, ownerPhone = DEFAULT_OWNER
     `
       INSERT INTO clients (id, owner_phone, name, debt, notas)
       VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, owner_phone, name, debt, notas
+      RETURNING id, owner_phone, name, debt, notas, account_revision
     `,
-    [id, normalizedOwnerPhone, titleCase(name), normalizeInteger(clientInput?.debt, 0), normalizeNullableString(clientInput?.notas)],
+    [id, normalizedOwnerPhone, titleCase(name), 0, normalizeNullableString(clientInput?.notas)],
   );
 
   return rowToClient(result.rows[0]);
 };
 
 export const updateClientRecord = async (clientId, updates, ownerPhone = DEFAULT_OWNER_PHONE) => {
+  if (updates?.debt !== undefined) throw new InventoryOperationError('ACCOUNT_OPERATION_REQUIRED', 'El saldo requiere un ajuste de cuenta explícito con motivo y revisión.');
   await ensureReady();
   const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
   const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
   const existing = await queryRow(
-    'SELECT id, owner_phone, name, debt, notas FROM clients WHERE id = $1 AND owner_phone = ANY($2)',
+    'SELECT * FROM clients WHERE id = $1 AND owner_phone = ANY($2)',
     [clientId, ownerPhoneVariants],
   );
 
@@ -1377,16 +1370,15 @@ export const updateClientRecord = async (clientId, updates, ownerPhone = DEFAULT
   const current = rowToClient(existing);
   const nextName = typeof updates.name === 'string' && updates.name.trim() ? titleCase(updates.name.trim()) : current.name;
   const nextNotas = updates.notas === undefined ? current.notas : normalizeNullableString(updates.notas);
-  const nextDebt = updates.debt === undefined ? current.debt : normalizeInteger(updates.debt, current.debt);
 
   const result = await getPool().query(
     `
       UPDATE clients
-      SET name = $1, notas = $2, debt = $3
-      WHERE id = $4 AND owner_phone = $5
-      RETURNING id, owner_phone, name, debt, notas
+      SET name = $1, notas = $2
+      WHERE id = $3 AND owner_phone = ANY($4)
+      RETURNING id, owner_phone, name, debt, notas, account_revision
     `,
-    [nextName, nextNotas, nextDebt, clientId, normalizedOwnerPhone],
+    [nextName, nextNotas, clientId, ownerPhoneVariants],
   );
 
   return result.rows[0] ? rowToClient(result.rows[0]) : null;
@@ -1398,6 +1390,8 @@ export const deleteClientRecord = async (clientId, ownerPhone = DEFAULT_OWNER_PH
 
   return withTransaction(async (client) => {
     await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
+    const account = await queryRow('SELECT debt FROM clients WHERE id=$1 AND owner_phone=ANY($2) FOR UPDATE',[clientId,ownerPhoneVariants],client);
+    if (account && Number(account.debt) !== 0) throw new InventoryOperationError('CLIENT_HAS_BALANCE', 'El cliente tiene saldo. Resolvé o transferí la deuda antes de eliminarlo.');
     const linked = await client.query('SELECT id FROM pedidos WHERE cliente_id=$1 AND owner_phone=ANY($2) FOR UPDATE', [clientId, ownerPhoneVariants]);
     if (linked.rowCount) throw new InventoryOperationError('CLIENT_HAS_ORDERS', 'El cliente tiene pedidos. Resolvelos explícitamente antes de eliminarlo.');
     const result = await client.query('DELETE FROM clients WHERE id = $1 AND owner_phone = ANY($2) RETURNING id', [clientId, ownerPhoneVariants]);
@@ -1405,47 +1399,14 @@ export const deleteClientRecord = async (clientId, ownerPhone = DEFAULT_OWNER_PH
   });
 };
 
-export const mergeClientRecords = async (keepId, mergeId, ownerPhone = DEFAULT_OWNER_PHONE) => {
+export const mergeClientRecords = async (keepId, mergeId, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
   await ensureReady();
-  const ownerPhoneVariants = getOwnerPhoneVariants(ownerPhone);
-
-  if (!keepId || !mergeId || keepId === mergeId) {
-    return null;
-  }
-
+  const businessId = normalizeOwnerPhone(ownerPhone);
   return withTransaction(async (client) => {
-    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
-    const keep = await queryRow(
-      'SELECT id, owner_phone, name, debt, notas FROM clients WHERE id = $1 AND owner_phone = ANY($2)',
-      [keepId, ownerPhoneVariants],
-      client,
-    );
-    const merge = await queryRow(
-      'SELECT id, owner_phone, name, debt, notas FROM clients WHERE id = $1 AND owner_phone = ANY($2)',
-      [mergeId, ownerPhoneVariants],
-      client,
-    );
-
-    if (!keep || !merge) {
-      return null;
-    }
-
-    await client.query(
-      'UPDATE pedidos SET cliente_id = $1, revision=revision+1 WHERE cliente_id = $2 AND owner_phone = ANY($3)',
-      [keepId, mergeId, ownerPhoneVariants],
-    );
-
-    const keepClient = rowToClient(keep);
-    const mergeClient = rowToClient(merge);
-    const mergedNotas = [keepClient.notas, mergeClient.notas].filter(Boolean).join('\n').trim() || null;
-
-    await client.query(
-      'UPDATE clients SET debt = $1, notas = $2 WHERE id = $3',
-      [keepClient.debt + mergeClient.debt, mergedNotas, keepId],
-    );
-    await client.query('DELETE FROM clients WHERE id = $1 AND owner_phone = ANY($2)', [mergeId, ownerPhoneVariants]);
-
-    return queryAllState(normalizeOwnerPhone(ownerPhone), client);
+    const operationResult = await mergeClientsInTransaction(client,keepId,mergeId,options,{
+      businessId,actorId:options.actorId ?? businessId,permissions:['clients:merge','accounts:transfer'],ownerPhoneVariants:getOwnerPhoneVariants(businessId),
+    });
+    return {...await queryAllState(businessId,client),operationResult};
   });
 };
 
@@ -1769,6 +1730,48 @@ const applyConfirmedStockActions = async (actions, sourceText, ownerPhone, optio
   });
 };
 
+export const executeAccountOperation = async (plan, context) => {
+    const normalized = validateAccountPlan(plan, context);
+    await ensureReady();
+    return withTransaction((client) => executeAccountPlanInTransaction(client, normalized, { ...context, ownerPhoneVariants: getOwnerPhoneVariants(context.businessId) }));
+};
+const applyAccountActions = async (actions, sourceText, ownerPhone, options) => {
+    const operationId = options.operationId ?? options.messageId;
+    if (typeof operationId !== 'string' || !operationId.trim())
+        throw new InventoryOperationError('OPERATION_ID_REQUIRED', 'La cuenta necesita un ID estable para reintentar.');
+    await ensureReady();
+    const businessId = normalizeOwnerPhone(ownerPhone), id = `account-compat:${options.channel ?? 'confirmed'}:${operationId}`;
+    const requestHash = operationRequestDigest({ actions, sourceText });
+    return withTransaction(async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify(['account', businessId, id])]);
+        const prior = await queryRow('SELECT plan_json,result_json FROM account_operations WHERE owner_phone=$1 AND operation_id=$2', [businessId, id], client);
+        let result;
+        if (prior) {
+            if (parseJsonValue(prior.plan_json)?.source?.requestHash !== requestHash)
+                throw new InventoryOperationError('IDEMPOTENCY_CONFLICT', 'El ID ya corresponde a otra operación de cuenta.');
+            result = parseJsonValue(prior.result_json);
+        }
+        else {
+            await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
+            const rows = (await client.query('SELECT * FROM clients WHERE owner_phone=ANY($1) ORDER BY id FOR UPDATE', [getOwnerPhoneVariants(businessId)])).rows;
+            const interpreted = ['meta', 'whatsapp'].includes(options.channel);
+            const plan = { contractVersion: 1, businessId, operationId: id, source: { channel: options.channel ?? 'confirmed', text: sourceText || 'Movimiento de cuenta confirmado', requestHash }, actions: actions.map((action, index) => {
+                    const candidates = !interpreted && action.clientId ? rows.filter((row) => row.id === action.clientId)
+                        : rows.filter((row) => typeof action.clientName === 'string' && canonicalIdentityText(row.name) === canonicalIdentityText(action.clientName));
+                    if (candidates.length !== 1)
+                        throw new InventoryOperationError('CLIENT_SELECTION_REQUIRED', 'Elegí un cliente único y explícito; no asigné el movimiento a otra cuenta.');
+                    return { itemId: `account-${index + 1}`, type: action.type === 'add_debt' ? 'account.charge' : 'account.payment', target: { kind: 'existing', clientId: candidates[0].id },
+                        amount: { value: action.amount, unit: 'legacy-money' }, reason: sourceText || 'Movimiento de cuenta confirmado' };
+                }) };
+            result = await executeAccountPlanInTransaction(client, plan, { businessId, actorId: options.actorId ?? businessId, permissions: ['accounts:charge', 'accounts:payment'],
+                ownerPhoneVariants: getOwnerPhoneVariants(businessId), replyPrefix: options.replyPrefix });
+        }
+        if (options.messageId && options.recipient)
+            await client.query('INSERT INTO meta_reply_outbox(event_id,recipient,reply_text) VALUES($1,$2,$3) ON CONFLICT(event_id) DO NOTHING', [options.messageId, normalizePhone(options.recipient), result.replyText]);
+        return { ...await queryAllState(businessId, client), operationResult: result, replyText: result.replyText };
+    });
+};
+
 const applyOrderActions = async (actions, sourceText, ownerPhone, options) => {
   const operationId = options.operationId ?? options.messageId;
   if (typeof operationId !== 'string' || !operationId.trim()) throw new InventoryOperationError('OPERATION_ID_REQUIRED', 'El lote de pedidos necesita un ID estable.');
@@ -1865,93 +1868,9 @@ export const applyActionsToDatabase = async (actions, sourceText, ownerPhone = D
     return applyConfirmedStockActions(actions, sourceText, ownerPhone, options);
   }
   if (actions.some((action) => !['add_debt','payment_received','query_stock','query_pedidos'].includes(action.type))) throw new InventoryOperationError('UNSUPPORTED_OPERATION', 'Operación no reconocida; no apliqué cambios.');
-  await ensureReady();
-  const normalizedOwnerPhone = normalizeOwnerPhone(ownerPhone);
-
-  return withTransaction(async (client) => {
-    const inboundBatchId = options.messageId ? `meta:${options.messageId}` : null;
-    if (inboundBatchId) {
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [inboundBatchId]);
-      const existing = await queryRow('SELECT id FROM transactions WHERE owner_phone = $1 AND batch_id = $2 LIMIT 1', [normalizedOwnerPhone, inboundBatchId], client);
-      if (existing) return queryAllState(normalizedOwnerPhone, client);
-    }
-    await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
-    await ensureTenantState(client, normalizedOwnerPhone);
-
-    await client.query('SELECT id FROM clients WHERE owner_phone=ANY($1) ORDER BY id FOR UPDATE', [getOwnerPhoneVariants(normalizedOwnerPhone)]);
-    const currentSnapshot = await queryAllState(normalizedOwnerPhone, client, { includeInactive: true });
-    const nextProducts = currentSnapshot.products.map((product) => ({ ...product }));
-    const nextClients = currentSnapshot.clients.map((clientEntry) => ({ ...clientEntry }));
-    const newTransactions = [];
-
-    actions.forEach((action, index) => {
-      if (action.type === 'query_stock' || action.type === 'query_pedidos') {
-        return;
-      }
-
-      if (action.type === 'add_debt') {
-        const clientEntry = nextClients.find((entry) => entry.name.toLowerCase() === action.clientName.toLowerCase()) ?? nextClients[0];
-        if (clientEntry) {
-          const productDebtAmount = calculateProductDebt(nextProducts, action);
-          const amountToApply = productDebtAmount && productDebtAmount > 0
-            ? productDebtAmount
-            : action.amount;
-
-          clientEntry.debt += amountToApply;
-          action = {
-            ...action,
-            amount: amountToApply,
-          };
-        }
-      }
-
-      if (action.type === 'payment_received') {
-        const clientEntry = nextClients.find((entry) => entry.name.toLowerCase() === action.clientName.toLowerCase()) ?? nextClients[0];
-        if (clientEntry) {
-          clientEntry.debt = Math.max(0, clientEntry.debt - action.amount);
-        }
-      }
-
-      newTransactions.push({
-        id: inboundBatchId ? `transaction-meta-${crypto.createHash('sha256').update(inboundBatchId).digest('hex').slice(0, 24)}-${index + 1}` : `transaction-${Date.now()}-${index + 1}`,
-        timestamp: new Date().toISOString(),
-        sourceText,
-        summary: summarizeAction(action),
-        actions: [action],
-      });
-    });
-
-    for (const entry of nextClients) {
-      const before = currentSnapshot.clients.find((item) => item.id === entry.id);
-      if (before && before.debt !== entry.debt) await client.query('UPDATE clients SET debt=$1 WHERE id=$2 AND owner_phone=ANY($3)', [entry.debt,entry.id,getOwnerPhoneVariants(normalizedOwnerPhone)]);
-    }
-
-    for (const transaction of newTransactions) {
-      await client.query(
-        `
-          INSERT INTO transactions (id, owner_phone, timestamp, source_text, summary, actions_json, batch_id, item_id)
-          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
-        `,
-        [
-          transaction.id,
-          normalizedOwnerPhone,
-          transaction.timestamp,
-          transaction.sourceText,
-          transaction.summary,
-          toJsonbParam(transaction.actions),
-          inboundBatchId,
-          inboundBatchId ? transaction.id : null,
-        ],
-      );
-    }
-
-    if (inboundBatchId && options.replyText && options.recipient) {
-      await client.query(`INSERT INTO meta_reply_outbox (event_id, recipient, reply_text) VALUES ($1, $2, $3)
-        ON CONFLICT (event_id) DO NOTHING`, [options.messageId, normalizePhone(options.recipient), options.replyText]);
-    }
-
-    return await queryAllState(normalizedOwnerPhone, client);
-  });
+  const mutations = actions.filter((action) => ['add_debt','payment_received'].includes(action.type));
+  if (!mutations.length) return getStateSnapshotStrict(ownerPhone);
+  return applyAccountActions(mutations, sourceText, ownerPhone, options);
 };
 
 const rowToVoiceStockBatch = (row) => row ? ({

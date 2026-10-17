@@ -107,8 +107,8 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const mergeClientRecords = async (keepId: string, mergeId: string) => {
-    const snapshot = await mergeClients(keepId, mergeId);
+  const mergeClientRecords = async (keepId: string, mergeId: string, metadata: Parameters<typeof mergeClients>[2]) => {
+    const snapshot = await mergeClients(keepId, mergeId, metadata);
     hydrateFromSnapshot(snapshot);
   };
 
