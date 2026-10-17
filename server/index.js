@@ -2,10 +2,11 @@ import { holdUnverifiedStockMessage, processStockBatchMessage } from './voiceSto
 import { createMetaWebhookSignatureMiddleware, hasMetaWebhookAppSecret } from './metaWebhookSecurity.js';
 import express from 'express';
 import dotenv from 'dotenv';
+import { InventoryOperationError } from './inventoryOperations.js';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { getBusinessCategoryPreset } from './businessCategories.js';
 import { hasProductMatchHold } from './voiceCatalogContext.js';
-import { inventoryResultActions } from './inventoryResults.js';
+import { operationResultActions } from './operationResults.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
 import { answerPedidosQuery } from './pedidoQuery.js';
 import {
@@ -21,6 +22,9 @@ import {
   deletePedidoRecord,
   applyActionsToDatabase,
   executeInventoryOperation,
+  executeUniversalOperation,
+  executeAccountOperation,
+  executeOrderOperation,
   answerStockQuery,
   findMetaEventById,
   claimMetaMessage,
@@ -537,7 +541,7 @@ app.get('/api/state', authenticateRequest, async (req, res) => {
     const snapshot = await getStateSnapshot(clientPhone);
     res.json(snapshot);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(503).json({ error: 'No pude leer el estado guardado. Conservá tu vista y reintentá.', code:'STATE_UNAVAILABLE' });
   }
 });
 
@@ -639,66 +643,52 @@ app.delete('/api/products/:id', authenticateRequest, async (req, res) => {
   }
 });
 
+const accountHttpError = (res,error) => res.status(error.name === 'InventoryOperationError'
+  ? error.code === 'INVALID_ACCOUNT_OPERATION' ? 400 : error.code === 'CLIENT_NOT_FOUND' ? 404 : 409 : 500)
+  .json({error:error.name === 'InventoryOperationError' ? error.message : 'No pude guardar la cuenta.',code:error.code});
+
+app.post('/api/accounts/operations',authenticateRequest,async(req,res)=>{
+  try {
+    const result=await executeAccountOperation(req.body,{businessId:tenantPhoneOf(req),actorId:authPhoneOf(req),permissions:['accounts:charge','accounts:payment','accounts:adjust','accounts:transfer']});
+    res.json(result);
+  } catch(error){accountHttpError(res,error);}
+});
+
+const partyHttpError = (res, error) => {
+  const known = error.name === 'InventoryOperationError';
+  const status = !known ? 500 : ['OPERATION_ID_REQUIRED','INVALID_PARTY_OPERATION'].includes(error.code) ? 400
+    : ['BUSINESS_SCOPE_REQUIRED','BUSINESS_SCOPE_MISMATCH','FORBIDDEN'].includes(error.code) ? 403 : error.code === 'PARTY_NOT_FOUND' ? 404 : 409;
+  return res.status(status).json({error:known ? error.message : 'No pude guardar el cliente/proveedor.',...(known ? {code:error.code} : {})});
+};
+
 app.post('/api/clients', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const client = await createClientRecord({
-      name: req.body?.name,
-      notas: req.body?.notas,
-      debt: req.body?.debt,
-    }, clientPhone);
-
-    if (!client) {
-      res.status(400).json({ error: 'Nombre de cliente requerido' });
-      return;
-    }
-
+    const client = await createClientRecord(req.body, tenantPhoneOf(req), {actorId:authPhoneOf(req)});
     res.status(201).json(client);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+  } catch (error) { partyHttpError(res,error); }
 });
 
 app.put('/api/clients/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const client = await updateClientRecord(req.params.id, {
-      name: req.body?.name,
-      notas: req.body?.notas,
-      debt: req.body?.debt,
-    }, clientPhone);
-
-    if (!client) {
-      res.status(404).json({ error: 'Cliente no encontrado' });
-      return;
-    }
-
-    res.json(client);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+    res.json(await updateClientRecord(req.params.id,req.body,tenantPhoneOf(req),{actorId:authPhoneOf(req)}));
+  } catch (error) { partyHttpError(res,error); }
 });
 
 app.delete('/api/clients/:id', authenticateRequest, async (req, res) => {
-  try {
-    const clientPhone = tenantPhoneOf(req);
-    const deleted = await deleteClientRecord(req.params.id, clientPhone);
-
-    if (!deleted) {
-      res.status(404).json({ error: 'Cliente no encontrado' });
-      return;
-    }
-
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+  try { res.json(await deleteClientRecord(req.params.id,tenantPhoneOf(req),req.body,{actorId:authPhoneOf(req)})); }
+  catch (error) { partyHttpError(res,error); }
 });
 
 app.post('/api/clients/merge', authenticateRequest, async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || Object.keys(req.body).some((key) => !['keepId','mergeId','operationId','expectedKeepRevision','expectedMergeRevision','expectedKeepMetadataRevision','expectedMergeMetadataRevision'].includes(key)))
+      throw new InventoryOperationError('INVALID_ACCOUNT_OPERATION','La fusión contiene campos inválidos.');
     const clientPhone = tenantPhoneOf(req);
-    const snapshot = await mergeClientRecords(req.body?.keepId, req.body?.mergeId, clientPhone);
+    const snapshot = await mergeClientRecords(req.body?.keepId, req.body?.mergeId, clientPhone, {
+      operationId:req.body?.operationId,expectedKeepRevision:req.body?.expectedKeepRevision,
+      expectedMergeRevision:req.body?.expectedMergeRevision,actorId:authPhoneOf(req),
+      expectedKeepMetadataRevision:req.body?.expectedKeepMetadataRevision,expectedMergeMetadataRevision:req.body?.expectedMergeMetadataRevision,
+    });
 
     if (!snapshot) {
       res.status(400).json({ error: 'No se pudieron fusionar los clientes' });
@@ -707,146 +697,64 @@ app.post('/api/clients/merge', authenticateRequest, async (req, res) => {
 
     res.json(snapshot);
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    accountHttpError(res,error);
   }
 });
 
 app.post('/api/proveedores', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const proveedor = await createProveedorRecord({
-      name: req.body?.name,
-      notas: req.body?.notas,
-    }, clientPhone);
-
-    if (!proveedor) {
-      res.status(400).json({ error: 'Nombre de proveedor requerido' });
-      return;
-    }
-
+    const proveedor = await createProveedorRecord(req.body, tenantPhoneOf(req), {actorId:authPhoneOf(req)});
     res.status(201).json(proveedor);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+  } catch (error) { partyHttpError(res,error); }
 });
 
 app.put('/api/proveedores/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const proveedor = await updateProveedorRecord(req.params.id, {
-      name: req.body?.name,
-      notas: req.body?.notas,
-    }, clientPhone);
-
-    if (!proveedor) {
-      res.status(404).json({ error: 'Proveedor no encontrado' });
-      return;
-    }
-
-    res.json(proveedor);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+    res.json(await updateProveedorRecord(req.params.id,req.body,tenantPhoneOf(req),{actorId:authPhoneOf(req)}));
+  } catch (error) { partyHttpError(res,error); }
 });
 
 app.delete('/api/proveedores/:id', authenticateRequest, async (req, res) => {
-  try {
-    const clientPhone = tenantPhoneOf(req);
-    const deleted = await deleteProveedorRecord(req.params.id, clientPhone);
-
-    if (!deleted) {
-      res.status(404).json({ error: 'Proveedor no encontrado' });
-      return;
-    }
-
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+  try { res.json(await deleteProveedorRecord(req.params.id,tenantPhoneOf(req),req.body,{actorId:authPhoneOf(req)})); }
+  catch (error) { partyHttpError(res,error); }
 });
 
 app.post('/api/proveedores/merge', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const snapshot = await mergeProveedorRecords(req.body?.keepId, req.body?.mergeId, clientPhone);
-
-    if (!snapshot) {
-      res.status(400).json({ error: 'No se pudieron fusionar los proveedores' });
-      return;
-    }
-
-    res.json(snapshot);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+    const {keepId,mergeId,...input} = req.body ?? {};
+    res.json(await mergeProveedorRecords(keepId,mergeId,tenantPhoneOf(req),input,{actorId:authPhoneOf(req)}));
+  } catch (error) { partyHttpError(res,error); }
 });
 
+const orderHttpError = (res, error) => {
+  const status = ['OPERATION_ID_REQUIRED', 'INVALID_ORDER_OPERATION'].includes(error.code) ? 400
+    : ['ORDER_NOT_FOUND', 'CLIENT_NOT_FOUND', 'SUPPLIER_NOT_FOUND'].includes(error.code) ? 404
+    : error.name === 'InventoryOperationError' ? 409 : 500;
+  res.status(status).json({ error: status === 500 ? 'No pude guardar el pedido.' : error.message, code: error.code });
+};
 app.post('/api/pedidos', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const pedido = await createPedidoRecord({
-      clienteId: req.body?.clienteId,
-      proveedorId: req.body?.proveedorId,
-      producto: req.body?.producto,
-      productType: req.body?.productType,
-      productModel: req.body?.productModel,
-      talle: req.body?.talle,
-      qty: req.body?.qty,
-      estado: req.body?.estado,
-      notas: req.body?.notas,
-    }, clientPhone);
-
-    if (!pedido) {
-      res.status(400).json({ error: 'Cliente y producto son requeridos' });
-      return;
-    }
-
+    const pedido = await createPedidoRecord(req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req) });
     res.status(201).json(pedido);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+  } catch (error) { orderHttpError(res, error); }
 });
-
 app.put('/api/pedidos/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const pedido = await updatePedidoRecord(req.params.id, {
-      clienteId: req.body?.clienteId,
-      proveedorId: req.body?.proveedorId,
-      producto: req.body?.producto,
-      productType: req.body?.productType,
-      productModel: req.body?.productModel,
-      talle: req.body?.talle,
-      qty: req.body?.qty,
-      estado: req.body?.estado,
-      notas: req.body?.notas,
-    }, clientPhone);
-
-    if (!pedido) {
-      res.status(404).json({ error: 'Pedido no encontrado' });
-      return;
-    }
-
+    const pedido = await updatePedidoRecord(req.params.id, req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req) });
     res.json(pedido);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+  } catch (error) { orderHttpError(res, error); }
 });
-
+app.post('/api/pedidos/:id/reconcile',authenticateRequest,async(req,res)=>{
+  try {
+    const result=await executeOrderOperation('reconcile',req.params.id,req.body,tenantPhoneOf(req),{actorId:authPhoneOf(req)});
+    res.json(result);
+  } catch(error){orderHttpError(res,error);}
+});
 app.delete('/api/pedidos/:id', authenticateRequest, async (req, res) => {
   try {
-    const clientPhone = tenantPhoneOf(req);
-    const deleted = await deletePedidoRecord(req.params.id, clientPhone);
-
-    if (!deleted) {
-      res.status(404).json({ error: 'Pedido no encontrado' });
-      return;
-    }
-
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+    const receipt = await deletePedidoRecord(req.params.id, tenantPhoneOf(req), req.body, { actorId: authPhoneOf(req) });
+    res.json(receipt);
+  } catch (error) { orderHttpError(res, error); }
 });
 
 app.get('/api/meta-events', authenticateRequest, (_req, res) => {
@@ -871,6 +779,25 @@ app.get('/api/meta-webhook', (req, res) => {
   res.sendStatus(403);
 });
 
+app.post('/api/operations', authenticateRequest, async (req,res) => {
+  try {
+    const result = await executeUniversalOperation(req.body, {
+      businessId:tenantPhoneOf(req),actorId:authPhoneOf(req),permissions:[
+        'inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
+        'accounts:charge','accounts:payment','accounts:adjust','accounts:transfer',
+        'clients:create','clients:update','clients:delete','suppliers:create','suppliers:update','suppliers:delete','suppliers:merge',
+      ],
+    });
+    res.json(result);
+  } catch (error) {
+    const known = error.name === 'InventoryOperationError';
+    const status = !known ? 500 : ['FORBIDDEN','BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
+      : ['INVALID_OPERATION_PLAN','INVALID_ACCOUNT_OPERATION','INVALID_PARTY_OPERATION','BUSINESS_SCOPE_REQUIRED','UNSUPPORTED_OPERATION','OPERATION_ID_REQUIRED','MIXED_OPERATION_PLAN_UNSUPPORTED'].includes(error.code) ? 400
+      : ['CLIENT_NOT_FOUND','PARTY_NOT_FOUND','SKU_NOT_FOUND'].includes(error.code) ? 404 : 409;
+    res.status(status).json({error:known ? error.message : 'No pude guardar la operación.',code:known ? error.code : 'OPERATION_UNAVAILABLE'});
+  }
+});
+
 app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
   try {
     requireReviewedUpdateSelection(req.body);
@@ -890,7 +817,7 @@ app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
 app.post('/api/inventory/selections', authenticateRequest, async (req, res) => {
   try {
     const preview = await previewInventorySelection(req.body, {
-      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate'],
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate','inventory:adjust'],
     });
     res.json(preview);
   } catch (error) {
@@ -907,7 +834,7 @@ app.post('/api/inventory/selections/:id/confirm', authenticateRequest, async (re
       res.status(400).json({ error: 'Confirmá únicamente la selección revisada.', code: 'INVALID_SELECTION' }); return;
     }
     const result = await confirmInventorySelection(req.params.id, req.body.digest, {
-      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate'],
+      businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate','inventory:adjust'],
     });
     res.json(result);
   } catch (error) {
@@ -1221,7 +1148,7 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       eventRecord.replyText = finalReplyText;
       eventRecord.error ??= stockBatchResponse?.errorCode ?? null;
       eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? (mutationRejected || mutationOutcome?.pendingSelection ? [] : mutationOutcome?.operationResult
-        ? inventoryResultActions(mutationOutcome.operationResult, mutationActions) : result.parsed?.actions ?? []));
+        ? operationResultActions(mutationOutcome.operationResult, mutationActions) : result.parsed?.actions ?? []));
       eventRecord.processed = Boolean(stockBatchResponse || queryActions.length || mutationActions.length);
 
       console.log('[MetaWebhook] response debug:', {

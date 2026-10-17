@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useReducer, useRef, type ReactNode } from 'react';
 import type { AppState, ChatMessage, ParsedVoicePayload, Product, Client, Pedido, Proveedor, Transaction } from '../domain/types';
 import { initialAppState } from '../domain/mockDb';
-import { applyConfirmedActions } from '../services/transactionService';
 import { requestJson } from '../services/apiClient';
 import { useAuth } from './AuthStore';
 import { clearStoredProposal, pendingProposalKey, persistPendingProposal, restorePendingProposal } from '../services/pendingProposalStorage';
@@ -18,7 +17,6 @@ type AppAction =
   | { type: 'ADD_CHAT_MESSAGE'; message: ChatMessage }
   | { type: 'SET_PENDING_PROPOSAL'; payload: ParsedVoicePayload | null }
   | { type: 'CLEAR_PENDING_PROPOSAL'; proposal?: ParsedVoicePayload }
-  | { type: 'APPLY_EXTERNAL_PROPOSAL'; payload: ParsedVoicePayload }
   | { type: 'HYDRATE_PERSISTED_STATE'; snapshot: PersistedSnapshot };
 
 interface AppStoreValue {
@@ -27,7 +25,6 @@ interface AppStoreValue {
   setPendingProposal: (payload: ParsedVoicePayload | null) => void;
   confirmPendingProposal: () => Promise<void>;
   clearPendingProposal: () => void;
-  applyExternalProposal: (payload: ParsedVoicePayload) => void;
   hydratePersistedState: (snapshot: PersistedSnapshot) => void;
 }
 
@@ -50,8 +47,6 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         ...state,
         pendingProposal: action.proposal && state.pendingProposal !== action.proposal ? state.pendingProposal : null,
       };
-    case 'APPLY_EXTERNAL_PROPOSAL':
-      return { ...applyConfirmedActions(state, action.payload.actions, action.payload.sourceText), pendingProposal: state.pendingProposal };
     case 'HYDRATE_PERSISTED_STATE':
       return {
         ...state,
@@ -141,10 +136,6 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'CLEAR_PENDING_PROPOSAL' });
   }, [storageKey]);
 
-  const applyExternalProposal = useCallback((payload: ParsedVoicePayload) => {
-    dispatch({ type: 'APPLY_EXTERNAL_PROPOSAL', payload });
-  }, []);
-
   const hydratePersistedState = useCallback((snapshot: PersistedSnapshot) => {
     dispatch({ type: 'HYDRATE_PERSISTED_STATE', snapshot });
   }, []);
@@ -156,10 +147,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setPendingProposal,
       confirmPendingProposal,
       clearPendingProposal,
-      applyExternalProposal,
       hydratePersistedState,
     }),
-    [state, addChatMessage, setPendingProposal, confirmPendingProposal, clearPendingProposal, applyExternalProposal, hydratePersistedState],
+    [state, addChatMessage, setPendingProposal, confirmPendingProposal, clearPendingProposal, hydratePersistedState],
   );
 
   return <AppStoreContext.Provider value={value}>{children}</AppStoreContext.Provider>;

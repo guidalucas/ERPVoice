@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { InventoryOperationError } from './inventoryOperations.js';
 import { executeInventoryPlanInTransaction, inventoryRowToProduct } from './inventoryPostgres.js';
-import { normalizeOrderRequest, orderRequestDigest, planOrderTransition } from './orderOperations.js';
+import { normalizeOrderRequest, orderRequestDigest, planOrderTransition, orderReceiptAction } from './orderOperations.js';
 
 export const ORDER_SCHEMA_SQL = `
   ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS product_id TEXT;
@@ -26,6 +26,7 @@ export async function executeOrderInTransaction(client, kind, pedidoId, input, c
   if (!context?.businessId || context.businessId === '__default__' || !context.actorId) throw new InventoryOperationError('BUSINESS_SCOPE_REQUIRED', 'Falta el contexto autorizado.');
   if (!context.permissions?.includes(`orders:${kind}`)) throw new InventoryOperationError('FORBIDDEN', 'No tenés permiso para esta operación de pedido.');
   const request = normalizeOrderRequest(kind, pedidoId, input), requestHash = orderRequestDigest(request);
+  if (request.operationId.startsWith('order-batch-item:') && !context.internalOrderBatch) throw new InventoryOperationError('FORBIDDEN', 'ID reservado para lotes de pedidos.');
   const scope = [context.businessId, request.operationId];
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify(['order', ...scope])]);
   const replay = await client.query('SELECT request_hash,result_json FROM order_operations WHERE owner_phone=$1 AND operation_id=$2', scope);
@@ -59,7 +60,8 @@ export async function executeOrderInTransaction(client, kind, pedidoId, input, c
   }
   let pedido;
   if (!next) {
-    await client.query('DELETE FROM pedidos WHERE id=$1 AND owner_phone=ANY($2)', [pedidoId, owners]);
+    const removed = await client.query('DELETE FROM pedidos WHERE id=$1 AND owner_phone=ANY($2) RETURNING id', [pedidoId, owners]);
+    if (removed.rowCount !== 1) throw new InventoryOperationError('PERSISTED_EFFECT_MISMATCH', 'El pedido no se eliminó como estaba previsto.');
     pedido = current;
   } else {
     const id = current?.id ?? `pedido-${crypto.randomUUID()}`;
@@ -73,16 +75,14 @@ export async function executeOrderInTransaction(client, kind, pedidoId, input, c
           WHERE id=$1 AND owner_phone=ANY($15) AND revision=$16 RETURNING *`, [...values, owners, current.revision]);
     if (saved.rowCount !== 1) throw new InventoryOperationError('ORDER_REVISION_MISMATCH', 'El pedido cambió antes de guardarlo.');
     pedido = orderRowToPedido(saved.rows[0]);
-    if (pedido.qty !== next.qty || pedido.estado !== next.estado || pedido.productId !== next.productId || JSON.stringify(pedido.stockPosting) !== JSON.stringify(next.stockPosting)) {
-      // jsonb key order is not stable; compare the posting through its normalized fields below.
-      if (pedido.qty !== next.qty || pedido.estado !== next.estado || pedido.productId !== next.productId || orderRequestDigest(pedido.stockPosting) !== orderRequestDigest(next.stockPosting)) throw new InventoryOperationError('PERSISTED_EFFECT_MISMATCH', 'El pedido persistido difiere del plan.');
-    }
+    const savedFields = ['clienteId', 'proveedorId', 'producto', 'productType', 'productModel', 'talle', 'qty', 'estado', 'notas', 'productId', 'stockPosting'];
+    if (pedido.id !== id || pedido.ownerPhone !== context.businessId || pedido.revision !== values[13]
+      || savedFields.some((key) => orderRequestDigest(pedido[key]) !== orderRequestDigest(next[key]))) throw new InventoryOperationError('PERSISTED_EFFECT_MISMATCH', 'El pedido persistido difiere del plan.');
   }
-  const result = { contractVersion: 1, operationId: request.operationId, businessId: context.businessId, status: 'applied', deleted: kind === 'delete', pedido, inventoryResult };
+  const result = { contractVersion: 1, kind, operationId: request.operationId, businessId: context.businessId, status: 'applied', deleted: kind === 'delete', pedido, inventoryResult };
   await client.query(`INSERT INTO order_operations(owner_phone,operation_id,actor_id,request_hash,request_json,result_json)
     VALUES($1,$2,$3,$4,$5::jsonb,$6::jsonb)`, [...scope, context.actorId, requestHash, JSON.stringify(request), JSON.stringify(result)]);
-  const action = { type: kind === 'create' ? 'client_order' : kind === 'delete' ? 'delete_pedido' : 'update_pedido',
-    pedidoId: pedido.id, productId: pedido.productId, productName: pedido.producto, qty: pedido.qty, estado: pedido.estado, revision: pedido.revision };
+  const action = orderReceiptAction(kind, pedido);
   await client.query(`INSERT INTO transactions(id,owner_phone,timestamp,source_text,summary,actions_json)
     VALUES($1,$2,NOW(),$3,$4,$5::jsonb)`, [`order-${crypto.createHash('sha256').update(JSON.stringify(scope)).digest('hex')}`, context.businessId,
     `Pedido ${kind}`, `${kind === 'delete' ? 'Pedido eliminado' : 'Pedido guardado'}: ${pedido.producto}; ${pedido.estado}; cantidad ${pedido.qty}`, JSON.stringify([action])]);

@@ -6,6 +6,7 @@ import {
   createProduct,
   createProductModel,
   createProveedor,
+  confirmInventorySelection,
   deleteClient,
   deletePedido,
   deleteProduct,
@@ -17,6 +18,7 @@ import {
   previewInventorySelection,
   updateClient,
   updatePedido,
+  reconcilePedido,
   updateProduct,
   updateProductModel,
   updateProveedor,
@@ -51,6 +53,12 @@ export const useInventory = () => {
   const applyActions = async (sourceText: string, actions: ParsedActionUnion[], operationId?: string) => {
     const snapshot = await applyStateActions(sourceText, actions, operationId);
     hydrateFromSnapshot(snapshot);
+  };
+
+  const confirmInventorySelectionRecord = async (reference: InventorySelectionReference) => {
+    const result = await confirmInventorySelection(reference);
+    await refreshState();
+    return result;
   };
 
   const createProductRecord = async (input: ProductInput, metadata: ProductCreation) => {
@@ -91,45 +99,45 @@ export const useInventory = () => {
     await refreshState();
   };
 
-  const createClientRecord = async (input: { name: string; notas?: string | null }) => {
+  const createClientRecord = async (input: Parameters<typeof createClient>[0]) => {
     const client = await createClient(input);
     await refreshState();
     return client;
   };
 
-  const updateClientRecord = async (clientId: string, input: Partial<Pick<Client, 'name' | 'notas' | 'debt'>>) => {
+  const updateClientRecord = async (clientId: string, input: Parameters<typeof updateClient>[1]) => {
     await updateClient(clientId, input);
     await refreshState();
   };
 
-  const deleteClientRecord = async (clientId: string) => {
-    await deleteClient(clientId);
+  const deleteClientRecord = async (clientId: string, metadata: Parameters<typeof deleteClient>[1]) => {
+    await deleteClient(clientId, metadata);
     await refreshState();
   };
 
-  const mergeClientRecords = async (keepId: string, mergeId: string) => {
-    const snapshot = await mergeClients(keepId, mergeId);
+  const mergeClientRecords = async (keepId: string, mergeId: string, metadata: Parameters<typeof mergeClients>[2]) => {
+    const snapshot = await mergeClients(keepId, mergeId, metadata);
     hydrateFromSnapshot(snapshot);
   };
 
-  const createProveedorRecord = async (input: { name: string; notas?: string | null }) => {
+  const createProveedorRecord = async (input: Parameters<typeof createProveedor>[0]) => {
     const proveedor = await createProveedor(input);
     await refreshState();
     return proveedor;
   };
 
-  const updateProveedorRecord = async (proveedorId: string, input: Partial<Pick<Proveedor, 'name' | 'notas'>>) => {
+  const updateProveedorRecord = async (proveedorId: string, input: Parameters<typeof updateProveedor>[1]) => {
     await updateProveedor(proveedorId, input);
     await refreshState();
   };
 
-  const deleteProveedorRecord = async (proveedorId: string) => {
-    await deleteProveedor(proveedorId);
+  const deleteProveedorRecord = async (proveedorId: string, metadata: Parameters<typeof deleteProveedor>[1]) => {
+    await deleteProveedor(proveedorId, metadata);
     await refreshState();
   };
 
-  const mergeProveedorRecords = async (keepId: string, mergeId: string) => {
-    const snapshot = await mergeProveedores(keepId, mergeId);
+  const mergeProveedorRecords = async (keepId: string, mergeId: string, metadata: Parameters<typeof mergeProveedores>[2]) => {
+    const snapshot = await mergeProveedores(keepId, mergeId, metadata);
     hydrateFromSnapshot(snapshot);
   };
 
@@ -172,6 +180,11 @@ export const useInventory = () => {
     await deletePedido(pedidoId, metadata);
     await refreshState();
   };
+  const reconcilePedidoRecord = async (pedidoId: string, input: Parameters<typeof reconcilePedido>[1]) => {
+    const receipt = await reconcilePedido(pedidoId,input);
+    await refreshState();
+    return receipt;
+  };
 
   return {
     products: state.products,
@@ -189,6 +202,7 @@ export const useInventory = () => {
     updateProductRecord,
     updateProductModelRecords,
     previewInventorySelection,
+    confirmInventorySelectionRecord,
     deleteProductRecord,
     deleteProductRecords,
     createClientRecord,
@@ -202,5 +216,6 @@ export const useInventory = () => {
     createPedidoRecord,
     updatePedidoRecord,
     deletePedidoRecord,
+    reconcilePedidoRecord,
   };
 };

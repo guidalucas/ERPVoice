@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 
 /** The caller owns PostgreSQL startup, teardown and reporting. */
 export async function runInventoryDeactivationChecks({ db, sql, check }) {
+  let partyFixtureSequence = 0;
+  const createFixtureClient = (input, businessId) => db.createClientRecord({ ...input, operationId: 'inventory-deactivation-postgres-checks-party-' + ++partyFixtureSequence }, businessId);
+
   const a = '59899000949', b = '59899000959';
   const context = (businessId = a, actorId = 'inventory-deactivation-checks') => ({ businessId, actorId, permissions: ['inventory:receive', 'inventory:sell', 'inventory:reserve', 'inventory:adjust', 'inventory:update', 'inventory:deactivate'] });
   const plan = (operationId, actions, owner = a) => ({ contractVersion: 1, businessId: owner, operationId, actions });
@@ -175,17 +178,17 @@ export async function runInventoryDeactivationChecks({ db, sql, check }) {
     assert.equal((await row(second)).inventory_status, 'active');
   });
 
-  await run('legacy whole writers preserve inactive rows and direct orders cannot resurrect them', async () => {
+  await run('order adapters preserve inactive rows and cannot resurrect them', async () => {
     const name = 'Deactivation legacy protected';
     const id = await seed('deactivate-legacy', { name });
-    const customer = await db.createClientRecord({ name: 'Cliente retiro' }, a);
-    const pending = await db.createPedidoRecord({ clienteId: customer.id, producto: name, qty: 2, estado: 'pendiente' }, a);
+    const customer = await createFixtureClient({ name: 'Cliente retiro' }, a);
+    const pending = await db.createPedidoRecord({ operationId: 'order-deactivation-create', productId: id, clienteId: customer.id, producto: name, qty: 2, estado: 'pendiente' }, a);
     const p = await preview(request('deactivate-legacy', [id])); await confirm(p);
     const inactive = await row(id);
     await db.applyActionsToDatabase([{ type: 'client_order', clientName: 'Cliente escritura posterior', productName: 'Deactivation unrelated pending order', qty: 1 }], 'Nuevo pedido', a,
       { messageId: 'deactivate-legacy-whole-writer' });
-    assert.deepEqual(await row(id), inactive, 'whole-state writer retains the inactive row intact');
-    await assert.rejects(db.updatePedidoRecord(pending.id, { estado: 'conseguido' }, a), { code: 'SKU_INACTIVE' });
+    assert.deepEqual(await row(id), inactive, 'order creation retains the inactive row intact');
+    await assert.rejects(db.updatePedidoRecord(pending.id, { operationId: 'order-deactivation-update', expectedRevision: pending.revision, estado: 'conseguido' }, a), { code: 'SKU_INACTIVE' });
     await assert.rejects(db.applyActionsToDatabase([{ type: 'update_pedido', productName: name, estado: 'conseguido' }], 'Pedido conseguido', a,
       { messageId: 'deactivate-legacy-inactive-order' }), { code: 'SKU_INACTIVE' });
     assert.deepEqual(await row(id), inactive);

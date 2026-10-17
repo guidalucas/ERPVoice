@@ -8,6 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
+- Último alcance integrado: H4.5a, entrada común de planes con despacho/recibo universal.
 
 ## Hitos y dependencias
 
@@ -17,7 +18,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.0, H4.1, H4.2a, H4.3 y H4.4a verificados; pedidos siguientes |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.4e1c verificado; conversación de conjuntos e intérprete universal pendientes |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -53,17 +54,18 @@
 
 ## Próximo paso exacto
 
-H4.4b: migrar efectos de pedidos al mismo núcleo. Revisar solamente ensureProduct,
-applyPedidoEstadoStockEffect, updatePedidoRecord y rama update_pedido, sus consumidores
-HTTP/panel/WhatsApp y pruebas existentes. Definir transiciones/reversión con SKU explícito:
-sin creación por nombre, recorte con Math.max ni reservas/ventas implícitas fuera del plan.
-Pedido, recibo, movimientos e historial deben compartir transacción; exigir operationId
-estable, revisión y autorización del negocio. Probar transición/reintento concurrente,
-stock insuficiente, reversión y rollback antes de retirar ese escritor. Después finanzas
-y demás escritores. Mantener bloqueo de tabla hasta retirar reemplazo legacy.
-H4.4a ya integrado: reutilizar productCreationAdapter/sku.create, no rediseñarlo ni reauditar.
+H4.2b1: ampliar selecciones congeladas a stock.adjust, reutilizando el planner y la
+confirmación existentes. Mostrar antes/después por SKU y unidad, aplicar solo balances
+revisados con motivo, rechazar revisión vencida y rollback integral. Integrar ajuste de
+conjunto desde el panel con preview sin escritura y retry estable; probar PG/HTTP/Edge.
+Después H4.2b conversación de conjuntos, H4.5b intérprete desacoplado/composición y H4.6.
+El escritor local ya fue retirado; no reintroducir fallback optimista ni simulaciones.
+H4.4b ya retiró replaceStateTables: solo inventoryPostgres escribe cantidades de productos.
+El bloqueo amplio se conserva por ahora; optimizar solo tras pruebas del orden de locks.
 H4.2b pendiente: conversación de conjuntos para otros verbos (bajas WhatsApp ya migradas).
-Intérprete universal, esquemas configurables y optimización/evaluación LLM siguen pendientes.
+H4.5: intérprete universal y composición de planes entre dominios; hoy stock+cuenta/pedido
+en un mismo lote se rechaza entero. H4.6: familias/esquemas configurables persistentes y
+validación de atributos; después optimización/evaluación LLM y H5 externo. No reauditar.
 
 ## Registro de hitos
 
@@ -300,12 +302,204 @@ Intérprete universal, esquemas configurables y optimización/evaluación LLM si
   finanzas, intérprete universal y esquemas de familias configurables pendientes. No se
   desplegó ni evaluó IA real. River conserva las dos fallas conocidas del registro anterior.
 
+- H4.4b (2026-10-17): pedidos registran product_id, revision y stock_posting_json (ingreso
+  neto vigente: SKU, cantidad, unidad). Conseguido significa aprovisionamiento: entrar suma;
+  salir/borrar retira exactamente lo registrado del SKU original. Cambiar cantidad aplica
+  diferencia neta; cambiar SKU revierte y recibe atómicamente. Sin stock suficiente se
+  rechaza todo; no recorta ni registra ventas/ingresos financieros ficticios.
+- H4.4b: stock.withdraw amplía el mismo OperationPlan/planner/adapter; exige SKU existente,
+  cantidad positiva, motivo y permiso propio. No admite precios ni afecta reservado.
+  orderOperations planifica transiciones; orderPostgres ejecuta pedido + núcleo + historial
+  en una transacción. order_operations guarda solicitud normalizada y resultado inmutable
+  incluso si no cambia stock o se borra el pedido. Replay precede a existencia/revisión;
+  IDs internos reservados y locks ordenados impiden colisión con operaciones externas.
+- H4.4b: POST pide operationId; PUT/DELETE también expectedRevision. Creación conseguida
+  exige SKU explícito; pendientes pueden ser texto libre. Clientes/proveedores se validan
+  dentro del negocio. Pedido histórico conseguido sin procedencia no se reinterpreta.
+  Borrar cliente con pedidos se rechaza; fusiones/bajas de proveedor invalidan revisiones.
+- H4.4b: retirados ensureProduct, applyPedidoEstadoStockEffect, resolución aproximada de
+  pedidos y reemplazo completo de productos/clientes/proveedores. La última rama financiera
+  actualiza solo deuda, sin tocar inventario ni pedidos; todavía requiere H4.4c.
+  WhatsApp/panel adaptan pedidos al mismo ejecutor; nombres solo seleccionan un pedido único
+  con igualdad conservadora antes de escribir. IDs de SKU propuestos por IA se descartan;
+  pedido sin SKU vinculado necesita selección explícita, no nueva inferencia al conseguirlo.
+- H4.4b: lotes de pedidos y outbox atómicos, recibos congelados y proyección común en
+  operationResults para eventos Meta. Panel conserva cuerpo/UUID/revisión tras 503 y refresh
+  fallido; retry permanece visible tras hidratar otro estado. Elegir SKU o revisar conflicto
+  abre un intento nuevo; controles bloqueados durante envío. Seed actualizado, no ejecutado.
+- H4.4b verificado: 145 checks PostgreSQL/HTTP, 43 tests puros y 50 del motor. Carreras,
+  rollback de movimiento/outbox (incluidos clientes creados), cambios de cantidad/SKU,
+  replay tras borrado, aislamiento y revisiones indirectas cubiertos. HTTP real con JWT y
+  Meta firmado valida ingreso/replay y reversión insuficiente terminal. Build y Edge de
+  pedidos e inventario aprobados; Edge usa API simulada. Revisión arquitectónica independiente
+  señaló borrado indirecto, procedencia neta y orden de locks, corregidos y probados.
+- H4.4b límites: conciliación histórica aún sin UI/contrato, finanzas todavía legacy,
+  intérprete universal/esquemas configurables y evaluación/despliegue pendientes. No se
+  cambió configuración productiva ni se llamó a proveedores reales. No declarar C completa.
+
+- H4.4c (2026-10-17): accountOperations implementa account.charge/payment/adjust/transfer
+  con la misma envoltura OperationPlan v1, validación cerrada y dominio puro propio.
+  No duplica Inventory Engine. Cliente explícito, motivo, importes enteros seguros; ajustes
+  y transferencias requieren revisión. Pago excesivo rechaza todo, sin truncar ni sobregirar.
+  Unidad legacy-money conserva los importes históricos sin inventar moneda/conversión.
+- H4.4c: accountPostgres guarda recibo, deltas, revisiones e historial en una transacción;
+  replay vuelve antes de consultar saldo actual. BIGINT y account_revision aditivos en
+  clientes; account_operations/account_movements conservan auditoría. Solo este adapter
+  cambia saldos de cuentas. Creación de clientes inicia en cero; cargos/ajustes explícitos
+  reemplazan deuda inicial o PUT directo. Metadatos ya no sobrescriben deuda concurrente.
+- H4.4c: retirado calculateProductDebt y el último bucle financiero legacy; ningún cargo
+  usa precio de catálogo ni fallback al primer cliente. Adapters panel/WhatsApp resuelven
+  igualdad conservadora única antes de ejecutar por ID; IDs de cliente del LLM ignorados.
+  API autenticada POST /api/accounts/operations; recibos alimentan respuesta y evento Meta.
+  Outbox comparte commit; rechazo de pago en Meta queda terminal tras reentrega.
+- H4.4c: clientMergePostgres transfiere saldo, mueve pedidos/avanza sus revisiones, une
+  notas y elimina origen atómicamente. Padre/transferencia tienen recibos; locks internos
+  reservados evitan colisiones y replay funciona tras borrar origen y cambiar saldos.
+  POST /api/clients/merge exige operationId y revisiones de ambas cuentas. Panel captura
+  cuerpo/revisiones, conserva retry tras 503 e hidratación y muestra los saldos a trasladar.
+  Borrar cliente con saldo o pedidos se rechaza; errores de clientes son visibles en panel.
+- H4.4c verificado: 154 checks PG/HTTP y 46 tests puros, build y Edge de cuentas aprobados.
+  Cubre pagos concurrentes, balances finales, transferencias, ámbito/permisos, revisiones,
+  importes explícitos, rollback de ledger/outbox y fusión tras transferencia/movimiento de
+  pedidos/borrado. HTTP real prueba contrato, JWT, rutas antiguas cerradas y Meta firmado
+  con pago/replay/rechazo terminal. Edge prueba fusión con 503/origen desaparecido, conflicto
+  y controles de envío. Regresiones del motor siguen en 50; sin proveedor real ni despliegue.
+- H4.4c límites: no es contabilidad multimoneda ni créditos negativos; saldos históricos
+  inválidos requieren conciliación. CRUD de metadatos, conciliación de pedidos, planes
+  mixtos entre dominios, intérprete universal y familias configurables siguen pendientes.
+
+- H4.4d (2026-10-17): conciliación histórica individual en orderOperations/orderPostgres,
+  sin nuevo escritor ni tabla. POST /api/pedidos/:id/reconcile exige operationId, revisión
+  del pedido y reconciliation con SKU/revisión/fingerprint, disponibles/reservados vistos,
+  cantidad/unidad, motivo y confirmed=true. Verifica igualdad con lo persistido y disponible
+  suficiente para atribuir toda la cantidad; solo pedidos conseguidos sin posting previo.
+- H4.4d: registra stock.adjust con balance idéntico (delta cero) y liga posting en la misma
+  transacción. No atribuye recibos antiguos por nombre ni vuelve a recibir mercadería.
+  Después se puede revertir el pedido con stock.withdraw exacto; cambios concurrentes,
+  SKU ajeno/inactivo, balances forjados o falta de confirmación rechazan todo.
+- H4.4d: OrderReconciliationForm presenta SKU/motivo, revisión congelada, balances y cantidad
+  a atribuir; checkbox explícito antes de confirmar. Cambiar revisión crea intento nuevo.
+  Pendiente de respuesta conserva cuerpo/UUID/consentimiento; retry sigue disponible tras
+  hidratar posting aplicado y desmontar el formulario. Pedido sin conciliar no puede usar
+  botones de reversión. Decisión humana queda en request_json y motivo del movimiento cero.
+- H4.4d verificado: 158 checks PostgreSQL/HTTP, 47 tests puros, build y Edge de pedidos con
+  conciliación aprobados. Prueba replay concurrente y tras cambios/borrado, cero exacto,
+  reversión posterior, aislamiento, stale/fingerprint/cantidades alteradas y rollback al
+  persistir el vínculo después del movimiento. HTTP real con JWT prueba confirmación y
+  revisión; Edge verifica preview sin escritura, checkbox, 503 y retry tras hidratar.
+- H4.4d límites: requiere revisión humana; no certifica un ingreso histórico desconocido.
+  No se concilió ningún dato real. Conciliaciones masivas/WhatsApp, CRUD de metadatos,
+  composición entre dominios, intérprete universal y esquemas configurables aún pendientes.
+
+- H4.4e0 (2026-10-17): retirado transactionService.ts completo (490 líneas) y API/acción
+  APPLY_EXTERNAL_PROPOSAL de AppStore. Búsqueda de consumidores confirmó que solo el store
+  lo importaba; no había llamadas activas. Se eliminó así el motor local con resolución
+  aproximada, creación implícita, recortes de stock y deuda, pedidos/borrados divergentes.
+  El panel conserva confirmación HTTP, snapshot persistido y borrador recuperable.
+- H4.4e0 verificado: build y Edge de inventario y panel-draft-recovery aprobados tras borrar
+  el módulo. Cubre 503+recarga con mismo ID/una escritura, cancelación, ámbito de negocio y
+  actor, snapshot inválido, propuesta concurrente y cuota de almacenamiento. rg no encuentra
+  transactionService/applyExternalProposal/applyConfirmedActions/APPLY_EXTERNAL_PROPOSAL
+  en src/scripts. Suites backend siguen en 158 checks PG/HTTP y 47 tests puros; sin cambios
+  backend en este retiro. No ejecutar tests que solo reproduzcan código eliminado.
+
+- P0 de lecturas (2026-10-17): getStateSnapshot delega a lectura estricta en una transacción
+  REPEATABLE READ READ ONLY; inventario, cuentas, pedidos e historial comparten snapshot.
+  Retirados catch/fallback vacío y normalización con escrituras ocultas durante lectura.
+  Un fallo de conexión/arranque o SELECT se propaga; GET /api/state responde 503 genérico
+  STATE_UNAVAILABLE sin arrays vacíos ni detalles SQL. El panel conserva su estado anterior.
+- P0 de lecturas verificado: 160 checks PG/HTTP. Incluye conexión de arranque fallida seguida
+  de recuperación exacta y fallo real de tabla durante GET con recuperación de stock 7.
+  Suites puras permanecen en 47 y motor en 50; build y Edge ya aprobados en e0, sin cambios
+  frontend aquí. Consultas de WhatsApp/ingresos también usan la lectura estricta compartida.
+
+- H4.4e1a (2026-10-17): partyOperations/partyPostgres usan OperationPlan v1 cerrado para
+  client.create/supplier.create, individual o lote atómico. party_operations conserva
+  hash/plan/actor/recibo inmutable; historia se proyecta desde filas persistidas. Cliente
+  inicia con saldo cero; no hay movimientos de stock/cuenta. HTTP exige operationId,
+  deriva negocio/actor y rechaza campos desconocidos; replay devuelve original incluso
+  tras editar/borrar, sin resucitar entidad. Migración aditiva/repetible con RLS.
+- H4.4e1a: pedidos compatibles crean participantes por el mismo ejecutor dentro de su
+  transacción; IDs order-party reservados y lock compartido antes de resolver evitan la
+  doble creación concurrente por igualdad exacta. Fallo de outbox revierte también recibos
+  de participantes. Panel y pedidos retienen cuerpo/UUID ante 503/refresco fallido, muestran
+  errores, bloquean doble envío y renuevan intento solo al editar o cancelar explícitamente.
+- H4.4e1a verificado: 171 checks PG/HTTP, 50 tests puros y 50 regresiones del motor; build,
+  Edge party-create-ui y order-ui aprobados. Incluye concurrencia, ámbito/permisos antes
+  de replay, deuda prohibida, campos cerrados y fallos inducidos de recibo/segunda entidad/
+  nombre/deuda persistidos con rollback total. Edge usa API simulada y PG base temporal.
+- H4.4e1a límites: los intentos UI viven en memoria del componente (no sobreviven recarga
+  completa); recibos backend son persistentes. PUT/baja/fusión proveedor siguen pendientes
+  de migración, igual que composición universal y familias; no declarar H4/H5 terminados.
+
+- H4.4e1b (2026-10-17): client.update/supplier.update usan el mismo contrato party v1,
+  patch cerrado name/notas, target explícito y metadataRevision BIGINT independiente del
+  saldo/accountRevision. Revisión obligatoria, incremento incluso si patch no cambia valor,
+  CAS y recibo exacto antes de existencia actual. Doble target en lote se rechaza entero.
+  PUT autenticados ya no escriben directamente; campos desconocidos/deuda quedan cerrados.
+- H4.4e1b: metadatos y pago concurrentes conservan ambos efectos; metadataRevision no avanza
+  por cuenta ni accountRevision por notas. Fusiones legacy avanzan metadataRevision para
+  invalidar ediciones previas. El panel captura revisión al abrir editor, cuerpo/UUID al
+  enviar, conserva retry global tras hidratación/borrado y exige revisión explícita si
+  cambia el borrador sobre una entidad actualizada. No sobrescribe automáticamente un 409.
+- H4.4e1b verificado: 182 checks PG/HTTP y 52 tests puros; build y Edge party-edit-ui,
+  party-create-ui y client-account-ui aprobados. Incluye replay concurrente, ganador único
+  de cambios distintos, pago simultáneo, aislamiento, lote crear/editar con rollback,
+  triggers de divergencia y recibo fallido, replay después de otra edición/baja y merge.
+  Motor permanece en 50 regresiones de e1a. No desplegado ni evaluado con LLM real.
+
+- H4.4e1c (2026-10-17): bajas client.delete/supplier.delete y supplier.merge por party v1,
+  IDs/motivo/revisiones obligatorios y recibos que sobreviven al borrado. Cliente exige
+  también accountRevision vigente, saldo cero y ausencia de pedidos. Proveedor se elimina
+  desligando pedidos o se fusiona trasladándolos y uniendo notas, sin tocar stock/postings.
+  Los recibos enumeran exactamente IDs, vínculo y revisiones resultantes de los pedidos.
+- H4.4e1c: movePartyOrders verifica RETURNING completo contra el estado previo (incluidas
+  fechas/qty/posting), permitiendo solo vínculo+revisión. Fusión de clientes ahora verifica
+  metadatos y saldos; conserva replay de recibos históricos con hash original. Transfiere
+  saldo por accountPostgres, mueve pedidos por helper verificado y cambia notas/baja origen
+  por partyPostgres con childreceipt reservado. Falla cualquiera: rollback de toda la transacción.
+  Solo partyPostgres escribe entidades/metadatos; solo accountPostgres cambia sus saldos.
+- H4.4e1c: panel conserva cuerpos/IDs/revisiones de bajas/fusiones tras 503 o refresco
+  fallido, mantiene retry fuera de las tarjetas borradas y exige revisar para nuevo intento.
+  Explica que baja proveedor conserva pedidos sin vínculo y fusión une notas/traslada pedidos.
+  Cuenta+metadatos se capturan juntos al fusionar clientes; controles bloquean doble envío.
+- H4.4e1c verificado: 198 checks PG/HTTP, 54 tests puros; build y Edge party-delete-merge-ui,
+  party-create-ui, party-edit-ui y client-account-ui aprobados. Incluye competencia/replay,
+  guards financieros/pedidos, IDs ajenos, revisiones vencidas, legacy replay y fallos SQL de
+  recibo/fechas/qty/posting con rollback total. Revisión independiente enfocada sin hallazgos.
+  Sin despliegue/LLM real; fusión limita notas a 8000 caracteres, nunca las trunca.
+
+- H4.5a (2026-10-17): POST /api/operations acepta OperationPlan v1 homogéneo de inventario,
+  cuentas o entidades. universalOperations selecciona dominio y reutiliza sus validadores;
+  universalPostgres solo orquesta adaptadores existentes, sin lógica de stock/cuenta nueva.
+  universal_operations guarda padre/plan/hash/actor/recibo; childreceipts universal-child
+  son internos y se escriben en la misma transacción. Reutilizar ID entre dominios por esta
+  entrada produce conflicto. Proyección de eventos desenvuelve el recibo de dominio.
+- H4.5a: autorización antes de replay, tenant por backend, IDs internos no invocables desde
+  rutas de dominio y mismo orden de locks. Plan mixto/acción desconocida se rechaza antes
+  de escribir; guard de selección revisada conserva restricciones previas. HTTP no habilita
+  stock.withdraw. Inventario registra historia por callback compartido; cuentas/party ya
+  la registran dentro de sus adaptadores. Las rutas anteriores siguen siendo compatibles.
+- H4.5a seguridad: registradas también order_operations, account_operations/account_movements
+  e inventory_selections en RLS/revocación a roles cliente, junto a universal_operations.
+  Migración repetida conserva datos; lectura/backend continúan con su rol autorizado.
+- H4.5a verificado: 215 checks PG/HTTP y 57 tests puros, build aprobado; tres dominios,
+  root/child receipts concurrentes, cambios/borrado posteriores, colisiones, aislamiento,
+  permisos, selección obligatoria y fallo SQL padre que revierte efectos/ledger/historia.
+  Revisión independiente sin hallazgos concretos. Edge de CRUD sigue aprobado en e1c.
+- H4.5a límites: entrada común no equivale a intérprete universal terminado. No compone
+  dominios ni pedidos/client.merge en un solo plan; canales/parser aún usan adapters
+  compatibles. Idempotencia raíz global aplica a esta entrada, no reconcilia IDs ya usados
+  en endpoints históricos de dominios distintos. No desplegado ni probado con LLM real.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
   H3.1 `f56b500`, H3.2 `b3e031f`; consultar `git log` para checkpoints siguientes.
 - H4.0 `aa64aba`; H4.1 `c484e1c`; H4.2a `27824d5`; H4.3 `ef2d58c`.
-- H4.4a: siguiente commit de altas con stock inicial; recuperar SHA con git log.
+- H4.4a `844b29b`; H4.4b `bf812ee` (incluye checkpoint parcial `600373f`); H4.4c `ba251e6`.
+- H4.4d `cf25ea2`; H4.4e0 `2fd5c3e`; lectura consistente `8581240`; e1a `f34ea14`; e1b `848632c`; e1c `ffa7809`; H4.5a: ver git log.
+  No volver a diseñar la política de aprovisionamiento/conciliación.
 - Checks base: `npm run test:inventory`, `npm run test:voice-stock-batches`,
   `npm run test:voice-stock-postgres`; este último crea y elimina PostgreSQL temporal.
 - Frontend: `npm run test:inventory-ui` y `npm run test:panel-draft-recovery`.
@@ -314,5 +508,10 @@ Intérprete universal, esquemas configurables y optimización/evaluación LLM si
 - Bajas: `npm run test:inventory-deactivation-ui`; incluido en test:inventory y PG/HTTP.
   Edge local; APIs/proveedores simulados. Ninguna de estas pruebas valida IA real.
 - Altas: `npm run test:inventory-create-ui`; contrato y rollback incluidos en suites pura/PG.
+- Pedidos: `npm run test:order-ui`; transacciones/HTTP/Meta en test:voice-stock-postgres.
+- Metadatos: `npm run test:party-create-ui`, `npm run test:party-edit-ui` y
+  `npm run test:party-delete-merge-ui`; PG/HTTP incluidos en suite compartida.
+- Cuentas: `npm run test:client-account-ui`; contratos/dominio en test:inventory y PG/HTTP/Meta
+  en test:voice-stock-postgres. Edge usa API simulada, no valida proveedores reales.
 - Producción: falta verificar configuración privada, backup/restauración recuperable,
   ejecutar migración controlada, comprobar SHA/readiness y piloto aislado. No desplegado.

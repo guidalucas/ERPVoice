@@ -63,8 +63,8 @@ const main = async () => {
   }
 
   const clients = [];
-  for (const client of seedClients) {
-    const created = await createClientRecord(client, ownerPhone);
+  for (const [index, client] of seedClients.entries()) {
+    const created = await createClientRecord({...client,operationId:`dev-seed-client-${index + 1}`}, ownerPhone);
     clients.push(created);
     console.log(`[seed-dev] cliente ${created.name}`);
   }
@@ -76,7 +76,7 @@ const main = async () => {
   if (jere) {
     await createPedidoRecord(
       {
-        clienteId: jere.id,
+        operationId: 'dev-seed-order-jere', clienteId: jere.id,
         producto: 'Camiseta Boca Titular',
         productType: 'Camiseta',
         productModel: 'Boca Titular',
@@ -92,7 +92,7 @@ const main = async () => {
   if (lucas) {
     await createPedidoRecord(
       {
-        clienteId: lucas.id,
+        operationId: 'dev-seed-order-lucas', clienteId: lucas.id,
         producto: 'Camiseta Argentina',
         productType: 'Camiseta',
         productModel: 'Argentina',
@@ -107,7 +107,7 @@ const main = async () => {
   if (maru) {
     await createPedidoRecord(
       {
-        clienteId: maru.id,
+        operationId: 'dev-seed-order-maru', productId: (await getStateSnapshot(ownerPhone)).products.find((p) => p.productType === 'Short' && p.productModel === 'Boca' && p.size === 'M')?.id, clienteId: maru.id,
         producto: 'Short Boca',
         productType: 'Short',
         productModel: 'Boca',

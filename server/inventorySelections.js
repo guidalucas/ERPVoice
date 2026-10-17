@@ -69,16 +69,17 @@ export function normalizeSelectionRequest(input) {
       }
     }
   } else invalid('Unsupported selector kind');
-  const mutation = record(request.mutation, ['type', 'changes', 'reason'], 'mutation');
-  if (!['sku.update', 'sku.deactivate'].includes(mutation.type)) fail('UNSUPPORTED_OPERATION', 'Este conjunto solo admite cambios y bajas de SKU por ahora.');
-  if (mutation.type === 'sku.deactivate' && Object.hasOwn(mutation, 'changes')) invalid('Deactivation cannot include changes');
+  const mutation = record(request.mutation, ['type', 'changes', 'balances', 'reason'], 'mutation');
+  if (!['sku.update', 'sku.deactivate','stock.adjust'].includes(mutation.type)) fail('UNSUPPORTED_OPERATION', 'Este conjunto admite cambios, bajas y ajustes revisados de SKU.');
+  if (mutation.type !== 'sku.update' && Object.hasOwn(mutation, 'changes')) invalid('Only SKU updates can include changes');
+  if (mutation.type !== 'stock.adjust' && Object.hasOwn(mutation,'balances')) invalid('Only stock adjustments can include balances');
   // Reuse the operation contract for mutation fields and values.
   const validated = validateOperationPlan({ contractVersion: 1, businessId: 'selection-validation', operationId: 'validation',
     actions: [{ itemId: 'validation', type: mutation.type, target: { kind: 'existing', skuId: 'validation', expectedRevision: 0 },
-      ...(mutation.type === 'sku.update' ? { changes: mutation.changes } : {}), reason: mutation.reason }],
-  }, { businessId: 'selection-validation', actorId: 'selection-validation', permissions: ['inventory:update', 'inventory:deactivate'] });
+      ...(mutation.type === 'sku.update' ? { changes: mutation.changes } : mutation.type === 'stock.adjust' ? {balances:mutation.balances} : {}), reason: mutation.reason }],
+  }, { businessId: 'selection-validation', actorId: 'selection-validation', permissions: ['inventory:update', 'inventory:deactivate','inventory:adjust'] });
   return { requestId, selector: normalized, mutation: { type: mutation.type,
-    ...(mutation.type === 'sku.update' ? { changes: validated.actions[0].changes } : {}), reason: validated.actions[0].reason } };
+    ...(mutation.type === 'sku.update' ? { changes: validated.actions[0].changes } : mutation.type === 'stock.adjust' ? {balances:validated.actions[0].balances} : {}), reason: validated.actions[0].reason } };
 }
 
 export function selectInventoryProducts(selector, products) {
@@ -105,7 +106,7 @@ export function selectInventoryProducts(selector, products) {
   return selected;
 }
 
-export function buildSelectionPreview(input, products, { businessId, actorId, selectionId, expiresAt, permissions = ['inventory:update', 'inventory:deactivate'] }) {
+export function buildSelectionPreview(input, products, { businessId, actorId, selectionId, expiresAt, permissions = ['inventory:update', 'inventory:deactivate','inventory:adjust'] }) {
   const request = normalizeSelectionRequest(input);
   text(selectionId, 'selectionId');
   if (typeof expiresAt !== 'string' || !Number.isFinite(Date.parse(expiresAt))) invalid('Invalid selection expiry');
@@ -117,10 +118,12 @@ export function buildSelectionPreview(input, products, { businessId, actorId, se
         expectedFingerprint: inventoryProductFingerprint(product) } })),
   }, { businessId, actorId, permissions });
   // Preflight uses the SAME planner; preview never persists its effects.
-  planInventoryOperation(plan, products);
+  const effect = planInventoryOperation(plan, products);
+  const finalById = new Map(effect.changedProducts.map((product) => [product.id,product]));
   const members = selected.map((product) => ({ skuId: product.id, name: product.name, size: product.size ?? null,
     revision: product.revision, stockAvailable: product.stockAvailable, stockReserved: product.stockReserved,
-    price: product.price, priceCurrency: product.priceCurrency ?? 'XXX' }));
+    price: product.price, priceCurrency: product.priceCurrency ?? 'XXX',
+    ...(request.mutation.type === 'stock.adjust' ? {unit:product.unit ?? 'unit',finalAvailable:finalById.get(product.id).stockAvailable,finalReserved:finalById.get(product.id).stockReserved} : {}) }));
   const digest = createHash('sha256').update(JSON.stringify({ businessId, actorId, selectionId, expiresAt, members,
     operation: operationDigest(plan) })).digest('hex');
   return { plan, preview: { selectionId, digest, expiresAt, status: 'pending', members, mutation: request.mutation } };

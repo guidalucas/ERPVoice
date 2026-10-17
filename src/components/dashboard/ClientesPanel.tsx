@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
 import { EmptyState } from './EmptyState';
+import { toUserFacingError } from '../../services/apiClient';
 
 export function ClientesPanel() {
   const preset = useBusinessCategoryPreset();
@@ -15,8 +16,15 @@ export function ClientesPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editNotas, setEditNotas] = useState('');
+  const editRevisionRef = useRef<number | null>(null);
+  const editAttemptRef = useRef<{ id: string; body: Parameters<typeof updateClientRecord>[1] } | null>(null);
+  const [editReviewRequired, setEditReviewRequired] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mergeAttemptRef = useRef<{ keepId: string; mergeId: string; metadata: Parameters<typeof mergeClientRecords>[2] } | null>(null);
+  const deleteAttemptRef = useRef<{ id: string; body: Parameters<typeof deleteClientRecord>[1] } | null>(null);
+  const busyRef = useRef(false);
 
   const formatCurrency = (value: number) => `$${value.toLocaleString('es-AR')}`;
   const outstandingDebt = clients.reduce((total, client) => total + (Number.isFinite(client.debt) ? client.debt : 0), 0);
@@ -30,60 +38,171 @@ export function ClientesPanel() {
     return map;
   }, [pedidos]);
 
+  const createAttemptRef = useRef<Parameters<typeof createClientRecord>[0] | null>(null);
+
   const handleCreate = async () => {
+    if (busyRef.current) return;
     if (!name.trim()) {
       return;
     }
+    busyRef.current = true;
     setSaving(true);
+    setError(null);
     try {
-      await createClientRecord({ name: name.trim(), notas: notas.trim() || null });
+      const attempt = createAttemptRef.current ?? { operationId: crypto.randomUUID(), name: name.trim(), notas: notas.trim() || null };
+      createAttemptRef.current = attempt;
+      await createClientRecord(attempt);
+      createAttemptRef.current = null;
       setName('');
       setNotas('');
       setFormOpen(false);
+    } catch (error) {
+      setError(toUserFacingError(error,'No pude crear el cliente.'));
     } finally {
+      busyRef.current = false;
       setSaving(false);
     }
   };
 
+  const discardEdit = () => {
+    if (busyRef.current) return;
+    editAttemptRef.current = null;
+    editRevisionRef.current = null;
+    setEditReviewRequired(false); setEditingId(null); setError(null);
+  };
+
   const startEdit = (clientId: string) => {
+    if (busyRef.current || editAttemptRef.current) return;
     const client = clients.find((entry) => entry.id === clientId);
-    if (!client) {
+    if (!client) return;
+    if (typeof client.metadataRevision !== 'number' || !Number.isSafeInteger(client.metadataRevision) || client.metadataRevision < 0) {
+      setError('Falta la revisión. Actualizá la página y volvé a abrir la edición.');
       return;
     }
+    editRevisionRef.current = client.metadataRevision;
+    setEditReviewRequired(false); setError(null);
     setEditingId(clientId);
     setEditName(client.name);
     setEditNotas(client.notas ?? '');
   };
 
-  const saveEdit = async () => {
-    if (!editingId || !editName.trim()) {
-      return;
+  const changeEdit = (field: 'name' | 'notas', value: string) => {
+    editAttemptRef.current = null;
+    const current = clients.find((entry) => entry.id === editingId);
+    if (!current || current.metadataRevision !== editRevisionRef.current) {
+      setEditReviewRequired(true);
+      setError('El registro cambió. Revisá los clientes actuales y volvé a abrir la edición.');
     }
-    setSaving(true);
+    if (field === 'name') setEditName(value); else setEditNotas(value);
+  };
+
+  const submitEdit = async (attempt: NonNullable<typeof editAttemptRef.current>) => {
+    if (busyRef.current) return;
+    busyRef.current = true; setSaving(true); setError(null);
     try {
-      await updateClientRecord(editingId, { name: editName.trim(), notas: editNotas.trim() || null });
-      setEditingId(null);
+      await updateClientRecord(attempt.id, attempt.body);
+      editAttemptRef.current = null; editRevisionRef.current = null;
+      setEditReviewRequired(false); setEditingId(null);
+    } catch (error) {
+      setError(toUserFacingError(error, 'No pude guardar el cliente.'));
     } finally {
-      setSaving(false);
+      busyRef.current = false; setSaving(false);
     }
   };
 
+  const saveEdit = async () => {
+    if (busyRef.current || editReviewRequired || !editingId || !editName.trim() || editRevisionRef.current === null) return;
+    const attempt = editAttemptRef.current ?? { id: editingId, body: {
+      operationId: crypto.randomUUID(), expectedRevision: editRevisionRef.current,
+      name: editName.trim(), notas: editNotas.trim() || null,
+    } };
+    editAttemptRef.current = attempt;
+    await submitEdit(attempt);
+  };
+
   const handleMerge = async () => {
-    if (!mergeKeepId || !mergeOtherId || mergeKeepId === mergeOtherId) {
-      return;
+    if (busyRef.current || !mergeKeepId || !mergeOtherId || mergeKeepId === mergeOtherId) return;
+    let attempt = mergeAttemptRef.current;
+    if (!attempt) {
+      const keep = clients.find((entry) => entry.id === mergeKeepId);
+      const source = clients.find((entry) => entry.id === mergeOtherId);
+      if (!keep || !source || typeof keep.metadataRevision !== 'number' || !Number.isSafeInteger(keep.metadataRevision) || keep.metadataRevision < 0
+        || typeof source.metadataRevision !== 'number' || !Number.isSafeInteger(source.metadataRevision) || source.metadataRevision < 0
+        || typeof keep.accountRevision !== 'number' || !Number.isSafeInteger(keep.accountRevision) || keep.accountRevision < 0
+        || typeof source.accountRevision !== 'number' || !Number.isSafeInteger(source.accountRevision) || source.accountRevision < 0) {
+        setError('Faltan revisiones. Actualizá la página y revisá los clientes antes de fusionar.'); return;
+      }
+      attempt = { keepId: keep.id, mergeId: source.id, metadata: {
+        operationId: crypto.randomUUID(),
+        expectedKeepRevision: keep.accountRevision, expectedMergeRevision: source.accountRevision,
+        expectedKeepMetadataRevision: keep.metadataRevision, expectedMergeMetadataRevision: source.metadataRevision,
+      } };
+      mergeAttemptRef.current = attempt;
     }
-    setSaving(true);
+    busyRef.current = true; setSaving(true); setError(null);
     try {
-      await mergeClientRecords(mergeKeepId, mergeOtherId);
-      setMergeKeepId('');
-      setMergeOtherId('');
-    } finally {
-      setSaving(false);
+      await mergeClientRecords(attempt.keepId, attempt.mergeId, attempt.metadata);
+      mergeAttemptRef.current = null; setMergeKeepId(''); setMergeOtherId('');
+    } catch (error) { setError(toUserFacingError(error, 'No pude fusionar los clientes.')); }
+    finally { busyRef.current = false; setSaving(false); }
+  };
+
+  const submitDelete = async (attempt: NonNullable<typeof deleteAttemptRef.current>) => {
+    if (busyRef.current) return;
+    busyRef.current = true; setSaving(true); setError(null);
+    try {
+      await deleteClientRecord(attempt.id, attempt.body);
+      deleteAttemptRef.current = null;
+    } catch (error) { setError(toUserFacingError(error, 'No pude eliminar el cliente.')); }
+    finally { busyRef.current = false; setSaving(false); }
+  };
+
+  const handleDelete = async (client: (typeof clients)[number]) => {
+    if (busyRef.current) return;
+    const prior = deleteAttemptRef.current;
+    if (prior) { if (prior.id === client.id) await submitDelete(prior); return; }
+    if (typeof client.metadataRevision !== 'number' || !Number.isSafeInteger(client.metadataRevision) || client.metadataRevision < 0
+      || typeof client.accountRevision !== 'number' || !Number.isSafeInteger(client.accountRevision) || client.accountRevision < 0) {
+      setError('Falta la revisión. Actualizá la página y revisá el registro antes de eliminarlo.'); return;
     }
+    const attempt = { id: client.id, body: {
+      operationId: crypto.randomUUID(), expectedRevision: client.metadataRevision,
+      expectedAccountRevision: client.accountRevision,
+      reason: 'Eliminación explícita de cliente desde el panel.',
+    } };
+    deleteAttemptRef.current = attempt;
+    await submitDelete(attempt);
   };
 
   return (
     <div className="space-y-4">
+      {error && <p role="alert" className="erp-panel text-rose-700 dark:text-rose-200">{error}</p>}
+      {deleteAttemptRef.current && (
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="erp-button-primary" disabled={saving} onClick={() => {
+            const attempt = deleteAttemptRef.current; if (attempt) void submitDelete(attempt);
+          }}>Reintentar eliminación</button>
+          <button type="button" className="erp-button-secondary" disabled={saving} onClick={() => {
+            deleteAttemptRef.current = null; setError(null);
+          }}>Revisar eliminación</button>
+        </div>
+      )}
+      {(editAttemptRef.current || editReviewRequired) && (
+        <div className="flex flex-wrap gap-2">
+          {editAttemptRef.current && <button type="button" className="erp-button-primary" disabled={saving} onClick={() => {
+            const attempt = editAttemptRef.current; if (attempt) void submitEdit(attempt);
+          }}>Reintentar edición</button>}
+          <button type="button" className="erp-button-secondary" disabled={saving} onClick={discardEdit}>Revisar clientes actuales</button>
+        </div>
+      )}
+      {mergeAttemptRef.current && (
+        <div className="flex gap-2">
+          <button type="button" className="erp-button-primary" disabled={saving} onClick={() => void handleMerge()}>Reintentar fusión</button>
+          <button type="button" className="erp-button-secondary" disabled={saving} onClick={() => {
+            mergeAttemptRef.current = null; setError(null); setMergeKeepId(''); setMergeOtherId('');
+          }}>Revisar clientes actuales</button>
+        </div>
+      )}
       <article className="erp-panel">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -92,15 +211,15 @@ export function ClientesPanel() {
               <p className="mt-1 text-sm text-[color:var(--warning)]">Deuda total {formatCurrency(outstandingDebt)}</p>
             )}
           </div>
-          <button type="button" className="erp-button-primary min-h-11" onClick={() => setFormOpen((open) => !open)}>
+          <button type="button" className="erp-button-primary min-h-11" disabled={saving} onClick={() => setFormOpen((open) => !open)}>
             {formOpen ? 'Cerrar' : 'Nuevo cliente'}
           </button>
         </div>
 
         {formOpen && (
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-            <input className="erp-input min-h-11" placeholder="Nombre" value={name} onChange={(event) => setName(event.target.value)} />
-            <input className="erp-input min-h-11" placeholder="Notas (opcional)" value={notas} onChange={(event) => setNotas(event.target.value)} />
+            <input className="erp-input min-h-11" placeholder="Nombre" disabled={saving} value={name} onChange={(event) => { createAttemptRef.current = null; setName(event.target.value); }} />
+            <input className="erp-input min-h-11" placeholder="Notas (opcional)" disabled={saving} value={notas} onChange={(event) => { createAttemptRef.current = null; setNotas(event.target.value); }} />
             <button type="button" className="erp-button-primary min-h-11" disabled={saving || !name.trim()} onClick={() => void handleCreate()}>
               Agregar
             </button>
@@ -144,13 +263,14 @@ export function ClientesPanel() {
                       </p>
                     </button>
                     <div className="flex gap-2">
-                      <button type="button" className="erp-button-secondary min-h-11 px-3 text-sm" onClick={() => startEdit(client.id)}>
+                      <button type="button" className="erp-button-secondary min-h-11 px-3 text-sm" disabled={saving || Boolean(editAttemptRef.current)} onClick={() => startEdit(client.id)}>
                         Editar
                       </button>
                       <button
                         type="button"
                         className="erp-button-danger min-h-11 px-3 text-sm"
-                        onClick={() => void deleteClientRecord(client.id)}
+                        disabled={saving}
+                        onClick={() => void handleDelete(client)}
                       >
                         Eliminar
                       </button>
@@ -160,12 +280,12 @@ export function ClientesPanel() {
                   {isEditing && (
                     <div className="border-t border-[color:var(--border)] px-4 py-3">
                       <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]">
-                        <input className="erp-input min-h-11" value={editName} onChange={(event) => setEditName(event.target.value)} />
-                        <input className="erp-input min-h-11" value={editNotas} onChange={(event) => setEditNotas(event.target.value)} placeholder="Notas" />
-                        <button type="button" className="erp-button-primary min-h-11" disabled={saving} onClick={() => void saveEdit()}>
+                        <input className="erp-input min-h-11" aria-label="Nombre de edición" disabled={saving} value={editName} onChange={(event) => changeEdit('name', event.target.value)} />
+                        <input className="erp-input min-h-11" aria-label="Notas de edición" disabled={saving} value={editNotas} onChange={(event) => changeEdit('notas', event.target.value)} placeholder="Notas" />
+                        <button type="button" className="erp-button-primary min-h-11" disabled={saving || editReviewRequired} onClick={() => void saveEdit()}>
                           Guardar
                         </button>
-                        <button type="button" className="erp-button-secondary min-h-11" onClick={() => setEditingId(null)}>
+                        <button type="button" className="erp-button-secondary min-h-11" disabled={saving} onClick={discardEdit}>
                           Cancelar
                         </button>
                       </div>
@@ -213,7 +333,7 @@ export function ClientesPanel() {
           </button>
           {mergeOpen && (
             <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-              <select className="erp-input min-h-11" value={mergeKeepId} onChange={(event) => setMergeKeepId(event.target.value)}>
+              <select aria-label="Cliente que se conserva" disabled={saving || Boolean(mergeAttemptRef.current)} className="erp-input min-h-11" value={mergeKeepId} onChange={(event) => { mergeAttemptRef.current = null; setMergeKeepId(event.target.value); }}>
                 <option value="">Conservar…</option>
                 {clients.map((client) => (
                   <option key={client.id} value={client.id}>
@@ -221,7 +341,7 @@ export function ClientesPanel() {
                   </option>
                 ))}
               </select>
-              <select className="erp-input min-h-11" value={mergeOtherId} onChange={(event) => setMergeOtherId(event.target.value)}>
+              <select aria-label="Cliente que se fusiona" disabled={saving || Boolean(mergeAttemptRef.current)} className="erp-input min-h-11" value={mergeOtherId} onChange={(event) => { mergeAttemptRef.current = null; setMergeOtherId(event.target.value); }}>
                 <option value="">Fusionar y eliminar…</option>
                 {clients
                   .filter((client) => client.id !== mergeKeepId)
@@ -231,6 +351,10 @@ export function ClientesPanel() {
                     </option>
                   ))}
               </select>
+              {mergeKeepId && mergeOtherId && <p className="text-sm text-[color:var(--muted)] sm:col-span-3">
+                Saldo del cliente conservado: {formatCurrency(clients.find((c) => c.id === mergeKeepId)?.debt ?? 0)}.
+                {' '}Se trasladará el saldo del cliente de origen: {formatCurrency(clients.find((c) => c.id === mergeOtherId)?.debt ?? 0)}.
+              </p>}
               <button
                 type="button"
                 className="erp-button-secondary min-h-11"

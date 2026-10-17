@@ -24,13 +24,16 @@ export interface Product {
 }
 
 export interface Client {
+  metadataRevision?: number;
   id: string;
   name: string;
   debt: number;
+  accountRevision?: number;
   notas?: string | null;
 }
 
 export interface Proveedor {
+  metadataRevision?: number;
   id: string;
   name: string;
   notas?: string | null;
@@ -101,6 +104,7 @@ export type ParsedAction =
     }
   | {
       type: 'add_debt';
+      clientId?: string;
       clientName: string;
       amount: number;
       productName?: string;
@@ -111,6 +115,7 @@ export type ParsedAction =
     }
   | {
       type: 'payment_received';
+      clientId?: string;
       clientName: string;
       amount: number;
     }
@@ -225,12 +230,17 @@ export type ProductCreatedAction = {
 };
 
 export type StockWithdrawnAction = { type: 'withdraw_stock'; productId: string; qty: number; unit?: string; reason: string };
+export type AccountEventAction = { type: 'account_adjustment' | 'account_transfer'; clientId: string; clientName: string; amount: number; unit: 'legacy-money'; balance: number; reason: string };
+export type ClientMergedAction = { type: 'client_merge'; clientId: string; removedClientId: string; clientName: string; balance: number };
+/** Persisted metadata receipts; never accepted as interpreted voice commands. */
+export type PartyCreatedAction = { type: 'client.create' | 'client.update' | 'client.delete'; metadataRevision: number; itemId: string; clientId: string; clientName: string; notas: string | null }
+  | { type: 'supplier.create' | 'supplier.update' | 'supplier.delete' | 'supplier.merge'; metadataRevision: number; itemId: string; proveedorId: string; proveedorName: string; notas: string | null };
 
 export interface Transaction {
   id: string;
   timestamp: string;
   sourceText: string;
-  actions: Array<ParsedActionUnion | ProductCreatedAction | StockWithdrawnAction>;
+  actions: Array<ParsedActionUnion | ProductCreatedAction | StockWithdrawnAction | AccountEventAction | ClientMergedAction | PartyCreatedAction>;
   summary: string;
 }
 

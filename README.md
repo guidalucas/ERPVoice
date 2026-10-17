@@ -1,6 +1,10 @@
 # VoiceERP
 
 La transición a arquitectura C se sigue en [STOCKY_REENGINEERING_PLAN.md](STOCKY_REENGINEERING_PLAN.md).
+El panel confirma contra el backend y solo hidrata snapshots persistidos; se retiró el
+ejecutor local anterior de inventario/cuentas/pedidos.
+Cada snapshot se lee en una transacción consistente. Si falla la base, `/api/state`
+responde 503; conserva la vista anterior y reintenta, sin sustituirla por inventario vacío.
 Ingresos, ventas y reservas usan `stock.receive`, `stock.sell` y `stock.reserve` del
 mismo núcleo, con recibos idempotentes y movimientos transaccionales. Stock insuficiente
 rechaza todo el lote. Ventas y reservas requieren SKU explícito; el precio de venta
@@ -42,7 +46,31 @@ reutilizar el ID con otro contenido o duplicar una identidad devuelve 409.
 Cada modelo es actualmente un lote de SKU: la API permite añadir variantes únicas a los
 mismos tipo/modelo; todavía no existe una entidad persistente de familia configurable.
 `npm run test:inventory-create-ui` verifica altas, reintentos y recuperación del panel.
-Los efectos de pedidos y otros escritores históricos siguen pendientes de migración.
+Los pedidos ya ejecutan sus efectos en ese núcleo. POST `/api/pedidos` requiere
+`operationId`; PUT y DELETE también `expectedRevision`. Marcar conseguido suma al SKU
+explícito (`productId`); revertir o borrar retira la cantidad neta ingresada del SKU original.
+Stock insuficiente rechaza toda la transición. DELETE devuelve un recibo y conserva su replay.
+Pedidos históricos conseguidos sin procedencia verificable requieren conciliación explícita
+antes de cambiar su stock; un nombre no alcanza para atribuirles un ingreso. El panel permite
+elegir SKU y motivo, revisar balances/cantidad y confirmar que el stock existente incluye ese
+pedido. POST `/api/pedidos/:id/reconcile` valida las revisiones/identidad/cantidades revisadas;
+liga el pedido y registra auditoría con delta cero, sin sumar mercadería otra vez.
+WhatsApp exige un pedido único y un SKU ya vinculado para conseguirlo; el panel permite
+elegir el SKU exacto. `npm run test:order-ui` cubre reintentos y revisiones del panel.
+Se retiró el reemplazo completo de tablas; las conciliaciones masivas siguen pendientes.
+
+Las cuentas usan `account.charge`, `account.payment`, `account.adjust` y `account.transfer`
+mediante `POST /api/accounts/operations` con OperationPlan v1, cliente por ID, motivo e
+importe `{value,unit:"legacy-money"}`. Ajustes y transferencias exigen revisión de cuentas;
+se conservan las unidades monetarias históricas, sin asumir una moneda nueva.
+Pagos excesivos rechazan todo el lote. Recibo, movimientos, historial y outbox son atómicos;
+no se recalculan cargos por nombre o precio de productos. Altas de cliente inician en cero;
+para cargar saldo usá un cargo explícito, y para corregirlo un ajuste con revisión.
+`POST /api/clients/merge` requiere `operationId`, `expectedKeepRevision` y
+`expectedMergeRevision`: transfiere deuda, pedidos y notas en la misma transacción, con
+replay aun después de borrar el origen. No se elimina un cliente con saldo o pedidos.
+`npm run test:client-account-ui` verifica la fusión recuperable. Lotes que mezclan dominios
+todavía se rechazan enteros; el intérprete universal y esquemas configurables siguen pendientes.
 
 Antes de desplegar: configurar `META_APP_SECRET` (firma POST Meta) y, en producción,
 `AUTH_JWT_SECRET` privado de al menos 32 bytes. `/api/health` publica readiness y el SHA
