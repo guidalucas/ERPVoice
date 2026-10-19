@@ -5,6 +5,7 @@ import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset
 import { useInventory } from '../../hooks/useInventory';
 import { LOW_STOCK_THRESHOLD } from './dashboardTypes';
 import { StockSetAdjustmentForm } from './StockSetAdjustmentForm';
+import { ProductFamilyPanel } from './ProductFamilyPanel';
 
 type ProductDraft = {
   name: string;
@@ -476,6 +477,7 @@ export function ProductsAbmPanel({
   const variantWord = getVariantWord(preset);
   const variantLabelPlural = pluralizeVariantLabel(preset.variantLabel);
   const [stockSetOpen, setStockSetOpen] = useState(false);
+  const [productFamilyOpen, setProductFamilyOpen] = useState(false);
   const [draft, setDraft] = useState<ProductDraft>(() => emptyDraft());
   const [newVariants, setNewVariants] = useState<NewVariantDraft[]>(() => [emptyVariantDraft()]);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -972,6 +974,7 @@ export function ProductsAbmPanel({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+          <button type="button" className="erp-button-secondary" disabled={saving || savingModel || deleting} onClick={() => setProductFamilyOpen(true)}>Familias y atributos</button>
           <button type="button" className="erp-button-secondary" disabled={saving || savingModel || deleting || products.length === 0} onClick={() => setStockSetOpen(true)}>Ajustar conjunto</button>
           <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2 self-start">
             + {preset.useVariants ? 'Nuevo modelo' : 'Nuevo producto'}
@@ -1147,6 +1150,8 @@ export function ProductsAbmPanel({
             error={formError}
           />
         )}
+
+        {productFamilyOpen && <ProductFamilyPanel onClose={() => setProductFamilyOpen(false)} />}
 
         {isFormOpen && (!preset.useVariants || Boolean(editingProductId || addingToGroup)) && (
           <ProductFormModal

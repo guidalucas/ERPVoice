@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.6a, familias/esquemas versionados y validados por el mismo núcleo.
+- Último alcance integrado: H4.6b1, publicación de familias y alta de SKU con controles configurables.
 - Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; b1 en `e22a459` y H4.6a en `0f084ec` (last version).
 
 ## Hitos y dependencias
@@ -55,10 +55,10 @@
 
 ## Próximo paso exacto
 
-H4.6b: controles del panel para publicar esquemas y crear/editar SKU con atributos
-configurados, usando las APIs actuales. Conservar referencia exacta, versiones, revisión,
-consentimiento e IDs ante respuestas inciertas. Después canal WhatsApp compartido,
-migración de consumidores y evaluación/H5 real. No reauditar ni duplicar escritores.
+H4.5d1 en implementación: terminar integración transaccional del flujo universal explícito
+de WhatsApp y sus pruebas PG/HTTP. H4.6b2 en paralelo acotado: asignación/edición de familia
+y atributos de SKU existentes por API actual. Después migración de consumidores y
+evaluación/H5 real. No reauditar ni duplicar escritores.
 
 ## Registro de hitos
 
@@ -638,6 +638,21 @@ migración de consumidores y evaluación/H5 real. No reauditar ni duplicar escri
   Código guardado por el usuario en 0f084ec; no se reemplazó su commit. UI configurable
   aún pendiente en b. Proveedores reales y despliegue siguen sin verificar.
 
+- H4.6b1 (2026-10-18): panel Familias y atributos publica versiones inmutables y crea SKU
+  desde el esquema elegido. Revisión y consentimiento separados para publicar/crear;
+  tipos, requeridos, estados, unidades y enumeraciones configurables, sin categorías fijas.
+  Referencia exacta de familia/versión conservada; publicar una versión no migra SKU.
+- H4.6b1: borrador/intento/éxito persistidos por tenant/actor antes del envío. Doble lock,
+  reintentos inciertos con mismo ID/cuerpo, consentimiento nuevo tras recuperación;
+  rechazo definitivo exige leer datos actuales antes de preparar otro ID. Éxito con fallo
+  de refresco reintenta solo lecturas. Stock/precio enteros, cero/false y unidad desconocida
+  conservados; nombres accesibles, protección de callbacks tardíos y claves duplicadas.
+- H4.6b1 verificado: build y Edge product-family-ui aprobados. Incluye nueva versión
+  concurrente durante retry de SKU v1, 409/publicación con nueva revisión y publicación
+  confirmada con fallo de lectura. Asignación/edición de SKU existente sigue en b2.
+  Sin despliegue ni proveedores reales. Configuración local comprobada solo por presencia:
+  no hay claves Gemini/Groq/Meta ni conexión PostgreSQL remota en este entorno.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
@@ -654,6 +669,7 @@ migración de consumidores y evaluación/H5 real. No reauditar ni duplicar escri
 - Bajas: `npm run test:inventory-deactivation-ui`; incluido en test:inventory y PG/HTTP.
   Edge local; APIs/proveedores simulados. Ninguna de estas pruebas valida IA real.
 - Altas: `npm run test:inventory-create-ui`; contrato y rollback incluidos en suites pura/PG.
+- Familias/altas configurables: `npm run test:product-family-ui` (Edge con APIs simuladas).
 - Pedidos: `npm run test:order-ui`; transacciones/HTTP/Meta en test:voice-stock-postgres.
 - Ajustes de conjunto: `npm run test:stock-set-adjustment-ui`; usa preview/confirm compartidos.
 - Metadatos: `npm run test:party-create-ui`, `npm run test:party-edit-ui` y
