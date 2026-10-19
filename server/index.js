@@ -26,6 +26,7 @@ import {
   publishProductFamily,
   listProductFamilies,
   prepareUniversalDraft,
+  processMetaUniversalMessage,
   replyUniversalDraft,
   getUniversalDraft,
   confirmUniversalDraft,
@@ -1114,6 +1115,8 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       processStockText: async ({ sourceText, businessCategory, metaMessage }) => {
         const scope = {sourceText,ownerPhone:await resolveTenant(metaMessage.fromNumber),senderPhone:metaMessage.fromNumber,
           messageId:metaMessage.messageId ?? createEventId()};
+        const universalReply = await processMetaUniversalMessage(scope);
+        if (universalReply) return universalReply;
         const selectionReply = await processMetaInventorySelectionCommand(scope);
         if (selectionReply) return selectionReply;
         const prepared = await resumeMetaInventorySelection(scope);

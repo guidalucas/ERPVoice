@@ -2631,7 +2631,7 @@ const processMetaMessage = async (
   metaMessage,
   preset = getBusinessCategoryPreset('general'),
   conversationTurns = [],
-  catalog = null,
+  loadCatalog = async () => null,
   hooks = {},
 ) => {
   const stockResult = async (sourceText, kind) => {
@@ -2659,7 +2659,7 @@ const processMetaMessage = async (
 
     const handled = await stockResult(transcript, 'audio');
     if (handled) return handled;
-    const parsed = await parseVoiceTextWithModel(transcript, preset, conversationTurns, catalog);
+    const parsed = await parseVoiceTextWithModel(transcript, preset, conversationTurns, await loadCatalog());
 
     return {
       ...metaMessage,
@@ -2675,7 +2675,7 @@ const processMetaMessage = async (
   if (metaMessage.textBody) {
     const handled = await stockResult(metaMessage.textBody, 'text');
     if (handled) return handled;
-    const parsed = await parseVoiceTextWithModel(metaMessage.textBody, preset, conversationTurns, catalog);
+    const parsed = await parseVoiceTextWithModel(metaMessage.textBody, preset, conversationTurns, await loadCatalog());
 
     return {
       ...metaMessage,
@@ -2729,17 +2729,21 @@ export const processMetaWebhook = async (
       }
     }
 
-    let catalog = null;
-    if (typeof resolveCatalog === 'function' && message.fromNumber) {
-      try {
-        catalog = (await resolveCatalog(message.fromNumber)) ?? null;
-      } catch (error) {
-        console.warn('[MetaWebhook] failed to resolve catalog:', error instanceof Error ? error.message : error);
+    // A claimed command/replay reaches its deterministic handler before any
+    // legacy catalog lookup or provider interpretation.
+    const loadCatalog = async () => {
+      if (typeof resolveCatalog === 'function' && message.fromNumber) {
+        try {
+          return (await resolveCatalog(message.fromNumber)) ?? null;
+        } catch (error) {
+          console.warn('[MetaWebhook] failed to resolve catalog:', error instanceof Error ? error.message : error);
+        }
       }
-    }
+      return null;
+    };
 
     const preset = getBusinessCategoryPreset(categoryId);
-    results.push(await processMetaMessage(message, preset, conversationTurns, catalog, { processStockText, loadTranscript, saveTranscript }));
+    results.push(await processMetaMessage(message, preset, conversationTurns, loadCatalog, { processStockText, loadTranscript, saveTranscript }));
   }
 
   return results;

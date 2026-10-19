@@ -23,6 +23,9 @@ import { UNIVERSAL_SCHEMA_SQL, executeUniversalPlanInTransaction } from './unive
 import { prepareUniversalOperation } from './universalOperations.js';
 import { interpretUniversalIntent } from './universalIntentInterpreter.js';
 import { buildUniversalOperationReview } from './universalOperationReview.js';
+import { parseUniversalMetaCommand } from './universalMetaOperations.js';
+import { UNIVERSAL_META_SCHEMA_SQL, normalizeUniversalMetaInput, findUniversalMetaCommand,
+  findUniversalMetaDraft, executeUniversalMetaInTransaction } from './universalMetaPostgres.js';
 import { PRODUCT_FAMILY_SCHEMA_SQL, authorizeProductFamilies, loadProductFamilySchemas, publishProductFamilyInTransaction } from './productFamilyPostgres.js';
 import { UNIVERSAL_CONVERSATION_SCHEMA_SQL, authorizeUniversalConversation, normalizeDraftRequest,
   findDraftCommand, readUniversalDraft, persistUniversalInterpretation,
@@ -553,6 +556,7 @@ const initializeDatabase = async () => {
     ${PARTY_SCHEMA_SQL}
     ${UNIVERSAL_SCHEMA_SQL}
     ${UNIVERSAL_CONVERSATION_SCHEMA_SQL}
+    ${UNIVERSAL_META_SCHEMA_SQL}
     ${PRODUCT_FAMILY_SCHEMA_SQL}
     ${META_SELECTION_SCHEMA_SQL}
 
@@ -572,6 +576,7 @@ const initializeDatabase = async () => {
         'universal_operations',
         'universal_drafts',
         'universal_draft_commands',
+        'universal_meta_commands',
         'product_family_schemas',
         'product_family_operations',
         'order_operations',
@@ -1449,6 +1454,7 @@ const interpretUniversalDraft = async (text,draftId,context,options,clarificatio
 export const prepareUniversalDraft = async (input,context,options={}) => {
   authorizeUniversalConversation(context);
   const request=normalizeDraftRequest(input);
+  requirePublicDraftRequest(request);
   await ensureReady();
   const prior=await withTransaction(client=>findDraftCommand(client,request,context));
   if (prior.response) return prior.response;
@@ -1459,8 +1465,17 @@ export const prepareUniversalDraft = async (input,context,options={}) => {
 export const replyUniversalDraft = async (draftId,input,context,options={}) => {
   authorizeUniversalConversation(context);
   const request=normalizeDraftRequest(input,true);
+  requirePublicDraftRequest(request);
   await ensureReady();
-  const pending=await withTransaction(async client=>{
+  const pending=await withTransaction(client=>loadUniversalDraftReply(client,draftId,request,context));
+  if (pending.response) return pending.response;
+  const interpretation=await interpretUniversalDraft(pending.text,draftId,context,options,pending.clarifications,pending.previous);
+  return withTransaction(client=>persistUniversalInterpretation(client,request,interpretation,context,{draftId,reply:true}));
+};
+const requirePublicDraftRequest = request => {
+  if (request.requestId.startsWith('universal-meta:')) throw new InventoryOperationError('INVALID_DRAFT_REQUEST','El ID del mensaje está reservado para el canal WhatsApp.');
+};
+const loadUniversalDraftReply = async (client,draftId,request,context) => {
     const command=await findDraftCommand(client,request,context,'reply',draftId);
     if (command.response) return {response:command.response};
     const row=await readUniversalDraft(client,draftId,context);
@@ -1471,10 +1486,61 @@ export const replyUniversalDraft = async (draftId,input,context,options={}) => {
     if (row.version>=20 || text.length>12000) throw new InventoryOperationError('INVALID_DRAFT_REQUEST','La conversación excede el límite. Prepará un borrador nuevo.');
     return {text,previous:row.preview_json,clarifications:[...(row.preview_json.clarifications ?? []),
       ...(row.preview_json.question ? [{question:row.preview_json.question,answer:request.text}] : [])]};
-  });
-  if (pending.response) return pending.response;
-  const interpretation=await interpretUniversalDraft(pending.text,draftId,context,options,pending.clarifications,pending.previous);
-  return withTransaction(client=>persistUniversalInterpretation(client,request,interpretation,context,{draftId,reply:true}));
+};
+
+/** The caller supplies the tenant resolved from the authenticated Meta sender.
+ * Only this explicit control namespace enters the universal workflow while the
+ * remaining conversation consumers migrate. Effects use the shared draft and
+ * universal executors; provider calls never hold an SQL transaction open. */
+export const processMetaUniversalMessage = async (input,options={}) => {
+  const command=parseUniversalMetaCommand(input?.sourceText);
+  if (!command) return null;
+  const context={businessId:normalizeOwnerPhone(input.ownerPhone),actorId:normalizePhone(input.senderPhone),channel:'whatsapp',permissions:[
+    'inventory:read','inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
+    'accounts:charge','accounts:payment','accounts:adjust','accounts:transfer',
+    'clients:create','clients:update','clients:delete','suppliers:create','suppliers:update','suppliers:delete','suppliers:merge',
+    'orders:create','orders:update','orders:delete','orders:reconcile',
+  ]};
+  authorizeUniversalConversation(context);
+  const requestInput=normalizeUniversalMetaInput(input);
+  await ensureReady();
+  const prior=await withTransaction(client=>findUniversalMetaCommand(client,requestInput,context));
+  if (prior.response) return prior.response;
+  let prepared,preparationError;
+  try {
+    const requestId=`universal-meta:${operationRequestDigest([context.businessId,context.actorId,requestInput.messageId])}`;
+    if (command.kind==='invalid') throw new InventoryOperationError('INVALID_DRAFT_REQUEST',
+      'Usá REVISAR OPERACION <instrucción>, RESPONDER OPERACION <código> <corrección>, CONFIRMAR OPERACION <código> o CANCELAR OPERACION <código>.');
+    if (command.kind==='prepare') {
+      const request=normalizeDraftRequest({requestId,text:command.text}),draftId=crypto.randomUUID();
+      const interpretation=await interpretUniversalDraft(request.text,draftId,context,options);
+      prepared={request,draftId,interpretation};
+    } else if (command.kind==='reply') {
+      const pending=await withTransaction(async client=>{
+        const row=await findUniversalMetaDraft(client,command.code,context);
+        const request=normalizeDraftRequest({requestId,text:command.text,version:row.version},true);
+        return {request,draftId:row.draft_id,...await loadUniversalDraftReply(client,row.draft_id,request,context)};
+      });
+      const interpretation=await interpretUniversalDraft(pending.text,pending.draftId,context,options,pending.clarifications,pending.previous);
+      prepared={request:pending.request,draftId:pending.draftId,interpretation};
+    }
+  } catch(error) {
+    if (error.name!=='InventoryOperationError') throw error;
+    preparationError=error;
+  }
+  return withTransaction(client=>executeUniversalMetaInTransaction(client,requestInput,context,async transaction=>{
+    if (preparationError) throw preparationError;
+    if (command.kind==='prepare') return persistUniversalInterpretation(transaction,prepared.request,prepared.interpretation,context,{draftId:prepared.draftId});
+    const row=await findUniversalMetaDraft(transaction,command.code,context);
+    if (command.kind==='reply') {
+      if (row.draft_id!==prepared.draftId || row.version!==prepared.request.version) throw new InventoryOperationError('DRAFT_VERSION_MISMATCH','El borrador cambió. Revisá la versión actual.');
+      return persistUniversalInterpretation(transaction,prepared.request,prepared.interpretation,context,{draftId:prepared.draftId,reply:true});
+    }
+    const confirmation={version:row.version,digest:row.preview_json.digest};
+    if (command.kind==='cancel') return cancelUniversalDraftInTransaction(transaction,row.draft_id,confirmation,context);
+    return confirmUniversalDraftInTransaction(transaction,row.draft_id,confirmation,
+      {...context,ownerPhoneVariants:getOwnerPhoneVariants(context.businessId)},persistInventoryTransactions);
+  }));
 };
 export const getUniversalDraft = async (draftId,context) => {
   authorizeUniversalConversation(context); await ensureReady();

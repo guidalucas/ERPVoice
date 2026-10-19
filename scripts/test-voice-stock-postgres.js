@@ -7,6 +7,7 @@ import { runUniversalOperationChecks } from './universal-operation-postgres-chec
 import { runUniversalCompositionChecks } from './universal-composition-postgres-checks.js';
 import { runUniversalOrderChecks } from './universal-order-postgres-checks.js';
 import { runUniversalDraftChecks } from './universal-draft-postgres-checks.js';
+import { runUniversalMetaChecks } from './universal-meta-postgres-checks.js';
 import { runProductFamilyChecks } from './product-family-postgres-checks.js';
 import { runInventorySetAdjustmentChecks } from './inventory-set-adjustment-postgres-checks.js';
 import { runOrderChecks } from './order-postgres-checks.js';
@@ -92,6 +93,7 @@ try {
   await runUniversalCompositionChecks({ db, sql, check });
   await runUniversalOrderChecks({ db, sql, check });
   await runUniversalDraftChecks({ db, sql, check });
+  await runUniversalMetaChecks({ db, sql, check });
   await runProductFamilyChecks({ db, sql, check });
   await runInventorySetAdjustmentChecks({ db, sql, check });
   await runAccountChecks({ db, sql, check });

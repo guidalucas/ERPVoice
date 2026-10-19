@@ -287,6 +287,8 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal((await request('/api/operation-drafts', { body, auth: false })).status, 401);
       const invalid = await request('/api/operation-drafts', { body: { ...body, text: '' } });
       assert.equal(invalid.status, 400); assert.equal(invalid.json.code, 'INVALID_DRAFT_REQUEST');
+      const reserved = await request('/api/operation-drafts', { body: { ...body, requestId: 'universal-meta:reserved' } });
+      assert.equal(reserved.status, 400); assert.equal(reserved.json.code, 'INVALID_DRAFT_REQUEST');
       const unavailable = await request('/api/operation-drafts', { body });
       assert.equal(unavailable.status, 503); assert.equal(unavailable.json.code, 'INTERPRETATION_UNAVAILABLE'); assert.deepEqual(await snapshot(), before);
     });
@@ -331,6 +333,58 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const confirm = await request(`${route}/confirm`, { body }); assert.equal(confirm.status, 409); assert.equal(confirm.json.code, 'DRAFT_NOT_PENDING');
       const reply = await request(`${route}/replies`, { body: { requestId: 'http-draft-after-cancel', text: 'Tres unidades.', version: preview.version } }); assert.equal(reply.status, 409); assert.equal(reply.json.code, 'DRAFT_NOT_PENDING');
       assert.deepEqual((await request(route, { method: 'GET' })).json, cancelled.json);
+    });
+    const universalWebhook = async (messageId, text, sender = owner) => {
+      const raw=JSON.stringify({object:'whatsapp_business_account',entry:[{changes:[{value:{messages:[{id:messageId,from:sender,type:'text',text:{body:text}}]}}]}]});
+      const headers={'X-Hub-Signature-256':`sha256=${crypto.createHmac('sha256',appSecret).update(Buffer.from(raw)).digest('hex')}`};
+      assert.equal((await request('/api/meta-webhook',{raw,headers,auth:false})).status,200);
+      const deadline=Date.now()+5000;
+      while(Date.now()<deadline) {
+        const row=(await sql.query('SELECT result_json FROM universal_meta_commands WHERE owner_phone=$1 AND message_id=$2',[sender,messageId])).rows[0];
+        const claim=(await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1',[messageId])).rows[0];
+        if(row && claim?.status==='completed') return row.result_json;
+        await new Promise(resolve=>setTimeout(resolve,30));
+      }
+      assert.fail('Universal Meta command did not complete through the signed webhook');
+    };
+    await run('signed WhatsApp universal confirmation uses the shared reviewed draft and freezes exact mixed receipts', async () => {
+      const product=await createHttpFixtureProduct({name:'HTTP Meta Universal SKU',stockAvailable:2},owner);
+      const customer=await createFixtureClient({name:'HTTP Meta Universal Cuenta'},owner);
+      const text='Ingresaron tres unidades y cargá siete a la cuenta.';
+      const actions=[{itemId:'stock',type:'stock.receive',target:{kind:'existing',skuId:product.id},quantity:{value:3,unit:'unit'}},
+        {itemId:'money',type:'account.charge',target:{kind:'existing',clientId:customer.id},amount:{value:7,unit:'legacy-money'},reason:'Cargo explícito'}];
+      const preview=await db.prepareUniversalDraft({requestId:'http-meta-universal-ready',text},
+        {businessId:owner,actorId:owner,channel:'panel',permissions:['inventory:receive','accounts:charge']},
+        {complete:async()=>({ok:true,json:{contractVersion:1,kind:'proposal',actions,evidence:actions.map(({itemId})=>({itemId,quote:text}))}})});
+      const command=`CONFIRMAR OPERACION ${preview.digest.slice(0,8)}`;
+      const [one,two]=await Promise.all([universalWebhook('http-meta-universal-confirm',command),universalWebhook('http-meta-universal-confirm-two',command)]);
+      assert.equal(one.status,'applied');assert.deepEqual(one,two);assert.equal(one.operationResult.domain,'mixed');
+      assert.deepEqual(one.actions.map(action=>action.type),['add_stock','add_debt']);
+      assert.match(one.replyText,/Ingreso aplicado: 3 unit/);assert.match(one.replyText,/7/);
+      assert.equal(Number((await stock(product.id))[0].stock_available),5);
+      assert.equal(Number((await sql.query('SELECT debt FROM clients WHERE owner_phone=$1 AND id=$2',[owner,customer.id])).rows[0].debt),7);
+      const stored=(await sql.query('SELECT preview_json FROM universal_drafts WHERE owner_phone=$1 AND draft_id=$2',[owner,preview.draftId])).rows[0].preview_json;
+      assert.equal(stored.status,'applied');assert.deepEqual(stored.result,one.operationResult);
+      assert.equal((await ledger(one.operationResult.receipts[0].operationId)).length,1);
+      const event=(await sql.query('SELECT actions_json,processed,reply_text FROM meta_events WHERE id=$1',['http-meta-universal-confirm'])).rows[0];
+      assert.equal(event.processed,true);assert.deepEqual(typeof event.actions_json==='string'?JSON.parse(event.actions_json):event.actions_json,one.actions);assert.equal(event.reply_text,one.replyText);
+      const outbox=(await sql.query('SELECT recipient,reply_text FROM meta_reply_outbox WHERE event_id=$1',['http-meta-universal-confirm'])).rows[0];
+      assert.deepEqual(outbox,{recipient:owner,reply_text:one.replyText});
+      assert.deepEqual(await universalWebhook('http-meta-universal-confirm',command),one);
+      assert.equal((await ledger(one.operationResult.receipts[0].operationId)).length,1);
+    });
+    await run('signed WhatsApp universal invalid and unavailable messages are terminal and never fall back to a legacy mutation', async () => {
+      const before=(await sql.query('SELECT * FROM products WHERE owner_phone=$1 ORDER BY id',[owner])).rows;
+      for(const [messageId,text,errorCode] of [
+        ['http-meta-universal-invalid','CONFIRMAR OPERACION invalid','INVALID_DRAFT_REQUEST'],
+        ['http-meta-universal-unavailable','REVISAR OPERACION Vendí tres unidades.','INTERPRETATION_UNAVAILABLE'],
+      ]) {
+        const result=await universalWebhook(messageId,text);assert.equal(result.errorCode,errorCode);assert.deepEqual(result.actions,[]);
+        assert.equal((await sql.query('SELECT 1 FROM voice_stock_batches WHERE source_message_id=$1',[messageId])).rowCount,0);
+        assert.deepEqual(await universalWebhook(messageId,text),result);
+      }
+      assert.deepEqual((await sql.query('SELECT * FROM products WHERE owner_phone=$1 ORDER BY id',[owner])).rows,before);
+      assert.equal((await sql.query("SELECT relrowsecurity FROM pg_class WHERE relname='universal_meta_commands'")).rows[0].relrowsecurity,true);
     });
     await run('family HTTP publication authenticates, isolates tenants and serializes immutable version receipts', async () => {
       const schema = { name: 'HTTP Componentes', unit: 'unit', attributes: { voltage: { type: 'number', required: true, unit: 'v', values: [12, 24] }, direction: { type: 'text', required: true, values: ['entrada', 'salida'] } }, allowAdditionalAttributes: false };

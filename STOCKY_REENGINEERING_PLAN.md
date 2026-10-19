@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.6b1, publicación de familias y alta de SKU con controles configurables.
+- Último alcance integrado: H4.5d1, borradores universales compartidos por panel y WhatsApp explícito; H4.6b1 guardado en `4a8e346`.
 - Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; b1 en `e22a459` y H4.6a en `0f084ec` (last version).
 
 ## Hitos y dependencias
@@ -18,8 +18,8 @@
 | H0 / P0 | Identidad conservadora reutilizable; autenticidad POST Meta; versión de despliegue. Engine, security, index. | Dirección/orden no colisionan; firma válida/tampered/missing; GET intacto; regresiones relevantes. | Implementado y verificado localmente |
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
-| H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | H3.1–H3.4 verificados para ingresos; intérprete universal pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | H4.4e1c/H4.5a/H4.2b1 verificados; conversación e intérprete/composición pendientes |
+| H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | Universal drafts/patches compartidos verificados; migración de consumidores pendiente |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Escritores al núcleo, composición y familias implementados; controles de SKU existente y retiro gradual de intérpretes pendientes |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -55,10 +55,9 @@
 
 ## Próximo paso exacto
 
-H4.5d1 en implementación: terminar integración transaccional del flujo universal explícito
-de WhatsApp y sus pruebas PG/HTTP. H4.6b2 en paralelo acotado: asignación/edición de familia
-y atributos de SKU existentes por API actual. Después migración de consumidores y
-evaluación/H5 real. No reauditar ni duplicar escritores.
+Cerrar H4.6b2: asignación/edición de familia y atributos de SKU existentes por API actual,
+con revisión antes/después, precondiciones y recuperación estable. Después evaluación
+universal repetible, migración de consumidores y H5 real. No reauditar ni duplicar escritores.
 
 ## Registro de hitos
 
@@ -652,6 +651,31 @@ evaluación/H5 real. No reauditar ni duplicar escritores.
   confirmada con fallo de lectura. Asignación/edición de SKU existente sigue en b2.
   Sin despliegue ni proveedores reales. Configuración local comprobada solo por presencia:
   no hay claves Gemini/Groq/Meta ni conexión PostgreSQL remota en este entorno.
+
+- H4.5d1 (2026-10-18): WhatsApp acepta REVISAR OPERACION <instrucción>, RESPONDER
+  OPERACION <código> <corrección>, CONFIRMAR OPERACION <código> y CANCELAR OPERACION
+  <código>. Comparte intérprete, universal_drafts, revisión y ejecutor del panel; el código
+  identifica la versión vigente dentro del mismo tenant/actor. Prefijo malformado no pasa
+  al parser anterior. No se crean escritores ni resoluciones por nombre durante ejecución.
+- H4.5d1: universal_meta_commands congela resultado por mensaje/actor/texto. Replay precede
+  catálogo/proveedor también en webhook (catálogo legacy ahora perezoso). LLM fuera de TX;
+  lock raíz antes del borrador/dominio, CAS compartido, SAVEPOINT revierte efectos ante
+  rechazo de negocio antes de guardar respuesta terminal. SQL/outbox fallido revierte todo.
+  Namespace universal-meta: reservado frente a APIs públicas de borradores.
+- H4.5d1: revisión completa hasta 3500 caracteres; exceso rechaza sin guardar borrador
+  parcial. Recibos muestran hechos persistidos y resumen exacto si exceden el límite;
+  corrección conserva ítems, cero/false/unidades. Respuestas tardías/código anterior o
+  ambiguo no confirman otra revisión. RLS y revocaciones incluyen tabla nueva.
+- H4.5d1 verificado: 294 checks PG/HTTP, 124 pruebas puras y 50 regresiones del motor
+  aprobados. Incluye webhook firmado real con proveedores ausentes, texto/audio antes
+  de catálogo, confirmación mixta concurrente, replay tras borrar catálogo, rollback de
+  comandos/outbox, rechazo inmutable tras reposición, expiry/cancel y límites de revisión.
+  Revisión independiente corrigió catálogo anticipado; se mantiene la decisión H4.5b2:
+  stock.withdraw directo público prohibido, solo derivado internamente de pedidos.
+- H4.5d1 límites: entrada universal explícita; mensajes ordinarios y consultas conservan
+  consumidores anteriores durante migración. No simula sustitución total ni calidad LLM
+  real. No se configuró ni desplegó Meta/PG remoto. River mantiene dos fallos históricos
+  de representación ya registrados; no se declara toda la suite histórica en verde.
 
 ## Continuación sin repetir investigación
 
