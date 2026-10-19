@@ -21,6 +21,7 @@
     "eval:voice-stock:live": "node scripts/evaluate-stock-corpus.js --live",
     "eval:universal:live": "node scripts/evaluate-universal-corpus.js --live",
     "test:universal-evaluation": "node scripts/evaluate-universal-corpus.js --self-test",
+    "test:river-stock-query": "node scripts/test-river-stock-query.js",
     "test:inventory-ui": "npm run build && node scripts/test-inventory-ui.mjs",
     "test:panel-draft-recovery": "npm run build && node scripts/test-panel-draft-recovery.mjs",
     "test:sales-ui": "npm run build && node scripts/test-sales-ui.mjs",

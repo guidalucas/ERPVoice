@@ -42,8 +42,10 @@
 
 ## Pruebas y migración
 
-- Referencia conocida: motor 48; PostgreSQL aislado 42; audio largo y borrados aprobados.
-  River tiene dos expectativas de representación fallidas; exige revisar resultado real.
+- Referencia inicial: motor 48; PostgreSQL aislado 42; audio largo y borrados aprobados.
+  Los dos fallos históricos de presentación de River quedaron corregidos el 2026-10-18;
+  ver cierre al final del registro. Última validación integrada: 294 PG/HTTP, 124 puras,
+  50 regresiones del motor, build y ambas suites Edge de familias aprobados.
 - Cada hito: pruebas puras/contratos, PG temporal cuando aplica, regresiones de consumidores,
   estado final y respuesta. Build/typecheck no sustituyen integración.
 - Migración PostgreSQL aditiva/repetible, probada en base temporal antes de producción.
@@ -719,6 +721,18 @@ ni declarar calidad LLM real a partir de mocks. No reauditar ni duplicar escrito
   NO se ejecutó evaluación real ni se considera H5 terminado. Usuario confirmó entorno
   externo aún sin configurar; credenciales, backup productivo, deploy y piloto pendientes.
 
+- Cierre de consultas (2026-10-18): corregida duplicación de tipo en consulta agrupada
+  (Camiseta Camisetas River). Se excluyen del modelo únicamente tokens singular/plural
+  del tipo ya mostrado; no se agrega una regla de River/indumentaria ni se altera selección,
+  identidad almacenada o escritores. Una consulta genérica tampoco restaura el año/modelo
+  que solo propuso el parser. Regresión adicional con motores verifica catálogo sin mutar.
+- Cierre verificado: test:river-stock-query, voice-catalog-grounding, 124 pruebas puras,
+  50 regresiones del motor y nueva ejecución completa de 294 checks PG/HTTP aprobados.
+  Los fallos de River mencionados en registros históricos anteriores ya no están pendientes.
+  Reingeniería global aún parcial: entrada ordinaria/consultas universales, migración final
+  de consumidores y retirada segura de intérpretes compatibles siguen en H4.5d2; evaluación
+  real, backup/restauración remotos, despliegue y piloto en H5 requieren entorno configurado.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
@@ -739,6 +753,7 @@ ni declarar calidad LLM real a partir de mocks. No reauditar ni duplicar escrito
 - Familia/atributos de SKU existente: `npm run test:product-family-assignment-ui`.
 - Evaluador universal: `npm run test:universal-evaluation`; calidad real requiere
   `npm run eval:universal:live` con claves configuradas (sin claves: exit 2, sin reporte).
+- Consultas agrupadas/regresión histórica: `npm run test:river-stock-query`.
 - Pedidos: `npm run test:order-ui`; transacciones/HTTP/Meta en test:voice-stock-postgres.
 - Ajustes de conjunto: `npm run test:stock-set-adjustment-ui`; usa preview/confirm compartidos.
 - Metadatos: `npm run test:party-create-ui`, `npm run test:party-edit-ui` y
