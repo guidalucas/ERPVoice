@@ -55,11 +55,16 @@
 
 ## Próximo paso exacto
 
-Integrar evaluación universal repetible H5a (fixtures sintéticos, oráculo probado y guard
-sin credenciales). Siguiente dependencia: H4.5d2, migrar entrada ordinaria del chat/WhatsApp
-y consultas al intérprete compartido antes de retirar consumidores anteriores. Mantener
-borradores activos y replay; no retirar compatibilidad antes de cubrir sus consumidores.
-No reauditar ni duplicar escritores; H5 real exige entorno configurado.
+H4.5d2: migrar entrada ordinaria y consultas al intérprete compartido antes de retirar
+consumidores anteriores. Puntos ya identificados: useChatBot.submitMessage/voiceModelService
+y WhatsAppSimulator en panel; processStockText en server/index hoy entra al universal solo
+por prefijo. Mantener borradores activos, selectores revisados y replay. No usar un error
+del intérprete como permiso para ejecutar por el parser anterior ni agregar heurísticas
+de categorías. Cubrir consultas y consumidores antes del cambio predeterminado.
+H5 real: ejecutar `npm run eval:universal:live` con configuración disponible antes del
+retiro definitivo; luego backup/restauración, despliegue SHA/readiness y piloto aislado.
+El usuario confirmó (2026-10-18) que todavía no hay otro entorno configurado. No desplegar
+ni declarar calidad LLM real a partir de mocks. No reauditar ni duplicar escritores.
 
 ## Registro de hitos
 
@@ -699,6 +704,21 @@ No reauditar ni duplicar escritores; H5 real exige entorno configurado.
   arrastre silencioso y almacenamiento adulterado bloqueado. APIs simuladas; contratos
   PG/HTTP de edición/familias siguen cubiertos en los 294 checks ya aprobados, sin cambio SQL.
 
+- H5a preparación (2026-10-18): corpus universal sintético de 7 casos con oráculo semántico
+  ordenado: convertidores de dirección inversa, ambigüedad, ingreso/cuenta, pedido, familia
+  con cero/false, precio cero y referencia inventada. Conserva multiplicidad/IDs/unidades/
+  precios/atributos; motivos permiten conceptos equivalentes. No confunde unavailable con
+  una abstención correcta y respeta prohibición de stock.withdraw público.
+- H5a: `npm run test:universal-evaluation` verifica el evaluador con proveedor simulado
+  y errores intencionales (swap de ID, cantidad positiva incorrecta, cero/false, duplicación,
+  orden y fallo del proveedor). `npm run eval:universal:live` usa el proveedor real, registra
+  kind/reason, exactitud, latencia, traza y usage reportados, sin inventar costos. Solo texto
+  sintético; no abre PostgreSQL ni envía WhatsApp. Reporte generado excluido de Git.
+- H5a verificado: self-test aprobado, importación del comparador sin ejecutar CLI y guard
+  --live sin credenciales sale 2 sin reporte ni llamada. Modos live/simulado excluyentes.
+  NO se ejecutó evaluación real ni se considera H5 terminado. Usuario confirmó entorno
+  externo aún sin configurar; credenciales, backup productivo, deploy y piloto pendientes.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
@@ -717,6 +737,8 @@ No reauditar ni duplicar escritores; H5 real exige entorno configurado.
 - Altas: `npm run test:inventory-create-ui`; contrato y rollback incluidos en suites pura/PG.
 - Familias/altas configurables: `npm run test:product-family-ui` (Edge con APIs simuladas).
 - Familia/atributos de SKU existente: `npm run test:product-family-assignment-ui`.
+- Evaluador universal: `npm run test:universal-evaluation`; calidad real requiere
+  `npm run eval:universal:live` con claves configuradas (sin claves: exit 2, sin reporte).
 - Pedidos: `npm run test:order-ui`; transacciones/HTTP/Meta en test:voice-stock-postgres.
 - Ajustes de conjunto: `npm run test:stock-set-adjustment-ui`; usa preview/confirm compartidos.
 - Metadatos: `npm run test:party-create-ui`, `npm run test:party-edit-ui` y

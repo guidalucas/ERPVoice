@@ -89,4 +89,3 @@ try {
   }
   console.log('Product family assignment UI checks passed.');
 } finally { await browser.close(); }
-

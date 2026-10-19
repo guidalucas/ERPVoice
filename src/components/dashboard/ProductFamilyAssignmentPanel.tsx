@@ -161,8 +161,3 @@ export function ProductFamilyAssignmentPanel({ onClose }: { onClose: () => void 
     <button className={button} disabled={busy || blocked || !consent || Boolean(readError) || Boolean(attempt && attempt.status !== 'pending') || !attempt && Boolean(validation)} onClick={() => void submit()}>{attempt?.status === 'pending' ? 'Reintentar la misma operación' : 'Confirmar familia del SKU'}</button>
   </div></div>;
 }
-
-
-
-
-
