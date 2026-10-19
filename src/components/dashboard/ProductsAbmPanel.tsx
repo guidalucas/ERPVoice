@@ -6,6 +6,7 @@ import { useInventory } from '../../hooks/useInventory';
 import { LOW_STOCK_THRESHOLD } from './dashboardTypes';
 import { StockSetAdjustmentForm } from './StockSetAdjustmentForm';
 import { ProductFamilyPanel } from './ProductFamilyPanel';
+import { ProductFamilyAssignmentPanel } from './ProductFamilyAssignmentPanel';
 
 type ProductDraft = {
   name: string;
@@ -478,6 +479,7 @@ export function ProductsAbmPanel({
   const variantLabelPlural = pluralizeVariantLabel(preset.variantLabel);
   const [stockSetOpen, setStockSetOpen] = useState(false);
   const [productFamilyOpen, setProductFamilyOpen] = useState(false);
+  const [productFamilyAssignmentOpen, setProductFamilyAssignmentOpen] = useState(false);
   const [draft, setDraft] = useState<ProductDraft>(() => emptyDraft());
   const [newVariants, setNewVariants] = useState<NewVariantDraft[]>(() => [emptyVariantDraft()]);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -975,6 +977,7 @@ export function ProductsAbmPanel({
           </div>
           <div className="flex flex-wrap gap-2">
           <button type="button" className="erp-button-secondary" disabled={saving || savingModel || deleting} onClick={() => setProductFamilyOpen(true)}>Familias y atributos</button>
+          <button type="button" className="erp-button-secondary" disabled={saving || savingModel || deleting} onClick={() => setProductFamilyAssignmentOpen(true)}>Familia de SKU existente</button>
           <button type="button" className="erp-button-secondary" disabled={saving || savingModel || deleting || products.length === 0} onClick={() => setStockSetOpen(true)}>Ajustar conjunto</button>
           <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2 self-start">
             + {preset.useVariants ? 'Nuevo modelo' : 'Nuevo producto'}
@@ -1152,6 +1155,7 @@ export function ProductsAbmPanel({
         )}
 
         {productFamilyOpen && <ProductFamilyPanel onClose={() => setProductFamilyOpen(false)} />}
+        {productFamilyAssignmentOpen && <ProductFamilyAssignmentPanel onClose={() => setProductFamilyAssignmentOpen(false)} />}
 
         {isFormOpen && (!preset.useVariants || Boolean(editingProductId || addingToGroup)) && (
           <ProductFormModal

@@ -35,7 +35,8 @@
     "test:party-create-ui": "npm run build && node scripts/test-party-create-ui.mjs",
     "test:client-account-ui": "npm run build && node scripts/test-client-account-ui.mjs",
     "test:universal-draft-ui": "npm run build && node scripts/test-universal-draft-ui.mjs",
-    "test:product-family-ui": "npm run build && node scripts/test-product-family-ui.mjs"
+    "test:product-family-ui": "npm run build && node scripts/test-product-family-ui.mjs",
+    "test:product-family-assignment-ui": "npm run build && node scripts/test-product-family-assignment-ui.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

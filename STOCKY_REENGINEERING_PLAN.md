@@ -8,7 +8,7 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.5d1, borradores universales compartidos por panel y WhatsApp explícito; H4.6b1 guardado en `4a8e346`.
+- Último alcance integrado: H4.6b2, asignación/edición de familias y atributos de SKU existentes. H4.6b1 `4a8e346`; WhatsApp universal explícito H4.5d1 `e2e8795`.
 - Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; b1 en `e22a459` y H4.6a en `0f084ec` (last version).
 
 ## Hitos y dependencias
@@ -19,7 +19,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | Universal drafts/patches compartidos verificados; migración de consumidores pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Escritores al núcleo, composición y familias implementados; controles de SKU existente y retiro gradual de intérpretes pendientes |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Escritores al núcleo, composición, familias y controles de SKU implementados; migración final de consumidores/intérpretes pendiente |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -55,9 +55,11 @@
 
 ## Próximo paso exacto
 
-Cerrar H4.6b2: asignación/edición de familia y atributos de SKU existentes por API actual,
-con revisión antes/después, precondiciones y recuperación estable. Después evaluación
-universal repetible, migración de consumidores y H5 real. No reauditar ni duplicar escritores.
+Integrar evaluación universal repetible H5a (fixtures sintéticos, oráculo probado y guard
+sin credenciales). Siguiente dependencia: H4.5d2, migrar entrada ordinaria del chat/WhatsApp
+y consultas al intérprete compartido antes de retirar consumidores anteriores. Mantener
+borradores activos y replay; no retirar compatibilidad antes de cubrir sus consumidores.
+No reauditar ni duplicar escritores; H5 real exige entorno configurado.
 
 ## Registro de hitos
 
@@ -677,6 +679,26 @@ universal repetible, migración de consumidores y H5 real. No reauditar ni dupli
   real. No se configuró ni desplegó Meta/PG remoto. River mantiene dos fallos históricos
   de representación ya registrados; no se declara toda la suite histórica en verde.
 
+- H4.6b2 (2026-10-18): Familia de SKU existente selecciona ID explícito y versión exacta,
+  revisa antes/después y envía solo familia/atributos a PUT existente con motivo, revisión
+  y fingerprint congelados. Unidad base debe coincidir; cambios de tipo/unidad del atributo
+  requieren otro valor explícito. Adicionales se conservan por defecto; schema cerrado
+  exige quitar cada extra explícitamente. Cero/false/estados/unidades se preservan.
+- H4.6b2: persistencia de intento/snapshot por tenant/actor antes de HTTP; retry incierto
+  mismo DTO/ID incluso tras recarga. 409/rechazo exige releer y consentir antes de ID nuevo;
+  se puede descartar explícitamente solo un intento definitivo. Éxito durable permite
+  preparar otro cambio; refresco fallido reintenta lecturas, sin nueva escritura.
+- H4.6b2: revisión encontró metadata de presentación distinta del recibo crudo, texto libre
+  canonizado por backend y campos extra en adjustment recuperado. Corregidos: no se usa
+  presentación como oráculo de metadata, texto se canoniza antes de revisión/envío y DTO
+  cerrado rechaza campos ocultos. La comparación del resultado valida familia/atributos,
+  stock/precio/unidad/nombre/revisión exactos; foco/Escape y callbacks de otro scope protegidos.
+- H4.6b2 verificado: build y Edge product-family-assignment-ui, 8 escenarios aprobados.
+  Incluye dos cambios sucesivos, retry/recarga, conflicto/relectura, éxito/lectura fallida,
+  extra cerrado con eliminación explícita, unidad incompatible, cambio tipo/unidad sin
+  arrastre silencioso y almacenamiento adulterado bloqueado. APIs simuladas; contratos
+  PG/HTTP de edición/familias siguen cubiertos en los 294 checks ya aprobados, sin cambio SQL.
+
 ## Continuación sin repetir investigación
 
 - Rama: `codex/architecture-c-foundation`. H0 `aa0cebe`, H1 `88400cd`, H2 `fdb03ed`,
@@ -694,6 +716,7 @@ universal repetible, migración de consumidores y H5 real. No reauditar ni dupli
   Edge local; APIs/proveedores simulados. Ninguna de estas pruebas valida IA real.
 - Altas: `npm run test:inventory-create-ui`; contrato y rollback incluidos en suites pura/PG.
 - Familias/altas configurables: `npm run test:product-family-ui` (Edge con APIs simuladas).
+- Familia/atributos de SKU existente: `npm run test:product-family-assignment-ui`.
 - Pedidos: `npm run test:order-ui`; transacciones/HTTP/Meta en test:voice-stock-postgres.
 - Ajustes de conjunto: `npm run test:stock-set-adjustment-ui`; usa preview/confirm compartidos.
 - Metadatos: `npm run test:party-create-ui`, `npm run test:party-edit-ui` y
