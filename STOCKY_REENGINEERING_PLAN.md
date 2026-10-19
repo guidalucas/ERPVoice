@@ -8,8 +8,8 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.5c2, correcciones universales por ítem con revisión versionada.
-- Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; código de b1 en `e22a459`.
+- Último alcance integrado: H4.6a, familias/esquemas versionados y validados por el mismo núcleo.
+- Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; b1 en `e22a459` y H4.6a en `0f084ec` (last version).
 
 ## Hitos y dependencias
 
@@ -55,11 +55,10 @@
 
 ## Próximo paso exacto
 
-H4.6a: familias/esquemas inmutables versionados, asociación explícita del SKU y validación
-en el Inventory Engine existente. Mantener hashes de productos sin familia, migración
-aditiva y replay antes de consultar schemas actuales. Después controles configurables del
-panel, canal WhatsApp compartido, migración de consumidores y evaluación/H5 real.
-No reauditar; reutilizar contratos, selecciones masivas y bloqueo amplio actuales.
+H4.6b: controles del panel para publicar esquemas y crear/editar SKU con atributos
+configurados, usando las APIs actuales. Conservar referencia exacta, versiones, revisión,
+consentimiento e IDs ante respuestas inciertas. Después canal WhatsApp compartido,
+migración de consumidores y evaluación/H5 real. No reauditar ni duplicar escritores.
 
 ## Registro de hitos
 
@@ -617,6 +616,27 @@ No reauditar; reutilizar contratos, selecciones masivas y bloqueo amplio actuale
 - H4.5c2 límites: no cambia el tipo ni la cantidad de ítems del plan mediante corrección;
   nueva intención independiente requiere otro borrador. Familias, migración del canal
   WhatsApp al servicio universal y evaluación real/H5 continúan pendientes.
+
+- H4.6a (cierre 2026-10-18): productFamilySchemas define esquema cerrado con atributos
+  tipados, requeridos, estados, unidad, enumeraciones y política de atributos adicionales.
+  product_family_schemas publica versiones inmutables por expectedVersion; recibos
+  product_family_operations conservan idempotencia y rollback. RLS/revocaciones incluidas.
+- H4.6a: SKU referencia family:{id,version} explícita. Identidad incorpora family.id,
+  no su versión; fingerprint sí incorpora versión. Productos sin familia conservan hash
+  anterior (fixture contrastado con HEAD previo). Publicar v2 no migra registros actuales.
+  Asociar/actualizar versión requiere sku.update con revisión; no hay detach ni conversión.
+- H4.6a: el mismo Inventory Engine valida unidad/atributos de la versión exacta y conserva
+  familia en SQL/recibos. Selecciones usan el mismo planner y schemas del negocio. Las APIs
+  de creación/edición, adapters de stock e intérprete universal propagan la referencia;
+  catálogo de interpretación incluye schemas del mismo snapshot y revisión legible los nombra.
+- H4.6a: revisión independiente encontró familia descartada por skuFromAction; corregida,
+  con regresiones para ingreso confirmado/resuelto y binding. La versión declarada debe
+  coincidir con la fijada en SKU al consumir/ingresar: cambiarla exige edición explícita.
+- H4.6a verificado: 279 checks PG/HTTP, 116 pruebas puras, 50 regresiones del motor y build
+  aprobados. Incluye concurrencia/versiones, rollback de recibos y metadatos corruptos,
+  schema tenant ajeno, upgrade explícito, replay tras cambios y selección congelada.
+  Código guardado por el usuario en 0f084ec; no se reemplazó su commit. UI configurable
+  aún pendiente en b. Proveedores reales y despliegue siguen sin verificar.
 
 ## Continuación sin repetir investigación
 
