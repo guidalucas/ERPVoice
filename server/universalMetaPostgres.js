@@ -54,6 +54,7 @@ export async function executeUniversalMetaInTransaction(client,input,context,app
     result={handled:true,intent:'mixed',requiresConfirmation:preview.status.startsWith('awaiting_'),
       replyText:universalMetaPreviewReply(preview),actions:applied ? operationResultActions(preview.result) : [],
       draftId:preview.draftId,version:preview.version,digest:preview.digest,status:preview.status,
+      ...(preview.status==='answered' ? {answer:preview.answer} : {}),
       ...(applied ? {operationResult:preview.result} : {})};
   } catch(error) {
     if(error.name!=='InventoryOperationError') throw error;

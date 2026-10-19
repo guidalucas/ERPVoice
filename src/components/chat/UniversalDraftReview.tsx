@@ -8,7 +8,7 @@ type Attempt = { kind: 'prepare' | 'reply' | 'confirm' | 'cancel'; requestId: st
 type Saved = { text: string; draftId?: string; attempt?: Attempt; correcting?: boolean };
 const button = 'rounded-xl border border-sky-500/30 px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40';
 
-export function UniversalDraftReview({ onClose }: { onClose: () => void }) {
+export function UniversalDraftReview({ onClose, initialText }: { onClose: () => void; initialText?: string }) {
   const { session } = useAuth();
   const { refreshState } = useInventory();
   const storageKey = session ? `universal-draft:${JSON.stringify([session.tenantPhone, session.phoneNumber])}` : null;
@@ -23,6 +23,9 @@ export function UniversalDraftReview({ onClose }: { onClose: () => void }) {
   const [hydrated, setHydrated] = useState(false);
   const [now, setNow] = useState(Date.now());
   const lock = useRef(false);
+  const mounted = useRef(true);
+  const incoming = useRef(initialText?.trim() ?? '');
+  const [queuedInput, setQueuedInput] = useState(false);
   const scope = useRef(storageKey);
   scope.current = storageKey;
   const refresh = useRef(refreshState);
@@ -38,18 +41,23 @@ export function UniversalDraftReview({ onClose }: { onClose: () => void }) {
     localStorage.setItem(storageKey, JSON.stringify(next));
     setSaved(next);
   };
+  const isCurrent = () => mounted.current && scope.current === storageKey;
   const updateInventory = async () => {
-    try { await refresh.current(); setRefreshError(''); }
-    catch { setRefreshError('La operación está aplicada, pero no pudimos actualizar los datos en pantalla. Podés reintentar la actualización.'); }
+    try { await refresh.current(); if (isCurrent()) setRefreshError(''); }
+    catch { if (isCurrent()) setRefreshError('La operación está aplicada, pero no pudimos actualizar los datos en pantalla. Podés reintentar la actualización.'); }
   };
 
   useEffect(() => {
     let active = true;
+    mounted.current = true;
     lock.current = true; setBusy(true); setHydrated(false); setSaved({ text: '' }); setConsent(false); setCorrecting(false); setPreview(null); setError(''); setRefreshError(''); setConflict(false);
     const restore = async () => {
       try {
         const raw = storageKey ? localStorage.getItem(storageKey) : null;
-        const parsed = raw ? JSON.parse(raw) as Saved : { text: '' };
+        const parsed = raw ? JSON.parse(raw) as Saved : { text: incoming.current };
+        if (typeof parsed.text === 'string' && !parsed.text && !parsed.draftId && !parsed.attempt && !parsed.correcting && incoming.current) parsed.text = incoming.current;
+        if (storageKey && (!raw || parsed.text === incoming.current && !parsed.draftId && !parsed.attempt)) { localStorage.setItem(storageKey, JSON.stringify(parsed)); incoming.current = ''; }
+        setQueuedInput(Boolean(raw && incoming.current));
         if (typeof parsed.text !== 'string' || (parsed.draftId !== undefined && typeof parsed.draftId !== 'string')) throw new Error('No pudimos recuperar la referencia guardada.');
         if (!active) return;
         setSaved(parsed);
@@ -66,7 +74,7 @@ export function UniversalDraftReview({ onClose }: { onClose: () => void }) {
       finally { if (active) { lock.current = false; setBusy(false); setHydrated(true); } }
     };
     void restore();
-    return () => { active = false; };
+    return () => { active = false; mounted.current = false; };
   }, [storageKey]);
 
   useEffect(() => {
@@ -81,14 +89,14 @@ export function UniversalDraftReview({ onClose }: { onClose: () => void }) {
     lock.current = true; setBusy(true); setConsent(false); setError('');
     try {
       const current = await fetchUniversalDraft(saved.draftId);
-      if (scope.current !== storageKey) return;
+      if (!isCurrent()) return;
       const retryReply = !finishCorrection && saved.attempt?.kind === 'reply' && saved.attempt.version === current.version && current.status.startsWith('awaiting_');
       setPreview(current); setConflict(false); setCorrecting(current.status === 'awaiting_confirmation' && retryReply);
       // Preserve an unresolved reply until its command/version is observed.
       if (!retryReply) persist({text:current.status === 'awaiting_clarification' ? '' : saved.text,draftId:current.draftId});
       if (current.status === 'applied') await updateInventory();
-    } catch (failure) { setError(toUserFacingError(failure)); }
-    finally { lock.current = false; setBusy(false); }
+    } catch (failure) { if (isCurrent()) setError(toUserFacingError(failure)); }
+    finally { if (isCurrent()) { lock.current = false; setBusy(false); } }
   };
 
   const submit = async (kind: Attempt['kind']) => {
@@ -110,6 +118,7 @@ export function UniversalDraftReview({ onClose }: { onClose: () => void }) {
       persist({ text: current.status === 'awaiting_clarification' ? '' : attempt.text, draftId: current.draftId });
       if (current.status === 'applied') await updateInventory();
     } catch (failure) {
+      if (!isCurrent()) return;
       setConsent(false);
       if (typeof failure === 'object' && failure && 'status' in failure) {
         const status=Number(failure.status);
@@ -117,7 +126,7 @@ export function UniversalDraftReview({ onClose }: { onClose: () => void }) {
         if (kind==='reply' && status>=400 && status<500) persist({...saved,attempt:undefined});
       }
       setError(toUserFacingError(failure));
-    } finally { lock.current = false; setBusy(false); }
+    } finally { if (isCurrent()) { lock.current = false; setBusy(false); } }
   };
 
   const changeText = (text: string) => {
@@ -127,7 +136,7 @@ export function UniversalDraftReview({ onClose }: { onClose: () => void }) {
   };
   const startNew = () => {
     if (busy || unresolvedWrite || (pending && !conflict)) return;
-    try { persist({ text: '' }); setPreview(null); setConsent(false); setCorrecting(false); setConflict(false); setError(''); setRefreshError(''); }
+    try { persist({ text: incoming.current }); incoming.current = ''; setQueuedInput(false); setPreview(null); setConsent(false); setCorrecting(false); setConflict(false); setError(''); setRefreshError(''); }
     catch (failure) { setError(toUserFacingError(failure)); }
   };
   const beginCorrection = () => {
@@ -149,7 +158,8 @@ export function UniversalDraftReview({ onClose }: { onClose: () => void }) {
     }}>
       <header className="flex items-center justify-between gap-3"><h2 id="universal-review-title" className="text-xl font-semibold">Revisar operación</h2><button type="button" onClick={onClose} className={button} aria-label="Cerrar revisión">Cerrar</button></header>
       <p className="mt-3 text-sm text-slate-300">Describí los cambios. Revisalos completos antes de confirmar.</p>
-      {preview?.status === 'applied' ? <p role="status" className="mt-4 rounded-xl bg-emerald-500/15 p-3 text-emerald-200">Operación aplicada correctamente.</p> : preview?.status === 'cancelled' ? <p role="status" className="mt-4">Operación cancelada.</p> : <>
+      {queuedInput && <p role="status" className="mt-3 text-sm text-amber-200">Conservamos tu mensaje nuevo en el chat. Primero recuperá o terminá la operación anterior; después elegí Nueva operación.</p>}
+      {preview?.status === 'answered' ? <p role="status" className="mt-4 whitespace-pre-wrap rounded-xl bg-sky-500/15 p-3">{preview.answer?.text}</p> : preview?.status === 'applied' ? <p role="status" className="mt-4 rounded-xl bg-emerald-500/15 p-3 text-emerald-200">Operación aplicada correctamente.</p> : preview?.status === 'cancelled' ? <p role="status" className="mt-4">Operación cancelada.</p> : <>
         {preview?.question && <p className="mt-4 rounded-xl bg-sky-500/15 p-3">{preview.question}</p>}
         <label htmlFor="universal-operation-text" className="mt-4 block text-sm font-medium">{correcting ? 'Corrección' : preview?.status === 'awaiting_clarification' ? 'Tu respuesta' : 'Solicitud'}</label>
         <textarea id="universal-operation-text" value={saved.text} maxLength={12000} rows={4} disabled={busy || !hydrated || !session || Boolean(saved.draftId && !preview) || (preview?.status === 'awaiting_confirmation' && !correcting)} onChange={event => changeText(event.target.value)} className="mt-2 w-full rounded-xl border border-sky-500/25 bg-slate-950/60 p-3 disabled:opacity-60" />

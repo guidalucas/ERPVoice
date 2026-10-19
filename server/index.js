@@ -840,7 +840,7 @@ app.get('/api/meta-webhook', (req, res) => {
 
 const universalRequestContext = (req) => ({
   businessId:tenantPhoneOf(req),actorId:authPhoneOf(req),channel:'panel',permissions:[
-    'inventory:read','inventory:schema','inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
+    'inventory:read','orders:read','accounts:read','inventory:schema','inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
     'accounts:charge','accounts:payment','accounts:adjust','accounts:transfer',
     'clients:create','clients:update','clients:delete','suppliers:create','suppliers:update','suppliers:delete','suppliers:merge',
     'orders:create','orders:update','orders:delete','orders:reconcile',

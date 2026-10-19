@@ -334,6 +334,25 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const reply = await request(`${route}/replies`, { body: { requestId: 'http-draft-after-cancel', text: 'Tres unidades.', version: preview.version } }); assert.equal(reply.status, 409); assert.equal(reply.json.code, 'DRAFT_NOT_PENDING');
       assert.deepEqual((await request(route, { method: 'GET' })).json, cancelled.json);
     });
+    await run('universal read answer HTTP replays its frozen facts and cannot become a mutation',async()=>{
+      const product=await createHttpFixtureProduct({name:'HTTP Universal Read',stockAvailable:0,stockReserved:2,price:0},owner);
+      const body={requestId:'http-universal-read',text:'¿Cuánto inventario tiene este producto?'};
+      const ctx={businessId:owner,actorId:owner,channel:'panel',permissions:['inventory:read']};
+      const preview=await db.prepareUniversalDraft(body,ctx,{complete:async()=>({ok:true,json:{contractVersion:1,kind:'query',queries:[{itemId:'read',type:'inventory.query',selector:{kind:'ids',ids:[product.id]}}],evidence:[{itemId:'read',quote:body.text}]}})});
+      assert.equal(preview.status,'answered');assert.equal(preview.plan,undefined);assert.equal(preview.answer.items[0].rows[0].stockAvailable,0);
+      const route=`/api/operation-drafts/${preview.draftId}`;
+      await sql.query('UPDATE products SET stock_available=7 WHERE owner_phone=$1 AND id=$2',[owner,product.id]);
+      const get=await request(route,{method:'GET'});assert.equal(get.status,200);assert.deepEqual(get.json,preview);
+      const replay=await request('/api/operation-drafts',{body});assert.equal(replay.status,200);assert.deepEqual(replay.json,preview);
+      for(const suffix of ['confirm','cancel']) {
+        const result=await request(`${route}/${suffix}`,{body:{version:preview.version,digest:preview.digest}});
+        assert.equal(result.status,409);assert.equal(result.json.code,'DRAFT_NOT_PENDING');
+      }
+      const foreign=await request(route,{method:'GET',headers:{Authorization:`Bearer ${issueJwt({phoneNumber:'59899000516'})}`}});
+      assert.equal(foreign.status,404);assert.equal(foreign.json.code,'DRAFT_NOT_FOUND');
+      assert.equal(Number((await stock(product.id))[0].stock_available),7);
+      assert.equal((await sql.query('SELECT 1 FROM universal_operations WHERE owner_phone=$1 AND operation_id=$2',[owner,`draft-operation:${preview.draftId}`])).rowCount,0);
+    });
     const universalWebhook = async (messageId, text, sender = owner) => {
       const raw=JSON.stringify({object:'whatsapp_business_account',entry:[{changes:[{value:{messages:[{id:messageId,from:sender,type:'text',text:{body:text}}]}}]}]});
       const headers={'X-Hub-Signature-256':`sha256=${crypto.createHmac('sha256',appSecret).update(Buffer.from(raw)).digest('hex')}`};

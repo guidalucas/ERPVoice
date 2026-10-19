@@ -8,10 +8,12 @@ import { useAuth } from '../../store/AuthStore';
 export function WhatsAppSimulator() {
   const [isOpen, setIsOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewText, setReviewText] = useState<string>();
   const { session } = useAuth();
   const {
     messages,
     draftText,
+    inputStorageError,
     setDraftText,
     pendingProposal,
     pendingActionsText,
@@ -22,7 +24,7 @@ export function WhatsAppSimulator() {
     toggleRecording,
     onConfirm,
     onCancel,
-  } = useChatBot();
+  } = useChatBot(text => { setReviewText(text); setReviewOpen(true); });
 
   return (
     <div
@@ -57,7 +59,7 @@ export function WhatsAppSimulator() {
             </button>
           </header>
 
-          <div className="shrink-0 border-b border-sky-500/15 px-3 py-2"><button type="button" className="rounded-xl border border-sky-500/30 px-3 py-2 text-sm font-semibold text-sky-100 hover:bg-sky-500/10" onClick={() => setReviewOpen(true)}>Revisar operación</button></div>
+          <div className="shrink-0 border-b border-sky-500/15 px-3 py-2"><button type="button" className="rounded-xl border border-sky-500/30 px-3 py-2 text-sm font-semibold text-sky-100 hover:bg-sky-500/10" onClick={() => { setReviewText(undefined); setReviewOpen(true); }}>Revisar operación</button></div>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#0b1424] px-3 py-3">
             {messages.map((message) => (
               <ChatBubble key={message.id} message={message} />
@@ -92,6 +94,7 @@ export function WhatsAppSimulator() {
           )}
 
           <div className="shrink-0 border-t border-emerald-950/50 bg-[#0b1424] px-3 py-3">
+            {inputStorageError && <p role="alert" className="mb-2 text-sm text-amber-200">{inputStorageError}</p>}
             <div className="flex items-end gap-3">
               <button
                 type="button"
@@ -148,7 +151,7 @@ export function WhatsAppSimulator() {
           </svg>
         </button>
       )}
-      {reviewOpen && <UniversalDraftReview key={JSON.stringify([session?.tenantPhone, session?.phoneNumber])} onClose={() => setReviewOpen(false)} />}
+      {reviewOpen && <UniversalDraftReview key={JSON.stringify([session?.tenantPhone, session?.phoneNumber])} initialText={reviewText} onClose={() => setReviewOpen(false)} />}
     </div>
   );
 }

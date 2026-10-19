@@ -37,7 +37,7 @@ export function parseUniversalMetaCommand(input) {
 function validatePreview(preview) {
   if (!preview || typeof preview !== 'object' || Array.isArray(preview)
     || typeof preview.digest !== 'string' || !/^[a-f\d]{64}$/i.test(preview.digest)
-    || !['awaiting_confirmation', 'awaiting_clarification', 'applied', 'cancelled'].includes(preview.status)) invalidDraft();
+    || !['awaiting_confirmation', 'awaiting_clarification', 'applied', 'cancelled','answered'].includes(preview.status)) invalidDraft();
   return preview;
 }
 
@@ -64,6 +64,11 @@ export function universalMetaPreviewReply(input) {
   const preview = validatePreview(input);
   if (preview.status === 'cancelled') return 'La operación fue cancelada. No se aplicó ningún cambio.';
   if (preview.status === 'applied') return universalMetaReceiptReply(preview.result);
+  if (preview.status === 'answered') {
+    if(preview.plan || typeof preview.answer?.text!=='string' || !preview.answer.text.trim() || !Array.isArray(preview.answer.items)) invalidDraft();
+    if(preview.answer.text.length>PREVIEW_LIMIT) fail('DRAFT_PREVIEW_TOO_LARGE','La respuesta completa supera el límite de WhatsApp. Pedí un conjunto más pequeño o consultá desde el panel.');
+    return preview.answer.text;
+  }
 
   const hasPlan = preview.plan !== undefined && preview.plan !== null;
   const review = hasPlan ? validatedReview(preview.plan, preview.review) : null;

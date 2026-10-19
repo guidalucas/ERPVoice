@@ -762,3 +762,24 @@ ni declarar calidad LLM real a partir de mocks. No reauditar ni duplicar escrito
   en test:voice-stock-postgres. Edge usa API simulada, no valida proveedores reales.
 - Producción: falta verificar configuración privada, backup/restauración recuperable,
   ejecutar migración controlada, comprobar SHA/readiness y piloto aislado. No desplegado.
+
+### H4.5d2a y d2b — consultas y entrada ordinaria del panel (2026-10-18)
+
+- Contrato de consulta separado, cerrado y autorizado para inventario, pedidos y cuentas.
+  El modelo selecciona IDs ofrecidos; el backend devuelve hechos de un snapshot RR con
+  `observedAt`. Selección vacía no se amplía; cantidades se agrupan por unidad. Consultas
+  respondidas quedan congeladas, no admiten confirmación/corrección como mutación y su
+  recuperación revalida permisos. WhatsApp conserva límite de respuesta sin truncar hechos.
+- El compositor principal del panel usa borradores universales para texto y transcripción.
+  Texto durable por negocio/actor antes del envío; revisión existente no se sobrescribe,
+  reintentos conservan IDs y los borradores legacy guardados mantienen su recuperación.
+  Una consulta muestra la respuesta sin botones de confirmación ni efectos de inventario.
+- Verificado: 303 checks PostgreSQL/HTTP, 139 pruebas puras, build y Edge universal-chat-ui,
+  universal-draft-ui y panel-draft-recovery aprobados. Incluye snapshot concurrente, replay
+  tras cambios del catálogo, aislamiento, respuesta extensa y rollback de consulta Meta.
+- Pendiente inmediato H4.5d2c: mensajes ordinarios de WhatsApp al mismo flujo universal,
+  conservando replay y recuperación de conversaciones antiguas; permitir conjuntos/bajas
+  solamente mediante revisión completa persistida y confirmación verificable. Después,
+  retirar creación de operaciones por consumidores legacy y completar corpus universal.
+- No se validaron proveedores externos ni despliegue. El usuario confirmó que todavía
+  no están configurados. H5 mantiene evaluación real, backup/restauración remotos y piloto.
