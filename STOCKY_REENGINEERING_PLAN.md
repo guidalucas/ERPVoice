@@ -8,7 +8,9 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.6b2, asignación/edición de familias y atributos de SKU existentes. H4.6b1 `4a8e346`; WhatsApp universal explícito H4.5d1 `e2e8795`.
+- Último alcance integrado: H4.5d2, consultas y entrada ordinaria universal del panel/WhatsApp,
+  conjuntos y bajas mediante revisión completa; recuperación de conversaciones anteriores.
+  Familias H4.6b2 preservadas. Panel/consultas `bf8e2c1`; ver git log para cierre WhatsApp.
 - Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; b1 en `e22a459` y H4.6a en `0f084ec` (last version).
 
 ## Hitos y dependencias
@@ -16,10 +18,10 @@
 | Hito | Alcance y componentes | Aceptación | Estado |
 | --- | --- | --- | --- |
 | H0 / P0 | Identidad conservadora reutilizable; autenticidad POST Meta; versión de despliegue. Engine, security, index. | Dirección/orden no colisionan; firma válida/tampered/missing; GET intacto; regresiones relevantes. | Implementado y verificado localmente |
-| H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para stock.receive; verificado localmente |
+| H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para todas las operaciones de inventario; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
-| H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | Universal drafts/patches compartidos verificados; migración de consumidores pendiente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Escritores al núcleo, composición, familias y controles de SKU implementados; migración final de consumidores/intérpretes pendiente |
+| H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | Entrada ordinaria, consultas y drafts/patches compartidos verificados localmente |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Núcleo, composición, familias y flujos principales migrados; cierre de interfaces antiguas y transcripción pendiente |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -44,8 +46,9 @@
 
 - Referencia inicial: motor 48; PostgreSQL aislado 42; audio largo y borrados aprobados.
   Los dos fallos históricos de presentación de River quedaron corregidos el 2026-10-18;
-  ver cierre al final del registro. Última validación integrada: 294 PG/HTTP, 124 puras,
-  50 regresiones del motor, build y ambas suites Edge de familias aprobados.
+  ver cierre al final del registro. Última validación integrada: 319 PG/HTTP, 141 puras,
+  10 casos sintéticos del evaluador, 50 regresiones del motor y build aprobados.
+  Edge panel/chat y familias aprobados en sus hitos; proveedores reales sin configurar.
 - Cada hito: pruebas puras/contratos, PG temporal cuando aplica, regresiones de consumidores,
   estado final y respuesta. Build/typecheck no sustituyen integración.
 - Migración PostgreSQL aditiva/repetible, probada en base temporal antes de producción.
@@ -57,12 +60,10 @@
 
 ## Próximo paso exacto
 
-H4.5d2: migrar entrada ordinaria y consultas al intérprete compartido antes de retirar
-consumidores anteriores. Puntos ya identificados: useChatBot.submitMessage/voiceModelService
-y WhatsAppSimulator en panel; processStockText en server/index hoy entra al universal solo
-por prefijo. Mantener borradores activos, selectores revisados y replay. No usar un error
-del intérprete como permiso para ejecutar por el parser anterior ni agregar heurísticas
-de categorías. Cubrir consultas y consumidores antes del cambio predeterminado.
+H4.5e: retirar el método frontend y endpoint /api/voice/parse sin consumidores activos;
+llevar transcripción del panel al backend autenticado para no distribuir claves VITE.
+Conservar /api/state/apply como adapter del mismo núcleo para propuestas antiguas y
+formularios tipados aún compatibles. No borrar recuperadores ni recibos persistidos.
 H5 real: ejecutar `npm run eval:universal:live` con configuración disponible antes del
 retiro definitivo; luego backup/restauración, despliegue SHA/readiness y piloto aislado.
 El usuario confirmó (2026-10-18) que todavía no hay otro entorno configurado. No desplegar
@@ -783,3 +784,27 @@ ni declarar calidad LLM real a partir de mocks. No reauditar ni duplicar escrito
   retirar creación de operaciones por consumidores legacy y completar corpus universal.
 - No se validaron proveedores externos ni despliegue. El usuario confirmó que todavía
   no están configurados. H5 mantiene evaluación real, backup/restauración remotos y piloto.
+
+### H4.5d2c — WhatsApp ordinario y conjuntos revisados (2026-10-19)
+
+- Texto/audio transcrito nuevo usa el mismo intérprete, snapshot, revisión y ejecutor del
+  panel. Eliminado del webhook el ejecutor posterior de acciones del parser anterior.
+  Fallo del proveedor es terminal para ese mensaje y no habilita fallback ni escrituras.
+- Recuperación previa al proveedor: claim liga mensaje a negocio/remitente, outbox y
+  recibo ya comprometidos se devuelven sin reinterpretar, también antes de meta_events.
+  Lotes antiguos solo se reanudan; un mensaje nuevo no crea otro lote legacy. Ready se
+  finaliza antes de continuar; preguntas cerradas y comandos BAJA/CAMBIO/AJUSTE conservados.
+- Borrador universal permite bajas y cambios/ajustes multisku solo con capacidad interna
+  y namespace reservado draft-operation. APIs públicas conservan selección revisada
+  obligatoria. Revisión backend debe cubrir exactamente todos los ítems en orden, tanto
+  al persistir como al confirmar. Miembros, versiones y fingerprints quedan congelados.
+- Verificado: 319 checks PostgreSQL/HTTP, 141 pruebas puras y build aprobados. Conjuntos
+  concurrentes aplican una vez; stock reservado y miembro obsoleto rechazan todo; fallo SQL
+  final revierte efectos/recibos; altas posteriores no amplían el conjunto. HTTP firmado
+  cubre entrada nueva, consultas congeladas, confirmación y rechazos sin claves externas.
+- Corpus sintético ampliado de 7 a 10 casos: inventario con unidades distintas/cero/false,
+  pedidos pendientes/todos y saldo cero. Oráculo compara consultas y hechos completos;
+  self-test rechaza cambios de cantidades/unidades, ampliación vacía e inyección de acciones.
+  Esto valida el evaluador, no calidad de un proveedor real.
+- Próximo paso exacto: H4.5e indicado al inicio. No eliminar compatibilidad transaccional
+  necesaria para borradores históricos ni declarar H5 realizado sin entorno externo.

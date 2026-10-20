@@ -86,6 +86,10 @@ test('universal authorization and reviewed inventory selection guards remain aut
   const extended={...catalog,products:[...catalog.products,{...catalog.products[0],id:'second'}]};
   const result=await invoke(proposal([update,{...update,itemId:'b',target:{kind:'existing',skuId:'second'}}]),{catalog:extended});
   assert.equal(result.kind,'invalid');assert.equal(result.reason,'SELECTION_REQUIRED');
+  const trusted=await invoke(proposal([update,{...update,itemId:'b',target:{kind:'existing',skuId:'second'}}]),{
+    catalog:extended,operationId:'draft-operation:reviewed',context:{...context,internalConversationOperation:true}});
+  assert.equal(trusted.kind,'ready');assert.equal(trusted.plan.actions.length,2);
+  assert.equal(trusted.plan.actions[1].target.expectedRevision,7);
 });
 
 test('transfer destinations, deletion account revision and order reconciliation use backend snapshot',async()=>{

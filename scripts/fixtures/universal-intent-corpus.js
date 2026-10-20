@@ -36,6 +36,7 @@ const context = {
     'accounts:charge', 'orders:update',
   ],
 };
+const readContext = { ...context, permissions: ['inventory:read', 'orders:read', 'accounts:read'] };
 
 export const universalIntentCorpus = [
   {
@@ -116,6 +117,61 @@ export const universalIntentCorpus = [
     // El proveedor puede preguntar o el backend puede rechazar una referencia inventada.
     // La condición dorada es que no se emita ningún plan listo para ejecución.
     expected: { kind: 'no_ready_plan' },
+  },
+  {
+    id: 'query-inventory-mixed-units-zero-false-attribute',
+    sourceText: '¿Qué inventario tenemos?',
+    catalog: { products: [
+      product('inventory-unit', 'Sensor habilitado', { unit: 'unit', stockAvailable: 0, stockReserved: 0, attributes: { habilitado: { state: 'known', type: 'boolean', value: false } } }),
+      product('inventory-kg', 'Polvo', { unit: 'kg', stockAvailable: 3, stockReserved: 1, price: 0 }),
+    ] },
+    context: readContext,
+    expected: {
+      kind: 'answer',
+      queries: [{ type: 'inventory.query', selector: { kind: 'all' } }],
+      answerItems: [{ type: 'inventory.query', rows: [
+        { id: 'inventory-kg', name: 'Polvo', unit: 'kg', stockAvailable: 3, stockReserved: 1, price: 0, priceCurrency: 'UYU' },
+        { id: 'inventory-unit', name: 'Sensor habilitado', unit: 'unit', stockAvailable: 0, stockReserved: 0, price: 100, priceCurrency: 'UYU', attributes: { habilitado: { state: 'known', type: 'boolean', value: false } } },
+      ], summary: { count: 2, totals: [
+        { unit: 'kg', available: 3, reserved: 1 }, { unit: 'unit', available: 0, reserved: 0 },
+      ] } }],
+    },
+  },
+  {
+    id: 'query-pending-orders-default-vs-explicit-todos',
+    sourceText: 'Mostrame los pedidos pendientes y todos los pedidos.',
+    catalog: { clients: [client], proveedores: [supplier], pedidos: [
+      order,
+      { ...order, id: 'order-2', estado: 'conseguido', qty: 4 },
+    ] },
+    context: readContext,
+    expected: {
+      kind: 'answer',
+      queries: [
+        { type: 'orders.query', selector: { kind: 'all' }, estado: 'pendiente' },
+        { type: 'orders.query', selector: { kind: 'all' }, estado: 'todos' },
+      ],
+      answerItems: [
+        { type: 'orders.query', rows: [
+          { id: 'order-1', producto: 'Sensor Uno', qty: 2, estado: 'pendiente', client: { id: 'client-1', name: 'Cliente Sintético' }, supplier: { id: 'supplier-1', name: 'Proveedor Sintético' }, productType: 'Sensor', productModel: 'A1', productId: 'sensor-uno', stockPosting: null },
+        ], summary: { count: 1, totals: [{ unit: null, quantity: 2 }] } },
+        { type: 'orders.query', rows: [
+          { id: 'order-1', producto: 'Sensor Uno', qty: 2, estado: 'pendiente', client: { id: 'client-1', name: 'Cliente Sintético' }, supplier: { id: 'supplier-1', name: 'Proveedor Sintético' }, productType: 'Sensor', productModel: 'A1', productId: 'sensor-uno', stockPosting: null },
+          { id: 'order-2', producto: 'Sensor Uno', qty: 4, estado: 'conseguido', client: { id: 'client-1', name: 'Cliente Sintético' }, supplier: { id: 'supplier-1', name: 'Proveedor Sintético' }, productType: 'Sensor', productModel: 'A1', productId: 'sensor-uno', stockPosting: null },
+        ], summary: { count: 2, totals: [{ unit: null, quantity: 6 }] } },
+      ],
+    },
+  },
+  {
+    id: 'query-accounts-zero-balance',
+    sourceText: '¿Cuánto debe Cliente Sintético?',
+    catalog: { clients: [client] },
+    context: readContext,
+    expected: {
+      kind: 'answer',
+      queries: [{ type: 'accounts.query', selector: { kind: 'ids', ids: ['client-1'] } }],
+      answerItems: [{ type: 'accounts.query', rows: [{ id: 'client-1', name: 'Cliente Sintético', debt: 0 }], summary: { count: 1, totalDebt: 0 } }],
+    },
   },
 ];
 

@@ -210,8 +210,8 @@ export const holdUnverifiedStockMessage = async ({ sourceText, businessCategory,
   return asResult(batch);
 };
 
-export const processStockBatchMessage = async ({ sourceText, businessCategory, ownerPhone, senderPhone, messageId, replyToMessageId = null }) => {
-  const replay = await getVoiceStockBatchByMessage(ownerPhone, messageId);
+export const processStockBatchMessage = async ({ sourceText, businessCategory, ownerPhone, senderPhone, messageId, replyToMessageId = null, resumeOnly = false }) => {
+  const replay = await getVoiceStockBatchByMessage(ownerPhone, messageId, senderPhone);
   if (replay) {
     if (replay.status === 'ready') return finish(replay, ownerPhone, replay.payload.replyMessageId ?? messageId);
     const prior = replay.payload.handledMessages?.find((entry) => entry.messageId === messageId);
@@ -229,7 +229,7 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
   if (active?.status === 'ready') {
     await finish(active, ownerPhone, active.payload.replyMessageId ?? active.sourceMessageId);
     // Recover the committed ready decision before interpreting a later command.
-    return processStockBatchMessage({ sourceText, businessCategory, ownerPhone, senderPhone, messageId, replyToMessageId });
+    return processStockBatchMessage({ sourceText, businessCategory, ownerPhone, senderPhone, messageId, replyToMessageId, resumeOnly });
   }
   if (replyToMessageId) {
     const quoted = await getMetaReplyQuestion(replyToMessageId, ownerPhone, senderPhone);
@@ -248,6 +248,9 @@ export const processStockBatchMessage = async ({ sourceText, businessCategory, o
       return saved ? asResult(saved) : concurrentResult(active, ownerPhone);
     }
   }
+  // The WhatsApp cutover may recover an old batch or its quoted question, but
+  // cannot create a fresh legacy draft or even read the catalog for a new one.
+  if (resumeOnly && !active) return null;
   const retryChoice = active?.status === 'awaiting_choice' && /^(reintentar|reintenta|volver a intentar)$/.test(normalizeIdentity(sourceText))
     && active.payload.pendingChoiceReply;
   let answerMessageId = messageId;

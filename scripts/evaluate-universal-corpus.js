@@ -48,6 +48,24 @@ export function compareUniversalGold(fixture, result) {
   }
   if (result.kind !== expected.kind) return [`kind: esperado ${expected.kind}, recibido ${result.kind}`];
   if (expected.kind === 'clarification') return [];
+  if (expected.kind === 'answer') {
+    if (result.plan) return ['Una consulta no puede incluir un plan de mutación.'];
+    if (!Array.isArray(result.queries)) return ['Falta la lista de consultas autorizadas.'];
+    if (!Array.isArray(result.answer?.items)) return ['Faltan los datos de respuesta del snapshot.'];
+    const normalizeQuery = ({ itemId, ...query }) => query;
+    const normalizeItem = ({ itemId, ...item }) => item;
+    const actualQueries = result.queries.map(normalizeQuery);
+    const wantedQueries = expected.queries;
+    const actualItems = result.answer.items.map(normalizeItem);
+    const wantedItems = expected.answerItems;
+    try {
+      assert.deepStrictEqual(actualQueries, wantedQueries);
+      assert.deepStrictEqual(actualItems, wantedItems);
+      return [];
+    } catch {
+      return [`consultas/datos: esperado ${JSON.stringify({ queries: wantedQueries, items: wantedItems })}, recibido ${JSON.stringify({ queries: actualQueries, items: actualItems })}`];
+    }
+  }
   if (!Array.isArray(result.plan?.actions)) return ['Falta la lista de acciones del plan listo.'];
   const actual = result.plan.actions.map(semanticAction);
   const wanted = expected.actions.map(expectedAction);
@@ -71,6 +89,11 @@ export function compareUniversalGold(fixture, result) {
 const fakeModelJson = (fixture) => {
   if (fixture.expected.kind === 'clarification' || fixture.expected.kind === 'no_ready_plan') {
     return { contractVersion: 1, kind: 'clarification', question: '¿Podés precisar la referencia?' };
+  }
+  if (fixture.expected.kind === 'answer') {
+    const queries = fixture.expected.queries.map((query, index) => ({ itemId: `sim-query-${index + 1}`, ...structuredClone(query) }));
+    return { contractVersion: 1, kind: 'query', queries,
+      evidence: queries.map(({ itemId }) => ({ itemId, quote: fixture.sourceText })) };
   }
   const actions = fixture.expected.actions.map((entry, index) => {
     const action = { itemId: `sim-item-${index + 1}`, type: entry.type };
@@ -182,7 +205,57 @@ const runSelfTest = async () => {
   [reversed.actions[0], reversed.actions[1]] = [reversed.actions[1], reversed.actions[0]];
   const reversedResult = await evaluateFixture(existingSkuFixture, { complete: async () => ({ ok: true, json: reversed, provider: 'simulated', model: 'gold-contract-stub' }) });
   assert.equal(reversedResult.passed, false, 'reordered action output must fail');
-  return { simulated: true, status: 'SELF_TEST_PASS', fixtureCount: rows.length, assertions: 'gold match, SKU swaps, wrong positive quantity, zero/false, reason paraphrase, provider failure, duplicate, and reorder' };
+
+  for (const fixture of universalIntentCorpus.filter(({ expected }) => expected.kind === 'answer')) {
+    const validAnswer = await evaluateFixture(fixture, { complete: async () => ({ ok: true, json: fakeModelJson(fixture), provider: 'simulated', model: 'gold-contract-stub' }) });
+    assert.equal(validAnswer.passed, true, `query oracle should match snapshot: ${fixture.id}`);
+    const altered = fakeModelJson(fixture);
+    altered.queries[0].itemId = 'arbitrary-model-id';
+    altered.evidence[0].itemId = 'arbitrary-model-id';
+    const ignoredItemId = await evaluateFixture(fixture, { complete: async () => ({ ok: true, json: altered, provider: 'simulated', model: 'gold-contract-stub' }) });
+    assert.equal(ignoredItemId.passed, true, 'model item IDs are correlation tokens, not semantic facts');
+
+    const wrongFacts = { ...validAnswer._result, answer: structuredClone(validAnswer._result.answer) };
+    if (wrongFacts.answer.items[0].rows.length) {
+      const row = wrongFacts.answer.items[0].rows[0];
+      if (Object.hasOwn(row, 'stockAvailable')) row.stockAvailable += 1;
+      else if (Object.hasOwn(row, 'debt')) row.debt += 1;
+      else row.qty += 1;
+    } else wrongFacts.answer.items[0].summary.count += 1;
+    assert.ok(compareUniversalGold(fixture, wrongFacts).length > 0, 'wrong snapshot facts must fail');
+  }
+
+  const inventoryQueryFixture = universalIntentCorpus.find(({ id }) => id === 'query-inventory-mixed-units-zero-false-attribute');
+  for (const mutate of [
+    (json) => { json.queries[0].selector.ids = ['inventory-unit']; },
+    (json) => { json.kind = 'proposal'; json.actions = [{ itemId: 'inject', type: 'sku.deactivate' }]; delete json.queries; },
+  ]) {
+    const injected = fakeModelJson(inventoryQueryFixture);
+    mutate(injected);
+    const row = await evaluateFixture(inventoryQueryFixture, { complete: async () => ({ ok: true, json: injected, provider: 'simulated', model: 'gold-contract-stub' }) });
+    assert.equal(row.passed, false, 'selection widening or action injection must fail');
+  }
+
+  const emptyFixture=structuredClone(inventoryQueryFixture);
+  emptyFixture.expected.queries[0].selector={kind:'ids',ids:[]};
+  emptyFixture.expected.answerItems[0].rows=[];
+  emptyFixture.expected.answerItems[0].summary={count:0,totals:[]};
+  const empty=await evaluateFixture(emptyFixture,{complete:async()=>({ok:true,json:fakeModelJson(emptyFixture)})});
+  assert.equal(empty.passed,true,'an explicit empty set must stay empty');
+  const widened=fakeModelJson(emptyFixture);widened.queries[0].selector={kind:'all'};
+  assert.equal((await evaluateFixture(emptyFixture,{complete:async()=>({ok:true,json:widened})})).passed,false,'empty selector widening must fail');
+
+  const pendingFixture=universalIntentCorpus.find(({id})=>id==='query-pending-orders-default-vs-explicit-todos');
+  const defaultPending=fakeModelJson(pendingFixture);delete defaultPending.queries[0].estado;
+  assert.equal((await evaluateFixture(pendingFixture,{complete:async()=>({ok:true,json:defaultPending})})).passed,true,'omitted order state defaults to pending');
+
+  const unitsFixture = universalIntentCorpus.find(({ id }) => id === 'query-inventory-mixed-units-zero-false-attribute');
+  const wrongUnit = { ...((await evaluateFixture(unitsFixture, { complete: async () => ({ ok: true, json: fakeModelJson(unitsFixture), provider: 'simulated' }) }))._result), answer: null };
+  wrongUnit.answer = structuredClone((await evaluateFixture(unitsFixture, { complete: async () => ({ ok: true, json: fakeModelJson(unitsFixture), provider: 'simulated' }) }))._result.answer);
+  wrongUnit.answer.items[0].rows[0].unit = 'unit';
+  assert.ok(compareUniversalGold(unitsFixture, wrongUnit).length > 0, 'wrong units must fail');
+
+  return { simulated: true, status: 'SELF_TEST_PASS', fixtureCount: rows.length, assertions: 'gold match, query snapshot facts, ignored model item IDs, selector widening, action injection, SKU swaps, wrong positive quantity, zero/false, reason paraphrase, provider failure, duplicate, and reorder' };
 };
 
 const option = (name) => {

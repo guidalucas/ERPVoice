@@ -1,6 +1,7 @@
 import { InventoryOperationError } from './inventoryOperations.js';
 import { inventoryResultReply } from './inventoryResults.js';
 import { accountResultReply } from './accountOperations.js';
+import { validateUniversalOperationReview } from './universalOperationReview.js';
 
 const fail = (code, message) => { throw new InventoryOperationError(code, message); };
 const invalidDraft = () => fail('INVALID_DRAFT_REQUEST', 'El borrador o recibo de la operación está incompleto o no es válido.');
@@ -41,22 +42,6 @@ function validatePreview(preview) {
   return preview;
 }
 
-function validatedReview(plan, review) {
-  if (!plan || !Array.isArray(plan.actions) || !plan.actions.length || !Array.isArray(review)) invalidDraft();
-  const ids = plan.actions.map((action) => action?.itemId);
-  if (ids.some((id) => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length
-    || review.length !== ids.length) invalidDraft();
-  const seen = new Set();
-  for (let index = 0; index < review.length; index += 1) {
-    const item = review[index];
-    if (!item || typeof item !== 'object' || item.itemId !== ids[index] || seen.has(item.itemId)
-      || typeof item.title !== 'string' || !item.title.trim() || !Array.isArray(item.details)
-      || item.details.some((line) => typeof line !== 'string' || !line.trim())) invalidDraft();
-    seen.add(item.itemId);
-  }
-  return review;
-}
-
 const renderReview = (review) => review.map((item) => [item.title, ...item.details.map((detail) => `• ${detail}`)].join('\n')).join('\n\n');
 
 /** Render backend-owned preview facts; this function does not interpret or change a plan. */
@@ -71,7 +56,7 @@ export function universalMetaPreviewReply(input) {
   }
 
   const hasPlan = preview.plan !== undefined && preview.plan !== null;
-  const review = hasPlan ? validatedReview(preview.plan, preview.review) : null;
+  const review = hasPlan ? validateUniversalOperationReview(preview.plan, preview.review) : null;
   let output;
   if (preview.status === 'awaiting_clarification') {
     if (typeof preview.question !== 'string' || !preview.question.trim()) invalidDraft();

@@ -17,6 +17,7 @@ import { canonicalIdentityText } from './inventoryDomain.js';
 import { orderRequestDigest } from './orderOperations.js';
 import { ACCOUNT_SCHEMA_SQL, executeAccountPlanInTransaction } from './accountPostgres.js';
 import { operationRequestDigest } from './operationHash.js';
+import { operationResultActions } from './operationResults.js';
 import { validateAccountPlan } from './accountOperations.js';
 import { mergeClientsInTransaction } from './clientMergePostgres.js';
 import { UNIVERSAL_SCHEMA_SQL, executeUniversalPlanInTransaction } from './universalPostgres.js';
@@ -1498,9 +1499,8 @@ const loadUniversalDraftReply = async (client,draftId,request,context) => {
 };
 
 /** The caller supplies the tenant resolved from the authenticated Meta sender.
- * Only this explicit control namespace enters the universal workflow while the
- * remaining conversation consumers migrate. Effects use the shared draft and
- * universal executors; provider calls never hold an SQL transaction open. */
+ * Ordinary messages and explicit controls share the draft/executor boundary;
+ * provider calls never hold an SQL transaction open. */
 export const processMetaUniversalMessage = async (input,options={}) => {
   const command=parseUniversalMetaCommand(input?.sourceText) ?? (options.ordinary===true && typeof input?.sourceText==='string' ? {kind:'prepare',text:input.sourceText.trim()} : null);
   if (!command) return null;
@@ -1927,13 +1927,14 @@ export const getActiveVoiceStockBatch = async (ownerPhone, senderPhone) => {
   return rowToVoiceStockBatch(rows[0]);
 };
 
-export const getVoiceStockBatchByMessage = async (ownerPhone, messageId) => {
+export const getVoiceStockBatchByMessage = async (ownerPhone, messageId, senderPhone = null) => {
   await ensureReady();
   const row = await queryRow(
     `SELECT * FROM voice_stock_batches WHERE owner_phone = $1
+       AND ($4::text IS NULL OR sender_phone = $4)
        AND (source_message_id = $2 OR payload_json->'handledMessages' @> $3::jsonb)
        ORDER BY created_at DESC LIMIT 1`,
-    [normalizeOwnerPhone(ownerPhone), String(messageId), JSON.stringify([{ messageId: String(messageId) }])],
+    [normalizeOwnerPhone(ownerPhone), String(messageId), JSON.stringify([{ messageId: String(messageId) }]), senderPhone == null ? null : normalizePhone(senderPhone)],
   );
   return rowToVoiceStockBatch(row);
 };
@@ -2140,6 +2141,66 @@ export const claimMetaMessage = async ({ messageId, ownerPhone, senderPhone, raw
     [String(messageId), normalizeOwnerPhone(ownerPhone), normalizePhone(senderPhone), toJsonbParam(rawBody)],
   );
   return result.rowCount > 0;
+};
+
+// A legacy domain write and its outbox commit together, before meta_events is
+// saved. Recover that receipt before the new ordinary-message interpreter runs.
+// The claim binds the globally unique message/outbox ID to both tenant and actor.
+export const replayCommittedMetaMessage = async ({messageId,ownerPhone,senderPhone,sourceText}) => {
+  await ensureReady();
+  const owner=normalizeOwnerPhone(ownerPhone),sender=normalizePhone(senderPhone);
+  return withTransaction(async client=>{
+    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const claim=await queryRow(`SELECT claim.*,reply.recipient,reply.reply_text,event.source_text,event.actions_json,event.error
+      FROM meta_message_claims AS claim
+      LEFT JOIN meta_reply_outbox AS reply ON reply.event_id=claim.message_id
+      LEFT JOIN meta_events AS event ON event.id=claim.message_id AND event.owner_phone=claim.owner_phone AND event.from_number=claim.sender_phone
+      WHERE claim.message_id=$1`,[messageId],client);
+    if (!claim) return null;
+    const conflict=()=>{throw new InventoryOperationError('IDEMPOTENCY_CONFLICT','El ID del mensaje ya corresponde a otra instrucción, negocio o remitente.');};
+    if (claim.owner_phone!==owner || claim.sender_phone!==sender || (claim.recipient && claim.recipient!==sender)) conflict();
+    if (claim.reply_text==null) return null;
+    const raw=parseJsonValue(claim.raw_body_json);
+    const original=(raw?.entry ?? []).flatMap(entry=>(entry.changes ?? []).flatMap(change=>change.value?.messages ?? []))
+      .find(message=>message.id===messageId && normalizePhone(message.from)===sender);
+    const storedText=claim.transcript ?? original?.text?.body ?? claim.source_text;
+    if (storedText!=null && storedText!==sourceText) conflict();
+    const batch=await queryRow(`SELECT id FROM voice_stock_batches WHERE owner_phone=$1 AND sender_phone=$2
+      AND (source_message_id=$3 OR payload_json->'handledMessages' @> $4::jsonb) LIMIT 1`,
+    [owner,sender,messageId,JSON.stringify([{messageId}])],client);
+    // Let the legacy resume-only workflow recover any saved ready transition
+    // before returning its batch receipt and question metadata.
+    if (batch) return null;
+    const universal=await queryRow('SELECT actor_id,request_hash,result_json FROM universal_meta_commands WHERE owner_phone=$1 AND message_id=$2',[owner,messageId],client);
+    if (universal) {
+      if (universal.actor_id!==sender || universal.request_hash!==operationRequestDigest({actorId:sender,sourceText})) conflict();
+      return parseJsonValue(universal.result_json);
+    }
+    const selection=await queryRow('SELECT actor_id,request_hash,result_json FROM meta_selection_commands WHERE owner_phone=$1 AND message_id=$2',[owner,messageId],client);
+    if (selection) {
+      const command=parseMetaSelectionCommand(sourceText);
+      if (selection.actor_id!==sender || !command || selection.request_hash!==operationRequestDigest({actorId:sender,command})) conflict();
+      return parseJsonValue(selection.result_json);
+    }
+    const domain=await queryRow(`SELECT plan_json AS request_json,result_json FROM inventory_operations
+        WHERE owner_phone=$1 AND actor_id=$2 AND operation_id=ANY($3)
+      UNION ALL SELECT plan_json,result_json FROM account_operations
+        WHERE owner_phone=$1 AND actor_id=$2 AND operation_id=ANY($4)
+      UNION ALL SELECT request_json,result_json FROM order_operations
+        WHERE owner_phone=$1 AND actor_id=$2 AND operation_id=ANY($5)`,
+    [owner,sender,[`whatsapp:${messageId}`,`meta:${messageId}`],
+      [`account-compat:whatsapp:${messageId}`,`account-compat:meta:${messageId}`],
+      [`batch:whatsapp:${messageId}`,`batch:meta:${messageId}`]],client);
+    const request=parseJsonValue(domain?.request_json),result=parseJsonValue(domain?.result_json);
+    const domainText=request?.source?.text ?? request?.sourceText;
+    if (domainText!=null && domainText!==sourceText) conflict();
+    // An outbox without source evidence still prevents a new interpretation.
+    // Fail closed instead of assigning an old receipt to different text.
+    if (storedText==null && domainText==null) conflict();
+    return {handled:true,intent:'mixed',requiresConfirmation:false,replyText:claim.reply_text,
+      actions:result ? operationResultActions(result) : parseJsonValue(claim.actions_json) ?? [],
+      ...(result ? {operationResult:result} : {}),...(claim.error ? {errorCode:claim.error} : {})};
+  });
 };
 
 export const loadMetaTranscript = async (messageId) => {
