@@ -25,7 +25,7 @@ export function StockSetAdjustmentForm({ onClose }: { onClose: () => void }) {
   const review = async (fresh = false) => {
     if (busyRef.current) return;
     if (selectedIds.length < 1 || selectedIds.length > 100) {
-      setError('Seleccioná entre 1 y 100 SKU explícitos.'); return;
+      setError('Seleccioná entre 1 y 100 productos.'); return;
     }
     if ((!available.trim() && !reserved.trim()) || [available, reserved].some(value => value.trim() && (!Number.isSafeInteger(Number(value)) || Number(value) < 0))) {
       setError('Ingresá al menos un saldo entero mayor o igual a cero.'); return;
@@ -65,14 +65,14 @@ export function StockSetAdjustmentForm({ onClose }: { onClose: () => void }) {
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
     <div role="dialog" aria-modal="true" aria-label="Ajustar conjunto" className="max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl">
       <h4 className="type-title text-xl">Ajustar conjunto</h4>
-      <p className="mt-2 text-sm">Cada saldo es absoluto: se fija ese valor en cada SKU seleccionado. Los campos en blanco conservan el saldo actual; no se suman ni restan unidades.</p>
+      <p className="mt-2 text-sm">Cada saldo es absoluto: se fija ese valor en cada producto seleccionado. Los campos en blanco conservan el saldo actual; no se suman ni restan unidades.</p>
       <fieldset disabled={busy} className="mt-4 space-y-4">
-        <legend className="text-sm font-semibold">SKU explícitos · {selectedIds.length}/100</legend>
+        <legend className="text-sm font-semibold">Productos · {selectedIds.length}/100</legend>
         <div className="max-h-52 space-y-2 overflow-y-auto rounded-xl border border-[color:var(--border)] p-3">
           {products.map(product => <label key={product.id} className="flex items-start gap-2 text-sm">
-            <input type="checkbox" aria-label={`Seleccionar SKU ${product.id}`} checked={selectedIds.includes(product.id)} disabled={!selectedIds.includes(product.id) && selectedIds.length >= 100}
+            <input type="checkbox" aria-label={`Seleccionar producto ${product.id}`} checked={selectedIds.includes(product.id)} disabled={!selectedIds.includes(product.id) && selectedIds.length >= 100}
               onChange={event => { invalidate(); setSelectedIds(current => event.target.checked ? [...current, product.id] : current.filter(id => id !== product.id)); }} />
-            <span>{product.name} · Variante: {product.size || 'Sin definir'} · SKU: {product.id}</span>
+            <span>{product.name} · Variante: {product.size || 'Sin definir'} · Código: {product.id}</span>
           </label>)}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -88,16 +88,16 @@ export function StockSetAdjustmentForm({ onClose }: { onClose: () => void }) {
         </label>
       </fieldset>
       {preview && <section aria-label="Vista previa del ajuste" className="mt-4 space-y-3 text-sm">
-        <p>{preview.members.length} SKU revisados · Motivo: {preview.mutation.reason}</p>
+        <p>{preview.members.length} productos revisados · Motivo: {preview.mutation.reason}</p>
         <ul className="space-y-2">{preview.members.map(member => <li key={member.skuId} className="rounded-xl border border-[color:var(--border)] p-3">
           <strong>{member.name}</strong> · Variante: {member.size || 'Sin definir'}
-          <p>SKU: {member.skuId} · Unidad: {member.unit}</p>
+          <p>Código: {member.skuId} · Unidad: {member.unit}</p>
           <p>Disponible: {member.stockAvailable} → {member.finalAvailable} · Reservado: {member.stockReserved} → {member.finalReserved}</p>
         </li>)}</ul>
         <p>Vence: {new Date(preview.expiresAt).toLocaleString('es-AR')}</p>
         <label className="flex items-start gap-2">
           <input type="checkbox" disabled={busy || stale} checked={consent} onChange={event => setConsent(event.target.checked)} />
-          Confirmo los saldos finales de cada SKU revisado.
+          Confirmo los saldos finales de cada producto revisado.
         </label>
       </section>}
       {error && <p role="alert" className="mt-4 text-sm text-rose-700 dark:text-rose-200">{error}</p>}

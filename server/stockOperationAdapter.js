@@ -78,17 +78,17 @@ export const confirmedStockActionsToPlan = ({ actions, sourceText, ownerPhone, o
   actions: actions.flatMap((action, index) => {
     if (action.type === 'update_product') {
       const explicitId = action.productId ?? action.resolvedProductId;
-      if (typeof explicitId !== 'string' || !explicitId.trim() || (action.productId && action.resolvedProductId && action.productId !== action.resolvedProductId)) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Elegí un SKU explícito para actualizar; no apliqué cambios.');
+      if (typeof explicitId !== 'string' || !explicitId.trim() || (action.productId && action.resolvedProductId && action.productId !== action.resolvedProductId)) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Elegí un producto y su variante para actualizar; no apliqué cambios.');
       return productUpdateActions(explicitId, { price: action.price, priceCurrency: action.priceCurrency,
         attributes:action.attributes,family:action.family,stockAvailable: action.stockAvailable, stockReserved: action.stockReserved }, action, `item-${index + 1}`);
     }
     if (action.type === 'sell' || action.type === 'reserve_stock') {
       const explicitId = action.productId ?? action.resolvedProductId;
-      if (typeof explicitId !== 'string' || !explicitId.trim()) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Elegí un SKU explícito para vender o reservar; no apliqué cambios.');
+      if (typeof explicitId !== 'string' || !explicitId.trim()) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Elegí un producto y su variante para vender o reservar; no apliqué cambios.');
       const product = products.find((entry) => entry.id === explicitId);
-      if (!product) throw new InventoryOperationError('SKU_NOT_FOUND', 'El SKU seleccionado ya no está disponible.');
-      if (!matchesFamily(requestedFamily(action),product)) throw new InventoryOperationError('SKU_FAMILY_MISMATCH','La familia/version del SKU cambió; revisá su ficha antes de operar.');
-      if (action.productId && action.resolvedProductId && action.productId !== action.resolvedProductId) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'La selección contiene IDs de SKU incompatibles.');
+      if (!product) throw new InventoryOperationError('SKU_NOT_FOUND', 'El producto seleccionado ya no está disponible.');
+      if (!matchesFamily(requestedFamily(action),product)) throw new InventoryOperationError('SKU_FAMILY_MISMATCH','La familia o versión del producto cambió; revisá su ficha antes de operar.');
+      if (action.productId && action.resolvedProductId && action.productId !== action.resolvedProductId) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'La selección contiene códigos de producto incompatibles.');
       return { itemId: `item-${index + 1}`, type: action.type === 'sell' ? 'stock.sell' : 'stock.reserve',
         target: { kind: 'existing', skuId: product.id,
           expectedFingerprint: action.expectedFingerprint ?? product.identityFingerprint ?? inventoryProductFingerprint(product) },
@@ -100,9 +100,9 @@ export const confirmedStockActionsToPlan = ({ actions, sourceText, ownerPhone, o
     const explicitId = action.productId ?? action.resolvedProductId;
     const exact = explicitId ? products.filter((product) => product.id === explicitId)
       : products.filter((product) => matchesFamily(sku.family,product) && productIdentity(product) === productIdentity(sku));
-    if (exact.some(product=>!matchesFamily(sku.family,product))) throw new InventoryOperationError('SKU_FAMILY_MISMATCH','La familia/version del SKU cambió; revisá su ficha antes de operar.');
+    if (exact.some(product=>!matchesFamily(sku.family,product))) throw new InventoryOperationError('SKU_FAMILY_MISMATCH','La familia o versión del producto cambió; revisá su ficha antes de operar.');
     if (explicitId && !exact.length) throw new InventoryOperationError('SKU_NOT_FOUND', 'El producto confirmado ya no está disponible.');
-    if (exact.length > 1) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Hay varios SKU con esa identidad. Elegí un ID.');
+    if (exact.length > 1) throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Hay varios productos con esa identidad. Elegí un ID.');
     // Omission does not mean "the only variant in the catalog".
     if (!exact.length && !sku.size && products.some((product) => product.size && productIdentity({ ...product, size: null, attributes: {} }) === productIdentity({ ...sku, attributes: {} }))) {
       throw new InventoryOperationError('SKU_SELECTION_REQUIRED', 'Falta indicar la variante del producto.');

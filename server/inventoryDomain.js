@@ -77,13 +77,13 @@ export function normalizeAttributes(input) {
 }
 
 export function skuIdentityKey(input) {
-  const entries = recordEntries(input, 'SKU identity');
+  const entries = recordEntries(input, 'identidad del producto');
   const fields = Object.fromEntries(entries);
   for (const [field] of entries) {
-    if (!['name', 'attributes', 'unit'].includes(field)) invalid(`Unsupported SKU identity field: ${field}`);
+    if (!['name', 'attributes', 'unit'].includes(field)) invalid(`Campo de identidad del producto no permitido: ${field}`);
   }
   const name = canonicalIdentityText(fields.name);
-  if (!name) invalid('SKU name cannot be empty');
+  if (!name) invalid('El nombre del producto no puede estar vacío.');
   const attributes = normalizeAttributes(Object.hasOwn(fields, 'attributes') ? fields.attributes : {});
   const unit = normalizeUnit(Object.hasOwn(fields, 'unit') ? fields.unit : 'unit');
   return JSON.stringify([name, attributes, unit]);

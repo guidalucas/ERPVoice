@@ -66,7 +66,7 @@ test('oversized previews reject the whole review rather than truncating members 
 });
 
 test('small receipts remain unchanged and long receipts summarize the correct operation and count', () => {
-  for (const [type, expected] of [['sku.deactivate', 'Se desactivaron los 40 SKU'], ['sku.update', 'Se actualizaron los 40 SKU'], ['stock.adjust', 'Se ajustaron los saldos de 40 SKU']]) {
+  for (const [type, expected] of [['sku.deactivate', 'Se desactivaron los 40 productos'], ['sku.update', 'Se actualizaron los 40 productos'], ['stock.adjust', 'Se ajustaron los saldos de 40 productos']]) {
     const item = { type, skuName: 'Producto', stockAvailable: 8, stockReserved: 3, revision: 2 };
     assert.equal(inventorySelectionReceiptReply({ items: [item] }), inventoryResultReply({ items: [item] }));
     const result = { items: Array.from({ length: 40 }, () => ({ ...item, skuName: 'Producto'.repeat(30) })) };

@@ -178,7 +178,7 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
         }
         if (parsed.completed?.some(item => item.kind === 'sku')) {
           try { await refresh.current(); }
-          catch { if (active && scope.current === storageKey) setReadError('El SKU se creó, pero no se pudo actualizar el inventario. Reintentá solo las lecturas.'); }
+          catch { if (active && scope.current === storageKey) setReadError('El producto se creó, pero no se pudo actualizar el inventario. Reintentá solo las lecturas.'); }
         }
       } finally {
         if (active && scope.current === storageKey) { lock.current = false; setBusy(false); setHydrated(true); }
@@ -280,8 +280,8 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
     let attempt = saved.skuAttempt;
     try {
       if (!attempt) {
-        if (!chosenFamily) throw new Error('Elegí una familia y versión para crear el SKU.');
-        if (!draft.skuName.trim()) throw new Error('Escribí el nombre del SKU.');
+        if (!chosenFamily) throw new Error('Elegí una familia y versión para crear el producto.');
+        if (!draft.skuName.trim()) throw new Error('Escribí el nombre del producto.');
         if (!draft.stockAvailable.trim() || !draft.stockReserved.trim() || !draft.price.trim()) throw new Error('Completá stock disponible, stock reservado y precio.');
         const stockAvailable = Number(draft.stockAvailable); const stockReserved = Number(draft.stockReserved); const price = Number(draft.price);
         if (![stockAvailable, stockReserved].every(value => Number.isSafeInteger(value) && value >= 0)) throw new Error('El stock debe ser un entero seguro igual o mayor que cero.');
@@ -296,11 +296,11 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
       if (scope.current !== storageKey || !activeRef.current) return;
       if (!created?.id || created.family?.id!==attempt.body.family?.id || created.family?.version!==attempt.body.family?.version
         || created.unit!==attempt.body.unit || created.stockAvailable!==attempt.body.stockAvailable || created.stockReserved!==attempt.body.stockReserved
-        || created.price!==attempt.body.price || created.priceCurrency!==attempt.body.priceCurrency) throw new Error('La respuesta no confirmó los datos del SKU. Conservá el intento y reintentá la misma creación.');
+        || created.price!==attempt.body.price || created.priceCurrency!==attempt.body.priceCurrency) throw new Error('La respuesta no confirmó los datos del producto. Conservá el intento y reintentá la misma creación.');
       const completed: Completed = { kind: 'sku', operationId: attempt.operationId, label: created.name, productId: created.id };
       persist({ ...saved, skuAttempt: undefined, completed: [...(saved.completed ?? []).filter(item => item.kind !== 'sku'), completed] });
       try { await refresh.current(); setReadError(''); }
-      catch { setReadError('El SKU se creó, pero no pudimos actualizar el inventario. Reintentá solo las lecturas.'); }
+      catch { setReadError('El producto se creó, pero no pudimos actualizar el inventario. Reintentá solo las lecturas.'); }
     } catch (failure) {
       if (scope.current !== storageKey || !activeRef.current) return;
       const status = Number((failure as { status?: number })?.status);
@@ -374,7 +374,7 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
   };
   const renderSkuReview = (family: ProductFamily, values = draft.attrValues, skuDraft = draft) => {
     const preview = skuPreview(family, values, skuDraft);
-    return <div role="region" aria-label="Vista previa de SKU" className="mt-3 rounded-lg bg-[color:var(--overlay-soft)] p-3 text-sm"><strong>Revisá los datos del SKU</strong><p>{preview.name} · {preview.family} v{preview.version} · unidad: {preview.unit}</p><ul className="mt-2 list-inside list-disc">{Object.entries(family.schema.attributes).map(([key, definition]) => {
+    return <div role="region" aria-label="Vista previa del producto" className="mt-3 rounded-lg bg-[color:var(--overlay-soft)] p-3 text-sm"><strong>Revisá los datos del producto</strong><p>{preview.name} · {preview.family} v{preview.version} · unidad: {preview.unit}</p><ul className="mt-2 list-inside list-disc">{Object.entries(family.schema.attributes).map(([key, definition]) => {
       const entry = values[key] ?? { state: 'known' as const, value: '' };
       const attr = preview.attributes[key];
       let detail = translateState(entry.state);
@@ -395,7 +395,7 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
 
   return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3">
     <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="product-family-title" aria-busy={busy || loading} onKeyDown={onDialogKeyDown} className="max-h-[92dvh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-sky-500/30 bg-[color:var(--surface-elevated)] p-5 text-[color:var(--text)] shadow-2xl">
-      <div className="flex items-start justify-between gap-3"><div><h2 id="product-family-title" className="type-title text-xl">Familias y atributos</h2><p className="mt-1 text-sm text-[color:var(--muted)]">Definí un esquema versionado y usalo para crear un SKU nuevo.</p></div><button type="button" className="erp-button-secondary" onClick={onClose} disabled={busy}>Cerrar</button></div>
+      <div className="flex items-start justify-between gap-3"><div><h2 id="product-family-title" className="type-title text-xl">Familias y atributos</h2><p className="mt-1 text-sm text-[color:var(--muted)]">Definí un esquema versionado y usalo para crear un producto nuevo.</p></div><button type="button" className="erp-button-secondary" onClick={onClose} disabled={busy}>Cerrar</button></div>
       {!hydrated && <p className="mt-5" role="status">Recuperando borrador y familias…</p>}
       {hydrated && <div className="mt-5 space-y-6">
         <section className="space-y-4 rounded-xl border border-[color:var(--border)] p-4" aria-labelledby="family-config-title">
@@ -425,12 +425,12 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
         </section>
 
         <section className="space-y-4 rounded-xl border border-[color:var(--border)] p-4" aria-labelledby="sku-create-title">
-          <h3 id="sku-create-title" className="type-subtitle">2. Crear SKU nuevo</h3>
-          {skuComplete && <div role="status" className="rounded-lg border border-emerald-500/40 p-3">SKU creado: {(saved.completed ?? []).find(item => item.kind === 'sku')?.label}. <button type="button" className="underline" disabled={busy || loading} onClick={prepareAnotherSku}>Crear otro SKU</button></div>}
+          <h3 id="sku-create-title" className="type-subtitle">2. Crear producto nuevo</h3>
+          {skuComplete && <div role="status" className="rounded-lg border border-emerald-500/40 p-3">Producto creado: {(saved.completed ?? []).find(item => item.kind === 'sku')?.label}. <button type="button" className="underline" disabled={busy || loading} onClick={prepareAnotherSku}>Crear otro producto</button></div>}
           <fieldset disabled={busy || loading || hasPendingAttempt || skuComplete || invalidRecovery} className="space-y-4">
             <label className="block text-sm">Familia y versión<select aria-label="Familia y versión" className="erp-input mt-1" value={draft.familyChoice} onChange={e => changeFamilyChoice(e.target.value)}><option value="">Elegí una familia</option>{orderedFamilies.map(f => <option key={selectedChoice(f)} value={selectedChoice(f)}>{f.schema.name} · v{f.version}</option>)}</select></label>
             {chosenFamily && <>
-              <label className="block text-sm">Nombre del SKU<input className="erp-input mt-1" value={draft.skuName} onChange={e => updateDraft({ skuName: e.target.value })} /></label>
+              <label className="block text-sm">Nombre del producto<input className="erp-input mt-1" value={draft.skuName} onChange={e => updateDraft({ skuName: e.target.value })} /></label>
               <div className="grid gap-3 sm:grid-cols-2">{Object.entries(chosenFamily.schema.attributes).map(([key, def]) => {
                 const entry = draft.attrValues[key] ?? { state: 'known' as const, value: '' };
                 const permittedStates = def.allowedStates.filter(state => state !== 'known');
@@ -442,14 +442,14 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
                   {entry.state === 'known' && (def.type === 'boolean' ? <select aria-label={`Valor de ${key}`} className="erp-input mt-1" required={def.required} value={entry.value} onChange={e => updateValue({ value: e.target.value })}><option value="">Elegí Sí o No</option>{boolOptions?.map((value, at) => <option key={`${String(value)}-${at}`} value={String(value)}>{value ? 'Sí' : 'No'}</option>)}</select> : def.values?.length ? <select aria-label={`Valor de ${key}`} className="erp-input mt-1" required={def.required} value={entry.value} onChange={e => updateValue({ value: e.target.value })}><option value="">Elegí un valor</option>{def.values.map((value, at) => <option key={`${String(value)}-${at}`} value={String(value)}>{String(value)}</option>)}</select> : <input aria-label={`Valor de ${key}`} className="erp-input mt-1" type={def.type === 'number' ? 'number' : 'text'} step={def.type === 'number' ? 'any' : undefined} required={def.required} value={entry.value} onChange={e => updateValue({ value: e.target.value })} />)}
                 </label>;
               })}</div>
-              <p className="text-sm text-[color:var(--muted)]">Unidad del SKU: {chosenFamily.schema.unit}.</p>
+              <p className="text-sm text-[color:var(--muted)]">Unidad del producto: {chosenFamily.schema.unit}.</p>
               <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Stock disponible<input className="erp-input mt-1" type="number" min="0" step="1" value={draft.stockAvailable} onChange={e => updateDraft({ stockAvailable: e.target.value })} /></label><label className="text-sm">Stock reservado<input className="erp-input mt-1" type="number" min="0" step="1" value={draft.stockReserved} onChange={e => updateDraft({ stockReserved: e.target.value })} /></label><label className="text-sm">Precio<input className="erp-input mt-1" type="number" min="0" step="1" value={draft.price} onChange={e => updateDraft({ price: e.target.value })} /></label><label className="text-sm">Moneda ISO 4217<input className="erp-input mt-1 uppercase" maxLength={3} value={draft.currency} onChange={e => updateDraft({ currency: e.target.value.toUpperCase() })} /></label></div>
               {!saved.skuAttempt && renderSkuReview(chosenFamily)}
-              {!saved.skuAttempt && <label className="block text-sm"><input type="checkbox" checked={skuConsent} onChange={e => setSkuConsent(e.target.checked)} /> Revisé los datos del SKU y autorizo crearlo.</label>}
+              {!saved.skuAttempt && <label className="block text-sm"><input type="checkbox" checked={skuConsent} onChange={e => setSkuConsent(e.target.checked)} /> Revisé los datos del producto y autorizo crearlo.</label>}
             </>}
           </fieldset>
-          {saved.skuAttempt && <div className="rounded-lg border border-amber-500/40 p-3 text-sm">Intento de creación: {saved.skuAttempt.body.name} · {familyNameForSku(saved.skuAttempt)} v{saved.skuAttempt.body.family?.version}.{saved.skuAttempt.rejectionMessage && <p role="alert">{saved.skuAttempt.rejectionMessage}</p>}{saved.skuAttempt.rejected ? <button type="button" className={`${button} mt-2`} disabled={loading || busy} onClick={() => void reviewRejected('sku')}>Revisar respuesta y datos actuales</button> : <><label className="mt-3 block"><input type="checkbox" checked={skuConsent} disabled={busy || loading} onChange={e => setSkuConsent(e.target.checked)} /> Revisé los datos del SKU y autorizo crearlo.</label>{renderSkuReview(familyForSkuAttempt(saved.skuAttempt), Object.fromEntries(Object.entries(saved.skuAttempt.body.attributes ?? {}).map(([key, attr]) => [key, { state: attr.state, value: attr.state === 'known' ? String(attr.value) : '' }])), { ...draft, skuName: saved.skuAttempt.body.name, stockAvailable: String(saved.skuAttempt.body.stockAvailable ?? ''), stockReserved: String(saved.skuAttempt.body.stockReserved ?? ''), price: String(saved.skuAttempt.body.price ?? ''), currency: saved.skuAttempt.body.priceCurrency ?? 'XXX' })}<button type="button" className={`${button} mt-2`} disabled={busy || loading || !skuConsent} onClick={() => void submitSku(true)}>Reintentar misma creación</button></>}</div>}
-          {!saved.skuAttempt && !skuComplete && chosenFamily && <button type="button" className="erp-button-primary" disabled={busy || loading || !skuConsent || hasPendingAttempt || invalidRecovery} onClick={() => void submitSku()}>Crear SKU</button>}
+          {saved.skuAttempt && <div className="rounded-lg border border-amber-500/40 p-3 text-sm">Intento de creación: {saved.skuAttempt.body.name} · {familyNameForSku(saved.skuAttempt)} v{saved.skuAttempt.body.family?.version}.{saved.skuAttempt.rejectionMessage && <p role="alert">{saved.skuAttempt.rejectionMessage}</p>}{saved.skuAttempt.rejected ? <button type="button" className={`${button} mt-2`} disabled={loading || busy} onClick={() => void reviewRejected('sku')}>Revisar respuesta y datos actuales</button> : <><label className="mt-3 block"><input type="checkbox" checked={skuConsent} disabled={busy || loading} onChange={e => setSkuConsent(e.target.checked)} /> Revisé los datos del producto y autorizo crearlo.</label>{renderSkuReview(familyForSkuAttempt(saved.skuAttempt), Object.fromEntries(Object.entries(saved.skuAttempt.body.attributes ?? {}).map(([key, attr]) => [key, { state: attr.state, value: attr.state === 'known' ? String(attr.value) : '' }])), { ...draft, skuName: saved.skuAttempt.body.name, stockAvailable: String(saved.skuAttempt.body.stockAvailable ?? ''), stockReserved: String(saved.skuAttempt.body.stockReserved ?? ''), price: String(saved.skuAttempt.body.price ?? ''), currency: saved.skuAttempt.body.priceCurrency ?? 'XXX' })}<button type="button" className={`${button} mt-2`} disabled={busy || loading || !skuConsent} onClick={() => void submitSku(true)}>Reintentar misma creación</button></>}</div>}
+          {!saved.skuAttempt && !skuComplete && chosenFamily && <button type="button" className="erp-button-primary" disabled={busy || loading || !skuConsent || hasPendingAttempt || invalidRecovery} onClick={() => void submitSku()}>Crear producto</button>}
         </section>
       </div>}
       {saved.reviewNote && <p role="status" className="mt-4 text-sm">{saved.reviewNote}</p>}

@@ -1207,7 +1207,7 @@ export const answerStockQuery = (products, action, options = {}) => {
 
 const summarizeAction = (action) => {
   if (action.type === 'withdraw_stock') return `Retiro de ${action.qty} ${action.unit}: ${action.productName}; disponible ${action.stockAvailable}; reservado ${action.stockReserved}`;
-  if (action.type === 'create_product') return `SKU creado: ${action.productName}; disponible ${action.stockAvailable}; reservado ${action.stockReserved}`;
+  if (action.type === 'create_product') return `Producto creado: ${action.productName}; disponible ${action.stockAvailable}; reservado ${action.stockReserved}`;
   if (action.type === 'add_stock') {
     return `+${action.qty} stock para ${action.productName}`;
   }
@@ -1262,9 +1262,9 @@ const summarizeAction = (action) => {
 
   if (action.type === 'delete_product') {
     if (action.productName === '*') {
-      return 'Desactivar los SKU de la selección revisada';
+      return 'Desactivar los productos de la selección revisada';
     }
-    return `Desactivar SKU ${action.productName}`;
+    return `Desactivar producto ${action.productName}`;
   }
 
   return `+$${action.amount.toLocaleString('es-AR')} en cuenta de ${action.clientName}`;
@@ -1314,7 +1314,7 @@ export const updateProductRecord = async (productId, updates, ownerPhone = DEFAU
 };
 
 export const updateProductModelRecords = async (input, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
-  if (!input?.selectionId || !input?.digest || Object.keys(input).some((key) => !['selectionId', 'digest'].includes(key))) throw new InventoryOperationError('SELECTION_REQUIRED', 'Revisá y confirmá una selección de SKU antes de editar el modelo.');
+  if (!input?.selectionId || !input?.digest || Object.keys(input).some((key) => !['selectionId', 'digest'].includes(key))) throw new InventoryOperationError('SELECTION_REQUIRED', 'Revisá y confirmá una selección de productos antes de editar el modelo.');
   const businessId = normalizeOwnerPhone(ownerPhone);
   const result = await confirmInventorySelection(input.selectionId, input.digest, {
     businessId, actorId: options.actorId ?? businessId, permissions: ['inventory:update'],
@@ -1330,7 +1330,7 @@ export const deleteProductRecord = async (productId, ownerPhone = DEFAULT_OWNER_
 };
 
 export const deleteProductRecords = async (idsInput, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
-  if (!idsInput || Array.isArray(idsInput) || Object.keys(idsInput).some((key) => !['selectionId', 'digest'].includes(key))) throw new InventoryOperationError('SELECTION_REQUIRED', 'Revisá una selección antes de dar de baja los SKU.');
+  if (!idsInput || Array.isArray(idsInput) || Object.keys(idsInput).some((key) => !['selectionId', 'digest'].includes(key))) throw new InventoryOperationError('SELECTION_REQUIRED', 'Revisá una selección antes de dar de baja los productos.');
   const result = await confirmInventorySelection(idsInput.selectionId, idsInput.digest, {
     businessId: normalizeOwnerPhone(ownerPhone), actorId: options.actorId ?? normalizeOwnerPhone(ownerPhone), permissions: ['inventory:deactivate'],
   }, { mutationType: 'sku.deactivate', requireReference: true });
@@ -1513,7 +1513,8 @@ const loadUniversalDraftReply = async (client,draftId,request,context) => {
  * Ordinary messages and explicit controls share the draft/executor boundary;
  * provider calls never hold an SQL transaction open. */
 export const processMetaUniversalMessage = async (input,options={}) => {
-  const command=options.legacyRetired===true ? {kind:'retired'} : parseUniversalMetaCommand(input?.sourceText) ?? (options.ordinary===true && typeof input?.sourceText==='string' ? {kind:'prepare',text:input.sourceText.trim()} : null);
+  const explicitCommand=parseUniversalMetaCommand(input?.sourceText);
+  let command=options.legacyRetired===true ? {kind:'retired'} : explicitCommand ?? (options.ordinary===true && typeof input?.sourceText==='string' ? {kind:'prepare',text:input.sourceText.trim()} : null);
   if (!command) return null;
   const context={businessId:normalizeOwnerPhone(input.ownerPhone),actorId:normalizePhone(input.senderPhone),channel:'whatsapp',permissions:[
     'inventory:read','orders:read','accounts:read','inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
@@ -1527,10 +1528,25 @@ export const processMetaUniversalMessage = async (input,options={}) => {
   const prior=await withTransaction(client=>findUniversalMetaCommand(client,requestInput,context));
   if (prior.response) return prior.response;
   let prepared,preparationError;
+  // Bind conversational replies and short controls to this sender's latest
+  // conversation. A completed/expired conversation must not expose an older
+  // pending draft to a second short confirmation. The digest guards changes.
+  if (options.ordinary===true && !explicitCommand && command.kind==='prepare') {
+    const control=/^(confirmar|cancelar)[.!]?$/i.exec(command.text)?.[1]?.toLowerCase();
+    const pending=await withTransaction(async client=>(await client.query(`SELECT preview_json,expires_at>NOW() AS active
+      FROM universal_drafts WHERE owner_phone=$1 AND actor_id=$2 ORDER BY
+          (SELECT MAX(created_at) FROM universal_draft_commands AS commands WHERE commands.owner_phone=universal_drafts.owner_phone
+            AND commands.actor_id=universal_drafts.actor_id AND commands.draft_id=universal_drafts.draft_id) DESC NULLS LAST,
+          created_at DESC,draft_id DESC LIMIT 1`,[context.businessId,context.actorId])).rows[0]);
+    if (pending?.active && ['awaiting_clarification','awaiting_confirmation'].includes(pending.preview_json?.status) && pending.preview_json.digest)
+      command={kind:control==='confirmar'?'confirm':control==='cancelar'?'cancel':'reply',code:pending.preview_json.digest.slice(0,8),text:command.text};
+    else if (control) preparationError=new InventoryOperationError('DRAFT_NOT_FOUND','No hay una operación pendiente vigente en este chat. Enviá la instrucción completa para preparar una nueva.');
+  }
   try {
+    if (preparationError) throw preparationError;
     const requestId=`universal-meta:${operationRequestDigest([context.businessId,context.actorId,requestInput.messageId])}`;
     if (command.kind==='invalid') throw new InventoryOperationError('INVALID_DRAFT_REQUEST',
-      'Usá REVISAR OPERACION <instrucción>, RESPONDER OPERACION <código> <corrección>, CONFIRMAR OPERACION <código> o CANCELAR OPERACION <código>.');
+      'Respondé directamente con la aclaración o corrección. Para aplicar una propuesta escribí «confirmar» y para descartarla, «cancelar».');
     if (command.kind==='prepare') {
       const request=normalizeDraftRequest({requestId,text:command.text}),draftId=crypto.randomUUID();
       const interpretation=await interpretUniversalDraft(request.text,draftId,context,options);
@@ -1664,7 +1680,7 @@ const confirmInventorySelectionInTransaction = async (client,selectionId,digest,
     if (parseJsonValue(selected.preview_json).digest !== digest) throw new InventoryOperationError('SELECTION_CONFIRMATION_MISMATCH', 'La confirmación no corresponde al conjunto y los cambios revisados.');
     const plan = parseJsonValue(selected.plan_json);
     if (options.mutationType && plan.actions.some((action) => action.type !== options.mutationType)) throw new InventoryOperationError('SELECTION_OPERATION_MISMATCH', 'La selección revisada corresponde a otra operación.');
-    if (options.skuIds && (plan.actions.length !== options.skuIds.length || plan.actions.some((action) => !options.skuIds.includes(action.target.skuId)))) throw new InventoryOperationError('SELECTION_SCOPE_MISMATCH', 'La selección no corresponde a los SKU de esta operación.');
+    if (options.skuIds && (plan.actions.length !== options.skuIds.length || plan.actions.some((action) => !options.skuIds.includes(action.target.skuId)))) throw new InventoryOperationError('SELECTION_SCOPE_MISMATCH', 'La selección no corresponde a los productos de esta operación.');
     validateOperationPlan(plan, context);
     if (selected.cancelled_at) throw new InventoryOperationError('SELECTION_CANCELLED', 'La selección fue cancelada. Pedí una nueva selección antes de confirmar.');
     let result;

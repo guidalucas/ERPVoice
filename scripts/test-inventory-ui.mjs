@@ -264,7 +264,7 @@ try {
   await page.getByRole('toolbar', { name: 'Acciones de selección' }).getByText('3 talles seleccionados').waitFor();
   await page.getByRole('button', { name: 'Desactivar seleccionados' }).click();
   const bulkDialog = page.getByRole('dialog', { name: 'Desactivar productos' });
-  await bulkDialog.getByText(/3 SKU seleccionados/).waitFor();
+  await bulkDialog.getByText(/3 productos seleccionados/).waitFor();
   await bulkDialog.getByLabel('Motivo de la desactivación').fill('Retiro del catálogo');
   await bulkDialog.getByRole('button', { name: 'Revisar desactivación' }).click();
   assert.equal(bulkDeletions.length, 0);

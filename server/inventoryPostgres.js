@@ -94,7 +94,7 @@ export async function executeInventoryPlanInTransaction(client, input, context) 
           (id,owner_phone,name,product_type,product_model,size,stock_available,stock_reserved,price,
            attributes_json,inventory_unit,inventory_status,price_currency,family_id,family_version)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14,$15) RETURNING *`, values);
-    if (saved.rowCount !== 1) throw new InventoryOperationError('CONCURRENT_INVENTORY_CHANGE', 'El SKU cambió antes de guardar.');
+    if (saved.rowCount !== 1) throw new InventoryOperationError('CONCURRENT_INVENTORY_CHANGE', 'El producto cambió antes de guardar.');
     const actual = inventoryRowToProduct(saved.rows[0]);
     if (actual.stockAvailable !== product.stockAvailable || actual.stockReserved !== product.stockReserved
       || actual.price !== product.price || actual.priceCurrency !== product.priceCurrency || actual.status !== (product.status ?? 'active') || productIdentity(actual) !== productIdentity(product)

@@ -64,19 +64,15 @@ export function universalMetaPreviewReply(input) {
       'Necesito una aclaración antes de preparar la operación.',
       preview.question.trim(),
       ...(review ? ['Revisión conservada del borrador anterior:', renderReview(review)] : []),
-      `RESPONDER OPERACION ${preview.digest.slice(0, 8).toUpperCase()} <corrección>`,
-      `CANCELAR OPERACION ${preview.digest.slice(0, 8).toUpperCase()}`,
+      'Respondé directamente en este chat. Para descartar la operación, escribí «cancelar».',
       'La vigencia del borrador es de 15 minutos.',
     ].join('\n\n');
   } else {
     if (!hasPlan || !review) invalidDraft();
-    const code = preview.digest.slice(0, 8).toUpperCase();
     output = [
       'Propuesta revisada; todavía no se aplicó.',
       renderReview(review),
-      `CONFIRMAR OPERACION ${code}`,
-      `RESPONDER OPERACION ${code} <corrección>`,
-      `CANCELAR OPERACION ${code}`,
+      'Respondé «confirmar» para aplicar, «cancelar» para descartar, o escribí qué querés corregir.',
       'La vigencia del borrador es de 15 minutos.',
     ].join('\n\n');
   }

@@ -180,7 +180,7 @@ const buildOperationHint = (text, conversationTurns = []) => {
   }
 
   if (looksLikeDeleteProducts(text)) {
-    return 'El usuario pide ELIMINAR productos del inventario (delete_product), NO pedidos. "eliminarla", "borrala", "no existe", "está de más", "la de X", "la que se llama X" son delete_product. Resolvé cada uno contra el inventario. Si un modelo tiene varias variantes y no dijo cuál, NO borres: missingFields ["productMatch"] y suggestedPhrases con cada SKU. NO uses unknown ni actions vacío.';
+    return 'El usuario pide ELIMINAR productos del inventario (delete_product), NO pedidos. "eliminarla", "borrala", "no existe", "está de más", "la de X", "la que se llama X" son delete_product. Resolvé cada uno contra el inventario. Si un modelo tiene varias variantes y no dijo cuál, NO borres: missingFields ["productMatch"] y suggestedPhrases con cada variante. NO uses unknown ni actions vacío.';
   }
 
   if (looksLikeInventoryCatalog(text)) {
@@ -275,18 +275,18 @@ Reglas:
 - Atributos globales ("todo en talle/número X", "todas versión Y", "todo vale N") aplican a todos los ítems. Si corrige al final, usá el último valor.
 - "N mil" = N*1000. Price solo es plata, nunca gramos/ml/kg.
 - Ingreso / carga / compré / entraron / recibí = add_stock. En un listado, "vale/cuesta" es price del ingreso, NO update_product. qty 1 si no hay cantidad.
-- "eliminá / borrala / no existe / está de más / la de X / la que se llama X" = delete_product. Si hay inventario, usá el nombre exacto. Si el modelo tiene varias variantes y no dijo cuál, NO borres: missingFields ["productMatch"] y suggestedPhrases con cada SKU candidato.
+- "eliminá / borrala / no existe / está de más / la de X / la que se llama X" = delete_product. Si hay inventario, usá el nombre exacto. Si el modelo tiene varias variantes y no dijo cuál, NO borres: missingFields ["productMatch"] y suggestedPhrases con cada variante candidata.
 - Para borrar todos los productos que carecen de variante (sin talle/número/medida), usá delete_product con selection {"field":"size","operator":"missing"}. El sistema selecciona los registros reales del inventario.
 - "borrá el pedido de X" = delete_pedido. "conseguido/descartado" sobre un pedido = update_pedido.
 - Consulta de stock = query_stock (sin mutar). Consulta de pedidos = query_pedidos. Preguntas como "¿qué me pidió Juan?", "¿qué pedidos hay pendientes?", "mostrame los pedidos de María" son query_pedidos, NUNCA client_order.
 - Si pide todo el inventario / todos los productos / listado completo: query_stock con productName "*". Nunca uses "all" ni un producto inventado. Si pide agrupado por talle/número, groupBy: "size".
 - Si pide un talle/variante puntual ("camisetas talle L", "todas las L"): query_stock CON size. No listes otras variantes.
-- Consultas de familia ("¿cuánto hay de esta marca?", "¿qué modelos de esta categoría tengo?"): query_stock con productModel genérico. NO elijas un SKU del inventario; el sistema lista todos los matches.
+- Consultas de familia ("¿cuánto hay de esta marca?", "¿qué modelos de esta categoría tengo?"): query_stock con productModel genérico. NO elijas un producto del inventario; el sistema lista todos los matches.
 - client_order es SOLO cuando el usuario ANOTA un pedido nuevo: "Juan me pidió un taladro", "anotame que María quiere un mate".
 - Pago recibido = payment_received. Reserva "para X" = reserve_stock + clientName.
 - update_product / update_pedido solo modifican existentes.
 - Si el mensaje tiene DOS operaciones distintas unidas con "y" / "además" / "pero" (ej: "vendí un producto y me llegaron 5 de otro"), devolvé UN action por cláusula, types distintos, intent "mixed". No te quedes con la última ni fusiones las cláusulas.
-- Si no hay match claro contra el inventario (varios SKUs posibles y el usuario no dijo la variante), missingFields: ["productMatch"] y suggestedPhrases con candidatos. Aplica a delete_product, sell, add_stock y client_order. No ejecutes.
+- Si no hay match claro contra el inventario (varias variantes posibles y el usuario no dijo la variante), missingFields: ["productMatch"] y suggestedPhrases con candidatos. Aplica a delete_product, sell, add_stock y client_order. No ejecutes.
 - En add_stock, si se indicó un talle y solo existen otros talles del mismo producto, tratá el talle indicado como variante nueva; no sugieras los otros talles.
 
 Texto del usuario (mensaje actual):
@@ -2192,7 +2192,7 @@ const parseVoiceTextWithModel = async (
     messages: [
       {
         role: 'system',
-        content: 'Devolvé únicamente JSON válido para automatizar transacciones de un ERP. No agregues texto explicativo.',
+        content: 'Devolvé únicamente JSON válido para automatizar transacciones de un ERP. No agregues texto explicativo. En suggestedPhrases usá producto o variante, evitando la sigla SKU.',
       },
       {
         role: 'user',

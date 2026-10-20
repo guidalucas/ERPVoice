@@ -69,7 +69,7 @@ async function fixture() {
     await dialog.getByLabel('Nombre de familia',{exact:true}).waitFor();
   };
   const familyConsent=()=>dialog.getByRole('checkbox',{name:'Revisé esta familia y autorizo publicarla como una nueva versión inmutable.',exact:true});
-  const skuConsent=()=>dialog.getByRole('checkbox',{name:'Revisé los datos del SKU y autorizo crearlo.',exact:true});
+  const skuConsent=()=>dialog.getByRole('checkbox',{name:'Revisé los datos del producto y autorizo crearlo.',exact:true});
   const fillFamily=async()=>{
     await dialog.getByLabel('Nombre de familia',{exact:true}).fill('Herramientas');await dialog.getByLabel('Unidad base',{exact:true}).fill('box');
     const first=dialog.getByRole('group',{name:'Atributo 1',exact:true});
@@ -79,7 +79,7 @@ async function fixture() {
   };
   const fillSku=async()=>{
     await dialog.getByLabel('Familia y versión',{exact:true}).selectOption('family-electrical-private-id@1');
-    await dialog.getByLabel('Nombre del SKU',{exact:true}).fill('Convertidor');
+    await dialog.getByLabel('Nombre del producto',{exact:true}).fill('Convertidor');
     await dialog.getByLabel('Valor de voltage',{exact:true}).selectOption('0');
     await dialog.getByLabel('Valor de certified',{exact:true}).selectOption('false');
     await dialog.getByLabel('Estado de length',{exact:true}).selectOption('unknown');
@@ -111,31 +111,31 @@ try {
     assert.deepEqual(f.publications[0],f.publications[1]);assert.equal(f.published(),1);await f.page.close();
   }
   {
-    const f=await fixture();await f.fillSku();assert.equal(await f.button('Crear SKU').isDisabled(),true);
-    const review=f.dialog.getByRole('region',{name:'Vista previa de SKU',exact:true});await review.waitFor();assert.match(await review.innerText(),/false|No/);assert.match(await review.innerText(),/Desconocido|desconocido/);
-    await f.skuConsent().check();await f.dialog.getByLabel('Nombre del SKU',{exact:true}).fill('Convertidor revisado');assert.equal(await f.skuConsent().isChecked(),false);
-    await f.skuConsent().check();f.setMode('hold-create');await f.button('Crear SKU').evaluate(button=>{button.click();button.click();});await f.hold();assert.equal(f.creations.length,1);f.release();
-    await f.dialog.getByRole('status').filter({hasText:/SKU creado/}).waitFor();assert.equal(f.created(),1);
+    const f=await fixture();await f.fillSku();assert.equal(await f.button('Crear producto').isDisabled(),true);
+    const review=f.dialog.getByRole('region',{name:'Vista previa del producto',exact:true});await review.waitFor();assert.match(await review.innerText(),/false|No/);assert.match(await review.innerText(),/Desconocido|desconocido/);
+    await f.skuConsent().check();await f.dialog.getByLabel('Nombre del producto',{exact:true}).fill('Convertidor revisado');assert.equal(await f.skuConsent().isChecked(),false);
+    await f.skuConsent().check();f.setMode('hold-create');await f.button('Crear producto').evaluate(button=>{button.click();button.click();});await f.hold();assert.equal(f.creations.length,1);f.release();
+    await f.dialog.getByRole('status').filter({hasText:/Producto creado/}).waitFor();assert.equal(f.created(),1);
     assert.deepEqual(f.creations[0].family,{id:'family-electrical-private-id',version:1});assert.equal(f.creations[0].attributes.voltage.value,0);assert.equal(f.creations[0].attributes.certified.value,false);
     assert.deepEqual(f.creations[0].attributes.length,{state:'unknown',type:'number',unit:'mm'});assert.equal(f.creations[0].priceCurrency,'XXX');
-    await f.page.reload();await f.open();await f.dialog.getByRole('status').filter({hasText:/SKU creado/}).waitFor();assert.equal(f.creations.length,1);assert.deepEqual(f.errors,[]);await f.page.close();
+    await f.page.reload();await f.open();await f.dialog.getByRole('status').filter({hasText:/Producto creado/}).waitFor();assert.equal(f.creations.length,1);assert.deepEqual(f.errors,[]);await f.page.close();
   }
   for(const mode of ['create503','create-read503']) {
-    const f=await fixture();await f.fillSku();await f.skuConsent().check();f.setMode(mode);await f.button('Crear SKU').click();
+    const f=await fixture();await f.fillSku();await f.skuConsent().check();f.setMode(mode);await f.button('Crear producto').click();
     if(mode==='create503') {
       await f.dialog.getByText('Respuesta de creación incierta.',{exact:true}).waitFor();await f.page.reload();await f.open();await f.skuConsent().check();await f.button('Reintentar misma creación').click();
       assert.deepEqual(f.creations[0],f.creations[1]);
     } else {
-      await f.dialog.getByText(/El SKU se creó, pero/).waitFor();await f.button('Actualizar familias e inventario').click();
+      await f.dialog.getByText(/El producto se creó, pero/).waitFor();await f.button('Actualizar familias e inventario').click();
     }
-    await f.dialog.getByRole('status').filter({hasText:/SKU creado/}).waitFor();assert.equal(f.created(),1);assert.deepEqual(f.errors,[]);await f.page.close();
+    await f.dialog.getByRole('status').filter({hasText:/Producto creado/}).waitFor();assert.equal(f.created(),1);assert.deepEqual(f.errors,[]);await f.page.close();
   }
   {
-    const f=await fixture();await f.fillSku();await f.skuConsent().check();f.setMode('create503');await f.button('Crear SKU').click();
+    const f=await fixture();await f.fillSku();await f.skuConsent().check();f.setMode('create503');await f.button('Crear producto').click();
     await f.dialog.getByText('Respuesta de creación incierta.',{exact:true}).waitFor();assert.equal(f.created(),1);
     f.addFamilyVersion('family-electrical-private-id',{name:'Electrical version two',unit:'crate',allowAdditionalAttributes:false,attributes:{revision_marker:{type:'text',required:true,allowedStates:['known'],values:['v2']}}});
     await f.page.reload();await f.open();
-    const review=f.dialog.getByRole('region',{name:'Vista previa de SKU',exact:true});await review.waitFor();
+    const review=f.dialog.getByRole('region',{name:'Vista previa del producto',exact:true});await review.waitFor();
     assert.match(await review.innerText(),/Componentes v1/);assert.doesNotMatch(await review.innerText(),/Electrical version two|revision_marker/);
     await f.skuConsent().check();await f.button('Reintentar misma creación').click();
     assert.deepEqual(f.creations[0],f.creations[1]);assert.equal(f.creations[1].family.version,1);assert.equal(f.created(),1);await f.page.close();
@@ -159,9 +159,9 @@ try {
     assert.equal(f.publications.length,1);assert.equal(f.published(),1);assert.deepEqual(f.errors,[]);await f.page.close();
   }
   {
-    const f=await fixture();await f.fillSku();await f.dialog.getByLabel('Precio',{exact:true}).fill('0.5');await f.skuConsent().check();await f.button('Crear SKU').click();
+    const f=await fixture();await f.fillSku();await f.dialog.getByLabel('Precio',{exact:true}).fill('0.5');await f.skuConsent().check();await f.button('Crear producto').click();
     await f.dialog.getByRole('alert').waitFor();assert.equal(f.creations.length,0);
-    await f.dialog.getByLabel('Precio',{exact:true}).fill('0');await f.dialog.getByLabel('Stock disponible',{exact:true}).fill('');await f.skuConsent().check();await f.button('Crear SKU').click();assert.equal(f.creations.length,0);await f.page.close();
+    await f.dialog.getByLabel('Precio',{exact:true}).fill('0');await f.dialog.getByLabel('Stock disponible',{exact:true}).fill('');await f.skuConsent().check();await f.button('Crear producto').click();assert.equal(f.creations.length,0);await f.page.close();
   }
   for(const identity of [{phoneNumber:'5491100000001',tenantPhone:'5491100000000'},{phoneNumber:'5491100000000',tenantPhone:'5491100000001'}]) {
     const f=await fixture();await f.fillFamily();f.setIdentity(identity);await f.page.reload();await f.open();

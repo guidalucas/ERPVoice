@@ -405,11 +405,11 @@ ${clientLines.length ? `\nClientes: \n${clientLines.join('\n')}` : ''}
 ${pedidoLines.length ? `\nPedidos pendientes:\n${pedidoLines.join('\n')}` : ''}
 Reglas contra este inventario:
 - delete / venta / reserva / pedido: usá el productName EXACTO de la lista si hay un match único.
-- query_stock de una familia ("los de esta marca", "no tengo más de X"): productName GENÉRICO de esa familia. NUNCA elijas un SKU puntual; el sistema lista todos los que matchean.
-- query_stock de un SKU puntual con modelo y variante explícitos: ahí sí usá el nombre exacto.
+- query_stock de una familia ("los de esta marca", "no tengo más de X"): productName GENÉRICO de esa familia. NUNCA elijas un producto puntual; el sistema lista todos los que matchean.
+- query_stock de un producto puntual con modelo y variante explícitos: ahí sí usá el nombre exacto.
 - Si pide todo el inventario / todos los productos: query_stock con productName "*" y, si agrupó por talle, groupBy "size". No inventes un producto llamado all.
 - "la de X" o un nombre parcial se resuelve contra esta lista, no se inventa.
-- Si hay varios SKUs posibles (mismo modelo en dos talles/números, o dos modelos parecidos) y el usuario NO dijo la variante, NO ejecutes: missingFields ["productMatch"] y suggestedPhrases con cada candidato. Aplica a delete_product, sell, add_stock y client_order.
+- Si hay varias variantes posibles (mismo modelo en dos talles/números, o dos modelos parecidos) y el usuario NO dijo la variante, NO ejecutes: missingFields ["productMatch"] y suggestedPhrases con cada candidato. Aplica a delete_product, sell, add_stock y client_order.
 - En add_stock, si el usuario sí dijo el talle/variante y solo existen otros talles, es una variante nueva: conservá el nombre y talle pedidos, sin pedir aclaración.
 - Ingresos nuevos (add_stock de algo que no está): copiá el estilo de nombre del inventario. Un ítem dictado = una acción. Nunca juntes dos productos en un productName.
 - Si el mismo producto se menciona otra vez ("otra más"), sumá las unidades: no descartes la repetición.

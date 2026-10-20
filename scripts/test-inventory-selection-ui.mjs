@@ -92,7 +92,7 @@ try {
     assert.deepEqual(f.previews[0].selector, { kind: 'ids', skuIds: originalIds });
     assert.match(f.previews[0].requestId, /^[\da-f-]{36}$/i);
     const region = f.dialog.getByRole('region', { name: 'Vista previa de cambios' });
-    await region.getByText('2 SKU seleccionados · Nuevo nombre: Camiseta Argentina Selección', { exact: true }).waitFor();
+    await region.getByText('2 productos seleccionados · Nuevo nombre: Camiseta Argentina Selección', { exact: true }).waitFor();
     await region.getByText('Camiseta Argentina S', { exact: true }).waitFor();
     await region.getByText(/Disponible: 8 · Reservado: 0/).waitFor();
     assert.equal(await region.getByText(/new-sku-l/).count(), 0);

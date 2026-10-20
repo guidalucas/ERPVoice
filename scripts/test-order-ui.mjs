@@ -104,17 +104,17 @@ try{
   mode='ok';release();await page.waitForFunction(()=>document.querySelector('[data-estado="pendiente"][aria-pressed="true"]'));
   // Legacy pending order has no binding: only explicit selection authorizes an ingreso.
   pedidos.push({id:'unlinked-order',clienteId:'client-order',producto:'Pedido sin SKU',qty:2,estado:'pendiente',revision:0,productId:null,fechaPedido:new Date().toISOString()});
-  await page.getByLabel('SKU para Pedido sin SKU').waitFor({timeout:12000});
+  await page.getByLabel('Producto para Pedido sin SKU').waitFor({timeout:12000});
   const before=attempts.length;await statusGroup('Pedido sin SKU').getByRole('button',{name:'Conseguido',exact:true}).click();
   assert.equal(attempts.length,before);
-  await page.getByLabel('SKU para Pedido sin SKU').selectOption(product.id);
+  await page.getByLabel('Producto para Pedido sin SKU').selectOption(product.id);
   await statusGroup('Pedido sin SKU').getByRole('button',{name:'Conseguido',exact:true}).click();
   await page.waitForFunction(()=>Array.from(document.querySelectorAll('[data-estado="conseguido"][aria-pressed="true"]')).length===1);
   assert.equal(attempts.at(-1).input.productId,product.id);assert.equal(product.stockAvailable,12);
   pedidos.push({id:'historical-order',clienteId:'client-order',producto:'Pedido histórico',qty:3,estado:'conseguido',revision:0,productId:null,stockPosting:null,fechaPedido:new Date().toISOString()});
-  await page.getByLabel('SKU histórico para Pedido histórico').waitFor({timeout:12000});
+  await page.getByLabel('Producto histórico para Pedido histórico').waitFor({timeout:12000});
   assert.equal(await statusGroup('Pedido histórico').getByRole('button',{name:'Pendiente',exact:true}).isDisabled(),true);
-  await page.getByLabel('SKU histórico para Pedido histórico').selectOption(product.id);
+  await page.getByLabel('Producto histórico para Pedido histórico').selectOption(product.id);
   await page.getByLabel('Motivo histórico para Pedido histórico').fill('Conteo físico revisado con pedido original');
   const beforeReview=attempts.length,stockBeforeReview=product.stockAvailable;
   await page.getByRole('button',{name:'Revisar conciliación',exact:true}).click();

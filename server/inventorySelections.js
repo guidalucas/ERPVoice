@@ -24,11 +24,11 @@ const domain = (fn) => {
 
 /** Public mutation channels must obtain a reviewed set before changing several SKUs. */
 export function requireReviewedUpdateSelection(plan) {
-  if ((Array.isArray(plan?.actions) ? plan.actions : []).some((action) => action?.type === 'sku.deactivate')) fail('SELECTION_REQUIRED', 'Revisá y confirmá una selección antes de dar de baja los SKU.');
+  if ((Array.isArray(plan?.actions) ? plan.actions : []).some((action) => action?.type === 'sku.deactivate')) fail('SELECTION_REQUIRED', 'Revisá y confirmá una selección antes de dar de baja los productos.');
   const ids = new Set((Array.isArray(plan?.actions) ? plan.actions : [])
     .filter((action) => ['sku.update', 'stock.adjust'].includes(action?.type))
     .map((action) => action.target?.skuId));
-  if (ids.size > 1) fail('SELECTION_REQUIRED', 'Revisá una selección de SKU antes de confirmar cambios masivos.');
+  if (ids.size > 1) fail('SELECTION_REQUIRED', 'Revisá una selección de productos antes de confirmar cambios masivos.');
 }
 
 export function normalizeSelectionRequest(input) {
@@ -40,13 +40,13 @@ export function normalizeSelectionRequest(input) {
     if (Object.hasOwn(selector, 'equals')) invalid('ID selector cannot include filters');
     const ids = selector.skuIds;
     if (!Array.isArray(ids) || Object.getPrototypeOf(ids) !== Array.prototype || !ids.length || Reflect.ownKeys(ids).length !== ids.length + 1) invalid('skuIds must be a dense nonempty array');
-    if (ids.length > 100) fail('SELECTION_TOO_LARGE', 'La selección supera los 100 SKU. Dividí el conjunto antes de confirmar.');
+    if (ids.length > 100) fail('SELECTION_TOO_LARGE', 'La selección supera los 100 productos. Dividí el conjunto antes de confirmar.');
     const values = Array.from({ length: ids.length }, (_, index) => {
       const property = Object.getOwnPropertyDescriptor(ids, String(index));
       if (!property || !Object.hasOwn(property, 'value')) invalid('skuIds must contain data properties');
       return text(property.value, 'skuId');
     });
-    if (new Set(values).size !== values.length) invalid('Duplicate SKU IDs');
+    if (new Set(values).size !== values.length) invalid('La selección contiene códigos de producto repetidos.');
     normalized = { kind: 'ids', skuIds: values.sort() };
   } else if (selector.kind === 'all') {
     if (Object.keys(selector).length !== 1) invalid('All selector cannot include filters or IDs');
@@ -70,8 +70,8 @@ export function normalizeSelectionRequest(input) {
     }
   } else invalid('Unsupported selector kind');
   const mutation = record(request.mutation, ['type', 'changes', 'balances', 'reason'], 'mutation');
-  if (!['sku.update', 'sku.deactivate','stock.adjust'].includes(mutation.type)) fail('UNSUPPORTED_OPERATION', 'Este conjunto admite cambios, bajas y ajustes revisados de SKU.');
-  if (mutation.type !== 'sku.update' && Object.hasOwn(mutation, 'changes')) invalid('Only SKU updates can include changes');
+  if (!['sku.update', 'sku.deactivate','stock.adjust'].includes(mutation.type)) fail('UNSUPPORTED_OPERATION', 'Este conjunto admite cambios, bajas y ajustes revisados de productos.');
+  if (mutation.type !== 'sku.update' && Object.hasOwn(mutation, 'changes')) invalid('Solo el cambio de datos del producto admite esos campos.');
   if (mutation.type !== 'stock.adjust' && Object.hasOwn(mutation,'balances')) invalid('Only stock adjustments can include balances');
   // Reuse the operation contract for mutation fields and values.
   const validated = validateOperationPlan({ contractVersion: 1, businessId: 'selection-validation', operationId: 'validation',
@@ -100,9 +100,9 @@ export function selectInventoryProducts(selector, products) {
       return typeof actual === 'string' && domain(() => canonicalIdentityText(actual)) === wanted;
     });
   }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  if (normalized.kind === 'ids' && selected.length !== normalized.skuIds.length) fail('SKU_NOT_FOUND', 'La selección contiene SKU que ya no están disponibles en este negocio.');
-  if (!selected.length) fail('EMPTY_SELECTION', 'El conjunto no contiene SKU; no se preparó ningún cambio.');
-  if (selected.length > 100) fail('SELECTION_TOO_LARGE', 'La selección supera los 100 SKU. Dividí el conjunto antes de confirmar.');
+  if (normalized.kind === 'ids' && selected.length !== normalized.skuIds.length) fail('SKU_NOT_FOUND', 'La selección contiene productos que ya no están disponibles en este negocio.');
+  if (!selected.length) fail('EMPTY_SELECTION', 'El conjunto no contiene productos; no se preparó ningún cambio.');
+  if (selected.length > 100) fail('SELECTION_TOO_LARGE', 'La selección supera los 100 productos. Dividí el conjunto antes de confirmar.');
   return selected;
 }
 

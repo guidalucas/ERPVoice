@@ -133,8 +133,8 @@ ${variantLine}
 - Cuando corresponda, la variante va solo en size y nunca forma parte de productType ni productModel. Si el usuario la dice una vez para toda la lista, aplícala a cada artículo.
 - Si la frase incluye tipo, modelo y variante, separá productType, productModel y size.
 - En query_stock poné size cuando el usuario pida una variante puntual ("talle L", "todas las M"). Si no pidió variante, no inventes size.
-- En query_stock de una familia (equipo, marca, tipo) usá un productModel genérico. No elijas un SKU puntual del inventario.
-- update_product exige SKU único con variante explícita; si falta, pedí aclaración. Los cambios masivos requieren una selección verificable del backend.
+- En query_stock de una familia (equipo, marca, tipo) usá un productModel genérico. No elijas un producto puntual del inventario.
+- update_product exige un producto único con variante explícita; si falta, pedí aclaración. Los cambios masivos requieren una selección verificable del backend.
 - Los nombres exactos salen del inventario del negocio cuando esté disponible, no de ejemplos genéricos.
 `.trim();
 };
