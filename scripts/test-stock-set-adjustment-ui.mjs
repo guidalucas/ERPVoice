@@ -66,16 +66,16 @@ async function fixture() {
   const reason = () => dialog.getByLabel('Motivo del ajuste', { exact: true });
   const review = () => dialog.getByRole('button', { name: 'Revisar ajuste', exact: true });
   const confirm = () => dialog.getByRole('button', { name: 'Confirmar ajuste', exact: true });
-  const consent = () => dialog.getByRole('checkbox', { name: 'Confirmo los saldos finales de cada SKU revisado.', exact: true });
+  const consent = () => dialog.getByRole('checkbox', { name: 'Confirmo los saldos finales de cada producto revisado.', exact: true });
   const region = () => dialog.getByRole('region', { name: 'Vista previa del ajuste', exact: true });
-  const prepare = async () => { for (const product of products) await dialog.getByLabel(`Seleccionar SKU ${product.id}`, { exact: true }).check(); await available().fill('12'); await reason().fill('  Conteo físico revisado  '); };
+  const prepare = async () => { for (const product of products) await dialog.getByLabel(`Seleccionar producto ${product.id}`, { exact: true }).check(); await available().fill('12'); await reason().fill('  Conteo físico revisado  '); };
   const hydrate = async () => { const before = reads, deadline = Date.now() + 12000; while (reads === before && Date.now() < deadline) await page.waitForTimeout(30); assert.ok(reads > before); await page.waitForTimeout(100); };
   const waitHold = async () => { const deadline = Date.now() + 5000; while (!release && Date.now() < deadline) await page.waitForTimeout(20); assert.ok(release); };
   return { page, dialog, products, requests, confirms, pageErrors, prepare, available, reserved, reason, review, confirm, consent, region, hydrate, waitHold, writes: () => writes, setMode: value => { mode = value; }, release: () => { mode = 'ok'; release(); release = undefined; } };
 }
 try {
   {
-    const f = await fixture(); await f.review().click(); await f.dialog.getByText('Seleccioná entre 1 y 100 SKU explícitos.', { exact: true }).waitFor(); assert.equal(f.requests.length, 0);
+    const f = await fixture(); await f.review().click(); await f.dialog.getByText('Seleccioná entre 1 y 100 productos.', { exact: true }).waitFor(); assert.equal(f.requests.length, 0);
     await f.prepare(); await f.review().click(); await f.region().waitFor(); assert.equal(f.writes(), 0); assert.equal(f.confirms.length, 0);
     assert.deepEqual(f.requests[0].selector, { kind: 'ids', skuIds: ['sku-S', 'sku-M'] });
     assert.deepEqual(f.requests[0].mutation, { type: 'stock.adjust', balances: { available: 12 }, reason: 'Conteo físico revisado' });
@@ -110,7 +110,7 @@ try {
   }
   {
     const f = await fixture(); await f.prepare(); f.setMode('hold-preview'); await f.review().evaluate(button => { button.click(); button.click(); }); await f.waitHold();
-    assert.equal(f.requests.length, 1); assert.equal(await f.available().isDisabled(), true); assert.equal(await f.dialog.getByLabel('Seleccionar SKU sku-S', { exact: true }).isDisabled(), true); assert.equal(await f.dialog.getByRole('button', { name: 'Cancelar', exact: true }).isDisabled(), true);
+    assert.equal(f.requests.length, 1); assert.equal(await f.available().isDisabled(), true); assert.equal(await f.dialog.getByLabel('Seleccionar producto sku-S', { exact: true }).isDisabled(), true); assert.equal(await f.dialog.getByRole('button', { name: 'Cancelar', exact: true }).isDisabled(), true);
     f.release(); await f.region().waitFor(); await f.consent().check(); f.setMode('hold-confirm'); await f.confirm().evaluate(button => { button.click(); button.click(); }); await f.waitHold();
     assert.equal(f.confirms.length, 1); assert.equal(await f.consent().isDisabled(), true); assert.equal(await f.reason().isDisabled(), true); f.release(); await f.dialog.waitFor({ state: 'hidden' }); assert.equal(f.writes(), 1); assert.deepEqual(f.pageErrors, []); await f.page.close();
   }

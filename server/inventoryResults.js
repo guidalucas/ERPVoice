@@ -46,11 +46,11 @@ export const inventoryResultActions = (result, originalActions = []) => result.i
 });
 
 export const inventoryResultReply = (result) => result.items.map((item) => {
-  if (item.type === 'sku.create') return `SKU creado: ${item.skuName ?? item.skuId}${item.size ? ` (${item.size})` : ''}. Disponible: ${item.stockAvailable}; reservado: ${item.stockReserved}; precio: ${item.currency} ${item.price}.`;
-  if (item.type === 'sku.deactivate') return `SKU desactivado: ${item.skuName ?? item.skuId}${item.size ? ` (${item.size})` : ''}. Stock conservado: ${item.stockAvailable}; reservado: ${item.stockReserved}. Historial conservado.`;
+  if (item.type === 'sku.create') return `Producto creado: ${item.skuName ?? item.skuId}${item.size ? ` (${item.size})` : ''}. Disponible: ${item.stockAvailable}; reservado: ${item.stockReserved}; precio: ${item.currency} ${item.price}.`;
+  if (item.type === 'sku.deactivate') return `Producto desactivado: ${item.skuName ?? item.skuId}${item.size ? ` (${item.size})` : ''}. Stock conservado: ${item.stockAvailable}; reservado: ${item.stockReserved}. Historial conservado.`;
   if (item.type === 'stock.adjust' || item.type === 'sku.update') {
     const changes = item.changes ? ` Cambios: ${Object.entries(item.changes).map(([key,value]) => `${key}=${JSON.stringify(value)}`).join(', ')}.` : '';
-    return `${item.type === 'stock.adjust' ? 'Ajuste aplicado' : 'SKU actualizado'}: ${item.skuName ?? item.skuId}${item.size ? ` (${item.size})` : ''}. Disponible: ${item.stockAvailable}; reservado: ${item.stockReserved}; revisión: ${item.revision}.${changes}`;
+    return `${item.type === 'stock.adjust' ? 'Ajuste aplicado' : 'Producto actualizado'}: ${item.skuName ?? item.skuId}${item.size ? ` (${item.size})` : ''}. Disponible: ${item.stockAvailable}; reservado: ${item.stockReserved}; revisión: ${item.revision}.${changes}`;
   }
   const verb = { 'stock.receive': 'Ingreso aplicado', 'stock.sell': 'Venta registrada', 'stock.reserve': 'Reserva registrada', 'stock.withdraw': 'Retiro aplicado' }[item.type];
   const price = item.type === 'stock.sell' ? item.price === null

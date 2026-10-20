@@ -34,7 +34,7 @@ export const inventorySelectionPreviewReply = (preview) => {
   }).join('\n');
   const reason = preview.mutation.reason ? `\nMotivo: ${preview.mutation.reason}.` : '';
   const consequence = type === 'sku.deactivate' ? 'Saldrán del inventario activo; se conservarán stock e historial. ' : '';
-  const reply = `Revisá ${kind.title} de ${preview.members.length} SKU:\n${members}${changes}${reason}\n\n${consequence}Esta selección vence en 15 minutos y no incorporará productos nuevos.\nPara confirmar respondé CONFIRMAR ${kind.label} ${code}. Para cancelar: CANCELAR ${kind.label} ${code}.`;
+  const reply = `Revisá ${kind.title} de ${preview.members.length} ${preview.members.length === 1 ? 'producto' : 'productos'}:\n${members}${changes}${reason}\n\n${consequence}Esta selección vence en 15 minutos y no incorporará productos nuevos.\nPara confirmar respondé CONFIRMAR ${kind.label} ${code}. Para cancelar: CANCELAR ${kind.label} ${code}.`;
   if (reply.length > 3500) throw new InventoryOperationError('SELECTION_PREVIEW_TOO_LARGE', 'El conjunto es demasiado grande para revisarlo en un mensaje. Pedí grupos más pequeños; no apliqué ningún cambio.');
   return reply;
 };
@@ -47,9 +47,9 @@ export const inventorySelectionReceiptReply = (result) => {
   const counts = new Map();
   for (const item of result.items) counts.set(item.type, (counts.get(item.type) ?? 0) + 1);
   const summary = [...counts].map(([type, count]) => {
-    if (type === 'sku.deactivate') return `Se desactivaron los ${count} SKU de la selección confirmada. Se conservaron stock e historial.`;
-    if (type === 'sku.update') return `Se actualizaron los ${count} SKU de la selección confirmada.`;
-    if (type === 'stock.adjust') return `Se ajustaron los saldos de ${count} SKU de la selección confirmada.`;
+    if (type === 'sku.deactivate') return `Se desactivaron los ${count} productos de la selección confirmada. Se conservaron stock e historial.`;
+    if (type === 'sku.update') return `Se actualizaron los ${count} productos de la selección confirmada.`;
+    if (type === 'stock.adjust') return `Se ajustaron los saldos de ${count} productos de la selección confirmada.`;
     return `Se aplicaron ${count} operaciones de ${type}.`;
   }).join(' ');
   return `${summary} El recibo completo quedó guardado en el negocio.`;

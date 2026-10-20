@@ -52,7 +52,7 @@ export async function runUniversalMetaChecks({ db, sql, check }) {
     const preview = await process(request, fake.complete);
     assert.equal(fake.calls, 1); assert.equal(preview.handled, true); assert.equal(preview.intent, 'mixed');
     assert.equal(preview.status, 'awaiting_confirmation'); assert.equal(preview.requiresConfirmation, true); assert.equal(preview.version, 1);
-    assert.deepEqual(preview.actions, []); assert.match(preview.replyText, new RegExp(`CONFIRMAR OPERACION ${code(preview)}`, 'i'));
+    assert.deepEqual(preview.actions, []); assert.match(preview.replyText, /Respondé «confirmar» para aplicar/);
     assert.deepEqual(await state(), before); await persisted(request, preview);
     const shared = await db.getUniversalDraft(preview.draftId, context);
     assert.equal(shared.digest, preview.digest); assert.equal(shared.plan.operationId, `draft-operation:${preview.draftId}`);
@@ -89,6 +89,84 @@ export async function runUniversalMetaChecks({ db, sql, check }) {
     const ready = await process(reply, fake.complete); assert.equal(fake.calls, 1); assert.equal(ready.status, 'awaiting_confirmation'); assert.equal(ready.version, 2);
     assert.deepEqual(await state(), before); await persisted(reply, ready);
     assert.deepEqual(await process(request), preview); assert.deepEqual(await process(reply), ready);
+  });
+
+  await check('universal meta: invalid size reply preserves its diagnostic and draft for a corrected retry', async () => {
+    const fixture=await seed(),original='Ingresaron tres unidades de la camiseta.';
+    const preview=await process(input(`REVISAR OPERACION ${original}`),provider({ok:true,json:{contractVersion:1,kind:'clarification',question:'¿De qué talle son las camisetas?'}}).complete);
+    const draft=await db.getUniversalDraft(preview.draftId,context),before=await state();
+    const item={...actions(fixture)[0],itemId:'shirt'};
+    const invalid=command('RESPONDER',preview,' Talle L');
+    const rejected=await process(invalid,provider(proposal([item],'Ingresaron tres unidades de la camiseta talle L.')).complete);
+    assert.equal(rejected.errorCode,'INTERPRETATION_INVALID');assert.equal(rejected.interpretationReason,'INVALID_EVIDENCE');
+    assert.deepEqual(rejected.actions,[]);assert.equal(rejected.requiresConfirmation,false);
+    assert.deepEqual(await db.getUniversalDraft(preview.draftId,context),draft);assert.deepEqual(await state(),before);
+    await persisted(invalid,rejected);assert.deepEqual(await process(invalid),rejected);
+    const retry=command('RESPONDER',preview,' Talle L');
+    const ready=await process(retry,async options=>{
+      const supplied=JSON.parse(options.messages[1].content);
+      assert.equal(supplied.sourceText,`${original}\nTalle L`);
+      assert.deepEqual(supplied.clarifications,[{question:'¿De qué talle son las camisetas?',answer:'Talle L'}]);
+      return proposal([item],original);
+    });
+    assert.equal(ready.status,'awaiting_confirmation');assert.equal(ready.version,2);
+    assert.equal(ready.draftId,preview.draftId);assert.equal(ready.interpretationReason,undefined);
+    assert.deepEqual(await state(),before);await persisted(retry,ready);
+  });
+
+  await check('universal meta: direct size replies, corrections and confirmation share the latest conversation without codes',async()=>{
+    const fixture=await seed(),original='Ingresaron tres unidades de la camiseta.',before=await state();
+    const ordinary=(request,complete=forbidden)=>db.processMetaUniversalMessage(request,{ordinary:true,complete});
+    const pending=await process(input(`REVISAR OPERACION ${original}`),provider({ok:true,json:{contractVersion:1,kind:'clarification',question:'¿De qué talle son las camisetas?'}}).complete);
+    assert.match(pending.replyText,/Respondé directamente en este chat/);assert.doesNotMatch(pending.replyText,/OPERACION|<corrección>/);
+    const item={...actions(fixture)[0],itemId:'shirt'};
+    const reply=input('Talle L');
+    const ready=await ordinary(reply,async options=>{
+      const supplied=JSON.parse(options.messages[1].content);
+      assert.equal(supplied.sourceText,`${original}\nTalle L`);
+      assert.deepEqual(supplied.clarifications,[{question:'¿De qué talle son las camisetas?',answer:'Talle L'}]);
+      return proposal([item],original);
+    });
+    assert.equal(ready.draftId,pending.draftId);assert.equal(ready.version,2);assert.equal(ready.status,'awaiting_confirmation');
+    assert.deepEqual(await ordinary(reply),ready);
+    const corrected=await ordinary(input('Son cuatro.'),provider({ok:true,json:{contractVersion:1,kind:'patch',patches:[{itemId:'shirt',changes:{quantity:{value:4}}}],evidence:[{itemId:'shirt',quote:'Son cuatro.'}]}}).complete);
+    assert.equal(corrected.draftId,pending.draftId);assert.equal(corrected.version,3);assert.deepEqual(await state(),before);
+    const confirm=input('Confirmar'),applied=await ordinary(confirm);
+    assert.equal(applied.status,'applied');assert.equal(applied.draftId,pending.draftId);
+    assert.equal(Number((await state()).products.find(row=>row.id===fixture.product.id).stock_available),6);
+    const after=await state();assert.deepEqual(await ordinary(confirm),applied);assert.deepEqual(await state(),after);
+    // Older pending drafts from earlier checks must never become active again.
+    const repeated=await ordinary(input('confirmar'));
+    assert.equal(repeated.errorCode,'DRAFT_NOT_FOUND');assert.deepEqual(await state(),after);
+    await persisted(confirm,applied);
+  });
+
+  await check('universal meta: short controls stay scoped, reject missing data, expiry and cancel without a provider',async()=>{
+    const ordinary=(request,complete=forbidden)=>db.processMetaUniversalMessage(request,{ordinary:true,complete});
+    const preview=await process(input('REVISAR OPERACION Cargá las camisetas.'),provider({ok:true,json:{contractVersion:1,kind:'clarification',question:'¿Qué talle?'}}).complete);
+    const before=await state();
+    assert.equal((await ordinary(input('confirmar',{senderPhone:actor}))).errorCode,'DRAFT_NOT_FOUND');
+    assert.equal((await ordinary(input('cancelar',{ownerPhone:other,senderPhone:other}))).errorCode,'DRAFT_NOT_FOUND');
+    assert.equal((await ordinary(input('confirmar'))).errorCode,'DRAFT_NOT_READY');
+    const cancel=input('cancelar'),cancelled=await ordinary(cancel);
+    assert.equal(cancelled.status,'cancelled');assert.equal(cancelled.draftId,preview.draftId);assert.deepEqual(await state(),before);
+    assert.deepEqual(await ordinary(cancel),cancelled);
+    const fixture=await seed(),pending=await prepare(fixture);
+    await sql.query("UPDATE universal_drafts SET expires_at=NOW()-INTERVAL '1 second' WHERE owner_phone=$1 AND draft_id=$2",[owner,pending.draftId]);
+    assert.equal((await ordinary(input('confirmar'))).errorCode,'DRAFT_NOT_FOUND');
+    assert.equal((await db.getUniversalDraft(pending.draftId,context)).status,'awaiting_confirmation');
+  });
+
+  await check('universal meta: explicit new reviews start a fresh conversation while another draft is pending',async()=>{
+    const first=await process(input('REVISAR OPERACION Cargá las camisetas.'),provider({ok:true,json:{contractVersion:1,kind:'clarification',question:'¿Qué talle?'}}).complete);
+    const fixture=await seed(),request=input(`REVISAR OPERACION ${text}`);
+    const second=await db.processMetaUniversalMessage(request,{ordinary:true,complete:async options=>{
+      const supplied=JSON.parse(options.messages[1].content);
+      assert.equal(supplied.sourceText,text);assert.deepEqual(supplied.clarifications,[]);
+      return proposal(actions(fixture));
+    }});
+    assert.notEqual(second.draftId,first.draftId);assert.equal(second.version,1);
+    assert.equal((await db.getUniversalDraft(first.draftId,context)).status,'awaiting_clarification');
   });
 
   await check('universal meta: concurrent identical and distinct confirmation messages apply all effects once', async () => {

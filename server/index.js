@@ -597,7 +597,7 @@ app.post('/api/products', authenticateRequest, async (req, res) => {
     res.status(201).json(product);
   } catch (error) {
     const status = ['OPERATION_ID_REQUIRED', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400 : error.name === 'InventoryOperationError' ? 409 : 500;
-    res.status(status).json({ error: status === 500 ? 'No pude crear el SKU.' : error.message, code: error.code });
+    res.status(status).json({ error: status === 500 ? 'No pude crear el producto.' : error.message, code: error.code });
   }
 });
 
@@ -1140,6 +1140,11 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
         kind: result.kind,
         batchId: stockBatchResponse?.batchId,
         batchStatus: stockBatchResponse?.batchStatus,
+        draftId: stockBatchResponse?.draftId,
+        draftStatus: stockBatchResponse?.status,
+        draftVersion: stockBatchResponse?.version,
+        errorCode: stockBatchResponse?.errorCode,
+        interpretationReason: stockBatchResponse?.interpretationReason,
         actionCount: (stockBatchResponse?.actions ?? result.parsed?.actions ?? []).length,
       });
 

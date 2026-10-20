@@ -176,7 +176,7 @@ function DeactivateModal({ ids, reason, onReasonChange, preview, stale, error, b
     <div role="dialog" aria-modal="true" aria-label="Desactivar productos" className="max-h-full overflow-y-auto w-full max-w-lg rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl">
       <h4 className="type-title text-xl">Desactivar {ids.length === 1 ? 'producto' : 'selección'}</h4>
       <p className="mt-3 text-sm">Se desactivarán y saldrán del inventario activo; se conservan stock e historial.</p>
-      <p className="mt-2 text-sm">{ids.length} SKU seleccionados: {ids.join(', ')}</p>
+      <p className="mt-2 text-sm">{ids.length} productos seleccionados: {ids.join(', ')}</p>
       <label className="mt-4 block text-sm">Motivo de la desactivación
         <input className="erp-input" required disabled={busy} value={reason} onChange={(event) => onReasonChange(event.target.value)} />
       </label>
@@ -184,7 +184,7 @@ function DeactivateModal({ ids, reason, onReasonChange, preview, stale, error, b
         <p>Motivo: {preview.mutation.reason}</p>
         <ul className="space-y-2">{preview.members.map((member) => <li key={member.skuId} className="rounded-xl border border-[color:var(--border)] p-3">
           <strong>{member.name}</strong> · Variante: {member.size || 'Sin definir'}
-          <p>SKU: {member.skuId} · Revisión: {member.revision}</p>
+          <p>Código: {member.skuId} · Revisión: {member.revision}</p>
           <p>Disponible: {member.stockAvailable} · Reservado: {member.stockReserved} · Precio: {member.price} {member.priceCurrency}</p>
         </li>)}</ul>
         <p>Vence: {preview.expiresAt}</p>
@@ -445,12 +445,12 @@ function ModelFormModal({
           </label>
         </form>
         {preview && preview.mutation.type === 'sku.update' && <section aria-label="Vista previa de cambios" className="mt-4 space-y-3 text-sm">
-          <p className="font-semibold">{preview.members.length} SKU seleccionados · Nuevo nombre: {preview.mutation.changes.name}</p>
+          <p className="font-semibold">{preview.members.length} productos seleccionados · Nuevo nombre: {preview.mutation.changes.name}</p>
           <p>Tipo: {preview.mutation.changes.productType} · Modelo: {preview.mutation.changes.productModel}</p>
           <p>Motivo: {preview.mutation.reason}</p>
           <ul className="space-y-2">{preview.members.map((member) => <li key={member.skuId} className="rounded-xl border border-[color:var(--border)] p-3">
             <strong>{member.name}</strong> · Variante: {member.size || 'Sin definir'}
-            <p>SKU: {member.skuId} · Revisión: {member.revision}</p>
+            <p>Código: {member.skuId} · Revisión: {member.revision}</p>
             <p>Disponible: {member.stockAvailable} · Reservado: {member.stockReserved} · Precio: {member.price} {member.priceCurrency}</p>
           </li>)}</ul>
           <p>Vence: {preview.expiresAt}</p>
@@ -977,7 +977,7 @@ export function ProductsAbmPanel({
           </div>
           <div className="flex flex-wrap gap-2">
           <button type="button" className="erp-button-secondary" disabled={saving || savingModel || deleting} onClick={() => setProductFamilyOpen(true)}>Familias y atributos</button>
-          <button type="button" className="erp-button-secondary" disabled={saving || savingModel || deleting} onClick={() => setProductFamilyAssignmentOpen(true)}>Familia de SKU existente</button>
+          <button type="button" className="erp-button-secondary" disabled={saving || savingModel || deleting} onClick={() => setProductFamilyAssignmentOpen(true)}>Familia de un producto</button>
           <button type="button" className="erp-button-secondary" disabled={saving || savingModel || deleting || products.length === 0} onClick={() => setStockSetOpen(true)}>Ajustar conjunto</button>
           <button type="button" onClick={openCreateForm} className="erp-button-primary inline-flex items-center gap-2 self-start">
             + {preset.useVariants ? 'Nuevo modelo' : 'Nuevo producto'}

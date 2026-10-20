@@ -314,3 +314,43 @@ test('clarification questions resolve conversational references but never become
   data.evidence[0].quote='Sí';
   assert.equal((await invoke(data,{sourceText:'Ingresó mercadería.\nSí',clarifications})).kind,'ready');
 });
+test('size clarification without a plan accepts the complete batch and keeps prices and variants',async()=>{
+  const original='Ingresá una unidad de cada SKU nuevo: camiseta City suplente 2025, camiseta River titular 2025 y camiseta Barcelona titular 2025 manga larga. Todas versión jugador. Las primeras cuestan 65000 ARS y la manga larga 70000 ARS.';
+  const reply='Talle L',text=`${original}\n${reply}`;
+  const clarifications=[{question:'¿De qué talle son las camisetas que mencionas?',answer:reply}];
+  const items=['City suplente 2025','River titular 2025','Barcelona titular 2025 manga larga'].map((name,index)=>({
+    itemId:`shirt-${index}`,type:'stock.receive',target:{kind:'new',sku:{name:`Camiseta ${name}`,unit:'unit',size:'L',attributes:{version:{state:'known',type:'text',value:'jugador'}}}},
+    quantity:{value:1,unit:'unit'},price:{amount:index===2?70000:65000,currency:'ARS',policy:'initialize'},
+  }));
+  const data={contractVersion:1,kind:'proposal',actions:items,evidence:items.map(item=>({itemId:item.itemId,quote:original}))};
+  const result=await invoke(data,{sourceText:text,clarifications,complete:async options=>{
+    assert.match(options.messages[0].content,/MODO ACLARACIÓN SIN PLAN PREVIO/);
+    assert.doesNotMatch(options.messages[0].content,/MODO REVISIÓN/);
+    const supplied=JSON.parse(options.messages[1].content);
+    assert.equal(supplied.sourceText,text);assert.deepEqual(supplied.clarifications,clarifications);
+    assert.equal(supplied.previousActions,undefined);
+    return {ok:true,json:data};
+  }});
+  assert.equal(result.kind,'ready');
+  assert.deepEqual(result.plan.actions.map(item=>item.itemId),items.map(item=>item.itemId));
+  assert.deepEqual(result.plan.actions.map(item=>item.target.sku.size),['L','L','L']);
+  assert.deepEqual(result.plan.actions.map(item=>item.price.amount),[65000,65000,70000]);
+  assert.ok(result.plan.actions.every(item=>item.target.sku.attributes.version.value==='jugador'));
+  const rewritten=structuredClone(data);rewritten.evidence[0].quote='camiseta City suplente 2025 talle L';
+  assert.equal((await invoke(rewritten,{sourceText:text,clarifications})).reason,'INVALID_EVIDENCE');
+  assert.equal((await invoke({contractVersion:1,kind:'patch',patches:[{itemId:'shirt-0',changes:{size:'L'}}],evidence:[{itemId:'shirt-0',quote:reply}]},{sourceText:text,clarifications})).kind,'invalid');
+});
+
+test('clarification with a prior plan retains patch mode and cannot replace the batch',async()=>{
+  const previous=await priorTwo();
+  const reply='La primera cantidad es 4.';
+  const clarifications=[{question:'¿Cuántas unidades en la primera?',answer:reply}];
+  const data={contractVersion:1,kind:'patch',patches:[{itemId:previous.plan.actions[0].itemId,changes:{quantity:{value:4}}}],evidence:[{itemId:previous.plan.actions[0].itemId,quote:reply}]};
+  const result=await revise(previous,data,reply,{clarifications,complete:async options=>{
+    assert.match(options.messages[0].content,/MODO REVISIÓN/);
+    assert.doesNotMatch(options.messages[0].content,/MODO ACLARACIÓN SIN PLAN PREVIO/);
+    return {ok:true,json:data};
+  }});
+  assert.equal(result.kind,'ready');assert.equal(result.plan.actions[0].quantity.value,4);
+  assert.deepEqual(result.plan.actions.slice(1),previous.plan.actions.slice(1));
+});

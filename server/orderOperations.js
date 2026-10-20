@@ -72,10 +72,10 @@ export function planOrderTransition(request, current, products) {
   if (request.kind === 'reconcile') {
     if (current.estado !== 'conseguido' || current.stockPosting) fail('ORDER_RECONCILIATION_NOT_REQUIRED','El pedido no requiere una conciliación histórica.');
     const proof = request.reconciliation, product = products.find((entry) => entry.id === proof.productId);
-    if (!product) fail('SKU_NOT_FOUND','El SKU revisado no pertenece al negocio.');
-    if ((product.status ?? 'active') !== 'active') fail('SKU_INACTIVE','El SKU revisado está desactivado.');
+    if (!product) fail('SKU_NOT_FOUND','El producto revisado no pertenece al negocio.');
+    if ((product.status ?? 'active') !== 'active') fail('SKU_INACTIVE','El producto revisado está desactivado.');
     if ((product.revision ?? 0) !== proof.expectedProductRevision) fail('REVISION_MISMATCH','El stock cambió después de revisarlo. Prepará una conciliación nueva.');
-    if (inventoryProductFingerprint(product) !== proof.expectedFingerprint) fail('SKU_FINGERPRINT_MISMATCH','La identidad del SKU revisado cambió.');
+    if (inventoryProductFingerprint(product) !== proof.expectedFingerprint) fail('SKU_FINGERPRINT_MISMATCH','La identidad del producto revisado cambió.');
     if (proof.quantity !== current.qty || proof.unit !== (product.unit ?? 'unit') || proof.available !== product.stockAvailable || proof.reserved !== product.stockReserved) fail('ORDER_RECONCILIATION_MISMATCH','La revisión no coincide con las cantidades guardadas.');
     if (proof.available < proof.quantity) fail('INSUFFICIENT_STOCK','El disponible revisado no alcanza para atribuir el ingreso histórico completo.');
     return {next:{...current,productId:product.id,stockPosting:{skuId:product.id,quantity:current.qty,unit:proof.unit}},actions:[{
@@ -89,9 +89,9 @@ export function planOrderTransition(request, current, products) {
   const changesStock = !next || next.estado !== current?.estado || next.qty !== current?.qty || next.productId !== current?.productId;
   if (current?.estado === 'conseguido' && !old && changesStock) fail('ORDER_RECONCILIATION_REQUIRED', 'Este pedido histórico no tiene un ingreso verificable. Conciliá su stock antes de cambiarlo.');
   const product = next?.productId ? products.find((entry) => entry.id === next.productId) : null;
-  if (next?.productId && !product) fail('SKU_NOT_FOUND', 'El SKU elegido no pertenece al inventario del negocio.');
-  if (product && (product.status ?? 'active') !== 'active' && changesStock) fail('SKU_INACTIVE', 'El SKU elegido está desactivado.');
-  if (next?.estado === 'conseguido' && !next.productId && changesStock) fail('SKU_SELECTION_REQUIRED', 'Elegí un SKU explícito antes de marcar conseguido.');
+  if (next?.productId && !product) fail('SKU_NOT_FOUND', 'El producto elegido no pertenece al inventario del negocio.');
+  if (product && (product.status ?? 'active') !== 'active' && changesStock) fail('SKU_INACTIVE', 'El producto elegido está desactivado.');
+  if (next?.estado === 'conseguido' && !next.productId && changesStock) fail('SKU_SELECTION_REQUIRED', 'Elegí un producto y su variante antes de marcar conseguido.');
   const desired = next?.estado === 'conseguido' && !(current?.estado === 'conseguido' && !old)
     ? { skuId: next.productId, quantity: next.qty, unit: product.unit ?? 'unit' } : null;
   const deltas = [];

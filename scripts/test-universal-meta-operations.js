@@ -47,9 +47,8 @@ test('ready preview renders every reviewed item in plan order and requires exact
   assert.ok(output.indexOf('Cambio 1') < output.indexOf('Cambio 2'));
   assert.match(output, /Dato 1a[\s\S]*Dato 1b[\s\S]*Dato 2a[\s\S]*Dato 2b/);
   assert.match(output, /todavía no se aplicó/);
-  assert.match(output, /CONFIRMAR OPERACION A1B2C3D4/);
-  assert.match(output, /RESPONDER OPERACION A1B2C3D4 <corrección>/);
-  assert.match(output, /CANCELAR OPERACION A1B2C3D4/);
+  assert.match(output, /Respondé «confirmar» para aplicar, «cancelar» para descartar, o escribí qué querés corregir/);
+  assert.doesNotMatch(output, /OPERACION|A1B2C3D4|<corrección>/);
   assert.match(output, /15 minutos/);
   expectCode(() => universalMetaPreviewReply(ready({ review: [review()[0]] })), 'INVALID_DRAFT_REQUEST');
   expectCode(() => universalMetaPreviewReply(ready({ review: [review()[1], review()[0]] })), 'INVALID_DRAFT_REQUEST');
@@ -68,8 +67,9 @@ test('clarification retains previous full review and never offers confirmation',
   assert.match(output, /¿Qué variante corresponde\?/);
   assert.match(output, /Revisión conservada/);
   assert.match(output, /Cambio 1[\s\S]*Cambio 2/);
-  assert.match(output, /RESPONDER OPERACION A1B2C3D4 <corrección>/);
-  assert.doesNotMatch(output, /CONFIRMAR OPERACION/);
+  assert.match(output, /Respondé directamente en este chat/);
+  assert.match(output, /«cancelar»/);
+  assert.doesNotMatch(output, /confirmar|OPERACION|A1B2C3D4|<corrección>/);
   assert.match(universalMetaPreviewReply(ready({ status: 'awaiting_clarification', question: '¿Qué variante?', plan: null, review: null })), /¿Qué variante\?/);
 });
 

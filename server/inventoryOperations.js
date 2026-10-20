@@ -36,10 +36,10 @@ function freeze(value) {
   return value;
 }
 function normalizeSku(input) {
-  const sku = record(input, ['name', 'productType', 'productModel', 'size', 'attributes', 'unit','family'], 'SKU');
-  const result = { name: text(sku.name, 'SKU.name') };
+  const sku = record(input, ['name', 'productType', 'productModel', 'size', 'attributes', 'unit','family'], 'producto');
+  const result = { name: text(sku.name, 'nombre del producto') };
   for (const field of ['productType', 'productModel', 'size']) {
-    if (own(sku, field)) { if (typeof sku[field] !== 'string') invalid(`SKU.${field} must be a string`); result[field] = sku[field]; }
+    if (own(sku, field)) { if (typeof sku[field] !== 'string') invalid(`El campo ${field} del producto debe ser texto.`); result[field] = sku[field]; }
   }
   result.attributes = domain(() => normalizeAttributes(own(sku, 'attributes') ? sku.attributes : {}));
   result.unit = domain(() => normalizeUnit(own(sku, 'unit') ? sku.unit : 'unit'));
@@ -74,18 +74,18 @@ function normalizePlan(input) {
     const target = record(action.target, ['kind', 'skuId', 'expectedFingerprint', 'expectedRevision', 'sku'], 'target');
     let normalizedTarget;
     if (target.kind === 'existing') {
-      if (action.type === 'sku.create') invalid('SKU creation requires a new target');
-      if (own(target, 'sku')) invalid('Existing target cannot include sku');
+      if (action.type === 'sku.create') invalid('El alta requiere un producto nuevo.');
+      if (own(target, 'sku')) invalid('La operación sobre un producto existente no admite los datos de un producto nuevo.');
       normalizedTarget = { kind: 'existing', skuId: text(target.skuId, 'skuId') };
       if (own(target, 'expectedFingerprint')) normalizedTarget.expectedFingerprint = text(target.expectedFingerprint, 'expectedFingerprint');
       if (own(target, 'expectedRevision')) normalizedTarget.expectedRevision = integer(target.expectedRevision, 'expectedRevision');
     } else if (target.kind === 'new') {
-      if (!['stock.receive', 'sku.create'].includes(action.type)) invalid('This operation requires an existing SKU');
-      if (own(target, 'skuId') || own(target, 'expectedFingerprint') || own(target, 'expectedRevision')) invalid('New target cannot include existing SKU fields');
+      if (!['stock.receive', 'sku.create'].includes(action.type)) invalid('Esta operación requiere un producto existente.');
+      if (own(target, 'skuId') || own(target, 'expectedFingerprint') || own(target, 'expectedRevision')) invalid('Un producto nuevo no puede incluir referencias a un producto existente.');
       normalizedTarget = { kind: 'new', sku: normalizeSku(target.sku) };
     } else invalid('Unsupported target kind');
     if (action.type === 'sku.create') {
-      if (['quantity', 'salePrice', 'balances', 'changes'].some((key) => own(action, key))) invalid('SKU creation cannot include mutation fields from other operations');
+      if (['quantity', 'salePrice', 'balances', 'changes'].some((key) => own(action, key))) invalid('El alta de un producto no puede incluir campos de otras operaciones.');
       const initial = record(action.initialStock, ['available', 'reserved'], 'initialStock');
       return { itemId, type: action.type, target: normalizedTarget,
         initialStock: { available: integer(initial.available, 'initialStock.available'), reserved: integer(initial.reserved, 'initialStock.reserved') },
@@ -93,7 +93,7 @@ function normalizePlan(input) {
         ...(own(action, 'price') ? { price: catalogPrice(action.price, ['initialize']) } : {}),
       };
     }
-    if (own(action, 'initialStock')) invalid('Only SKU creation can include initialStock');
+    if (own(action, 'initialStock')) invalid('Las existencias iniciales solo corresponden al alta de un producto.');
     if (updating) {
       if (!own(normalizedTarget, 'expectedRevision')) invalid('Updates require expectedRevision');
       if (own(action, 'quantity') || own(action, 'price') || own(action, 'salePrice')) invalid('Updates cannot include receipt/sale quantities or prices');
@@ -103,14 +103,14 @@ function normalizePlan(input) {
         return normalized;
       }
       if (action.type === 'stock.adjust') {
-        if (own(action, 'changes')) invalid('Adjustments cannot include SKU changes');
+        if (own(action, 'changes')) invalid('El ajuste de existencias no puede cambiar los datos del producto.');
         const balances = record(action.balances, ['available', 'reserved'], 'balances');
         if (!Object.keys(balances).length) invalid('Adjustment requires at least one balance');
         normalized.balances = Object.fromEntries(Object.entries(balances).map(([key, value]) => [key, integer(value, `balances.${key}`)]));
       } else {
-        if (own(action, 'balances')) invalid('SKU updates cannot include balances');
+        if (own(action, 'balances')) invalid('El cambio de datos del producto no puede incluir saldos de existencias.');
         const changes = record(action.changes, ['name', 'productType', 'productModel', 'size', 'attributes', 'price', 'priceCurrency','family'], 'changes');
-        if (!Object.keys(changes).length) invalid('SKU update requires at least one change');
+        if (!Object.keys(changes).length) invalid('Indicá al menos un dato del producto para modificar.');
         normalized.changes = {};
         for (const [key, value] of Object.entries(changes)) {
           if (key === 'name') normalized.changes[key] = text(value, 'changes.name');
@@ -223,21 +223,21 @@ export function planInventoryOperation(input, products, { createId, familySchema
     let product, created = false;
     if (action.target.kind === 'existing') {
       product = byId.get(action.target.skuId);
-      if (!product) fail('SKU_NOT_FOUND', 'Target SKU was not found', { skuId: action.target.skuId });
-      if (own(action.target, 'expectedRevision') && action.target.expectedRevision !== (product.revision ?? 0)) fail('REVISION_MISMATCH', 'El SKU cambió desde su lectura. Actualizá el inventario y revisá el ajuste.', { skuId: product.id, expected: action.target.expectedRevision, actual: product.revision ?? 0 });
-      if (action.target.expectedFingerprint && (originalFingerprints.get(product.id) ?? inventoryProductFingerprint(product)) !== action.target.expectedFingerprint) fail('SKU_FINGERPRINT_MISMATCH', 'Target SKU identity changed');
+      if (!product) fail('SKU_NOT_FOUND', 'No encontré el producto seleccionado.', { skuId: action.target.skuId });
+      if (own(action.target, 'expectedRevision') && action.target.expectedRevision !== (product.revision ?? 0)) fail('REVISION_MISMATCH', 'El producto cambió desde su lectura. Actualizá el inventario y revisá el ajuste.', { skuId: product.id, expected: action.target.expectedRevision, actual: product.revision ?? 0 });
+      if (action.target.expectedFingerprint && (originalFingerprints.get(product.id) ?? inventoryProductFingerprint(product)) !== action.target.expectedFingerprint) fail('SKU_FINGERPRINT_MISMATCH', 'La identidad del producto cambió.');
     } else {
       const identity = productIdentity(action.target.sku);
       const identical = [...byId.values()].filter((entry) => productIdentity(entry) === identity);
-      if (action.type === 'sku.create' && identical.some((entry) => (entry.status ?? 'active') !== 'active')) fail('SKU_INACTIVE', 'Ya existe un SKU desactivado con esa identidad; no creé otro producto.');
-      if (identical.length) fail('DUPLICATE_SKU_IDENTITY', 'An identical SKU already exists');
-      if (typeof createId !== 'function') invalid('createId is required for new SKUs');
-      const id = text(createId(), 'created SKU ID');
-      if (byId.has(id)) fail('DUPLICATE_SKU_ID', 'Generated SKU ID already exists');
+      if (action.type === 'sku.create' && identical.some((entry) => (entry.status ?? 'active') !== 'active')) fail('SKU_INACTIVE', 'Ya existe un producto desactivado con esa identidad; no creé otro producto.');
+      if (identical.length) fail('DUPLICATE_SKU_IDENTITY', 'Ya existe un producto con las mismas características.');
+      if (typeof createId !== 'function') invalid('No se pudo generar un código para el producto nuevo.');
+      const id = text(createId(), 'código del producto creado');
+      if (byId.has(id)) fail('DUPLICATE_SKU_ID', 'El código generado para el producto ya existe.');
       product = { ...action.target.sku, attributes: JSON.parse(JSON.stringify(action.target.sku.attributes)), id, status: 'active', stockAvailable: 0, stockReserved: 0, price: 0, priceCurrency: 'XXX' };
       byId.set(id, product); created = true;
     }
-    if ((product.status ?? 'active') !== 'active') fail('SKU_INACTIVE', 'Cannot mutate stock for an inactive SKU');
+    if ((product.status ?? 'active') !== 'active') fail('SKU_INACTIVE', 'El producto está desactivado; no se puede modificar su stock.');
     if (action.type!=='sku.update') domain(()=>validateProductFamily(product,familySchemas));
     const unit = domain(() => normalizeUnit(product.unit ?? 'unit'));
     if (action.type === 'sku.create') {
@@ -253,7 +253,7 @@ export function planInventoryOperation(input, products, { createId, familySchema
     if (action.type === 'sku.deactivate') {
       const available = integer(product.stockAvailable ?? 0, 'stockAvailable');
       const reserved = integer(product.stockReserved ?? 0, 'stockReserved');
-      if (reserved > 0) fail('SKU_HAS_RESERVATIONS', 'El SKU tiene unidades reservadas. Resolvé las reservas antes de darlo de baja.', { skuId: product.id, reserved });
+      if (reserved > 0) fail('SKU_HAS_RESERVATIONS', 'El producto tiene unidades reservadas. Resolvé las reservas antes de darlo de baja.', { skuId: product.id, reserved });
       const price = integer(product.price ?? 0, 'product.price'), currency = product.priceCurrency ?? 'XXX';
       if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) invalid('Invalid stored currency');
       Object.assign(product, { status: 'inactive', stockAvailable: available, stockReserved: reserved, price, priceCurrency: currency });
@@ -276,7 +276,7 @@ export function planInventoryOperation(input, products, { createId, familySchema
         Object.assign(next, action.changes);
         domain(()=>validateProductFamily(next,familySchemas));
         const identity = productIdentity(next);
-        if (identity !== productIdentity(product) && [...byId.values()].some((entry) => entry.id !== product.id && productIdentity(entry) === identity)) fail('DUPLICATE_SKU_IDENTITY', 'An identical SKU already exists');
+        if (identity !== productIdentity(product) && [...byId.values()].some((entry) => entry.id !== product.id && productIdentity(entry) === identity)) fail('DUPLICATE_SKU_IDENTITY', 'Ya existe un producto con las mismas características.');
       }
       Object.assign(product, next);
       if (!/^[A-Z]{3}$/.test(product.priceCurrency)) invalid('Invalid stored currency');
@@ -289,7 +289,7 @@ export function planInventoryOperation(input, products, { createId, familySchema
       movements.push({ itemId: action.itemId, skuId: product.id, deltaAvailable, deltaReserved, unit });
       continue;
     }
-    if (unit !== action.quantity.unit) fail('UNIT_MISMATCH', 'Operation unit differs from SKU unit');
+    if (unit !== action.quantity.unit) fail('UNIT_MISMATCH', 'La unidad de la operación no coincide con la del producto.');
     const available = integer(product.stockAvailable ?? 0, 'stockAvailable');
     const reserved = integer(product.stockReserved ?? 0, 'stockReserved');
     const quantity = action.quantity.value;
@@ -306,7 +306,7 @@ export function planInventoryOperation(input, products, { createId, familySchema
     if (action.price) {
       const requested = action.price;
       if (currency !== 'XXX' && currency !== requested.currency) fail('CURRENCY_CONFLICT', 'Receipt currency differs from stored currency');
-      if (requested.policy === 'initialize' && price !== 0 && price !== requested.amount) fail('PRICE_CONFLICT', 'Existing SKU price differs from requested initialization');
+      if (requested.policy === 'initialize' && price !== 0 && price !== requested.amount) fail('PRICE_CONFLICT', 'El precio actual del producto no coincide con el precio inicial solicitado.');
       if (requested.policy === 'set' || (requested.policy === 'initialize' && price === 0)) { price = requested.amount; currency = requested.currency; }
     }
     const totalAmount = action.salePrice ? action.salePrice.amount * quantity : null;

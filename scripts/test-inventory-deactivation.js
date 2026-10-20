@@ -83,5 +83,5 @@ for (const text of ['sí', 'confirmar baja abcdef123', 'no confirmar baja abcdef
 throws(() => deactivationPreviewReply({ digest: 'a'.repeat(64), members: Array.from({ length: 100 }, () => ({ name: 'SKU extenso '.repeat(20), stockAvailable: 4, stockReserved: 0 })) }), 'SELECTION_PREVIEW_TOO_LARGE');
 const largeReceipt = { items: Array.from({ length: 50 }, (_, i) => ({ type: 'sku.deactivate', skuId: `sku-${i}`, skuName: 'SKU largo '.repeat(20), stockAvailable: 4, stockReserved: 0 })) };
 assert.ok(metaDeactivationReceiptReply(largeReceipt).length < 3500);
-assert.match(metaDeactivationReceiptReply(largeReceipt), /50 SKU/);
+assert.match(metaDeactivationReceiptReply(largeReceipt), /50 productos/);
 console.log('Inventory deactivation contract, inactive guards and frozen selection tests passed');

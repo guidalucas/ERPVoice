@@ -204,7 +204,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
     if (busyRef.current) return;
     const productId = estado === 'conseguido' ? pedido.productId ?? pedidoSkuChoices[pedido.id] : pedido.productId ?? undefined;
     if (estado === 'conseguido' && !productId) {
-      setPedidoErrors((current) => ({ ...current, [pedido.id]: 'Elegí el SKU exacto antes de marcar como conseguido.' }));
+      setPedidoErrors((current) => ({ ...current, [pedido.id]: 'Elegí el producto exacto antes de marcar como conseguido.' }));
       return;
     }
     const prior = statusAttemptsRef.current.get(pedido.id);
@@ -346,14 +346,14 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
     <div className="space-y-2 sm:text-right">
       {pedido.estado !== 'conseguido' && !pedido.productId && (
         <label className="block text-xs text-[color:var(--muted)]">
-          SKU exacto para ingresar
-          <select disabled={Boolean(updatingId) || saving} className="erp-input mt-1 min-h-10" aria-label={`SKU para ${pedido.producto}`} value={pedidoSkuChoices[pedido.id] ?? ''}
+          Producto exacto para ingresar
+          <select disabled={Boolean(updatingId) || saving} className="erp-input mt-1 min-h-10" aria-label={`Producto para ${pedido.producto}`} value={pedidoSkuChoices[pedido.id] ?? ''}
             onChange={(event) => {
               setPedidoSkuChoices((current) => ({ ...current, [pedido.id]: event.target.value }));
               statusAttemptsRef.current.delete(pedido.id);
               setPedidoErrors((current) => ({ ...current, [pedido.id]: '' }));
             }}>
-            <option value="">Elegir SKU…</option>
+            <option value="">Elegir producto…</option>
             {sortedProducts.map((product) => <option key={product.id} value={product.id}>{productOptionLabel(product, true)} · {product.id}</option>)}
           </select>
         </label>

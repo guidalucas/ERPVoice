@@ -44,11 +44,11 @@ async function fixture({ closed = false, unit = 'unit', changedSchema = false } 
     const root = resolve('dist'), file = resolve(root, `.${path === '/' ? '/index.html' : path}`); if (!file.startsWith(`${root}${sep}`)) return route.abort();
     try { return route.fulfill({ body: await readFile(file), contentType: path.endsWith('.js') ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : 'text/html' }); } catch { return route.fulfill({ status: 404, body: '' }); }
   });
-  const dialog = page.getByRole('dialog', { name: 'Familia de SKU existente', exact: true });
-  async function open() { await page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name: 'Inventario', exact: true }).click(); await page.getByRole('button', { name: 'Familia de SKU existente', exact: true }).click(); await dialog.waitFor(); await dialog.getByLabel('SKU existente', { exact: true }).waitFor(); await dialog.getByRole('button', { name: 'Releer estado y familias', exact: true }).waitFor({ state: 'visible' }); }
-  const consent = () => dialog.getByRole('checkbox', { name: 'Revisé el antes y después y autorizo cambiar la familia y atributos de este SKU.', exact: true });
-  const submit = () => dialog.getByRole('button', { name: 'Confirmar familia del SKU', exact: true });
-  async function fill() { await dialog.getByLabel('SKU existente', { exact: true }).selectOption(product.id); await dialog.getByLabel('Familia y versión', { exact: true }).selectOption(`${family.familyId}@2`); await dialog.getByLabel('Valor de material', { exact: true }).fill('  ACERO   Inoxidable  '); await dialog.getByLabel('Valor de voltage', { exact: true }).selectOption('0'); await dialog.getByLabel('Valor de certified', { exact: true }).selectOption('false'); await dialog.getByLabel('Estado de length', { exact: true }).selectOption('unknown'); await dialog.getByLabel('Motivo obligatorio', { exact: true }).fill('Clasificación revisada'); }
+  const dialog = page.getByRole('dialog', { name: 'Familia de un producto', exact: true });
+  async function open() { await page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name: 'Inventario', exact: true }).click(); await page.getByRole('button', { name: 'Familia de un producto', exact: true }).click(); await dialog.waitFor(); await dialog.getByLabel('Producto existente', { exact: true }).waitFor(); await dialog.getByRole('button', { name: 'Releer estado y familias', exact: true }).waitFor({ state: 'visible' }); }
+  const consent = () => dialog.getByRole('checkbox', { name: 'Revisé el antes y después y autorizo cambiar la familia y atributos de este producto.', exact: true });
+  const submit = () => dialog.getByRole('button', { name: 'Confirmar familia del producto', exact: true });
+  async function fill() { await dialog.getByLabel('Producto existente', { exact: true }).selectOption(product.id); await dialog.getByLabel('Familia y versión', { exact: true }).selectOption(`${family.familyId}@2`); await dialog.getByLabel('Valor de material', { exact: true }).fill('  ACERO   Inoxidable  '); await dialog.getByLabel('Valor de voltage', { exact: true }).selectOption('0'); await dialog.getByLabel('Valor de certified', { exact: true }).selectOption('false'); await dialog.getByLabel('Estado de length', { exact: true }).selectOption('unknown'); await dialog.getByLabel('Motivo obligatorio', { exact: true }).fill('Clasificación revisada'); }
   await page.goto('http://127.0.0.1:5173'); await open();
   return { page, dialog, product, family, puts, errors, open, fill, consent, submit, setMode: value => { mode = value; } };
 }
@@ -79,7 +79,7 @@ try {
     const f = await fixture({ unit: 'box' }); await f.fill(); assert.equal(await f.consent().isEnabled(), false); assert.equal(f.puts.length, 0); await f.page.close();
   }
   {
-    const f = await fixture({ changedSchema: true }); await f.dialog.getByLabel('SKU existente', { exact: true }).selectOption(f.product.id); await f.dialog.getByLabel('Familia y versión', { exact: true }).selectOption(`${f.family.familyId}@2`);
+    const f = await fixture({ changedSchema: true }); await f.dialog.getByLabel('Producto existente', { exact: true }).selectOption(f.product.id); await f.dialog.getByLabel('Familia y versión', { exact: true }).selectOption(`${f.family.familyId}@2`);
     assert.equal(await f.dialog.getByLabel('Valor de length', { exact: true }).inputValue(), ''); assert.equal(await f.dialog.getByLabel('Valor de material', { exact: true }).inputValue(), ''); assert.equal(await f.consent().isEnabled(), false); assert.equal(f.puts.length, 0); await f.page.close();
   }
   {

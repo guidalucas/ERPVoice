@@ -19,8 +19,8 @@ export function OrderReconciliationForm({pedido,products,review,disabled,onRevie
   const [error,setError]=useState<string|null>(null);
   const prepare=()=>{
     const product=products.find((entry)=>entry.id===productId);
-    if(!product || !reason.trim()){setError('Elegí el SKU exacto y explicá el motivo de la conciliación.');return;}
-    if(!product.identityFingerprint || !Number.isSafeInteger(product.revision)){setError('Actualizá el inventario antes de revisar este SKU.');return;}
+    if(!product || !reason.trim()){setError('Elegí el producto exacto y explicá el motivo de la conciliación.');return;}
+    if(!product.identityFingerprint || !Number.isSafeInteger(product.revision)){setError('Actualizá el inventario antes de revisar este producto.');return;}
     if(product.stockAvailable<pedido.qty){setError('El disponible no alcanza para atribuir el pedido histórico completo. Revisá el inventario primero.');return;}
     setConfirmed(false);setError(null);
     onReview({operationId:crypto.randomUUID(),expectedRevision:pedido.revision??0,reconciliation:{
@@ -32,9 +32,9 @@ export function OrderReconciliationForm({pedido,products,review,disabled,onRevie
     <legend className="px-1 text-sm font-semibold">Conciliar pedido histórico</legend>
     <p className="text-xs text-[color:var(--muted)]">Este pedido no tiene un ingreso verificable. La conciliación atribuye stock existente y deja una auditoría; no agrega unidades.</p>
     {!review ? <>
-      <label className="block text-sm">SKU del ingreso histórico
-        <select aria-label={`SKU histórico para ${pedido.producto}`} className="erp-input mt-1" value={productId} onChange={(event)=>setProductId(event.target.value)}>
-          <option value="">Elegir SKU exacto…</option>
+      <label className="block text-sm">Producto del ingreso histórico
+        <select aria-label={`Producto histórico para ${pedido.producto}`} className="erp-input mt-1" value={productId} onChange={(event)=>setProductId(event.target.value)}>
+          <option value="">Elegir producto y variante…</option>
           {products.map((product)=><option key={product.id} value={product.id}>{product.name}{product.size?` · ${product.size}`:''} · {product.id}</option>)}
         </select>
       </label>
@@ -44,7 +44,7 @@ export function OrderReconciliationForm({pedido,products,review,disabled,onRevie
       {error&&<p role="alert" className="text-sm text-rose-700">{error}</p>}
       <button type="button" className="erp-button-secondary" onClick={prepare}>Revisar conciliación</button>
     </> : <>
-      <p className="text-sm">SKU revisado: {review.reconciliation.productId}. Disponible: {review.reconciliation.available}; reservado: {review.reconciliation.reserved}.</p>
+      <p className="text-sm">Código del producto revisado: {review.reconciliation.productId}. Disponible: {review.reconciliation.available}; reservado: {review.reconciliation.reserved}.</p>
       <p className="text-sm">Se atribuirán {review.reconciliation.quantity} {review.reconciliation.unit} existentes. El stock queda igual.</p>
       <p className="text-xs text-[color:var(--muted)]">Motivo: {review.reconciliation.reason}</p>
       <label className="flex items-start gap-2 text-sm">

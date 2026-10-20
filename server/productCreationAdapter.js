@@ -45,7 +45,7 @@ export function productCreationToPlan(input, businessId, options = {}, model = f
   const data = fields(input, model ? ['name', 'productType', 'productModel', 'variants', 'unit', 'attributes', 'family','priceCurrency', 'operationId', 'reason'] : productFields, 'product creation');
   const operationId = options.operationId ?? data.operationId;
   if (typeof operationId !== 'string' || !operationId.trim()) throw new InventoryOperationError('OPERATION_ID_REQUIRED', 'El alta necesita un ID estable para poder reintentarse.');
-  const reason = options.reason ?? data.reason ?? (model ? 'Alta de variantes de modelo' : 'Alta manual de SKU');
+  const reason = options.reason ?? data.reason ?? (model ? 'Alta de variantes de modelo' : 'Alta manual de producto');
   let actions;
   if (model) {
     const productType = text(data.productType, 'productType'), productModel = text(data.productModel, 'productModel');
