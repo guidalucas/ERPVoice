@@ -4,6 +4,8 @@ import { useChatBot } from '../../hooks/useChatBot';
 import { StockyLogo } from '../brand/StockyLogo';
 import { UniversalDraftReview } from '../chat/UniversalDraftReview';
 import { useAuth } from '../../store/AuthStore';
+import { LegacyOperationRecovery } from '../chat/LegacyOperationRecovery';
+import { pendingProposalKey } from '../../services/pendingProposalStorage';
 
 export function WhatsAppSimulator() {
   const [isOpen, setIsOpen] = useState(false);
@@ -15,15 +17,11 @@ export function WhatsAppSimulator() {
     draftText,
     inputStorageError,
     setDraftText,
-    pendingProposal,
-    pendingActionsText,
     isProcessing,
     isRecording,
     isTranscribing,
     sendText,
     toggleRecording,
-    onConfirm,
-    onCancel,
   } = useChatBot(text => { setReviewText(text); setReviewOpen(true); });
 
   return (
@@ -66,32 +64,7 @@ export function WhatsAppSimulator() {
             ))}
           </div>
 
-          {pendingProposal && (
-            <div className="mx-3 mb-3 shrink-0 rounded-2xl border border-sky-500/15 bg-sky-500/10 p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-sky-300">Acciones detectadas</p>
-              <div className="mt-2 space-y-1 text-sm text-slate-200">
-                {pendingActionsText.map((line) => (
-                  <p key={line}>{line}</p>
-                ))}
-              </div>
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={onConfirm}
-                  className="rounded-xl bg-sky-500 px-3 py-2 font-semibold text-white transition hover:bg-sky-400"
-                >
-                  Confirmar
-                </button>
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  className="rounded-xl border border-sky-500/15 bg-sky-500/10 px-3 py-2 font-semibold text-sky-100 transition hover:bg-sky-500/15"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          )}
+          {session && <LegacyOperationRecovery key={JSON.stringify([session.tenantPhone, session.phoneNumber])} storageKey={pendingProposalKey(session.tenantPhone, session.phoneNumber)} copyToComposer={text => setDraftText(!draftText.trim() || draftText === text ? text : draftText + '\n\n' + text)} openReview={text => { setReviewText(text); setReviewOpen(true); }} />}
 
           <div className="shrink-0 border-t border-emerald-950/50 bg-[#0b1424] px-3 py-3">
             {inputStorageError && <p role="alert" className="mb-2 text-sm text-amber-200">{inputStorageError}</p>}

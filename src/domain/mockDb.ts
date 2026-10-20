@@ -15,5 +15,4 @@ export const initialAppState: AppState = {
       text: 'Hola! Soy Stocky. Podés escribir o grabar comandos como "Juan me pidió una camiseta de Boca talle M" o "compré 10 camisetas de Argentina".',
     },
   ],
-  pendingProposal: null,
 };

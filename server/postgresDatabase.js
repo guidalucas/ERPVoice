@@ -18,6 +18,7 @@ import { orderRequestDigest } from './orderOperations.js';
 import { ACCOUNT_SCHEMA_SQL, executeAccountPlanInTransaction } from './accountPostgres.js';
 import { operationRequestDigest } from './operationHash.js';
 import { operationResultActions } from './operationResults.js';
+import { recoverLegacyPanelOperation } from './operationRecovery.js';
 import { validateAccountPlan } from './accountOperations.js';
 import { mergeClientsInTransaction } from './clientMergePostgres.js';
 import { UNIVERSAL_SCHEMA_SQL, executeUniversalPlanInTransaction } from './universalPostgres.js';
@@ -26,6 +27,7 @@ import { interpretUniversalIntent } from './universalIntentInterpreter.js';
 import { buildUniversalOperationReview } from './universalOperationReview.js';
 import { authorizeUniversalQueries } from './universalQueries.js';
 import { parseUniversalMetaCommand } from './universalMetaOperations.js';
+import { isRetiredMetaControl, LEGACY_META_RETIRED_REPLY, replayLegacyMetaBatch } from './legacyMetaRetirement.js';
 import { UNIVERSAL_META_SCHEMA_SQL, normalizeUniversalMetaInput, findUniversalMetaCommand,
   findUniversalMetaDraft, executeUniversalMetaInTransaction } from './universalMetaPostgres.js';
 import { PRODUCT_FAMILY_SCHEMA_SQL, authorizeProductFamilies, loadProductFamilySchemas, publishProductFamilyInTransaction } from './productFamilyPostgres.js';
@@ -1429,6 +1431,15 @@ export const executeUniversalOperation = async (input, context) => {
   },persistInventoryTransactions));
 };
 
+export const recoverPanelOperation = async (input,context) => {
+  await ensureReady();
+  return withTransaction(async client=>{
+    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    return recoverLegacyPanelOperation(client,input,{...context,
+      businessId:normalizeOwnerPhone(context.businessId),actorId:normalizePhone(context.actorId)});
+  });
+};
+
 // Interpretation happens outside any SQL transaction. Only validated, frozen
 // drafts reach the existing universal executor after an explicit confirmation.
 const interpretUniversalDraft = async (text,draftId,context,options,clarifications=[],previous=null) => {
@@ -1502,7 +1513,7 @@ const loadUniversalDraftReply = async (client,draftId,request,context) => {
  * Ordinary messages and explicit controls share the draft/executor boundary;
  * provider calls never hold an SQL transaction open. */
 export const processMetaUniversalMessage = async (input,options={}) => {
-  const command=parseUniversalMetaCommand(input?.sourceText) ?? (options.ordinary===true && typeof input?.sourceText==='string' ? {kind:'prepare',text:input.sourceText.trim()} : null);
+  const command=options.legacyRetired===true ? {kind:'retired'} : parseUniversalMetaCommand(input?.sourceText) ?? (options.ordinary===true && typeof input?.sourceText==='string' ? {kind:'prepare',text:input.sourceText.trim()} : null);
   if (!command) return null;
   const context={businessId:normalizeOwnerPhone(input.ownerPhone),actorId:normalizePhone(input.senderPhone),channel:'whatsapp',permissions:[
     'inventory:read','orders:read','accounts:read','inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
@@ -1539,6 +1550,7 @@ export const processMetaUniversalMessage = async (input,options={}) => {
   }
   return withTransaction(client=>executeUniversalMetaInTransaction(client,requestInput,context,async transaction=>{
     if (preparationError) throw preparationError;
+    if (command.kind==='retired') throw new InventoryOperationError('LEGACY_WRITER_RETIRED',LEGACY_META_RETIRED_REPLY);
     if (command.kind==='prepare') return persistUniversalInterpretation(transaction,prepared.request,prepared.interpretation,context,{draftId:prepared.draftId});
     const row=await findUniversalMetaDraft(transaction,command.code,context);
     if (command.kind==='reply') {
@@ -1549,7 +1561,18 @@ export const processMetaUniversalMessage = async (input,options={}) => {
     if (command.kind==='cancel') return cancelUniversalDraftInTransaction(transaction,row.draft_id,confirmation,context);
     return confirmUniversalDraftInTransaction(transaction,row.draft_id,confirmation,
       {...context,ownerPhoneVariants:getOwnerPhoneVariants(context.businessId)},persistInventoryTransactions);
-  }));
+  },{retiredBatchId:options.retiredBatchId,retiredSelectionId:options.retiredSelectionId}));
+};
+
+/** Guard the retired namespace and replies bound to historical questions. Reads
+ * never expire, resume or modify legacy rows; only the terminal command/outbox
+ * is persisted through the same atomic boundary as current Meta commands. */
+export const processRetiredMetaMessage = async input => {
+  const batch=await getRetiredMetaBatchForMessage(input);
+  const quoted=input.replyToMessageId ? await getMetaReplyQuestion(input.replyToMessageId,input.ownerPhone,input.senderPhone) : null;
+  const selection=await getRetiredMetaSelectionForMessage(input);
+  if (!batch && !quoted && !selection && !isRetiredMetaControl(input.sourceText)) return null;
+  return processMetaUniversalMessage(input,{legacyRetired:true,retiredBatchId:batch?.id ?? quoted?.batchId,retiredSelectionId:selection?.selection_id});
 };
 export const getUniversalDraft = async (draftId,context) => {
   authorizeUniversalConversation(context); await ensureReady();
@@ -1908,6 +1931,30 @@ const rowToVoiceStockBatch = (row) => row ? ({
   updatedAt: row.updated_at,
 }) : null;
 
+const getRetiredMetaBatchForMessage = async ({ownerPhone,senderPhone,messageId},executor=null) => {
+  if (!executor) await ensureReady();
+  const row=await queryRow(`SELECT * FROM voice_stock_batches WHERE owner_phone=$1 AND sender_phone=$2
+    AND (source_message_id=$3 OR payload_json->'handledMessages' @> $4::jsonb
+      OR payload_json->>'replyMessageId'=$3 OR payload_json->'pendingChoiceReply'->>'messageId'=$3
+      OR payload_json->'pendingDraftAnswer'->>'messageId'=$3 OR payload_json->'pendingDraftPatch'->>'messageId'=$3)
+    ORDER BY created_at DESC LIMIT 1`,
+  [normalizeOwnerPhone(ownerPhone),normalizePhone(senderPhone),String(messageId),JSON.stringify([{messageId:String(messageId)}])],executor);
+  return rowToVoiceStockBatch(row);
+};
+
+const getRetiredMetaSelectionForMessage = async ({ownerPhone,senderPhone,messageId,replyToMessageId},executor=null) => {
+  if (!executor) await ensureReady();
+  return queryRow(`SELECT selection.* FROM inventory_selections AS selection
+    WHERE selection.owner_phone=$1 AND selection.actor_id=$2
+      AND (selection.request_id=ANY($3) OR ($4::text IS NOT NULL AND EXISTS (
+        SELECT 1 FROM meta_reply_outbox AS reply WHERE reply.recipient=$2
+          AND selection.request_id=ANY(ARRAY['meta-selection:'||reply.event_id,'meta-deactivate:'||reply.event_id])
+          AND reply.provider_message_ids @> $5::jsonb)))
+    ORDER BY selection.created_at DESC LIMIT 1`,
+  [normalizeOwnerPhone(ownerPhone),normalizePhone(senderPhone),[`meta-selection:${messageId}`,`meta-deactivate:${messageId}`],
+    replyToMessageId ?? null,JSON.stringify([String(replyToMessageId)])],executor);
+};
+
 export const getActiveVoiceStockBatch = async (ownerPhone, senderPhone) => {
   await ensureReady();
   await getPool().query(
@@ -2156,24 +2203,16 @@ export const replayCommittedMetaMessage = async ({messageId,ownerPhone,senderPho
       LEFT JOIN meta_reply_outbox AS reply ON reply.event_id=claim.message_id
       LEFT JOIN meta_events AS event ON event.id=claim.message_id AND event.owner_phone=claim.owner_phone AND event.from_number=claim.sender_phone
       WHERE claim.message_id=$1`,[messageId],client);
-    if (!claim) return null;
     const conflict=()=>{throw new InventoryOperationError('IDEMPOTENCY_CONFLICT','El ID del mensaje ya corresponde a otra instrucción, negocio o remitente.');};
-    if (claim.owner_phone!==owner || claim.sender_phone!==sender || (claim.recipient && claim.recipient!==sender)) conflict();
-    if (claim.reply_text==null) return null;
-    const raw=parseJsonValue(claim.raw_body_json);
+    if (claim && (claim.owner_phone!==owner || claim.sender_phone!==sender || (claim.recipient && claim.recipient!==sender))) conflict();
+    const raw=parseJsonValue(claim?.raw_body_json);
     const original=(raw?.entry ?? []).flatMap(entry=>(entry.changes ?? []).flatMap(change=>change.value?.messages ?? []))
       .find(message=>message.id===messageId && normalizePhone(message.from)===sender);
     // Match the normalization at extractMetaMessages, while keeping saved
     // transcripts and domain source text exact for idempotency checks.
     const originalText=typeof original?.text?.body==='string' ? original.text.body.trim() : undefined;
-    const storedText=claim.transcript ?? originalText ?? claim.source_text;
+    const storedText=claim?.transcript ?? originalText ?? claim?.source_text;
     if (storedText!=null && storedText!==sourceText) conflict();
-    const batch=await queryRow(`SELECT id FROM voice_stock_batches WHERE owner_phone=$1 AND sender_phone=$2
-      AND (source_message_id=$3 OR payload_json->'handledMessages' @> $4::jsonb) LIMIT 1`,
-    [owner,sender,messageId,JSON.stringify([{messageId}])],client);
-    // Let the legacy resume-only workflow recover any saved ready transition
-    // before returning its batch receipt and question metadata.
-    if (batch) return null;
     const universal=await queryRow('SELECT actor_id,request_hash,result_json FROM universal_meta_commands WHERE owner_phone=$1 AND message_id=$2',[owner,messageId],client);
     if (universal) {
       if (universal.actor_id!==sender || universal.request_hash!==operationRequestDigest({actorId:sender,sourceText})) conflict();
@@ -2185,6 +2224,23 @@ export const replayCommittedMetaMessage = async ({messageId,ownerPhone,senderPho
       if (selection.actor_id!==sender || !command || selection.request_hash!==operationRequestDigest({actorId:sender,command})) conflict();
       return parseJsonValue(selection.result_json);
     }
+    const batch=await getRetiredMetaBatchForMessage({ownerPhone:owner,senderPhone:sender,messageId},client);
+    if (batch) {
+      const batchText=batch.sourceMessageId===messageId ? batch.sourceText :
+        [...(batch.payload.clarifications ?? []),batch.payload.pendingChoiceReply,batch.payload.pendingDraftAnswer]
+          .find(entry=>entry?.messageId===messageId)?.text;
+      if (batchText!=null && batchText!==sourceText) conflict();
+      if (batch.status==='applied' && storedText==null && batchText==null) conflict();
+      // Immutable historical facts only: never finish a ready transition or
+      // resolve a pending answer against the current product catalog.
+      return replayLegacyMetaBatch(batch,messageId,claim?.reply_text);
+    }
+    const oldSelection=await getRetiredMetaSelectionForMessage({ownerPhone:owner,senderPhone:sender,messageId},client);
+    if (oldSelection) {
+      if (parseJsonValue(oldSelection.preview_json)?.mutation?.reason!==sourceText) conflict();
+      return null;
+    }
+    if (claim?.reply_text==null) return null;
     const domain=await queryRow(`SELECT plan_json AS request_json,result_json FROM inventory_operations
         WHERE owner_phone=$1 AND actor_id=$2 AND operation_id=ANY($3)
       UNION ALL SELECT plan_json,result_json FROM account_operations

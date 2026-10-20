@@ -260,5 +260,4 @@ export interface AppState {
   pedidos: Pedido[];
   transactions: Transaction[];
   chatMessages: ChatMessage[];
-  pendingProposal: ParsedVoicePayload | null;
 }

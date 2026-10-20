@@ -9,9 +9,14 @@ Ingresos, ventas y reservas usan `stock.receive`, `stock.sell` y `stock.reserve`
 mismo núcleo, con recibos idempotentes y movimientos transaccionales. Stock insuficiente
 rechaza todo el lote. Ventas y reservas requieren SKU explícito; el precio de venta
 opcional queda separado del catálogo y los totales separan monedas y precios desconocidos.
-`POST /api/inventory/operations` acepta el contrato v1 con autenticación; el negocio
-se verifica contra la sesión. `POST /api/state/apply` requiere `operationId` estable
-para estas tres operaciones. Los lotes mixtos con mutaciones aún no migradas se rechazan.
+`POST /api/operations` acepta OperationPlan v1 con autenticación y negocio verificado
+contra la sesión. Los formularios manuales envían SKU/revisión/fingerprint explícitos;
+persisten el intento antes del envío y recuperan el mismo ID/cuerpo tras recargar.
+`POST /api/state/apply`, `/api/voice/parse` y la configuración de voice-stock-batches
+están retirados (410 autenticado). `/api/operations/recovery` solo consulta el recibo
+anterior por negocio/actor/ID y hash: nunca interpreta ni ejecuta acciones. Una propuesta
+antigua sin recibo puede archivarse y llevar su texto a una nueva revisión universal.
+Los recibos, movimientos y archivos de recuperación históricos se conservan.
 Actualizaciones y ajustes individuales usan `sku.update` y `stock.adjust` en el mismo
 núcleo. `PUT /api/products/:id` exige `operationId`, `expectedRevision` y motivo;
 un snapshot obsoleto se rechaza con 409 y se conserva el borrador para revisarlo.
@@ -30,8 +35,11 @@ y nombre sin previsualización. `npm run test:inventory-selection-ui` verifica e
 Esta selección admite `sku.update` y `sku.deactivate`. DELETE individual y batch exigen
 `{selectionId,digest}` y devuelven el recibo. La baja conserva stock e historial, retira
 el SKU del inventario activo y rechaza unidades reservadas. No hay reactivación implícita.
-En WhatsApp, pedir una baja prepara el conjunto; `CONFIRMAR BAJA <código>` lo confirma y
-`CANCELAR BAJA <código>` lo invalida. Código y selección quedan ligados a negocio/remitente.
+En WhatsApp, pedir una baja prepara la revisión universal; `CONFIRMAR OPERACION <código>`
+la confirma. Código y revisión quedan ligados a negocio/remitente. Los comandos antiguos
+BAJA/CAMBIO/AJUSTE y respuestas a preguntas anteriores informan el retiro sin mutar datos;
+los mensajes ya aplicados reproducen sus respuestas y recibos congelados. Un mensaje nuevo
+usa el intérprete universal, aunque exista una conversación antigua pendiente.
 `npm run test:inventory-deactivation-ui` verifica revisión, cancelación y reintentos del panel.
 La reactivación explícita y otras mutaciones masivas siguen pendientes.
 
@@ -43,8 +51,9 @@ pero rechazan números negativos, fraccionarios, cadenas o null. Admiten `unit`,
 tipados y `priceCurrency`. El lote de variantes se aplica completo o no escribe nada.
 Un reintento devuelve los productos del recibo original, aunque luego cambie su stock;
 reutilizar el ID con otro contenido o duplicar una identidad devuelve 409.
-Cada modelo es actualmente un lote de SKU: la API permite añadir variantes únicas a los
-mismos tipo/modelo; todavía no existe una entidad persistente de familia configurable.
+La API permite añadir variantes únicas a los mismos tipo/modelo. Las familias configurables
+tienen esquemas persistidos y versionados; la revisión congela los atributos tipados usados
+por cada SKU para evitar cambios de significado entre preparación y confirmación.
 `npm run test:inventory-create-ui` verifica altas, reintentos y recuperación del panel.
 Los pedidos ya ejecutan sus efectos en ese núcleo. POST `/api/pedidos` requiere
 `operationId`; PUT y DELETE también `expectedRevision`. Marcar conseguido suma al SKU
@@ -69,8 +78,9 @@ para cargar saldo usá un cargo explícito, y para corregirlo un ajuste con revi
 `POST /api/clients/merge` requiere `operationId`, `expectedKeepRevision` y
 `expectedMergeRevision`: transfiere deuda, pedidos y notas en la misma transacción, con
 replay aun después de borrar el origen. No se elimina un cliente con saldo o pedidos.
-`npm run test:client-account-ui` verifica la fusión recuperable. Lotes que mezclan dominios
-todavía se rechazan enteros; el intérprete universal y esquemas configurables siguen pendientes.
+`npm run test:client-account-ui` verifica la fusión recuperable. El contrato universal ejecuta
+lotes mixtos de inventario, cuentas y pedidos en una transacción; el intérprete propone y
+consulta, y el backend autoriza y exige revisión/confirmación antes de mutar.
 
 Antes de desplegar: configurar `META_APP_SECRET` (firma POST Meta) y, en producción,
 `AUTH_JWT_SECRET` privado de al menos 32 bytes. `/api/health` publica readiness y el SHA
@@ -82,11 +92,11 @@ ERP voice-first para stock y cuentas corrientes. Convierte audio o texto en acci
 ## Qué incluye
 
 - Simulador de WhatsApp flotante y desplegable.
-- Parsing de voz con Whisper para transcripción y Gemini (con fallback Groq) para estructurar acciones.
+- Transcripción privada compartida entre panel y WhatsApp; interpretación universal con Gemini/Groq.
 - Dashboard con resumen, stock real, ABM de productos y eventos de WhatsApp.
 - Backend Express para estado, persistencia y webhook de Meta WhatsApp Cloud API.
 - Persistencia en PostgreSQL conectada a Supabase o a un `DATABASE_URL` compatible.
-- Creación automática de productos cuando no hay match suficiente.
+- Altas propuestas con identidad explícita y confirmación; ambigüedades requieren aclaración.
 
 ## Arranque rápido
 
@@ -149,7 +159,9 @@ El webhook principal es `GET/POST /api/meta-webhook` y el backend también expon
 
 - `GET /api/health`
 - `GET /api/state`
-- `POST /api/state/apply`
+- `POST /api/operations`
+- `POST /api/operation-drafts`
+- `POST /api/operations/recovery` (solo lectura de recibos históricos)
 - `GET /api/meta-events`
 
 La URL pública que imprime ngrok es la que debes cargar en Meta.

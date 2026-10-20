@@ -10,9 +10,10 @@
 - Producción NO verificada. H5 inicial: Gemini real 10/10 casos; Meta y PostgreSQL con
   conexión comprobada. Migración remota universal aplicada y verificada; datos existentes
   preservados. Usuario dispensó backup explícitamente. Audio real aún sin clave configurada.
-- Último alcance integrado: H4.5e, retiro del parser del navegador/endpoint antiguo y
-  transcripción privada compartida. H4.5d2 WhatsApp/conjuntos `3c51c65`, panel/consultas
-  `bf8e2c1`; familias H4.6b2 y cambios del usuario preservados. Ver git log para cierre audio.
+- Último alcance: H5c, retiro de consumidores/escritores legacy en producción. Formularios
+  manuales usan OperationPlan universal; propuestas antiguas solo consultan recibos o pasan
+  explícitamente a nueva revisión. WhatsApp conserva replay histórico sin reanudar escritores.
+  H5b/migración `dd7c463`; H4.5e/audio `384b8ff`; familias y cambios del usuario preservados.
 - Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; b1 en `e22a459` y H4.6a en `0f084ec` (last version).
 
 ## Hitos y dependencias
@@ -23,7 +24,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para todas las operaciones de inventario; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | Entrada ordinaria, consultas y drafts/patches compartidos verificados localmente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Implementación local integrada; compatibilidad histórica al mismo núcleo conservada hasta piloto H5 |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Implementado; escritores legacy retirados, recuperación histórica de solo lectura |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Gemini y migración remota verificados; audio, despliegue y piloto pendientes |
 
 ## Contratos y decisiones
@@ -48,10 +49,11 @@
 
 - Referencia inicial: motor 48; PostgreSQL aislado 42; audio largo y borrados aprobados.
   Los dos fallos históricos de presentación de River quedaron corregidos el 2026-10-18;
-  ver cierre al final del registro. Última validación integrada: 323 PG/HTTP, 151 puras,
+  ver cierre al final del registro. Última validación integrada: 335 PG/HTTP, 154 puras,
   10 casos sintéticos del evaluador, 50 regresiones del motor y build aprobados.
-  Edge chat/audio, revisión universal y recuperación legacy aprobados al cierre H4.5e;
-  familias aprobadas en su hito. Proveedores reales sin configurar.
+  Edge chat/audio, revisión universal, recuperación histórica e ingresos/ventas manuales
+  aprobados al cierre H5c; familias aprobadas en su hito. Gemini real 10/10 en H5 inicial;
+  audio real sigue pendiente de clave.
 - Cada hito: pruebas puras/contratos, PG temporal cuando aplica, regresiones de consumidores,
   estado final y respuesta. Build/typecheck no sustituyen integración.
 - Migración PostgreSQL aditiva/repetible, probada en base temporal antes de producción.
@@ -71,8 +73,11 @@ Gemini ya completó
 el corpus de 10 casos tras corregir instrucciones; mantener ese resultado como muestra
 acotada, no como aceptación del piloto. Completar después login/webhook y envío real Meta,
 despliegue SHA/readiness y piloto texto/audio con confirmación/reintento en entorno aislado.
-Tras el piloto y sin propuestas/lotes antiguos pendientes, retirar adaptadores históricos
-de /api/state/apply y reanudación legacy. Hoy usan el mismo núcleo; no son otro escritor.
+Por autorización posterior del usuario, H5c ya retiró /api/state/apply y la reanudación
+legacy del runtime. No volver a habilitarlos para recuperar propuestas: usar lectura del
+recibo histórico y, solo si no existe, nueva revisión universal explícita. Los módulos
+anteriores conservados son fixtures/regresiones fuera del camino productivo. Revisar
+SHA/readiness del despliegue para comprobar que este retiro está activo en el entorno real.
 El usuario configuró .env.local y confirmó que la base contiene datos reales. Autorizó
 continuar sin backup: migración acotada confirmada, datos preservados. Smoke de borrador
 real dentro de una transacción revertida; no hubo mensajes enviados. No desplegar
@@ -897,3 +902,45 @@ ni confundir conexiones API con aceptación del piloto. No reauditar ni duplicar
 - Comandos recuperables: npm run db:check:universal y npm run db:migrate:universal. No
   repetir bootstrap ni migrar otra base por inferencia. Pendiente H5: audio con clave,
   entrada/salida Meta y login desde despliegue, SHA/readiness y piloto completo.
+
+### H5c — retiro de ejecución legacy autorizado (2026-10-19)
+
+- Usuario solicitó retirar la compatibilidad restante. Inspección remota de solo lectura:
+  cero lotes legacy pendientes y cero selecciones vigentes. No se cambió el esquema ni
+  se borraron datos reales; las propuestas guardadas en navegadores se recuperan aparte.
+- /api/state/apply y configuración voice-stock-batches devuelven 410 con autenticación;
+  /api/voice/parse continúa retirado. El runtime ya no llama applyActionsToDatabase,
+  processStockBatchMessage, resumeMetaInventorySelection ni comandos de selección Meta.
+  Se retiraron sus consumidores del store/chat y VOICE_STOCK_BATCHES_MODE del ejemplo.
+- Ingresos/ventas manuales usan /api/operations, SKU/revisión/fingerprint/unidad explícitos
+  y validación del recibo persistido. Intento durable antes de HTTP, aislado por negocio,
+  actor y tipo de movimiento. Recarga o catálogo cambiado conservan cuerpo/ID; recibo
+  reconocido + fallo de refresco solo reintenta GET. Cuota/DTO inválido impiden el envío.
+  Tras un resultado incierto, un 4xx posterior tampoco autoriza reemplazar su referencia.
+- /api/operations/recovery consulta en transacción REPEATABLE READ READ ONLY recibos
+  históricos de inventario/cuentas/pedidos. Revalida permisos, negocio, actor y hash
+  original; conflictos, ambigüedad o recibos incompletos conservan la propuesta sin efectos.
+  El panel archiva solo tras verificar aplicación o copiar duraderamente el texto hacia
+  una nueva revisión explícita. No sobrescribe revisiones actuales ni pierde originales
+  ante falta de espacio. No se reejecutan acciones guardadas ni se resuelven nombres.
+- WhatsApp reproduce hechos/recibos ya aplicados sin catálogo/proveedor. Un lote ready
+  anterior ya no se finaliza. Preguntas históricas y BAJA/CAMBIO/AJUSTE, incluso códigos
+  inválidos, reciben rechazo terminal idempotente con instrucción de nueva revisión.
+  Una conversación vieja no captura solicitudes ordinarias nuevas. Avisos usan outbox
+  con ID derivado del backend; preguntas pendientes vinculadas pasan a retired sin
+  fingir envío ni cambiar texto/IDs del proveedor. Comando y aviso comparten transacción.
+- Revisión independiente detectó una segunda fila de outbox si el proceso caía después
+  de guardar meta_events pero antes de completar el claim. Corregido conservando el
+  replyEventId también en ese replay; regresión HTTP firmada verifica una sola respuesta.
+- Verificado: 335 checks PostgreSQL/HTTP en base temporal aislada y 154 pruebas puras;
+  build y Edge ingresos, ventas, recuperación histórica, chat/audio y revisión universal
+  aprobados. Incluye fallos de red, recibos inválidos, recarga, cuotas, aislamiento,
+  cambios de catálogo y recuperación de confirmación aplicada sin repetir escrituras.
+- Módulos/parsers anteriores conservados únicamente para fixtures y regresiones offline;
+  no se purgaron recibos, movimientos, lotes ni selecciones históricas. No equivalen a
+  consumidores activos ni a un fallback productivo. Su eliminación física futura requiere
+  reemplazar esos fixtures; no es necesaria para deshabilitar las escrituras retiradas.
+- No se desplegó ni envió WhatsApp real. Al desplegar, reemplazar todas las instancias de
+  la versión anterior antes de ofrecer recuperación/nuevas revisiones; una instancia vieja
+  aún podría aceptar sus rutas. Verificar SHA/readiness. Pendientes externos de H5 siguen
+  siendo audio con clave, login/entrada/salida Meta reales y piloto; no rehacer auditoría.

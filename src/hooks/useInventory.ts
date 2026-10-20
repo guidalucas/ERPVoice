@@ -1,6 +1,7 @@
 import { useAppStore } from '../store/AppStore';
+import { useAuth } from '../store/AuthStore';
 import {
-  applyStateActions,
+  executeManualInventoryOperation,
   createClient,
   createPedido,
   createProduct,
@@ -23,11 +24,12 @@ import {
   updateProductModel,
   updateProveedor,
 } from '../services/productService';
-import type { Client, ParsedActionUnion, Pedido, PedidoEstado, Product, Proveedor } from '../domain/types';
-import type { InventorySelectionReference, ProductAdjustment, ProductCreation, ProductInput, ProductModelInput } from '../services/productService';
+import type { Client, Pedido, PedidoEstado, Product, Proveedor } from '../domain/types';
+import type { ManualInventoryOperation, InventorySelectionReference, ProductAdjustment, ProductCreation, ProductInput, ProductModelInput } from '../services/productService';
 
 export const useInventory = () => {
-  const { state, confirmPendingProposal, clearPendingProposal, hydratePersistedState } = useAppStore();
+  const { state, hydratePersistedState } = useAppStore();
+  const { session } = useAuth();
 
   const hydrateFromSnapshot = (snapshot: {
     products: Product[];
@@ -50,9 +52,10 @@ export const useInventory = () => {
     hydrateFromSnapshot(snapshot);
   };
 
-  const applyActions = async (sourceText: string, actions: ParsedActionUnion[], operationId?: string) => {
-    const snapshot = await applyStateActions(sourceText, actions, operationId);
-    hydrateFromSnapshot(snapshot);
+  const executeManualMovement = async (operation: Omit<ManualInventoryOperation, 'contractVersion' | 'businessId'>) => {
+    if (!session?.tenantPhone) throw new Error('Iniciá sesión para registrar el movimiento.');
+    // Acknowledgement and read refresh are separate: a refresh retry must never repeat a committed write.
+    await executeManualInventoryOperation({ ...operation, contractVersion: 1, businessId: session.tenantPhone });
   };
 
   const confirmInventorySelectionRecord = async (reference: InventorySelectionReference) => {
@@ -192,11 +195,8 @@ export const useInventory = () => {
     proveedores: state.proveedores,
     pedidos: state.pedidos,
     transactions: state.transactions,
-    pendingProposal: state.pendingProposal,
-    confirmPendingProposal,
-    clearPendingProposal,
     refreshState,
-    applyActions,
+    executeManualMovement,
     createProductRecord,
     createProductModelRecords,
     updateProductRecord,

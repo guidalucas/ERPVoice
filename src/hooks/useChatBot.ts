@@ -1,27 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ParsedActionUnion } from '../domain/types';
-import { useBusinessCategoryPreset } from './useBusinessCategoryPreset';
+import { useEffect, useRef, useState } from 'react';
 import { voiceModelService } from '../services/voiceModelService';
 import { createChatMessage, useAppStore } from '../store/AppStore';
 import { useAuth } from '../store/AuthStore';
 import { toUserFacingError } from '../services/apiClient';
 
-const formatProductMeta = (
-  action: { productType?: string; productModel?: string; size?: string; productName: string },
-  includeSize: boolean,
-) => {
-  const parts = [action.productType, action.productModel, includeSize ? action.size : undefined].filter(
-    (value): value is string => Boolean(value),
-  );
-
-  return parts.length ? `${parts.join(' / ')} -> ${action.productName}` : action.productName;
-};
-
 export const useChatBot = (onUniversalText: (text: string) => void) => {
-  const { state, addChatMessage, confirmPendingProposal, clearPendingProposal } = useAppStore();
+  const { state, addChatMessage } = useAppStore();
   const { session } = useAuth();
   const storageKey = session ? 'universal-chat-input:' + JSON.stringify([session.tenantPhone, session.phoneNumber]) : null;
-  const preset = useBusinessCategoryPreset();
   const [draftText, setDraftTextState] = useState('');
   const [inputStorageError, setInputStorageError] = useState('');
   const isProcessing = false;
@@ -29,7 +15,6 @@ export const useChatBot = (onUniversalText: (text: string) => void) => {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
-  const isConfirmingRef = useRef(false);
   const scope = useRef(storageKey);
   scope.current = storageKey;
   const mounted = useRef(true);
@@ -83,177 +68,6 @@ export const useChatBot = (onUniversalText: (text: string) => void) => {
       }
     };
   }, []);
-
-  const pendingActionsText = useMemo(() => {
-    if (!state.pendingProposal) {
-      return [];
-    }
-
-    const uniqueNames = (items: Extract<ParsedActionUnion, { type: 'client_order' }>[], field: 'clientName' | 'proveedorName') => {
-      const names: string[] = [];
-      for (const item of items) {
-        const name = item[field]?.trim() || '';
-        if (name && !names.some((entry) => entry.toLowerCase() === name.toLowerCase())) {
-          names.push(name);
-        }
-      }
-      return names;
-    };
-
-    const formatOrderHeader = (items: Extract<ParsedActionUnion, { type: 'client_order' }>[]) => {
-      const clients = uniqueNames(items, 'clientName');
-      const proveedores = uniqueNames(items, 'proveedorName');
-      if (clients.length === 1 && proveedores.length === 1) {
-        return `Pedido de ${clients[0]} · proveedor ${proveedores[0]}`;
-      }
-      if (clients.length === 1) {
-        return `Pedido de ${clients[0]}`;
-      }
-      if (proveedores.length === 1) {
-        return `Pedido al proveedor ${proveedores[0]}`;
-      }
-      return 'Pedido';
-    };
-
-    const formatOrderItem = (
-      action: Extract<ParsedActionUnion, { type: 'client_order' }>,
-      includeProveedor: boolean,
-    ) => {
-      const qty = action.qty && action.qty > 0 ? action.qty : 1;
-      const sizeLabel =
-        preset.useVariants && action.size && preset.variantLabel
-          ? ` ${preset.variantLabel.toLowerCase()} ${action.size}`
-          : '';
-      const proveedorLabel =
-        includeProveedor && action.proveedorName?.trim() ? ` · proveedor ${action.proveedorName.trim()}` : '';
-      return `${qty} ${action.productName}${sizeLabel}${proveedorLabel}`;
-    };
-
-    const lines: string[] = [];
-    let orderBuffer: Extract<ParsedActionUnion, { type: 'client_order' }>[] = [];
-    let otherIndex = 0;
-
-    const flushOrders = () => {
-      if (!orderBuffer.length) {
-        return;
-      }
-
-      const groups = new Map<string, { items: typeof orderBuffer }>();
-      for (const action of orderBuffer) {
-        const clientName = action.clientName?.trim() || '';
-        const proveedorName = action.proveedorName?.trim() || '';
-        const key = clientName
-          ? `client:${clientName.toLowerCase()}`
-          : proveedorName
-            ? `proveedor:${proveedorName.toLowerCase()}`
-            : 'pedido';
-        const current = groups.get(key) ?? { items: [] };
-        current.items.push(action);
-        groups.set(key, current);
-      }
-
-      for (const group of groups.values()) {
-        const includeProveedor = uniqueNames(group.items, 'proveedorName').length > 1;
-        lines.push(formatOrderHeader(group.items));
-        for (const item of group.items) {
-          lines.push(`• ${formatOrderItem(item, includeProveedor)}`);
-        }
-      }
-      orderBuffer = [];
-    };
-
-    const nextOtherIndex = () => {
-      otherIndex += 1;
-      return otherIndex;
-    };
-
-    for (const action of state.pendingProposal.actions) {
-      if (action.type === 'client_order') {
-        orderBuffer.push(action);
-        continue;
-      }
-
-      flushOrders();
-
-      if (action.type === 'add_stock') {
-        lines.push(`${nextOtherIndex()}. add_stock -> ${formatProductMeta(action, preset.useVariants)} (+${action.qty})`);
-        continue;
-      }
-
-      if (action.type === 'reserve_stock') {
-        lines.push(`${nextOtherIndex()}. reserve_stock -> ${formatProductMeta(action, preset.useVariants)} (-${action.qty})`);
-        continue;
-      }
-
-      if (action.type === 'sell') {
-        lines.push(`${nextOtherIndex()}. sell -> ${formatProductMeta(action, preset.useVariants)} (-${action.qty})`);
-        continue;
-      }
-
-      if (action.type === 'payment_received') {
-        lines.push(`${nextOtherIndex()}. payment_received -> ${action.clientName} (-$${action.amount.toLocaleString('es-AR')})`);
-        continue;
-      }
-
-      if (action.type === 'query_stock') {
-        lines.push(`${nextOtherIndex()}. query_stock -> ${formatProductMeta(action, preset.useVariants)}`);
-        continue;
-      }
-
-      if (action.type === 'query_pedidos') {
-        const estado = action.estado && action.estado !== 'todos' ? action.estado : 'pendientes';
-        const scope = action.clientName
-          ? ` de ${action.clientName}`
-          : action.proveedorName
-            ? ` del proveedor ${action.proveedorName}`
-            : '';
-        lines.push(`${nextOtherIndex()}. query_pedidos -> ${estado}${scope}`);
-        continue;
-      }
-
-      if (action.type === 'update_product') {
-        const parts = [];
-        if (Number.isFinite(action.price) && (action.price ?? 0) > 0) {
-          parts.push(`precio $${Number(action.price).toLocaleString('es-AR')}`);
-        }
-        if (Number.isFinite(action.stockAvailable ?? NaN)) {
-          parts.push(`stock ${action.stockAvailable}`);
-        }
-        lines.push(`${nextOtherIndex()}. update_product -> ${action.productName}${parts.length ? ` (${parts.join(', ')})` : ''}`);
-        continue;
-      }
-
-      if (action.type === 'update_pedido') {
-        const parts = [];
-        if (Number.isFinite(action.qty ?? NaN) && (action.qty ?? 0) > 0) {
-          parts.push(`qty ${action.qty}`);
-        }
-        if (action.size) {
-          parts.push(`${(preset.variantLabel ?? 'variante').toLowerCase()} ${action.size}`);
-        }
-        if (action.estado) {
-          parts.push(action.estado);
-        }
-        lines.push(`${nextOtherIndex()}. update_pedido -> ${action.productName}${parts.length ? ` (${parts.join(', ')})` : ''}`);
-        continue;
-      }
-
-      if (action.type === 'delete_pedido') {
-        lines.push(`${nextOtherIndex()}. delete_pedido -> ${action.productName}`);
-        continue;
-      }
-
-      if (action.type === 'delete_product') {
-        lines.push(`${nextOtherIndex()}. delete_product -> ${action.productName === '*' ? 'todo el inventario' : action.productName}`);
-        continue;
-      }
-
-      lines.push(`${nextOtherIndex()}. add_debt -> ${action.clientName} (+$${action.amount.toLocaleString('es-AR')})`);
-    }
-
-    flushOrders();
-    return lines;
-  }, [state.pendingProposal, preset.useVariants, preset.variantLabel]);
 
   const processText = (inputText: string) => {
     const trimmed = inputText.trim();
@@ -351,40 +165,15 @@ export const useChatBot = (onUniversalText: (text: string) => void) => {
     await startRecording();
   };
 
-  const onConfirm = async () => {
-    if (!state.pendingProposal || isConfirmingRef.current) {
-      return;
-    }
-
-    isConfirmingRef.current = true;
-    try {
-      await confirmPendingProposal();
-      addChatMessage(createChatMessage('bot', 'Transacción confirmada y aplicada al estado global.'));
-    } catch (error) {
-      addChatMessage(createChatMessage('bot', `${toUserFacingError(error, 'No se pudo confirmar la transacción.')} Podés volver a confirmar la propuesta.`));
-    } finally {
-      isConfirmingRef.current = false;
-    }
-  };
-
-  const onCancel = () => {
-    clearPendingProposal();
-    addChatMessage(createChatMessage('bot', 'Propuesta descartada. Podés editar el texto y reenviarlo.'));
-  };
-
   return {
     messages: state.chatMessages,
     draftText,
     inputStorageError,
     setDraftText,
-    pendingProposal: state.pendingProposal,
-    pendingActionsText,
     isProcessing,
     isRecording,
     isTranscribing,
     sendText,
     toggleRecording,
-    onConfirm,
-    onCancel,
   };
 };
