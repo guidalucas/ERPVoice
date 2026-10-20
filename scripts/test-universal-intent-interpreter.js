@@ -314,6 +314,7 @@ test('clarification questions resolve conversational references but never become
   data.evidence[0].quote='Sí';
   assert.equal((await invoke(data,{sourceText:'Ingresó mercadería.\nSí',clarifications})).kind,'ready');
 });
+
 test('size clarification without a plan accepts the complete batch and keeps prices and variants',async()=>{
   const original='Ingresá una unidad de cada SKU nuevo: camiseta City suplente 2025, camiseta River titular 2025 y camiseta Barcelona titular 2025 manga larga. Todas versión jugador. Las primeras cuestan 65000 ARS y la manga larga 70000 ARS.';
   const reply='Talle L',text=`${original}\n${reply}`;
