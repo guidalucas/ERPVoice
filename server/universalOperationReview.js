@@ -1,5 +1,22 @@
 // Presentation of a normalized proposal and its backend snapshot. This module
 // neither predicts effects nor resolves identities or authorizes execution.
+import { InventoryOperationError } from './inventoryOperations.js';
+
+/** A review must cover every normalized action exactly once, in plan order. */
+export function validateUniversalOperationReview(plan, review) {
+  const invalid = () => { throw new InventoryOperationError('INVALID_DRAFT_REQUEST','La revisión completa de la operación no es válida.'); };
+  if (!plan || !Array.isArray(plan.actions) || !plan.actions.length || !Array.isArray(review)) invalid();
+  const ids=plan.actions.map(action=>action?.itemId);
+  if (ids.some(id=>typeof id!=='string' || !id) || new Set(ids).size!==ids.length || review.length!==ids.length) invalid();
+  for (let index=0;index<review.length;index++) {
+    const item=review[index];
+    if (!item || typeof item!=='object' || item.itemId!==ids[index]
+      || typeof item.title!=='string' || !item.title.trim() || !Array.isArray(item.details)
+      || item.details.some(line=>typeof line!=='string' || !line.trim())) invalid();
+  }
+  return review;
+}
+
 const labels={name:'Nombre',productType:'Tipo',productModel:'Modelo',size:'Variante',talle:'Variante',unit:'Unidad',
   price:'Precio',priceCurrency:'Moneda',notas:'Notas',producto:'Descripción',qty:'Cantidad',estado:'Estado',
   clienteId:'Cliente',proveedorId:'Proveedor',productId:'Producto',reason:'Motivo',available:'Disponible',reserved:'Reservado',

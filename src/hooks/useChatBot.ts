@@ -1,60 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
-import type { ParsedVoicePayload, ParsedActionUnion } from '../domain/types';
-import { answerPedidosQuery } from '../domain/pedidoQuery';
-import { answerStockQuery } from '../domain/stockQuery';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ParsedActionUnion } from '../domain/types';
 import { useBusinessCategoryPreset } from './useBusinessCategoryPreset';
 import { voiceModelService } from '../services/voiceModelService';
 import { createChatMessage, useAppStore } from '../store/AppStore';
+import { useAuth } from '../store/AuthStore';
 import { toUserFacingError } from '../services/apiClient';
-
-const buildBotMessage = (payloadCount: number) => {
-  if (!payloadCount) {
-    return 'No encontré acciones claras. Probá otra frase.';
-  }
-
-  if (payloadCount === 1) {
-    return 'Detecté una acción. Revisala y confirmá si está correcta.';
-  }
-
-  return 'Detecté varias acciones. Revisalas y confirmá si están correctas.';
-};
-
-const buildMissingFieldsMessage = (fields: string[]) => `Me faltan estos datos: ${fields.join(', ')}. Probá de nuevo con más detalle.`;
-
-const resolveMissingFields = (payload: ParsedVoicePayload) => {
-  const missingFields = payload.missingFields ?? [];
-
-  if (!missingFields.length) {
-    return [];
-  }
-
-  const hasSellAction = payload.actions.some((action) => action.type === 'sell');
-  const hasResolvableDebt = payload.actions.some(
-    (action) => action.type === 'add_debt' && typeof action.productName === 'string' && typeof action.qty === 'number',
-  );
-
-  return missingFields.filter((field) => {
-    const normalized = normalizeText(field);
-
-    if (/(precio\s+unitario|unitario|precio\s+de\s+venta|valor\s+unitario)/u.test(normalized)) {
-      return !(hasSellAction || hasResolvableDebt);
-    }
-
-    return true;
-  });
-};
-
-const normalizeText = (value: string) =>
-  value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '');
-
-const tokenize = (value: string) =>
-  normalizeText(value)
-    .split(/\s+/)
-    .map((token) => token.replace(/[^a-z0-9]/g, ''))
-    .filter((token) => token.length > 2 && !['para', 'con', 'del', 'las', 'los', 'una', 'uno', 'por', 'les'].includes(token));
 
 const formatProductMeta = (
   action: { productType?: string; productModel?: string; size?: string; productName: string },
@@ -67,93 +17,72 @@ const formatProductMeta = (
   return parts.length ? `${parts.join(' / ')} -> ${action.productName}` : action.productName;
 };
 
-const resolveProduct = (products: { name: string; price: number }[], actionName: string) => {
-  const actionTokens = tokenize(actionName);
-
-  if (!actionTokens.length) {
-    return null;
-  }
-
-  let bestProduct: { name: string; price: number } | undefined;
-  let bestScore = 0;
-
-  for (const product of products) {
-    const productTokens = tokenize(product.name);
-    const score = actionTokens.filter((token) => productTokens.includes(token)).length;
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestProduct = product;
-    }
-  }
-
-  return bestProduct ?? null;
-};
-
-const resolveDebtAmount = (products: { name: string; price: number }[], action: ParsedActionUnion) => {
-  if (action.type !== 'add_debt') {
-    return null;
-  }
-
-  if (!action.productName || typeof action.qty !== 'number') {
-    return null;
-  }
-
-  const product = resolveProduct(products, action.productName);
-
-  if (!product) {
-    return null;
-  }
-
-  return product.price * action.qty;
-};
-
-const enrichProposal = (payload: ParsedVoicePayload, products: { name: string; price: number }[]): ParsedVoicePayload => {
-  const lastSellAction = [...payload.actions].reverse().find((action) => action.type === 'sell');
-
-  return {
-    ...payload,
-    actions: payload.actions.map((action) => {
-      if (action.type === 'add_debt') {
-        const debtAmount = resolveDebtAmount(products, action);
-
-        if (debtAmount !== null) {
-          return {
-            ...action,
-            amount: debtAmount,
-          } as ParsedActionUnion;
-        }
-
-        if (!lastSellAction) {
-          return action;
-        }
-
-        const soldProduct = resolveProduct(products, lastSellAction.productName);
-
-        if (!soldProduct) {
-          return action;
-        }
-
-        return {
-          ...action,
-          amount: soldProduct.price * lastSellAction.qty,
-        } as ParsedActionUnion;
-      }
-      return action;
-    }),
-  };
-};
-
-export const useChatBot = () => {
-  const { state, addChatMessage, setPendingProposal, confirmPendingProposal, clearPendingProposal } = useAppStore();
+export const useChatBot = (onUniversalText: (text: string) => void) => {
+  const { state, addChatMessage, confirmPendingProposal, clearPendingProposal } = useAppStore();
+  const { session } = useAuth();
+  const storageKey = session ? 'universal-chat-input:' + JSON.stringify([session.tenantPhone, session.phoneNumber]) : null;
   const preset = useBusinessCategoryPreset();
-  const [draftText, setDraftText] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [draftText, setDraftTextState] = useState('');
+  const [inputStorageError, setInputStorageError] = useState('');
+  const isProcessing = false;
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const isConfirmingRef = useRef(false);
+  const scope = useRef(storageKey);
+  scope.current = storageKey;
+  const mounted = useRef(true);
+  const busy = useRef(false);
+  const callback = useRef(onUniversalText);
+  callback.current = onUniversalText;
+  const setDraftText = (text: string) => {
+    setDraftTextState(text);
+    if (!storageKey) return false;
+    try {
+      // Persist before handing the source to review; keep failures editable in memory.
+      localStorage.setItem(storageKey, text);
+      setInputStorageError('');
+      return true;
+    } catch {
+      setInputStorageError('No pudimos guardar tu mensaje. Lo conservamos en pantalla; reintentá enviarlo cuando el almacenamiento esté disponible.');
+      return false;
+    }
+  };
+  useEffect(() => {
+    try {
+      setDraftTextState(storageKey ? localStorage.getItem(storageKey) ?? '' : '');
+      setInputStorageError('');
+    } catch {
+      setDraftTextState('');
+      setInputStorageError('No pudimos recuperar tu mensaje guardado. Revisá el almacenamiento del navegador y volvé a intentarlo.');
+    }
+    busy.current = false;
+    setIsRecording(false);
+    setIsTranscribing(false);
+    return () => {
+      const recorder = mediaRecorderRef.current;
+      if (!recorder) return;
+      recorder.onstop = null;
+      recorder.ondataavailable = null;
+      if (recorder.state !== 'inactive') recorder.stop();
+      recorder.stream.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current = null;
+    };
+  }, [storageKey]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      const recorder = mediaRecorderRef.current;
+      if (recorder) {
+        recorder.onstop = null;
+        recorder.ondataavailable = null;
+        if (recorder.state !== 'inactive') recorder.stop();
+        recorder.stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
   const pendingActionsText = useMemo(() => {
     if (!state.pendingProposal) {
@@ -326,113 +255,22 @@ export const useChatBot = () => {
     return lines;
   }, [state.pendingProposal, preset.useVariants, preset.variantLabel]);
 
-  const processText = async (inputText: string) => {
+  const processText = (inputText: string) => {
     const trimmed = inputText.trim();
-
-    if (!trimmed || isProcessing || isRecording || isTranscribing) {
-      return;
-    }
-
-    setIsProcessing(true);
-
-    const userMessage = createChatMessage('user', trimmed);
-
-    addChatMessage(userMessage);
-
-    let parsed;
-
-    try {
-      parsed = await voiceModelService.parseVoiceText(trimmed);
-    } catch {
-      parsed = null;
-    }
-
-    if (!parsed) {
-      addChatMessage(createChatMessage('bot', 'No pude interpretar el audio o el texto. Probá de nuevo.'));
-      setDraftText('');
-      setIsProcessing(false);
-      return;
-    }
-
-    const enrichedParsed = enrichProposal(parsed, state.products);
-    const resolvedMissingFields = resolveMissingFields(enrichedParsed);
-
-    if (resolvedMissingFields.length) {
-      addChatMessage(createChatMessage('bot', buildMissingFieldsMessage(resolvedMissingFields)));
-      setDraftText('');
-      setIsProcessing(false);
-      return;
-    }
-
-    if (!enrichedParsed.actions.length) {
-      addChatMessage(createChatMessage('bot', buildBotMessage(0)));
-      setDraftText('');
-      setIsProcessing(false);
-      return;
-    }
-
-    const isReadOnlyAction = (action: ParsedActionUnion) =>
-      action.type === 'query_stock' || action.type === 'query_pedidos';
-    const queryActions = enrichedParsed.actions.filter(isReadOnlyAction);
-    const mutationActions = enrichedParsed.actions.filter((action) => !isReadOnlyAction(action));
-
-    if (queryActions.length) {
-      const answerText = queryActions
-        .map((action) => {
-          if (action.type === 'query_pedidos') {
-            return answerPedidosQuery(state.pedidos, state.clients, state.proveedores, action, {
-              variantLabel: preset.variantLabel,
-            });
-          }
-
-          return answerStockQuery(
-            state.products,
-            {
-              productName: action.productName,
-              productType: action.productType,
-              productModel: action.productModel,
-              size: action.size,
-            },
-            { variantLabel: preset.variantLabel },
-          );
-        })
-        .join('\n\n');
-      addChatMessage(createChatMessage('bot', answerText));
-    }
-
-    if (!mutationActions.length) {
-      setDraftText('');
-      setIsProcessing(false);
-      return;
-    }
-
-    const mutationProposal: ParsedVoicePayload = {
-      ...enrichedParsed,
-      intent: mutationActions.length > 1 ? 'mixed' : (mutationActions[0]!.type as ParsedVoicePayload['intent']),
-      requiresConfirmation: true,
-      actions: mutationActions,
-    };
-
-    const botMessage = createChatMessage('bot', buildBotMessage(mutationProposal.actions.length), mutationProposal);
-
-    addChatMessage(botMessage);
-    setPendingProposal(mutationProposal);
-    setIsProcessing(false);
+    if (!trimmed || !storageKey || !mounted.current || scope.current !== storageKey) return;
+    // Transcribed audio and typed text enter the same server-backed review.
+    if (!setDraftText(trimmed)) return;
+    addChatMessage(createChatMessage('user', trimmed));
+    callback.current(trimmed);
   };
 
   const sendText = async () => {
-    const trimmed = draftText.trim();
-
-    if (!trimmed || isProcessing || isRecording || isTranscribing) {
-      return;
-    }
-
-    await processText(trimmed);
-    setDraftText('');
+    if (busy.current || isProcessing || isRecording || isTranscribing) return;
+    processText(draftText);
   };
 
   const startRecording = async () => {
-    if (isProcessing || isRecording || isTranscribing) {
+    if (busy.current || isProcessing || isRecording || isTranscribing) {
       return;
     }
 
@@ -441,8 +279,11 @@ export const useChatBot = () => {
       return;
     }
 
+    busy.current = true;
+    const recordingScope = storageKey;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mounted.current || scope.current !== recordingScope) { stream.getTracks().forEach(track => track.stop()); busy.current = false; return; }
       const recorder = new MediaRecorder(stream);
 
       audioChunksRef.current = [];
@@ -457,6 +298,7 @@ export const useChatBot = () => {
       recorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
         mediaRecorderRef.current = null;
+        if (!mounted.current || scope.current !== recordingScope) { busy.current = false; return; }
         setIsRecording(false);
         setIsTranscribing(true);
 
@@ -464,14 +306,18 @@ export const useChatBot = () => {
           const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
           const transcript = await voiceModelService.transcribeAudio(audioBlob);
 
+          if (!mounted.current || scope.current !== recordingScope) return;
           if (!transcript) {
             addChatMessage(createChatMessage('bot', 'No pude transcribir el audio. Probá de nuevo.'));
             return;
           }
 
-          await processText(transcript);
+          processText(transcript);
+        } catch (error) {
+          if (mounted.current && scope.current === recordingScope) addChatMessage(createChatMessage('bot', toUserFacingError(error, 'No pude transcribir el audio. Probá de nuevo.')));
         } finally {
-          setIsTranscribing(false);
+          busy.current = false;
+          if (mounted.current && scope.current === recordingScope) setIsTranscribing(false);
         }
       };
 
@@ -479,6 +325,8 @@ export const useChatBot = () => {
       setIsRecording(true);
       addChatMessage(createChatMessage('bot', 'Grabando audio. Tocá detener para procesarlo.'));
     } catch {
+      busy.current = false;
+      if (!mounted.current || scope.current !== recordingScope) return;
       addChatMessage(createChatMessage('bot', 'No pude acceder al micrófono. Revisá permisos del navegador.'));
       setIsRecording(false);
       setIsTranscribing(false);
@@ -527,6 +375,7 @@ export const useChatBot = () => {
   return {
     messages: state.chatMessages,
     draftText,
+    inputStorageError,
     setDraftText,
     pendingProposal: state.pendingProposal,
     pendingActionsText,

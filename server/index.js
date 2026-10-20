@@ -1,14 +1,11 @@
-import { holdUnverifiedStockMessage, processStockBatchMessage } from './voiceStockWorkflow.js';
+import { processStockBatchMessage } from './voiceStockWorkflow.js';
 import { createMetaWebhookSignatureMiddleware, hasMetaWebhookAppSecret } from './metaWebhookSecurity.js';
 import express from 'express';
 import dotenv from 'dotenv';
 import { InventoryOperationError } from './inventoryOperations.js';
-import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
-import { getBusinessCategoryPreset } from './businessCategories.js';
-import { hasProductMatchHold } from './voiceCatalogContext.js';
-import { operationResultActions } from './operationResults.js';
+import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
+import { transcribeAudio, MAX_AUDIO_BYTES, TranscriptionError } from './audioTranscription.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
-import { answerPedidosQuery } from './pedidoQuery.js';
 import {
   createProductRecord,
   createProductModelRecords,
@@ -26,13 +23,14 @@ import {
   publishProductFamily,
   listProductFamilies,
   prepareUniversalDraft,
+  processMetaUniversalMessage,
+  replayCommittedMetaMessage,
   replyUniversalDraft,
   getUniversalDraft,
   confirmUniversalDraft,
   cancelUniversalDraft,
   executeAccountOperation,
   executeOrderOperation,
-  answerStockQuery,
   findMetaEventById,
   claimMetaMessage,
   completeMetaMessageClaim,
@@ -59,7 +57,6 @@ import {
   updateProductRecord,
   previewInventorySelection,
   confirmInventorySelection,
-  prepareMetaInventorySelection,
   processMetaInventorySelectionCommand,
   resumeMetaInventorySelection,
   updateProductModelRecords,
@@ -839,7 +836,7 @@ app.get('/api/meta-webhook', (req, res) => {
 
 const universalRequestContext = (req) => ({
   businessId:tenantPhoneOf(req),actorId:authPhoneOf(req),channel:'panel',permissions:[
-    'inventory:read','inventory:schema','inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
+    'inventory:read','orders:read','accounts:read','inventory:schema','inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
     'accounts:charge','accounts:payment','accounts:adjust','accounts:transfer',
     'clients:create','clients:update','clients:delete','suppliers:create','suppliers:update','suppliers:delete','suppliers:merge',
     'orders:create','orders:update','orders:delete','orders:reconcile',
@@ -953,53 +950,27 @@ app.post('/api/state/apply', authenticateRequest, async (req, res) => {
   }
 });
 
-app.post('/api/voice/parse', authenticateRequest, async (req, res) => {
+// The former parsing endpoint cannot create fresh legacy proposals. Existing
+// saved proposals keep their idempotent confirmation adapter, without parsing.
+app.post('/api/voice/parse', authenticateRequest, (_req,res) => {
+  res.status(410).json({code:'LEGACY_INTERPRETER_RETIRED',error:'Prepará la solicitud con la revisión universal de operaciones.'});
+});
+
+const readVoiceAudio=express.raw({type:()=>true,limit:MAX_AUDIO_BYTES});
+app.post('/api/voice/transcribe', authenticateRequest, (req,res,next) => {
+  res.setHeader('Cache-Control','no-store');
+  readVoiceAudio(req,res,error=>{
+    if (error) return res.status(error.type==='entity.too.large' ? 413 : 400)
+      .json({code:error.type==='entity.too.large' ? 'AUDIO_TOO_LARGE' : 'INVALID_AUDIO',error:'El audio no es válido o supera el límite permitido.'});
+    next();
+  });
+}, async (req,res) => {
   try {
-    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-
-    if (!text) {
-      res.status(400).json({ error: 'Texto vacío' });
-      return;
-    }
-
-    const phoneNumber = String(req.auth?.phoneNumber ?? '').trim();
-    const clientPhone = tenantPhoneOf(req);
-    let businessCategory = null;
-    let catalog = null;
-    if (phoneNumber) {
-      try {
-        const profile = await getAuthUserProfile(phoneNumber);
-        businessCategory = profile?.businessCategory ?? null;
-      } catch (error) {
-        console.warn('[voice/parse] failed to load business category:', error instanceof Error ? error.message : error);
-      }
-    }
-
-    if (clientPhone) {
-      try {
-        catalog = await getStateSnapshot(clientPhone);
-      } catch (error) {
-        console.warn('[voice/parse] failed to load catalog:', error instanceof Error ? error.message : error);
-      }
-    }
-
-    const parsed = await parseVoiceText(text, { businessCategory, catalog });
-
-    if (!parsed) {
-      res.json({
-        schemaVersion: 1,
-        sourceText: text,
-        intent: 'unknown',
-        confidence: 0,
-        requiresConfirmation: true,
-        actions: [],
-      });
-      return;
-    }
-
-    res.json(parsed);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    res.json(await transcribeAudio({audio:req.body,contentType:req.get('Content-Type')}));
+  } catch(error) {
+    const typed=error instanceof TranscriptionError;
+    res.status(typed ? error.status : 503).json({code:typed ? error.code : 'TRANSCRIPTION_UNAVAILABLE',
+      error:typed ? error.message : 'No pude transcribir el audio. Intentá de nuevo.'});
   }
 });
 
@@ -1114,10 +1085,17 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       processStockText: async ({ sourceText, businessCategory, metaMessage }) => {
         const scope = {sourceText,ownerPhone:await resolveTenant(metaMessage.fromNumber),senderPhone:metaMessage.fromNumber,
           messageId:metaMessage.messageId ?? createEventId()};
+        const committedReply = await replayCommittedMetaMessage(scope);
+        if (committedReply) return committedReply;
+        const universalReply = await processMetaUniversalMessage(scope);
+        if (universalReply) return universalReply;
         const selectionReply = await processMetaInventorySelectionCommand(scope);
         if (selectionReply) return selectionReply;
         const prepared = await resumeMetaInventorySelection(scope);
-        return prepared ?? processStockBatchMessage({...scope,businessCategory,replyToMessageId:metaMessage.replyToMessageId});
+        if (prepared) return prepared;
+        const legacyBatch = await processStockBatchMessage({...scope,businessCategory,
+          replyToMessageId:metaMessage.replyToMessageId,resumeOnly:true});
+        return legacyBatch ?? processMetaUniversalMessage(scope,{ordinary:true});
       },
       resolveBusinessCategory: async (fromNumber) => {
         try {
@@ -1164,8 +1142,7 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
       }
 
       const tenantPhone = result.fromNumber ? await resolveTenant(result.fromNumber) : null;
-      const ownerPhone = tenantPhone || result.fromNumber;
-      let stockBatchResponse = result.stockBatchResponse ?? null;
+      const stockBatchResponse = result.stockBatchResponse ?? null;
 
       const eventRecord = {
         id: incomingId,
@@ -1187,69 +1164,12 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
         processed: Boolean(result.parsed?.actions?.length),
       };
 
-      const allActions = result.parsed?.actions ?? [];
-      const isReadOnlyAction = (action) => action.type === 'query_stock' || action.type === 'query_pedidos';
-      const queryActions = allActions.filter(isReadOnlyAction);
-      const mutationActions = allActions.filter((action) => !isReadOnlyAction(action));
-      const legacyStockHold = !stockBatchResponse && mutationActions.some((action) => action.type === 'add_stock')
-        && await getVoiceStockBatchMode(ownerPhone) === 'active';
-      if (legacyStockHold) {
-        console.warn('[VoiceStockBatch] legacy parser detected stock after batch classifier declined; preserving draft', { messageId: incomingId });
-        stockBatchResponse = await holdUnverifiedStockMessage({ sourceText: result.sourceText,
-          businessCategory: result.businessCategory, ownerPhone, senderPhone: result.fromNumber, messageId: incomingId });
-      }
-      const categoryPreset = getBusinessCategoryPreset(result.businessCategory);
-
-      let overrideReplyText = stockBatchResponse?.replyText ?? null;
-      if (!stockBatchResponse && queryActions.length) {
-        const snapshot = await getStateSnapshot(tenantPhone || result.fromNumber);
-        overrideReplyText = queryActions
-          .map((action) => {
-            if (action.type === 'query_pedidos') {
-              return answerPedidosQuery(snapshot.pedidos, snapshot.clients, snapshot.proveedores, action, {
-                variantLabel: categoryPreset.variantLabel,
-                whatsapp: true,
-              });
-            }
-            return answerStockQuery(snapshot.products, action, {
-              variantLabel: categoryPreset.variantLabel,
-              whatsapp: true,
-            });
-          })
-          .join('\n\n');
-      }
-
-      let mutationOutcome = null;
-      let mutationRejected = false;
-      if (!stockBatchResponse && !legacyStockHold && mutationActions.length && !hasProductMatchHold(result.parsed)) {
-        try {
-          mutationOutcome = mutationActions.some((action) => ['delete_product','update_product'].includes(action.type))
-            ? await prepareMetaInventorySelection({ actions: mutationActions, sourceText: result.sourceText, messageId: incomingId,
-              ownerPhone, senderPhone: result.fromNumber, replyPrefix: overrideReplyText })
-            : await applyActionsToDatabase(mutationActions, result.sourceText, tenantPhone || result.fromNumber, {
-            messageId: incomingId, recipient: result.fromNumber,
-            actorId: result.fromNumber, channel: 'whatsapp', replyPrefix: overrideReplyText,
-            replyText: [overrideReplyText, result.replyText].filter(Boolean).join('\n\n'),
-          });
-          if (mutationOutcome?.pendingSelection && overrideReplyText) mutationOutcome.replyText = [overrideReplyText, mutationOutcome.replyText].join('\n\n');
-        } catch (error) {
-          if (error.name !== 'InventoryOperationError') throw error;
-          // A business rejection is terminal. Never retry a rejected sale later
-          // merely because replenishment made it executable in the meantime.
-          mutationRejected = true;
-          eventRecord.error = error.code;
-          mutationOutcome = { replyText: [overrideReplyText, error.message].filter(Boolean).join('\n\n') };
-        }
-      }
-
-      const finalReplyText = stockBatchResponse?.replyText ?? mutationOutcome?.replyText
-        ?? [overrideReplyText, result.replyText].filter(Boolean).join('\n\n');
+      const finalReplyText = stockBatchResponse?.replyText ?? result.replyText;
 
       eventRecord.replyText = finalReplyText;
       eventRecord.error ??= stockBatchResponse?.errorCode ?? null;
-      eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? (mutationRejected || mutationOutcome?.pendingSelection ? [] : mutationOutcome?.operationResult
-        ? operationResultActions(mutationOutcome.operationResult, mutationActions) : result.parsed?.actions ?? []));
-      eventRecord.processed = Boolean(stockBatchResponse || queryActions.length || mutationActions.length);
+      eventRecord.actionsJson = JSON.stringify(stockBatchResponse?.actions ?? []);
+      eventRecord.processed = Boolean(stockBatchResponse);
 
       console.log('[MetaWebhook] response debug:', {
         messageId: incomingId,

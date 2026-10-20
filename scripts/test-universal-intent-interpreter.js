@@ -11,6 +11,19 @@ const actions=[{itemId:'receive',type:'stock.receive',target:{kind:'existing',sk
 const proposal=(entries=actions)=>({contractVersion:1,kind:'proposal',actions:structuredClone(entries),evidence:entries.map(action=>({itemId:action.itemId,quote:sourceText}))});
 const invoke=(json=proposal(),patch={})=>interpretUniversalIntent({sourceText,catalog:structuredClone(catalog),context,operationId:'secret-operation',channel:'test',complete:async()=>({ok:true,json}),...patch});
 
+test('read queries return backend snapshot facts without a mutation plan or model-written answer',async()=>{
+  const text='¿Cuánto stock y saldo tenemos?';
+  const snapshot={products:[{id:'sku',name:'Producto',unit:'unit',price:0,priceCurrency:'UYU',stockAvailable:0,stockReserved:2}],clients:[{id:'client',name:'Cliente',debt:0}],proveedores:[],pedidos:[]};
+  const data={contractVersion:1,kind:'query',queries:[{itemId:'q1',type:'inventory.query',selector:{kind:'all'}},{itemId:'q2',type:'accounts.query',selector:{kind:'ids',ids:['client']}}],evidence:[{itemId:'q1',quote:text},{itemId:'q2',quote:text}]};
+  const patch={sourceText:text,catalog:snapshot,context:{...context,permissions:['inventory:read','accounts:read']}};
+  const result=await invoke(data,patch);
+  assert.equal(result.kind,'answer');assert.equal(result.plan,undefined);assert.equal(result.answer.items[0].rows[0].stockAvailable,0);assert.equal(result.answer.items[1].rows[0].debt,0);assert.ok(Object.isFrozen(result.answer));
+  for(const mutate of [d=>d.actions=proposal().actions,d=>d.answer='Stock inventado',d=>d.queries[0].selector={kind:'ids',ids:['other-tenant']},d=>d.evidence[0].quote='inventado']) {
+    const bad=structuredClone(data);mutate(bad);assert.equal((await invoke(bad,patch)).kind,'invalid');
+  }
+  assert.equal((await invoke(data,{...patch,context:{...context,permissions:['inventory:receive']}})).kind,'invalid');
+});
+
 test('mixed ready proposal uses backend envelope and frozen catalog revisions without leaking authorization',async()=>{
   let calls=0;
   const original=proposal();
@@ -73,6 +86,10 @@ test('universal authorization and reviewed inventory selection guards remain aut
   const extended={...catalog,products:[...catalog.products,{...catalog.products[0],id:'second'}]};
   const result=await invoke(proposal([update,{...update,itemId:'b',target:{kind:'existing',skuId:'second'}}]),{catalog:extended});
   assert.equal(result.kind,'invalid');assert.equal(result.reason,'SELECTION_REQUIRED');
+  const trusted=await invoke(proposal([update,{...update,itemId:'b',target:{kind:'existing',skuId:'second'}}]),{
+    catalog:extended,operationId:'draft-operation:reviewed',context:{...context,internalConversationOperation:true}});
+  assert.equal(trusted.kind,'ready');assert.equal(trusted.plan.actions.length,2);
+  assert.equal(trusted.plan.actions[1].target.expectedRevision,7);
 });
 
 test('transfer destinations, deletion account revision and order reconciliation use backend snapshot',async()=>{

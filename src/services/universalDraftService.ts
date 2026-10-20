@@ -5,9 +5,10 @@ export type UniversalDraftPreview = {
   version: number;
   text: string;
   expiresAt: string;
-  status: 'awaiting_confirmation' | 'awaiting_clarification' | 'applied' | 'cancelled';
+  status: 'awaiting_confirmation' | 'awaiting_clarification' | 'applied' | 'cancelled' | 'answered';
   digest: string;
   question?: string;
+  answer?: { text: string; items: unknown[]; observedAt?: string };
   plan?: { actions: { itemId: string }[] };
   evidence?: { itemId: string; quote: string }[];
   review?: { itemId: string; title: string; details: string[] }[];

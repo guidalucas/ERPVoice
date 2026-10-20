@@ -128,9 +128,10 @@ Usa `.env.local` para configurar:
 - `LLM_PROVIDER` (`gemini` por default, o `groq`)
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL_NAME` (opcional; default `gemini-3.5-flash-lite`)
-- `VITE_VOICE_MODEL_ENDPOINT` / `VITE_VOICE_MODEL_API_KEY` / `VITE_VOICE_MODEL_NAME` (fallback Groq)
-- `VITE_VOICE_TRANSCRIPTION_ENDPOINT`
-- `VITE_VOICE_TRANSCRIPTION_MODEL`
+- `GROQ_API_KEY` (fallback del intérprete y transcripción, solo backend)
+- `VITE_VOICE_MODEL_ENDPOINT` / `VITE_VOICE_MODEL_NAME` (configuración antigua del fallback backend)
+- `VOICE_TRANSCRIPTION_API_KEY` (opcional si se usa `GROQ_API_KEY`, solo backend)
+- `VOICE_TRANSCRIPTION_ENDPOINT` / `VOICE_TRANSCRIPTION_MODEL` (opcional)
 - `META_WEBHOOK_PORT`
 - `META_VERIFY_TOKEN`
 - `META_ACCESS_TOKEN`
@@ -172,17 +173,27 @@ Entidades principales:
 - Transacciones: `sourceText`, `actions`, `summary`
 - Eventos Meta: `fromNumber`, `body`, `transcript`, `replyText`, `processed`
 
+Para una base existente que solo necesita actualizar borradores y comandos universales:
+
+- `npm run db:check:universal`: inspección de solo lectura del esquema, RLS y permisos.
+- `npm run db:migrate:universal`: migración acotada y transaccional; conserva registros,
+  verifica sus huellas antes/después y revierte el esquema completo ante un fallo.
+
+Ambos comandos leen `.env.local`. La migración no ejecuta normalizaciones de negocios
+ni aplica operaciones de inventario.
+
 ## Estructura principal
 
 - `src/components/split/WhatsAppSimulator.tsx` - simulador flotante desplegable.
 - `src/components/dashboard/` - dashboard, stock real, ABM y panel de eventos.
-- `src/services/` - transcripción, parsing, CRUD de productos.
+- `src/services/` - acceso autenticado a la API, transcripción y CRUD de productos.
 - `src/hooks/` - hooks de chat e inventario.
 - `src/store/` - estado global.
 - `server/` - backend Express, persistencia y webhook de Meta.
 
 ## Notas
 
-- El flujo de voz usa Whisper para transcribir y Llama para producir JSON de acciones.
-- El parser local actúa como fallback si falta la API o la respuesta del modelo no es válida.
+- El audio se transcribe en el backend; Gemini/Groq proponen consultas u operaciones
+  con el contrato universal. Las mutaciones requieren revisar y confirmar el borrador.
+- Un fallo del intérprete no habilita el parser anterior ni una escritura por nombre.
 - La UI y el backend comparten el modelo de datos, pero el backend es la fuente de verdad para el estado persistido.

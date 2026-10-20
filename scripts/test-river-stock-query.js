@@ -367,6 +367,21 @@ if (pluralSizes?.size === 10 && [...pluralSizes.values()].every((size) => size =
   fail(`talles plural: ${JSON.stringify(pluralSizes && [...pluralSizes.entries()])}`);
 }
 
+// The query-label fix also applies to arbitrary catalog types and must not
+// restore a model/year that the user never asked for or mutate catalog records.
+const motorCatalog = { products: [
+  { id:'motor-a', name:'Motor A', productType:'Motor', productModel:'A', stockAvailable:2, stockReserved:0 },
+  { id:'motor-b', name:'Motor B', productType:'Motor', productModel:'B', stockAvailable:3, stockReserved:0 },
+] };
+const originalMotorCatalog = JSON.stringify(motorCatalog);
+const motors = groundActionsAgainstCatalog([{ type:'query_stock', productName:'Motor 2099', productType:'Motor', productModel:'2099' }],motorCatalog,'cuantos motores tengo').actions[0];
+if (motors.productName === 'Motor' && !motors.productModel && matchProductsForQuery(motorCatalog.products,motors).length === 2
+  && JSON.stringify(motorCatalog) === originalMotorCatalog) {
+  pass('tipo genérico sin modelo conserva catálogo e IDs y no restaura un año inventado');
+} else {
+  fail(`consulta genérica de otro tipo: ${JSON.stringify(motors)}`);
+}
+
 console.log('\n--- Respuesta ---\n');
 console.log(reply);
 

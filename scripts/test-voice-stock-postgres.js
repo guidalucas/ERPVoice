@@ -7,6 +7,11 @@ import { runUniversalOperationChecks } from './universal-operation-postgres-chec
 import { runUniversalCompositionChecks } from './universal-composition-postgres-checks.js';
 import { runUniversalOrderChecks } from './universal-order-postgres-checks.js';
 import { runUniversalDraftChecks } from './universal-draft-postgres-checks.js';
+import { runUniversalMetaChecks } from './universal-meta-postgres-checks.js';
+import { runUniversalQueryChecks } from './universal-query-postgres-checks.js';
+import { runUniversalReviewedSetChecks } from './universal-reviewed-set-postgres-checks.js';
+import { runOrdinaryMetaRecoveryChecks } from './ordinary-meta-recovery-postgres-checks.js';
+import { runUniversalSchemaMigrationChecks } from './universal-schema-migration-postgres-checks.js';
 import { runProductFamilyChecks } from './product-family-postgres-checks.js';
 import { runInventorySetAdjustmentChecks } from './inventory-set-adjustment-postgres-checks.js';
 import { runOrderChecks } from './order-postgres-checks.js';
@@ -77,6 +82,7 @@ try {
   await db.closeDatabase();
   await db.migrateDatabase();
   sql = new Client({ connectionString: connection }); await sql.connect();
+  await runUniversalSchemaMigrationChecks({ db, sql, check });
   await runInventoryCoreChecks({ db, sql, check });
   await runInventorySalesChecks({ db, sql, check });
   await runInventoryAdjustmentsChecks({ db, sql, check });
@@ -92,6 +98,10 @@ try {
   await runUniversalCompositionChecks({ db, sql, check });
   await runUniversalOrderChecks({ db, sql, check });
   await runUniversalDraftChecks({ db, sql, check });
+  await runUniversalMetaChecks({ db, sql, check });
+  await runUniversalQueryChecks({ db, sql, check });
+  await runUniversalReviewedSetChecks({ db, sql, check });
+  await runOrdinaryMetaRecoveryChecks({ db, sql, check });
   await runProductFamilyChecks({ db, sql, check });
   await runInventorySetAdjustmentChecks({ db, sql, check });
   await runAccountChecks({ db, sql, check });

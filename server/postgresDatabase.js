@@ -17,12 +17,17 @@ import { canonicalIdentityText } from './inventoryDomain.js';
 import { orderRequestDigest } from './orderOperations.js';
 import { ACCOUNT_SCHEMA_SQL, executeAccountPlanInTransaction } from './accountPostgres.js';
 import { operationRequestDigest } from './operationHash.js';
+import { operationResultActions } from './operationResults.js';
 import { validateAccountPlan } from './accountOperations.js';
 import { mergeClientsInTransaction } from './clientMergePostgres.js';
 import { UNIVERSAL_SCHEMA_SQL, executeUniversalPlanInTransaction } from './universalPostgres.js';
 import { prepareUniversalOperation } from './universalOperations.js';
 import { interpretUniversalIntent } from './universalIntentInterpreter.js';
 import { buildUniversalOperationReview } from './universalOperationReview.js';
+import { authorizeUniversalQueries } from './universalQueries.js';
+import { parseUniversalMetaCommand } from './universalMetaOperations.js';
+import { UNIVERSAL_META_SCHEMA_SQL, normalizeUniversalMetaInput, findUniversalMetaCommand,
+  findUniversalMetaDraft, executeUniversalMetaInTransaction } from './universalMetaPostgres.js';
 import { PRODUCT_FAMILY_SCHEMA_SQL, authorizeProductFamilies, loadProductFamilySchemas, publishProductFamilyInTransaction } from './productFamilyPostgres.js';
 import { UNIVERSAL_CONVERSATION_SCHEMA_SQL, authorizeUniversalConversation, normalizeDraftRequest,
   findDraftCommand, readUniversalDraft, persistUniversalInterpretation,
@@ -553,6 +558,7 @@ const initializeDatabase = async () => {
     ${PARTY_SCHEMA_SQL}
     ${UNIVERSAL_SCHEMA_SQL}
     ${UNIVERSAL_CONVERSATION_SCHEMA_SQL}
+    ${UNIVERSAL_META_SCHEMA_SQL}
     ${PRODUCT_FAMILY_SCHEMA_SQL}
     ${META_SELECTION_SCHEMA_SQL}
 
@@ -572,6 +578,7 @@ const initializeDatabase = async () => {
         'universal_operations',
         'universal_drafts',
         'universal_draft_commands',
+        'universal_meta_commands',
         'product_family_schemas',
         'product_family_operations',
         'order_operations',
@@ -1425,8 +1432,9 @@ export const executeUniversalOperation = async (input, context) => {
 // Interpretation happens outside any SQL transaction. Only validated, frozen
 // drafts reach the existing universal executor after an explicit confirmation.
 const interpretUniversalDraft = async (text,draftId,context,options,clarifications=[],previous=null) => {
-  const catalog=await withTransaction(async client=>{
+  const {catalog,observedAt}=await withTransaction(async client=>{
     await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const observedAt=(await client.query('SELECT CURRENT_TIMESTAMP AS observed_at')).rows[0].observed_at.toISOString();
     const owners=[getOwnerPhoneVariants(context.businessId)],catalog={};
     // Use stored identities, never presentation-normalized product metadata.
     catalog.products=(await client.query("SELECT * FROM products WHERE owner_phone=ANY($1) AND inventory_status='active' ORDER BY id",owners)).rows.map(inventoryRowToProduct);
@@ -1434,7 +1442,7 @@ const interpretUniversalDraft = async (text,draftId,context,options,clarificatio
     catalog.proveedores=(await client.query('SELECT * FROM proveedores WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToProveedor);
     catalog.pedidos=(await client.query('SELECT * FROM pedidos WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToPedido);
     catalog.familySchemas=await loadProductFamilySchemas(client,owners[0]);
-    return catalog;
+    return {catalog,observedAt};
   });
   const result=await interpretUniversalIntent({sourceText:text,catalog,clarifications,
     context:{...context,internalConversationOperation:true},operationId:`draft-operation:${draftId}`,
@@ -1442,6 +1450,7 @@ const interpretUniversalDraft = async (text,draftId,context,options,clarificatio
     channel:context.channel ?? 'panel',...(options?.complete ? {complete:options.complete} : {})});
   if (result.kind==='invalid') throw new InventoryOperationError('INTERPRETATION_INVALID','La interpretación no cumple el contrato. No apliqué cambios.',{reason:result.reason});
   if (result.kind==='unavailable') throw new InventoryOperationError('INTERPRETATION_UNAVAILABLE','No pude interpretar la solicitud. Conservá el mensaje para reintentar.',{reason:result.reason});
+  if (result.kind==='answer') return {...result,answer:{...result.answer,observedAt}};
   return result.kind==='ready' ? {...result,review:buildUniversalOperationReview(result.plan,catalog)}
     : result.plan ? {...result,review:previous.review} : result;
 };
@@ -1449,9 +1458,13 @@ const interpretUniversalDraft = async (text,draftId,context,options,clarificatio
 export const prepareUniversalDraft = async (input,context,options={}) => {
   authorizeUniversalConversation(context);
   const request=normalizeDraftRequest(input);
+  requirePublicDraftRequest(request);
   await ensureReady();
   const prior=await withTransaction(client=>findDraftCommand(client,request,context));
-  if (prior.response) return prior.response;
+  if (prior.response) {
+    if(prior.response.status==='answered') authorizeUniversalQueries(prior.response.queries,context);
+    return prior.response;
+  }
   const draftId=crypto.randomUUID();
   const interpretation=await interpretUniversalDraft(request.text,draftId,context,options);
   return withTransaction(client=>persistUniversalInterpretation(client,request,interpretation,context,{draftId}));
@@ -1459,8 +1472,20 @@ export const prepareUniversalDraft = async (input,context,options={}) => {
 export const replyUniversalDraft = async (draftId,input,context,options={}) => {
   authorizeUniversalConversation(context);
   const request=normalizeDraftRequest(input,true);
+  requirePublicDraftRequest(request);
   await ensureReady();
-  const pending=await withTransaction(async client=>{
+  const pending=await withTransaction(client=>loadUniversalDraftReply(client,draftId,request,context));
+  if (pending.response) {
+    if(pending.response.status==='answered') authorizeUniversalQueries(pending.response.queries,context);
+    return pending.response;
+  }
+  const interpretation=await interpretUniversalDraft(pending.text,draftId,context,options,pending.clarifications,pending.previous);
+  return withTransaction(client=>persistUniversalInterpretation(client,request,interpretation,context,{draftId,reply:true}));
+};
+const requirePublicDraftRequest = request => {
+  if (request.requestId.startsWith('universal-meta:')) throw new InventoryOperationError('INVALID_DRAFT_REQUEST','El ID del mensaje está reservado para el canal WhatsApp.');
+};
+const loadUniversalDraftReply = async (client,draftId,request,context) => {
     const command=await findDraftCommand(client,request,context,'reply',draftId);
     if (command.response) return {response:command.response};
     const row=await readUniversalDraft(client,draftId,context);
@@ -1471,16 +1496,67 @@ export const replyUniversalDraft = async (draftId,input,context,options={}) => {
     if (row.version>=20 || text.length>12000) throw new InventoryOperationError('INVALID_DRAFT_REQUEST','La conversación excede el límite. Prepará un borrador nuevo.');
     return {text,previous:row.preview_json,clarifications:[...(row.preview_json.clarifications ?? []),
       ...(row.preview_json.question ? [{question:row.preview_json.question,answer:request.text}] : [])]};
-  });
-  if (pending.response) return pending.response;
-  const interpretation=await interpretUniversalDraft(pending.text,draftId,context,options,pending.clarifications,pending.previous);
-  return withTransaction(client=>persistUniversalInterpretation(client,request,interpretation,context,{draftId,reply:true}));
+};
+
+/** The caller supplies the tenant resolved from the authenticated Meta sender.
+ * Ordinary messages and explicit controls share the draft/executor boundary;
+ * provider calls never hold an SQL transaction open. */
+export const processMetaUniversalMessage = async (input,options={}) => {
+  const command=parseUniversalMetaCommand(input?.sourceText) ?? (options.ordinary===true && typeof input?.sourceText==='string' ? {kind:'prepare',text:input.sourceText.trim()} : null);
+  if (!command) return null;
+  const context={businessId:normalizeOwnerPhone(input.ownerPhone),actorId:normalizePhone(input.senderPhone),channel:'whatsapp',permissions:[
+    'inventory:read','orders:read','accounts:read','inventory:receive','inventory:sell','inventory:reserve','inventory:adjust','inventory:update','inventory:deactivate','inventory:create',
+    'accounts:charge','accounts:payment','accounts:adjust','accounts:transfer',
+    'clients:create','clients:update','clients:delete','suppliers:create','suppliers:update','suppliers:delete','suppliers:merge',
+    'orders:create','orders:update','orders:delete','orders:reconcile',
+  ]};
+  authorizeUniversalConversation(context);
+  const requestInput=normalizeUniversalMetaInput(input);
+  await ensureReady();
+  const prior=await withTransaction(client=>findUniversalMetaCommand(client,requestInput,context));
+  if (prior.response) return prior.response;
+  let prepared,preparationError;
+  try {
+    const requestId=`universal-meta:${operationRequestDigest([context.businessId,context.actorId,requestInput.messageId])}`;
+    if (command.kind==='invalid') throw new InventoryOperationError('INVALID_DRAFT_REQUEST',
+      'Usá REVISAR OPERACION <instrucción>, RESPONDER OPERACION <código> <corrección>, CONFIRMAR OPERACION <código> o CANCELAR OPERACION <código>.');
+    if (command.kind==='prepare') {
+      const request=normalizeDraftRequest({requestId,text:command.text}),draftId=crypto.randomUUID();
+      const interpretation=await interpretUniversalDraft(request.text,draftId,context,options);
+      prepared={request,draftId,interpretation};
+    } else if (command.kind==='reply') {
+      const pending=await withTransaction(async client=>{
+        const row=await findUniversalMetaDraft(client,command.code,context);
+        const request=normalizeDraftRequest({requestId,text:command.text,version:row.version},true);
+        return {request,draftId:row.draft_id,...await loadUniversalDraftReply(client,row.draft_id,request,context)};
+      });
+      const interpretation=await interpretUniversalDraft(pending.text,pending.draftId,context,options,pending.clarifications,pending.previous);
+      prepared={request:pending.request,draftId:pending.draftId,interpretation};
+    }
+  } catch(error) {
+    if (error.name!=='InventoryOperationError') throw error;
+    preparationError=error;
+  }
+  return withTransaction(client=>executeUniversalMetaInTransaction(client,requestInput,context,async transaction=>{
+    if (preparationError) throw preparationError;
+    if (command.kind==='prepare') return persistUniversalInterpretation(transaction,prepared.request,prepared.interpretation,context,{draftId:prepared.draftId});
+    const row=await findUniversalMetaDraft(transaction,command.code,context);
+    if (command.kind==='reply') {
+      if (row.draft_id!==prepared.draftId || row.version!==prepared.request.version) throw new InventoryOperationError('DRAFT_VERSION_MISMATCH','El borrador cambió. Revisá la versión actual.');
+      return persistUniversalInterpretation(transaction,prepared.request,prepared.interpretation,context,{draftId:prepared.draftId,reply:true});
+    }
+    const confirmation={version:row.version,digest:row.preview_json.digest};
+    if (command.kind==='cancel') return cancelUniversalDraftInTransaction(transaction,row.draft_id,confirmation,context);
+    return confirmUniversalDraftInTransaction(transaction,row.draft_id,confirmation,
+      {...context,ownerPhoneVariants:getOwnerPhoneVariants(context.businessId)},persistInventoryTransactions);
+  }));
 };
 export const getUniversalDraft = async (draftId,context) => {
   authorizeUniversalConversation(context); await ensureReady();
   return withTransaction(async client=>{
     const row=await readUniversalDraft(client,draftId,context);
     if (row.preview_json.plan) prepareUniversalOperation(row.preview_json.plan,{...context,internalConversationOperation:true});
+    if (row.status==='answered') authorizeUniversalQueries(row.preview_json.queries,context);
     return row.preview_json;
   });
 };
@@ -1851,13 +1927,14 @@ export const getActiveVoiceStockBatch = async (ownerPhone, senderPhone) => {
   return rowToVoiceStockBatch(rows[0]);
 };
 
-export const getVoiceStockBatchByMessage = async (ownerPhone, messageId) => {
+export const getVoiceStockBatchByMessage = async (ownerPhone, messageId, senderPhone = null) => {
   await ensureReady();
   const row = await queryRow(
     `SELECT * FROM voice_stock_batches WHERE owner_phone = $1
+       AND ($4::text IS NULL OR sender_phone = $4)
        AND (source_message_id = $2 OR payload_json->'handledMessages' @> $3::jsonb)
        ORDER BY created_at DESC LIMIT 1`,
-    [normalizeOwnerPhone(ownerPhone), String(messageId), JSON.stringify([{ messageId: String(messageId) }])],
+    [normalizeOwnerPhone(ownerPhone), String(messageId), JSON.stringify([{ messageId: String(messageId) }]), senderPhone == null ? null : normalizePhone(senderPhone)],
   );
   return rowToVoiceStockBatch(row);
 };
@@ -2064,6 +2141,69 @@ export const claimMetaMessage = async ({ messageId, ownerPhone, senderPhone, raw
     [String(messageId), normalizeOwnerPhone(ownerPhone), normalizePhone(senderPhone), toJsonbParam(rawBody)],
   );
   return result.rowCount > 0;
+};
+
+// A legacy domain write and its outbox commit together, before meta_events is
+// saved. Recover that receipt before the new ordinary-message interpreter runs.
+// The claim binds the globally unique message/outbox ID to both tenant and actor.
+export const replayCommittedMetaMessage = async ({messageId,ownerPhone,senderPhone,sourceText}) => {
+  await ensureReady();
+  const owner=normalizeOwnerPhone(ownerPhone),sender=normalizePhone(senderPhone);
+  return withTransaction(async client=>{
+    await client.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const claim=await queryRow(`SELECT claim.*,reply.recipient,reply.reply_text,event.source_text,event.actions_json,event.error
+      FROM meta_message_claims AS claim
+      LEFT JOIN meta_reply_outbox AS reply ON reply.event_id=claim.message_id
+      LEFT JOIN meta_events AS event ON event.id=claim.message_id AND event.owner_phone=claim.owner_phone AND event.from_number=claim.sender_phone
+      WHERE claim.message_id=$1`,[messageId],client);
+    if (!claim) return null;
+    const conflict=()=>{throw new InventoryOperationError('IDEMPOTENCY_CONFLICT','El ID del mensaje ya corresponde a otra instrucción, negocio o remitente.');};
+    if (claim.owner_phone!==owner || claim.sender_phone!==sender || (claim.recipient && claim.recipient!==sender)) conflict();
+    if (claim.reply_text==null) return null;
+    const raw=parseJsonValue(claim.raw_body_json);
+    const original=(raw?.entry ?? []).flatMap(entry=>(entry.changes ?? []).flatMap(change=>change.value?.messages ?? []))
+      .find(message=>message.id===messageId && normalizePhone(message.from)===sender);
+    // Match the normalization at extractMetaMessages, while keeping saved
+    // transcripts and domain source text exact for idempotency checks.
+    const originalText=typeof original?.text?.body==='string' ? original.text.body.trim() : undefined;
+    const storedText=claim.transcript ?? originalText ?? claim.source_text;
+    if (storedText!=null && storedText!==sourceText) conflict();
+    const batch=await queryRow(`SELECT id FROM voice_stock_batches WHERE owner_phone=$1 AND sender_phone=$2
+      AND (source_message_id=$3 OR payload_json->'handledMessages' @> $4::jsonb) LIMIT 1`,
+    [owner,sender,messageId,JSON.stringify([{messageId}])],client);
+    // Let the legacy resume-only workflow recover any saved ready transition
+    // before returning its batch receipt and question metadata.
+    if (batch) return null;
+    const universal=await queryRow('SELECT actor_id,request_hash,result_json FROM universal_meta_commands WHERE owner_phone=$1 AND message_id=$2',[owner,messageId],client);
+    if (universal) {
+      if (universal.actor_id!==sender || universal.request_hash!==operationRequestDigest({actorId:sender,sourceText})) conflict();
+      return parseJsonValue(universal.result_json);
+    }
+    const selection=await queryRow('SELECT actor_id,request_hash,result_json FROM meta_selection_commands WHERE owner_phone=$1 AND message_id=$2',[owner,messageId],client);
+    if (selection) {
+      const command=parseMetaSelectionCommand(sourceText);
+      if (selection.actor_id!==sender || !command || selection.request_hash!==operationRequestDigest({actorId:sender,command})) conflict();
+      return parseJsonValue(selection.result_json);
+    }
+    const domain=await queryRow(`SELECT plan_json AS request_json,result_json FROM inventory_operations
+        WHERE owner_phone=$1 AND actor_id=$2 AND operation_id=ANY($3)
+      UNION ALL SELECT plan_json,result_json FROM account_operations
+        WHERE owner_phone=$1 AND actor_id=$2 AND operation_id=ANY($4)
+      UNION ALL SELECT request_json,result_json FROM order_operations
+        WHERE owner_phone=$1 AND actor_id=$2 AND operation_id=ANY($5)`,
+    [owner,sender,[`whatsapp:${messageId}`,`meta:${messageId}`],
+      [`account-compat:whatsapp:${messageId}`,`account-compat:meta:${messageId}`],
+      [`batch:whatsapp:${messageId}`,`batch:meta:${messageId}`]],client);
+    const request=parseJsonValue(domain?.request_json),result=parseJsonValue(domain?.result_json);
+    const domainText=request?.source?.text ?? request?.sourceText;
+    if (domainText!=null && domainText!==sourceText) conflict();
+    // An outbox without source evidence still prevents a new interpretation.
+    // Fail closed instead of assigning an old receipt to different text.
+    if (storedText==null && domainText==null) conflict();
+    return {handled:true,intent:'mixed',requiresConfirmation:false,replyText:claim.reply_text,
+      actions:result ? operationResultActions(result) : parseJsonValue(claim.actions_json) ?? [],
+      ...(result ? {operationResult:result} : {}),...(claim.error ? {errorCode:claim.error} : {})};
+  });
 };
 
 export const loadMetaTranscript = async (messageId) => {

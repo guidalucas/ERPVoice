@@ -68,7 +68,9 @@ VITE_VOICE_MODEL_NAME=openai/gpt-oss-20b
 Rollback inmediato en Render: `LLM_PROVIDER=groq` (sigue usando las vars `VITE_VOICE_MODEL_*`).
 Si Gemini no tiene key, el cliente salta a Groq solo.
 
-La transcripción de audio sigue usando `VITE_VOICE_TRANSCRIPTION_*` (Groq Whisper).
+La transcripción de panel y WhatsApp usa `VOICE_TRANSCRIPTION_*` en el backend
+(Groq Whisper; `GROQ_API_KEY` como clave por defecto). El navegador envía bytes al
+endpoint autenticado `/api/voice/transcribe`; no necesita claves de proveedores.
 
 Para medir **solo** Gemini (sin caer a Groq): `LLM_DISABLE_FALLBACK=1`.
 

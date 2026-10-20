@@ -447,7 +447,13 @@ const familyQueryStockAction = (action, matching, familyTokens) => {
   const sharedType = pickFamilyProductType(matching, action);
   const sharedModel = sharedField(matching, 'productModel');
   const usableSharedModel = sharedModel && !isYearToken(sharedModel) ? sharedModel : null;
-  const genericModel = usableSharedModel || titleCase(familyTokens.join(' ')) || action.productModel;
+  // Query labels already show the catalog type separately. Exclude only its
+  // exact singular/plural tokens from the model; do not change stored identity
+  // or the candidate selection, and never restore an unrequested model/year.
+  const typeTokens = tokenizeQueryText(sharedType ?? '');
+  const sameTypeToken = (token, type) => token === type || token === `${type}s` || token === `${type}es` || type === `${token}s` || type === `${token}es`;
+  const modelTokens = familyTokens.filter(token => !typeTokens.some(type => sameTypeToken(token,type)));
+  const genericModel = usableSharedModel || titleCase(modelTokens.join(' ')) || undefined;
   const next = {
     ...action,
     productName: [sharedType, genericModel].filter(Boolean).join(' ') || action.productName,

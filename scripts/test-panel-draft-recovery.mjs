@@ -33,6 +33,7 @@ const origin = 'http://127.0.0.1:5173';
 let actor = '5491100000000';
 let tenant = '5491100000001';
 const attempts = [];
+const universalRequests = [], legacyParses = [];
 const committed = new Set();
 let finalWrites = 0;
 let mode = 'fail';
@@ -49,12 +50,10 @@ await page.route('**/api/**', async (route) => {
   const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
   if (path === '/api/auth/me') return json({ phoneNumber: actor, tenantPhone: tenant, role: 'member', businessName: 'Recovery fixture', businessCategory: 'indumentaria', needsOnboarding: false });
   if (path === '/api/state') return json(snapshot);
-  if (path === '/api/voice/parse') {
-    const text = request.postDataJSON().text;
-    if (text === 'consultar stock') return json({ ...proposal, intent: 'query_stock', sourceText: text, actions: [{ type: 'query_stock', productName: 'Camiseta Argentina' }] });
-    if (text === 'incompleto') return json({ ...proposal, missingFields: ['cantidad'] });
-    if (text === 'sin acciones') return json({ ...proposal, actions: [] });
-    return json({ ...proposal, operationId: undefined, sourceText: text });
+  if (path === '/api/voice/parse') { legacyParses.push(path); return json({ error: 'Legacy parse retired.' }, 410); }
+  if (path === '/api/operation-drafts') {
+    const input = request.postDataJSON(); universalRequests.push(input);
+    return json({ draftId: 'query-' + universalRequests.length, version: 1, status: 'answered', text: input.text, digest: 'a'.repeat(64), expiresAt: '2099-01-01T00:00:00Z', answer: { text: 'Consulta respondida.', items: [] } });
   }
   if (path === '/api/state/apply') {
     const input = request.postDataJSON();
@@ -86,18 +85,25 @@ const confirm = () => page.getByRole('button', { name: 'Confirmar', exact: true 
 const savedDraft = () => page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)), storage.pendingProposalKey(tenant, actor));
 const openChat = async () => page.getByRole('button', { name: 'Abrir simulador WhatsApp' }).click();
 const reload = async () => { await page.reload(); await openChat(); };
-const send = async (text = proposal.sourceText) => {
-  const botMessages = page.getByText('Detecté una acción. Revisala y confirmá si está correcta.', { exact: true });
-  const previousCount = await botMessages.count();
-  await page.getByPlaceholder('Escribí un mensaje...').fill(text);
-  await page.getByRole('button', { name: 'Enviar mensaje' }).click();
-  await botMessages.nth(previousCount).waitFor();
-  await confirm().waitFor();
+// Recovery compatibility starts with a proposal created by an older client.
+let seedIndex = 0;
+const seedLegacy = async (text = proposal.sourceText) => {
+  await page.evaluate(({ key, proposal }) => sessionStorage.setItem(key, JSON.stringify({ version: 1, proposal })), {
+    key: storage.pendingProposalKey(tenant, actor), proposal: { ...proposal, sourceText: text, operationId: 'legacy-fixture-' + (++seedIndex) },
+  });
+  await reload(); await confirm().waitFor();
 };
+const sendUniversal = async text => {
+  await page.getByPlaceholder('Escribí un mensaje...').fill(text);
+  await page.getByRole('button', { name: 'Enviar mensaje', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Revisar operación', exact: true }); await dialog.waitFor();
+  return dialog;
+};
+
 try {
   await page.goto(origin);
   await openChat();
-  await send();
+  await seedLegacy();
   const first = await savedDraft();
   assert.ok(first.proposal.operationId);
   await confirm().click();
@@ -117,24 +123,25 @@ try {
   await reload();
   assert.equal(await confirm().count(), 0);
 
-  await send('Otra propuesta para cancelar');
+  await seedLegacy('Otra propuesta para cancelar');
   await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
   assert.equal(await savedDraft(), null);
   await reload();
   assert.equal(await confirm().count(), 0);
 
-  await send('Propuesta aislada por actor y empresa');
+  await seedLegacy('Propuesta aislada por actor y empresa');
   const scopedId = (await savedDraft()).proposal.operationId;
-  for (const [input, response] of [['consultar stock', null], ['incompleto', /Me faltan estos datos/], ['sin acciones', /No encontré acciones claras/]]) {
-    await page.getByPlaceholder('Escribí un mensaje...').fill(input);
-    const parsed = page.waitForResponse((response) => response.url().endsWith('/api/voice/parse'));
-    await page.getByRole('button', { name: 'Enviar mensaje' }).click();
-    await parsed;
-    if (response) await page.getByText(response).waitFor();
-    await page.getByPlaceholder('Escribí un mensaje...').waitFor();
+  for (const input of ['consultar stock', 'incompleto', 'sin acciones']) {
+    // An ordinary message goes to universal review and cannot replace legacy state.
+    await page.evaluate(() => { for (let i=localStorage.length-1;i>=0;i--) { const key=localStorage.key(i); if (key?.startsWith('universal-draft:')) localStorage.removeItem(key); } });
+    const dialog = await sendUniversal(input);
+    await dialog.getByRole('button', { name: 'Preparar revisión', exact: true }).click();
+    await dialog.getByText('Consulta respondida.', { exact: true }).waitFor();
+    await dialog.getByRole('button', { name: 'Cerrar revisión', exact: true }).click();
     assert.equal((await savedDraft()).proposal.operationId, scopedId);
     assert.equal(await confirm().isVisible(), true);
   }
+  assert.equal(universalRequests.length, 3); assert.deepEqual(legacyParses, []);
   await reload();
   await confirm().waitFor();
   assert.equal((await savedDraft()).proposal.operationId, scopedId);
@@ -158,22 +165,20 @@ try {
   await confirm().click();
   for (let count = 0; !releaseApply && count < 500; count += 1) await new Promise((resolve) => setTimeout(resolve, 10));
   assert.ok(releaseApply, 'delayed apply request reached fixture');
-  await send('Nuevo borrador mientras confirma el anterior');
-  const replacementId = (await savedDraft()).proposal.operationId;
-  assert.notEqual(replacementId, scopedId);
+  const dialog = await sendUniversal('Nuevo mensaje mientras confirma el anterior');
+  assert.equal((await savedDraft()).proposal.operationId, scopedId);
+  await dialog.getByRole('button', { name: 'Cerrar revisión', exact: true }).click();
   releaseApply();
   await page.getByText('Transacción confirmada y aplicada al estado global.').waitFor();
-  assert.equal((await savedDraft()).proposal.operationId, replacementId);
-  await reload();
-  await confirm().waitFor();
-  assert.equal((await savedDraft()).proposal.operationId, replacementId);
-  await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  assert.equal(await savedDraft(), null);
+  await reload(); assert.equal(await confirm().count(), 0);
+  assert.equal(await page.getByPlaceholder('Escribí un mensaje...').inputValue(), 'Nuevo mensaje mientras confirma el anterior');
+  await seedLegacy('Borrador previo con almacenamiento lleno');
 
   await page.evaluate(() => {
     window.restoreStorage = Storage.prototype.setItem;
     Storage.prototype.setItem = function () { throw new DOMException('Quota', 'QuotaExceededError'); };
   });
-  await send('Borrador con almacenamiento lleno');
   const before = attempts.length;
   await confirm().click();
   await page.getByText(/No se pudo guardar la propuesta/).waitFor();
@@ -184,7 +189,7 @@ try {
   await confirm().click();
   await confirm().waitFor({ state: 'hidden' });
   assert.equal(attempts.length, before + 1, 'confirmation can retry once storage is available again');
-  console.log('PASS panel draft recovery: same operation after 503/reload, one write, cancel, tenant/actor isolation, invalid snapshot retention, concurrent replacement, quota safety; storage validation/policy failures.');
+  console.log('PASS panel draft recovery: same operation after 503/reload, one write, cancel, tenant/actor isolation, invalid snapshot retention, concurrent universal input preserving legacy state, quota safety; storage validation/policy failures.');
 } finally {
   releaseApply?.();
   await browser.close();

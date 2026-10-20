@@ -56,7 +56,13 @@ export function prepareUniversalOperation(input, context) {
     fail('FORBIDDEN','Los IDs de borradores están reservados a su confirmación.');
   const prepareBlock = (domain, blockCandidate) => {
     const plan = validators[domain](blockCandidate,context);
-    if (domain === 'inventory') requireReviewedUpdateSelection(plan);
+    // Persisted conversation drafts freeze every explicit member and require
+    // confirmation of their complete backend review. Public plans still need
+    // the dedicated selection flow; neither a client ID nor this flag alone
+    // grants the internal draft capability.
+    const reviewedDraft = context.internalConversationOperation === true
+      && candidate.operationId.startsWith('draft-operation:');
+    if (domain === 'inventory' && !reviewedDraft) requireReviewedUpdateSelection(plan);
     return plan;
   };
   if (selected.size === 1) {

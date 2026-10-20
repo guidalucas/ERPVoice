@@ -1,11 +1,8 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-	readonly VITE_VOICE_MODEL_ENDPOINT?: string;
-	readonly VITE_VOICE_MODEL_API_KEY?: string;
-	readonly VITE_VOICE_MODEL_NAME?: string;
-	readonly VITE_VOICE_TRANSCRIPTION_ENDPOINT?: string;
-	readonly VITE_VOICE_TRANSCRIPTION_MODEL?: string;
+	readonly VITE_API_BASE?: string;
+	readonly VITE_META_API_BASE?: string;
 }
 
 interface ImportMeta {

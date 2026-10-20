@@ -45,16 +45,15 @@ export const toUserFacingError = (error: unknown, fallback = 'No se pudo complet
 
 export const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const token = getAuthToken();
+  const headers = new Headers(init?.headers);
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
 
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(init?.headers ?? {}),
-      },
       ...init,
+      headers,
     });
   } catch {
     throw new Error(NETWORK_ERROR_MESSAGE);

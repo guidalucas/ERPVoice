@@ -3,6 +3,7 @@ import { InventoryOperationError } from './inventoryOperations.js';
 import { operationRequestDigest } from './operationHash.js';
 import { prepareUniversalOperation } from './universalOperations.js';
 import { executeUniversalPlanInTransaction } from './universalPostgres.js';
+import { validateUniversalOperationReview } from './universalOperationReview.js';
 
 export const UNIVERSAL_CONVERSATION_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS universal_drafts (
@@ -10,8 +11,16 @@ export const UNIVERSAL_CONVERSATION_SCHEMA_SQL = `
     version INTEGER NOT NULL, status TEXT NOT NULL, preview_json JSONB NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY(owner_phone,draft_id),
-    CHECK(status IN ('awaiting_confirmation','awaiting_clarification','applied','cancelled'))
+    CHECK(status IN ('awaiting_confirmation','awaiting_clarification','applied','cancelled','answered'))
   );
+  DO $$ BEGIN
+    IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='universal_drafts'::regclass
+      AND conname='universal_drafts_status_check' AND pg_get_constraintdef(oid) LIKE '%answered%') THEN
+      ALTER TABLE universal_drafts DROP CONSTRAINT IF EXISTS universal_drafts_status_check;
+      ALTER TABLE universal_drafts ADD CONSTRAINT universal_drafts_status_check
+        CHECK(status IN ('awaiting_confirmation','awaiting_clarification','applied','cancelled','answered'));
+    END IF;
+  END $$;
   CREATE TABLE IF NOT EXISTS universal_draft_commands (
     owner_phone TEXT NOT NULL, actor_id TEXT NOT NULL, request_id TEXT NOT NULL,
     request_hash TEXT NOT NULL, draft_id TEXT NOT NULL, response_json JSONB NOT NULL,
@@ -71,15 +80,19 @@ function requirePending(row,version,allowExpired=false) {
   if (row.expired && !allowExpired) fail('DRAFT_EXPIRED','El borrador venció. Prepará una revisión nueva.');
 }
 function previewFromInterpretation(interpretation,{draftId,version,text,clarifications,expiresAt,context}) {
-  if (!['ready','clarification'].includes(interpretation?.kind)) fail('INTERPRETATION_UNAVAILABLE','No pude preparar una interpretación válida. No apliqué cambios.');
+  if (!['ready','clarification','answer'].includes(interpretation?.kind)) fail('INTERPRETATION_UNAVAILABLE','No pude preparar una interpretación válida. No apliqué cambios.');
+  if (interpretation.kind==='ready' && !interpretation.plan) fail('INVALID_DRAFT_REQUEST','Falta el plan revisado de la operación.');
+  if(interpretation.kind==='answer' && (interpretation.plan || !interpretation.answer || typeof interpretation.answer.text!=='string' || !Array.isArray(interpretation.answer.items))) fail('INVALID_DRAFT_REQUEST','La consulta no contiene una respuesta válida.');
   const preview=json({draftId,version,text,clarifications,expiresAt,
-    status:interpretation.kind==='ready' ? 'awaiting_confirmation' : 'awaiting_clarification',
+    status:interpretation.kind==='answer' ? 'answered' : interpretation.kind==='ready' ? 'awaiting_confirmation' : 'awaiting_clarification',
+    ...(interpretation.kind==='answer' ? {queries:interpretation.queries,evidence:interpretation.evidence,answer:interpretation.answer} : {}),
     ...(interpretation.plan ? {plan:interpretation.plan,evidence:interpretation.evidence,review:interpretation.review} : {}),
     ...(interpretation.kind==='clarification' ? {question:interpretation.question} : {}),
     trace:interpretation.trace});
   if (preview.plan) {
     if (preview.plan.operationId!==`draft-operation:${draftId}`) fail('INVALID_DRAFT_REQUEST','El plan no corresponde al borrador.');
     prepareUniversalOperation(preview.plan,{...context,internalConversationOperation:true});
+    validateUniversalOperationReview(preview.plan,preview.review);
   }
   preview.digest=operationRequestDigest({businessId:context.businessId,actorId:context.actorId,preview});
   return preview;
@@ -122,7 +135,10 @@ export async function persistUniversalInterpretation(client,request,interpretati
 export async function confirmUniversalDraftInTransaction(client,draftId,input,context,persistInventoryTransactions) {
   const confirmation=normalizeDraftConfirmation(input),row=await readUniversalDraft(client,draftId,context,{lock:true});
   if (row.preview_json.digest!==confirmation.digest || row.version!==confirmation.version) fail('DRAFT_VERSION_MISMATCH','La confirmación no corresponde a la revisión vigente.');
-  if (row.preview_json.plan) prepareUniversalOperation(row.preview_json.plan,{...context,internalConversationOperation:true});
+  if (row.preview_json.plan) {
+    prepareUniversalOperation(row.preview_json.plan,{...context,internalConversationOperation:true});
+    validateUniversalOperationReview(row.preview_json.plan,row.preview_json.review);
+  }
   if (row.status==='applied') return row.preview_json;
   requirePending(row,confirmation.version);
   if (row.status!=='awaiting_confirmation') fail('DRAFT_NOT_READY','Falta responder la pregunta pendiente.');

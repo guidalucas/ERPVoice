@@ -6,6 +6,7 @@ import { validateAccountPlan, accountPlanDigest } from '../server/accountOperati
 import { validatePartyPlan, partyPlanDigest } from '../server/partyOperations.js';
 import { operationRequestDigest } from '../server/operationHash.js';
 import { operationResultActions } from '../server/operationResults.js';
+import { validateUniversalOperationReview } from '../server/universalOperationReview.js';
 
 const ctx = {businessId:'59899000961',actorId:'59899000962',permissions:['inventory:receive','inventory:update','inventory:deactivate','accounts:charge','clients:create']};
 const inventory = {itemId:'one',type:'stock.receive',target:{kind:'new',sku:{name:'SKU universal',unit:'unit'}},quantity:{value:3,unit:'unit'}};
@@ -54,6 +55,26 @@ test('universal execution cannot bypass existing set review or private child nam
   }
   const event = operationResultActions({domainResult:{items:[{itemId:'one',type:'client.create',party:{id:'saved',name:'Guardado',notas:null,metadataRevision:0}}]}});
   assert.equal(event[0].clientId,'saved');
+});
+
+test('only internal reserved conversation plans accept frozen bulk changes and deactivations', () => {
+  const action={itemId:'one',type:'sku.update',target:{kind:'existing',skuId:'sku-1',expectedRevision:0},changes:{price:0},reason:'Revisión'};
+  const entries=[action,{...action,itemId:'two',target:{...action.target,skuId:'sku-2'}}];
+  const internal={...ctx,internalConversationOperation:true};
+  reject(()=>prepareUniversalOperation(plan(entries),internal),'SELECTION_REQUIRED');
+  reject(()=>prepareUniversalOperation({...plan(entries),operationId:'draft-operation:test'},ctx),'FORBIDDEN');
+  const frozen=prepareUniversalOperation({...plan(entries),operationId:'draft-operation:test'},internal).plan;
+  assert.equal(frozen.actions.length,2);
+  const {changes,...deactivation}={...action,type:'sku.deactivate'};
+  assert.equal(prepareUniversalOperation({...plan([deactivation]),operationId:'draft-operation:test'},internal).plan.actions[0].type,'sku.deactivate');
+  reject(()=>prepareUniversalOperation({...plan(entries),operationId:'draft-operation:test'},{...internal,permissions:[]}),'FORBIDDEN');
+});
+
+test('complete operation reviews cover each frozen item once and in exact order', () => {
+  const p={actions:[{itemId:'a'},{itemId:'b'}]}, review=[{itemId:'a',title:'Uno',details:['Dato']},{itemId:'b',title:'Dos',details:['Otro dato']}];
+  assert.equal(validateUniversalOperationReview(p,review),review);
+  for(const bad of [review.slice(0,1),[review[1],review[0]],[review[0],review[0]],review.map(item=>({...item,title:''})),review.map(item=>({...item,details:[false]}))])
+    reject(()=>validateUniversalOperationReview(p,bad),'INVALID_DRAFT_REQUEST');
 });
 
 test('homogeneous contracts retain the preexisting exact normalized shape and digest', () => {
