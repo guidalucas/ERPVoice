@@ -7,7 +7,9 @@
 - Auditoría previa reutilizada. No repetir investigación general.
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
-- Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
+- Producción NO verificada. H5 inicial: Gemini real 10/10 casos; Meta y PostgreSQL con
+  conexión de lectura comprobada. La base contiene datos reales y necesita migración;
+  no migrar antes de verificar backup/restauración. Audio real aún sin clave configurada.
 - Último alcance integrado: H4.5e, retiro del parser del navegador/endpoint antiguo y
   transcripción privada compartida. H4.5d2 WhatsApp/conjuntos `3c51c65`, panel/consultas
   `bf8e2c1`; familias H4.6b2 y cambios del usuario preservados. Ver git log para cierre audio.
@@ -61,16 +63,18 @@
 
 ## Próximo paso exacto
 
-H5: configurar un entorno aislado con Gemini o Groq, VOICE_TRANSCRIPTION_API_KEY o
-GROQ_API_KEY, Meta y PostgreSQL. Usar .env.example actualizado; las claves son privadas
-del servidor. No hace falta volver a investigar arquitectura ni reimplementar H0-H4.
-Ejecutar `npm run eval:universal:live` y revisar cada fallo semántico; después comprobar
-backup/restauración en base aislada, migración repetida, despliegue SHA/readiness y piloto
-con texto/audio, consulta y confirmación/reintento desde panel/WhatsApp.
+H5 siguiente: obtener backup recuperable de la base con datos reales y restaurarlo en
+una base aislada antes de ejecutar migraciones remotas. En la inspección de lectura falta
+universal_meta_commands y universal_drafts todavía no admite answered. Conservar recibos.
+Configurar GROQ_API_KEY o VOICE_TRANSCRIPTION_API_KEY para audio real. Gemini ya completó
+el corpus de 10 casos tras corregir instrucciones; mantener ese resultado como muestra
+acotada, no como aceptación del piloto. Completar después login/webhook y envío real Meta,
+despliegue SHA/readiness y piloto texto/audio con confirmación/reintento en entorno aislado.
 Tras el piloto y sin propuestas/lotes antiguos pendientes, retirar adaptadores históricos
 de /api/state/apply y reanudación legacy. Hoy usan el mismo núcleo; no son otro escritor.
-El usuario confirmó (2026-10-18) que todavía no hay otro entorno configurado. No desplegar
-ni declarar calidad LLM real a partir de mocks. No reauditar ni duplicar escritores.
+El usuario configuró .env.local y confirmó que la base contiene datos reales. Las pruebas
+remotas hechas fueron de lectura; no hubo migraciones ni mensajes enviados. No desplegar
+ni confundir conexiones API con aceptación del piloto. No reauditar ni duplicar escritores.
 
 ## Registro de hitos
 
@@ -837,3 +841,32 @@ ni declarar calidad LLM real a partir de mocks. No reauditar ni duplicar escrito
   real LLM/transcripción, Meta real, backup/restauración remota, despliegue y piloto. No se
   atribuyen estas validaciones a mocks. El retiro definitivo de compatibilidad histórica
   se hará después de validar el piloto y agotar los borradores activos, sin borrar recibos.
+
+### H5 inicial — evaluación real y conexiones (2026-10-19)
+
+- .env.local configurado por el usuario; nunca se copiaron secretos al repositorio/reporte.
+  El evaluador ahora usa la misma precedencia local que el backend (override:true) para no
+  usar claves viejas heredadas del shell. Reporta preguntas de aclaración en casos sintéticos.
+- HTTPS inicial rechazado por UNABLE_TO_VERIFY_LEAF_SIGNATURE en Node. Resuelto usando
+  `node --use-system-ca scripts/evaluate-universal-corpus.js --live`, con certificados de
+  Windows y verificación TLS activa. No se desactivó TLS ni se cambiaron claves del usuario.
+- Primer corpus real: 7/10. Hallazgos: salePrice copiado sin pedirlo; alta con familia con
+  campos de sku.create mezclados en stock.receive; consultas de estados solapados mal
+  interpretadas. Se aclararon contratos generales en el prompt: precio declarado, campos
+  cerrados por tipo, atributos tipados con cero/false y alcance/estado por cada consulta.
+  Corpus y oráculo permanecieron intactos. Iteración intermedia 8/10; casos dirigidos y
+  evaluación completa final 10/10 con Gemini gemini-3.5-flash-lite (sin fallback Groq).
+- Validación final REAL: 10 casos sintéticos, todos aprobados; latencia observada 795-2795 ms
+  por caso en esa ejecución. Reporte local ignorado scripts/test-results-universal-live.json.
+  Es una muestra acotada; no valida aún calidad en piloto ni conversaciones reales de clientes.
+- Meta REAL: HTTP 200 al leer número por ID; ID coincide y hay número/nombre verificado en
+  respuesta. No se enviaron mensajes. PostgreSQL REAL: conexión y transacción READ ONLY,
+  versión 17.6; 20/21 tablas esperadas presentes, RLS activo en las presentes. Falta
+  universal_meta_commands y CHECK de universal_drafts todavía excluye answered.
+- Usuario confirmó datos reales: no se ejecutó migrateDatabase, DDL ni mutaciones sobre
+  esa base. Próxima migración requiere backup restaurado/verificado en otra base. pg_dump
+  y pg_restore no están disponibles en PATH; no sustituir respaldo por un export incompleto.
+- Audio real pendiente: GROQ_API_KEY y VOICE_TRANSCRIPTION_API_KEY siguen vacíos. Meta
+  lectura y Gemini no sustituyen transcripción, webhook entrante, login y piloto completos.
+- Regresiones tras cambios: 151 pruebas puras, evaluador simulado y 321 checks PostgreSQL/
+  HTTP en base temporal aislada aprobados. No se usó la base real para esas escrituras.

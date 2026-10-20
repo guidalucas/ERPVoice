@@ -132,6 +132,7 @@ const evaluateFixture = async (fixture, { complete = undefined } = {}) => {
     errors: compareUniversalGold(fixture, result),
     kind: result.kind,
     reason: result.reason ?? null,
+    clarificationQuestion: result.kind==='clarification' ? result.question : null,
     semanticMismatch: compareUniversalGold(fixture, result),
     elapsedMs: Date.now() - started,
     trace: {
@@ -264,7 +265,9 @@ const option = (name) => {
 };
 
 const runCli = async () => {
-  dotenv.config({ path: '.env.local', quiet: true });
+  // Match the application's precedence: explicit local settings override stale
+  // variables inherited from another shell or evaluation session.
+  dotenv.config({ path: '.env.local', quiet: true, override: true });
   dotenv.config({ quiet: true });
   if (process.argv.includes('--self-test') && process.argv.includes('--live')) {
     console.error('Elegí --self-test o --live por separado. No se ejecutó ninguna evaluación.');
