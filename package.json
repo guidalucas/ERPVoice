@@ -27,6 +27,7 @@
     "eval:argentine:live": "node --use-system-ca scripts/evaluate-argentine-production.js --live --production-temp",
     "test:river-stock-query": "node scripts/test-river-stock-query.js",
     "test:inventory-ui": "npm run build && node scripts/test-inventory-ui.mjs",
+    "test:product-grid-ui": "npm run build && node scripts/test-product-grid-ui.mjs",
     "test:panel-draft-recovery": "npm run build && node scripts/test-panel-draft-recovery.mjs",
     "test:sales-ui": "npm run build && node scripts/test-sales-ui.mjs",
     "test:inventory-adjustments-ui": "npm run build && node scripts/test-inventory-adjustments-ui.mjs",

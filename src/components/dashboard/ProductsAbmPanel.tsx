@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CaretDown, CaretRight, Circle, MagnifyingGlass, X } from '@phosphor-icons/react';
 import type { InventorySelectionPreview, InventorySelectionRequest, ProductAdjustment, ProductInput, ProductModelInput } from '../../services/productService';
 import { getVariantWord, type BusinessCategoryPreset } from '../../domain/businessCategories';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
@@ -7,6 +8,7 @@ import { LOW_STOCK_THRESHOLD } from './dashboardTypes';
 import { StockSetAdjustmentForm } from './StockSetAdjustmentForm';
 import { ProductFamilyPanel } from './ProductFamilyPanel';
 import { ProductFamilyAssignmentPanel } from './ProductFamilyAssignmentPanel';
+import { DataGrid, type DataGridColumn, type DataGridSection } from '../ui/DataGrid';
 
 type ProductDraft = {
   name: string;
@@ -53,26 +55,9 @@ type ProductGroup = {
   products: ProductRow[];
 };
 
-type ProductGridColumn = 'name' | 'category' | 'stock' | 'price' | 'actions';
-const PRODUCT_GRID_COLUMNS: { id: ProductGridColumn; label: string; width: string }[] = [
-  { id: 'name', label: 'Producto', width: 'minmax(12rem, 2.4fr)' },
-  { id: 'category', label: 'Tipo / modelo', width: 'minmax(9rem, 1.5fr)' },
-  { id: 'stock', label: 'Stock disponible', width: 'minmax(8rem, 1fr)' },
-  { id: 'price', label: 'Precio', width: 'minmax(8rem, 1fr)' },
-  { id: 'actions', label: 'Acciones', width: 'minmax(10rem, 1.3fr)' },
-];
-const PRODUCT_GRID_DEFAULTS = PRODUCT_GRID_COLUMNS.map((column) => column.id);
-const PRODUCT_GRID_STORAGE_KEY = 'erpvoice.products-grid.columns.v1';
-
-const readProductGridColumns = (): ProductGridColumn[] => {
-  if (typeof window === 'undefined') return PRODUCT_GRID_DEFAULTS;
-  try {
-    const stored: unknown = JSON.parse(window.localStorage.getItem(PRODUCT_GRID_STORAGE_KEY) ?? 'null');
-    if (!Array.isArray(stored)) return PRODUCT_GRID_DEFAULTS;
-    const valid = stored.filter((item): item is ProductGridColumn => PRODUCT_GRID_DEFAULTS.includes(item));
-    return [...new Set(valid), ...PRODUCT_GRID_DEFAULTS.filter((id) => !valid.includes(id))];
-  } catch { return PRODUCT_GRID_DEFAULTS; }
-};
+type InventoryGrouping = 'model' | 'size' | 'productType' | 'none';
+type InventoryGridRow = { kind: 'model'; group: ProductGroup } | { kind: 'product'; product: ProductRow };
+const UNDEFINED_FILTER_VALUE = '__undefined__';
 
 const SIZE_ORDER = ['xxs', 'xs', 's', 'm', 'l', 'xl', 'xxl', 'xxxl'];
 
@@ -538,24 +523,12 @@ export function ProductsAbmPanel({
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [gridColumns, setGridColumns] = useState<ProductGridColumn[]>(readProductGridColumns);
-  const [draggedColumn, setDraggedColumn] = useState<ProductGridColumn | null>(null);
+  const [sizeFilter, setSizeFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [groupBy, setGroupBy] = useState<InventoryGrouping>(() => preset.useVariants ? 'model' : 'none');
   const onlyLowStock = stockFilter === 'low-stock';
-
-  useEffect(() => { window.localStorage.setItem(PRODUCT_GRID_STORAGE_KEY, JSON.stringify(gridColumns)); }, [gridColumns]);
-
-  const moveGridColumn = (source: ProductGridColumn, target: ProductGridColumn) => {
-    setGridColumns((current) => {
-      const next = [...current];
-      const from = next.indexOf(source);
-      const to = next.indexOf(target);
-      if (from < 0 || to < 0) return current;
-      next.splice(to, 0, next.splice(from, 1)[0]!);
-      return next;
-    });
-  };
-
-  const gridTemplate = `2.75rem ${gridColumns.map((id) => PRODUCT_GRID_COLUMNS.find((column) => column.id === id)!.width).join(' ')}`;
+  const grouping = !preset.useVariants && (groupBy === 'size' || groupBy === 'model') ? 'none' : groupBy;
+  const hasFilters = Boolean(searchQuery.trim() || sizeFilter || typeFilter || onlyLowStock);
 
   const stockSummary = useMemo(() => {
     const totalAvailable = products.reduce((total, product) => total + product.stockAvailable, 0);
@@ -570,62 +543,61 @@ export function ProductsAbmPanel({
     [products, preset.useVariants],
   );
 
+  const filterOptions = useMemo(() => {
+    const options = (values: (string | null | undefined)[]) => {
+      const unique = new Map<string, string>();
+      for (const value of values) {
+        const label = value?.trim() ?? '';
+        unique.set(label ? normalizeSearch(label) : UNDEFINED_FILTER_VALUE, label || 'Sin definir');
+      }
+      return [...unique].map(([value, label]) => ({ value, label }));
+    };
+    return {
+      sizes: options(products.map((product) => product.size)).sort((a, b) => compareVariantValues(a.label, b.label)),
+      types: options(products.map((product) => product.productType)).sort((a, b) => a.label.localeCompare(b.label, 'es')),
+    };
+  }, [products]);
+
   const flatProducts = useMemo(() => {
-    const normalizedQuery = normalizeSearch(searchQuery);
-    const bySearch = !normalizedQuery
-      ? products
-      : products.filter((product) => {
-          const haystack = normalizeSearch(
-            [product.name, product.productType, product.productModel, product.size].filter(Boolean).join(' '),
-          );
-          return haystack.includes(normalizedQuery);
-        });
+    const query = normalizeSearch(searchQuery);
+    const matchesOption = (value: string | null | undefined, filter: string) => !filter || (value?.trim() ? normalizeSearch(value) : UNDEFINED_FILTER_VALUE) === filter;
+    return products.filter((product) => (!query || normalizeSearch(productSearchHaystack(product)).includes(query))
+      && (!onlyLowStock || product.stockAvailable <= LOW_STOCK_THRESHOLD)
+      && (!preset.useVariants || matchesOption(product.size, sizeFilter))
+      && matchesOption(product.productType, typeFilter))
+      .slice().sort((left, right) => productLineName(left).localeCompare(productLineName(right), 'es', { sensitivity: 'base' }) || compareVariantValues(left.size, right.size));
+  }, [products, searchQuery, onlyLowStock, preset.useVariants, sizeFilter, typeFilter]);
 
-    if (!onlyLowStock) {
-      return bySearch;
+  const filteredGroups = useMemo(() => buildProductGroups(flatProducts), [flatProducts]);
+  const gridSections = useMemo<DataGridSection<InventoryGridRow>[]>(() => {
+    if (grouping === 'model') return [{ id: 'models', rows: filteredGroups.map((group) => ({ kind: 'model', group })) }];
+    const rows: InventoryGridRow[] = flatProducts.map((product) => ({ kind: 'product', product }));
+    if (grouping === 'none') return [{ id: 'products', rows }];
+    const sections = new Map<string, DataGridSection<InventoryGridRow>>();
+    for (const row of rows) {
+      if (row.kind !== 'product') continue;
+      const value = (grouping === 'size' ? row.product.size : row.product.productType)?.trim() || 'Sin definir';
+      const id = normalizeSearch(value);
+      if (!sections.has(id)) sections.set(id, { id, label: grouping === 'size' ? (preset.variantLabel || 'Variante') + ': ' + value : value, rows: [] });
+      sections.get(id)!.rows.push(row);
     }
-
-    return bySearch.filter((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD);
-  }, [products, searchQuery, onlyLowStock]);
-
-  const filteredGroups = useMemo(() => {
-    const normalizedQuery = normalizeSearch(searchQuery);
-    const bySearch = !normalizedQuery
-      ? groupedProducts
-      : groupedProducts
-          .map((group) => {
-            const headerHaystack = normalizeSearch(
-              [group.displayName, group.productType, group.productModel].filter(Boolean).join(' '),
-            );
-            if (headerHaystack.includes(normalizedQuery)) {
-              return group;
-            }
-
-            const matchingProducts = group.products.filter((product) =>
-              normalizeSearch(productSearchHaystack(product)).includes(normalizedQuery),
-            );
-            return { ...group, products: matchingProducts };
-          })
-          .filter((group) => group.products.length > 0);
-
-    if (!onlyLowStock) {
-      return bySearch;
-    }
-
-    return bySearch
-      .map((group) => ({
-        ...group,
-        products: group.products.filter((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD),
-      }))
-      .filter((group) => group.products.length > 0);
-  }, [groupedProducts, searchQuery, onlyLowStock]);
+    return [...sections.values()].sort((a, b) => grouping === 'size'
+      ? compareVariantValues(a.rows[0]?.kind === 'product' ? a.rows[0].product.size : '', b.rows[0]?.kind === 'product' ? b.rows[0].product.size : '')
+      : a.label!.localeCompare(b.label!, 'es', { sensitivity: 'base' }))
+      .map((section) => ({ ...section, summary: section.rows.length + (section.rows.length === 1 ? ' producto' : ' productos') }));
+  }, [grouping, flatProducts, filteredGroups, preset.variantLabel]);
 
   const currentProductIds = useMemo(() => new Set(products.map((product) => product.id)), [products]);
   const selectedCurrentIds = selectedIds.filter((id) => currentProductIds.has(id));
-  const visibleIds = preset.useVariants
-    ? filteredGroups.flatMap((group) => group.products.map((product) => product.id))
-    : flatProducts.map((product) => product.id);
-  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedCurrentIds.includes(id));
+  const rowProducts = (row: InventoryGridRow) => row.kind === 'model' ? row.group.products : [row.product];
+  const selectionFor = (row: InventoryGridRow): 'all' | 'some' | 'none' => {
+    const members = rowProducts(row);
+    if (members.every((product) => selectedCurrentIds.includes(product.id))) return 'all';
+    return members.some((product) => selectedCurrentIds.includes(product.id)) ? 'some' : 'none';
+  };
+  const isGroupExpanded = (group: ProductGroup) => expandedGroups[group.key] ?? hasFilters;
+  const toggleGroup = (group: ProductGroup) => setExpandedGroups((current) => ({ ...current, [group.key]: !isGroupExpanded(group) }));
+  const fullGroupFor = (group: ProductGroup) => groupedProducts.find((item) => item.key === group.key) ?? group;
 
   const toggleSelection = (ids: string[]) => {
     setSelectedIds((current) => {
@@ -981,6 +953,62 @@ export function ProductsAbmPanel({
     }
   };
 
+  const gridColumns: DataGridColumn<InventoryGridRow>[] = [
+    {
+      id: 'name', label: grouping === 'model' ? 'Modelo / producto' : 'Producto', width: 380, minWidth: 220, required: true,
+      render: (row) => row.kind === 'model' ? <button type="button" className="flex w-full items-start gap-2.5 text-left" aria-label={(isGroupExpanded(row.group) ? 'Ocultar' : 'Ver') + ' ' + variantLabelPlural + ' de ' + row.group.displayName} aria-expanded={isGroupExpanded(row.group)} onClick={() => toggleGroup(row.group)}>
+        <span className="mt-1 shrink-0 text-[color:var(--muted)]">{isGroupExpanded(row.group) ? <CaretDown size={16} /> : <CaretRight size={16} />}</span>
+        <span className="min-w-0"><span className="type-subtitle block leading-snug">{row.group.displayName}</span><span className="mt-1 block text-xs text-[color:var(--muted)]">{row.group.products.length}{row.group.products.length < fullGroupFor(row.group).products.length ? ' de ' + fullGroupFor(row.group).products.length : ''} {fullGroupFor(row.group).products.length === 1 ? variantWord : variantLabelPlural}</span></span>
+      </button> : <span className="type-subtitle leading-snug">{preset.useVariants ? productLineName(row.product) : row.product.name}</span>,
+    },
+    {
+      id: 'type', label: preset.productTypeLabel, width: 155, minWidth: 110, hidden: true,
+      render: (row) => <span className="text-[color:var(--muted)]">{(row.kind === 'model' ? row.group.productType : row.product.productType) || 'Sin definir'}</span>,
+    },
+    ...(preset.useVariants ? [{
+      id: 'size', label: grouping === 'model' ? variantLabelPlural.charAt(0).toUpperCase() + variantLabelPlural.slice(1) : preset.variantLabel || 'Variante', width: 180, minWidth: 110,
+      render: (row: InventoryGridRow) => row.kind === 'model' ? <div className="flex flex-wrap gap-1.5">{row.group.products.map((product) => <button type="button" key={product.id} title={'Filtrar ' + variantWord + ' ' + (product.size || 'sin definir')} aria-label={'Filtrar ' + variantWord + ' ' + (product.size || 'sin definir')} aria-pressed={sizeFilter === (product.size?.trim() ? normalizeSearch(product.size) : UNDEFINED_FILTER_VALUE)} className="rounded-md border border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-2 py-1 text-xs hover:border-[color:var(--accent)] hover:text-[color:var(--accent)]" onClick={() => setSizeFilter(product.size?.trim() ? normalizeSearch(product.size) : UNDEFINED_FILTER_VALUE)}>{(product.size || '—') + ': '}<span className="text-[color:var(--muted)]">{product.stockAvailable}</span></button>)}</div> : <span className="inline-block rounded-md border border-[color:var(--border)] px-2 py-1 text-xs font-semibold">{row.product.size || 'Sin definir'}</span>,
+    }] : []),
+    {
+      id: 'stock', label: 'Disponible', width: 135, minWidth: 110, align: 'right',
+      render: (row) => {
+        const members = rowProducts(row);
+        const quantity = members.reduce((total, product) => total + product.stockAvailable, 0);
+        const low = members.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD);
+        return <div className="flex flex-col items-end gap-1"><strong className="tabular-nums">{quantity.toLocaleString('es-AR')}</strong>{low && <span className="inventory-stock-status" data-empty={quantity === 0}><Circle size={6} weight="fill" />{quantity === 0 ? 'Sin stock' : row.kind === 'model' ? variantLabelPlural.charAt(0).toUpperCase() + variantLabelPlural.slice(1) + ' con stock bajo' : 'Stock bajo'}</span>}</div>;
+      },
+    },
+    { id: 'reserved', label: 'Reservado', width: 115, minWidth: 95, align: 'right', hidden: true, render: (row) => <span className="tabular-nums text-[color:var(--muted)]">{rowProducts(row).reduce((total, product) => total + product.stockReserved, 0)}</span> },
+    {
+      id: 'price', label: 'Precio', width: 150, minWidth: 120, align: 'right', render: (row) => {
+        const prices = rowProducts(row).map((product) => product.price);
+        const min = Math.min(...prices), max = Math.max(...prices);
+        return <span className="font-medium tabular-nums">{min === max ? formatCurrency(min) : formatCurrency(min) + ' – ' + formatCurrency(max)}</span>;
+      },
+    },
+    {
+      id: 'actions', label: 'Acciones', width: 190, minWidth: 170, required: true, align: 'right',
+      render: (row) => row.kind === 'model' ? <div className="flex items-center justify-end gap-2"><button type="button" className="erp-toggle-link text-sm" aria-label={'Agregar ' + variantWord + ' a ' + row.group.displayName} onClick={() => openAddVariantForm(fullGroupFor(row.group))}>+ Agregar {variantWord}</button><button type="button" className="data-grid-icon-button" aria-label={(isGroupExpanded(row.group) ? 'Contraer' : 'Expandir') + ' fila de ' + row.group.displayName} onClick={() => toggleGroup(row.group)}>{isGroupExpanded(row.group) ? <CaretDown size={16} /> : <CaretRight size={16} />}</button></div>
+        : <div className="flex flex-wrap justify-end gap-x-3"><button type="button" className="erp-toggle-link text-sm" aria-label={'Editar producto ' + row.product.name} onClick={() => openEditForm(row.product)}>Editar</button><button type="button" className="text-sm font-medium text-[color:var(--destructive)] hover:underline" aria-label={'Desactivar producto ' + row.product.name} onClick={() => openDeactivation([row.product.id], true)}>Desactivar</button></div>,
+    },
+  ];
+
+  const renderModelDetails = (row: InventoryGridRow) => {
+    if (row.kind !== 'model' || !isGroupExpanded(row.group)) return null;
+    const group = row.group;
+    return <div>
+      <div className="mb-3 flex items-center justify-between gap-4"><p className="text-xs font-semibold text-[color:var(--muted)]">{variantLabelPlural.charAt(0).toUpperCase() + variantLabelPlural.slice(1)} de {group.displayName}</p><button type="button" className="erp-toggle-link min-h-9 text-sm" aria-label={'Editar modelo ' + group.displayName} onClick={() => openEditModelForm(fullGroupFor(group))}>Editar modelo</button></div>
+      <table aria-label={variantLabelPlural + ' de ' + group.displayName}>
+        <thead><tr><th scope="col" className="w-12"><span className="sr-only">Selección</span></th><th scope="col">{preset.variantLabel}</th><th scope="col" className="text-right">Disponible</th><th scope="col" className="text-right">Reservado</th><th scope="col" className="text-right">Precio</th><th scope="col" className="text-right">Acciones</th></tr></thead>
+        <tbody>{group.products.map((product) => <tr key={product.id} data-selected={selectedCurrentIds.includes(product.id) || undefined}>
+          <td><input type="checkbox" aria-label={'Seleccionar ' + variantWord + ' ' + (product.size || 'sin definir') + ' de ' + group.displayName} checked={selectedCurrentIds.includes(product.id)} onChange={() => toggleSelection([product.id])} /></td>
+          <td><strong>{product.size || 'Sin definir'}</strong></td><td className="text-right tabular-nums">{product.stockAvailable}</td><td className="text-right tabular-nums">{product.stockReserved}</td><td className="text-right font-medium tabular-nums">{formatCurrency(product.price)}</td>
+          <td><div className="flex justify-end gap-4"><button type="button" className="erp-toggle-link min-h-9 text-sm" aria-label={'Editar ' + variantWord + ' ' + (product.size || 'sin definir') + ' de ' + group.displayName} onClick={() => openEditForm(product)}>Editar {variantWord}</button><button type="button" className="min-h-9 text-sm font-medium text-[color:var(--destructive)] hover:underline" aria-label={'Desactivar ' + variantWord + ' ' + (product.size || 'sin definir') + ' de ' + group.displayName} onClick={() => openDeactivation([product.id], true)}>Desactivar</button></div></td>
+        </tr>)}</tbody>
+      </table>
+    </div>;
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-12">
@@ -1023,52 +1051,31 @@ export function ProductsAbmPanel({
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col gap-3">
-          <label className="min-w-0 space-y-1.5 text-sm type-subtitle text-[color:var(--muted)]">
-            Buscar
-            <input
-              className="erp-input"
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={
-                preset.useVariants && preset.variantLabel
-                  ? `Nombre, ${preset.productModelLabel.toLowerCase()}, ${preset.productTypeLabel.toLowerCase()} o ${variantWord}…`
-                  : `Nombre, ${preset.productModelLabel.toLowerCase()} o ${preset.productTypeLabel.toLowerCase()}…`
-              }
-              autoComplete="off"
-            />
-          </label>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar stock">
-              <button
-                type="button"
-                className="activity-filter-chip"
-                aria-pressed={!onlyLowStock}
-                onClick={() => onStockFilterChange?.('all')}
-              >
-                Todos
-              </button>
-              <button
-                type="button"
-                className={`activity-filter-chip ${onlyLowStock ? '!bg-none !text-[#0b0b10]' : ''}`}
-                aria-pressed={onlyLowStock}
-                style={onlyLowStock ? { background: 'var(--warning)', borderColor: 'transparent', color: '#0b0b10' } : undefined}
-                onClick={() => onStockFilterChange?.('low-stock')}
-              >
-                Stock bajo
-              </button>
+        <div className="inventory-filters" aria-label="Filtros de inventario">
+          <div className="inventory-filter-fields" data-variants={preset.useVariants}>
+            <label className="inventory-filter-label">Buscar productos
+              <span className="relative"><MagnifyingGlass className="pointer-events-none absolute left-3.5 top-3.5 text-[color:var(--muted)]" size={18} /><input className="erp-input !pl-10" type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={preset.useVariants ? 'Nombre, modelo o ' + variantWord + '…' : 'Nombre o modelo…'} autoComplete="off" /></span>
+            </label>
+            <label className="inventory-filter-label">{preset.productTypeLabel}
+              <select className="erp-input" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} aria-label={'Filtrar por ' + preset.productTypeLabel.toLowerCase()}><option value="">Todos</option>{filterOptions.types.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+            </label>
+            {preset.useVariants && <label className="inventory-filter-label">{preset.variantLabel}
+              <select className="erp-input" value={sizeFilter} onChange={(event) => setSizeFilter(event.target.value)} aria-label={'Filtrar por ' + variantWord}><option value="">Todos los {variantLabelPlural}</option>{filterOptions.sizes.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+            </label>}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[color:var(--border)] pt-4">
+            <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Filtrar stock">
+              <span className="mr-1 text-xs font-semibold text-[color:var(--muted)]">Stock</span>
+              <button type="button" className="activity-filter-chip" aria-pressed={!onlyLowStock} onClick={() => onStockFilterChange?.('all')}>Todos</button>
+              <button type="button" className="activity-filter-chip" aria-pressed={onlyLowStock} onClick={() => onStockFilterChange?.('low-stock')}>Stock bajo</button>
             </div>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-xs text-[color:var(--muted)] lg:hidden"><input type="checkbox" aria-label="Seleccionar todos los visibles" checked={allVisibleSelected} onChange={() => toggleSelection(visibleIds)} disabled={visibleIds.length === 0} className="h-4 w-4 accent-cyan-400" />Seleccionar visibles</label>
-              {preset.useVariants && <p className="text-xs text-[color:var(--muted)]">{filteredGroups.length} {filteredGroups.length === 1 ? 'modelo' : 'modelos'}</p>}
-            </div>
+            {hasFilters && <button type="button" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-[color:var(--muted)] hover:text-[color:var(--text)]" onClick={() => { setSearchQuery(''); setSizeFilter(''); setTypeFilter(''); onStockFilterChange?.('all'); }}><X size={16} />Limpiar filtros</button>}
           </div>
         </div>
 
         {selectedCurrentIds.length > 0 && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color:var(--accent-border)] bg-[color:var(--accent-soft)] px-4 py-3" role="toolbar" aria-label="Acciones de selección">
-            <span className="text-sm font-semibold text-[color:var(--text)]">{selectedCurrentIds.length} {preset.useVariants ? selectedCurrentIds.length === 1 ? variantWord : variantLabelPlural : selectedCurrentIds.length === 1 ? 'producto' : 'productos'} seleccionados</span>
+            <span className="text-sm font-semibold text-[color:var(--text)]">{selectedCurrentIds.length} {preset.useVariants ? selectedCurrentIds.length === 1 ? variantWord : variantLabelPlural : selectedCurrentIds.length === 1 ? 'producto' : 'productos'} {selectedCurrentIds.length === 1 ? 'seleccionado' : 'seleccionados'}</span>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="erp-button-secondary" onClick={() => setSelectedIds([])}>Limpiar selección</button>
               <button type="button" className="erp-button-danger" onClick={() => openDeactivation(selectedCurrentIds, false)}>Desactivar seleccionados</button>
@@ -1076,115 +1083,26 @@ export function ProductsAbmPanel({
           </div>
         )}
 
-        {!preset.useVariants && <div className="mb-2 flex justify-end">
-          <details className="relative">
-            <summary className="erp-button-secondary flex cursor-pointer list-none items-center gap-2">Columnas <span aria-hidden="true">☷</span></summary>
-            <div className="absolute right-0 z-20 mt-2 w-80 rounded-xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-3 shadow-xl">
-              <p className="mb-2 text-xs text-[color:var(--muted)]">Arrastrá los encabezados para cambiar el orden.</p>
-              {PRODUCT_GRID_COLUMNS.map((column) => <label key={column.id} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-[color:var(--card-hover)]">
-                <input type="checkbox" checked={gridColumns.includes(column.id)} disabled={column.id === 'name' || column.id === 'actions'} onChange={() => setGridColumns((current) => current.includes(column.id) ? current.filter((id) => id !== column.id) : [...current, column.id])} />
-                {column.label}{(column.id === 'name' || column.id === 'actions') && <span className="ml-auto text-xs text-[color:var(--muted)]">Fija</span>}
-              </label>)}
-              <button type="button" className="erp-toggle-link mt-2 min-h-9 text-sm" onClick={() => setGridColumns(PRODUCT_GRID_DEFAULTS)}>Restablecer columnas</button>
-            </div>
-          </details>
-        </div>}
-        <div className="overflow-x-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)]">
-          {!preset.useVariants && <div className="grid min-w-[52rem] items-center gap-2 border-b-2 border-[color:var(--border)] bg-[color:var(--surface-elevated)] px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]" style={{ gridTemplateColumns: gridTemplate }}>
-            <label className="flex items-center" title="Seleccionar visibles"><input type="checkbox" aria-label="Seleccionar todos los visibles" checked={allVisibleSelected} onChange={() => toggleSelection(visibleIds)} disabled={visibleIds.length === 0} className="h-4 w-4 accent-cyan-400" /></label>
-            {gridColumns.map((id) => { const column = PRODUCT_GRID_COLUMNS.find((item) => item.id === id)!; return <span key={id} draggable className="cursor-grab select-none rounded-md px-2 py-2 hover:bg-[color:var(--card-hover)]" onDragStart={() => setDraggedColumn(id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedColumn) moveGridColumn(draggedColumn, id); setDraggedColumn(null); }} onDragEnd={() => setDraggedColumn(null)}>{column.label} <span aria-hidden="true" className="opacity-50">⠿</span></span>; })}
-          </div>}
-          <div className={preset.useVariants ? 'divide-y divide-[color:var(--border)]' : 'min-w-[52rem] divide-y divide-[color:var(--border)]'}>
-          {preset.useVariants
-            ? filteredGroups.map((group) => {
-                const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
-                const totalReserved = group.products.reduce((sum, product) => sum + product.stockReserved, 0);
-                const fullGroup = groupedProducts.find((item) => item.key === group.key) ?? group;
-                const prices = group.products.map((product) => product.price);
-                const priceLabel = Math.min(...prices) === Math.max(...prices)
-                  ? formatCurrency(prices[0] ?? 0)
-                  : `${formatCurrency(Math.min(...prices))}–${formatCurrency(Math.max(...prices))}`;
-                const isExpanded = expandedGroups[group.key] ?? (onlyLowStock || Boolean(searchQuery.trim()));
-                const groupIds = fullGroup.products.map((product) => product.id);
-                const allGroupSelected = groupIds.every((id) => selectedCurrentIds.includes(id));
-                const partlySelected = !allGroupSelected && groupIds.some((id) => selectedCurrentIds.includes(id));
-
-                return (
-                  <div key={group.key} className="border-b border-[color:var(--border)] bg-[color:var(--surface-elevated)]">
-                    <div className="grid grid-cols-12 items-center gap-x-3 gap-y-2 px-4 py-3.5">
-                      <label className="col-span-1 flex items-center" title={`Seleccionar modelo ${group.displayName}`}>
-                        <input type="checkbox" aria-label={`Seleccionar modelo ${group.displayName}`} checked={allGroupSelected} ref={(node) => { if (node) node.indeterminate = partlySelected; }} onChange={() => toggleSelection(groupIds)} className="h-4 w-4 accent-cyan-400" />
-                      </label>
-                      <button type="button" className="col-span-11 min-w-0 text-left lg:col-span-4" aria-label={`${isExpanded ? 'Ocultar' : 'Ver'} ${variantLabelPlural} de ${group.displayName}`} aria-expanded={isExpanded} onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !isExpanded }))}>
-                        <span className="flex flex-wrap items-center gap-2"><span className="type-title text-base text-[color:var(--text)]">{group.displayName}</span>{group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) && <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-[#0b0b10]" style={{ background: 'var(--warning)' }}>Stock bajo</span>}</span>
-                        <span className="mt-0.5 block text-xs text-[color:var(--muted)]">{group.products.length} {group.products.length === 1 ? variantWord : variantLabelPlural}{totalReserved > 0 ? ` · ${totalReserved} reservadas` : ''}</span>
-                      </button>
-                      <div className="col-span-11 col-start-2 flex flex-wrap gap-1.5 lg:col-span-2 lg:col-start-auto">
-                        {group.products.slice(0, 5).map((product) => <span key={product.id} className="rounded-md border border-[color:var(--border)] px-1.5 py-0.5 text-xs">{product.size || '—'}: {product.stockAvailable}</span>)}
-                        {group.products.length > 5 && <span className="text-xs text-[color:var(--muted)]">+{group.products.length - 5}</span>}
-                      </div>
-                      <span className="col-span-3 col-start-2 text-sm text-[color:var(--text)] lg:col-span-1 lg:col-start-auto"><span className="lg:hidden">Stock: </span>{totalAvailable}</span>
-                      <span className="col-span-4 text-sm font-semibold text-[color:var(--text)] lg:col-span-2"><span className="lg:hidden">Precio: </span>{priceLabel}</span>
-                      <div className="col-span-11 col-start-2 flex flex-wrap items-center gap-2 lg:col-span-2 lg:col-start-auto lg:justify-end">
-                        <button type="button" className="erp-toggle-link min-h-9 text-sm" aria-label={`Agregar ${variantWord} a ${group.displayName}`} onClick={() => openAddVariantForm(fullGroup)}>+ Agregar {variantWord}</button>
-                        <button type="button" className="erp-toggle-link min-h-9 px-1 text-lg" aria-label={`${isExpanded ? 'Contraer' : 'Expandir'} fila de ${group.displayName}`} onClick={() => setExpandedGroups((current) => ({ ...current, [group.key]: !isExpanded }))}>{isExpanded ? '⌄' : '›'}</button>
-                      </div>
-                    </div>
-
-                    {isExpanded && (
-                      <div className="border-t border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-2">
-                        <div className="hidden grid-cols-12 gap-2 px-2 py-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)] sm:grid">
-                          <span className="col-span-1" /><span className="col-span-2">{preset.variantLabel}</span><span className="col-span-2">Disponible</span><span className="col-span-2">Reservado</span><span className="col-span-2">Precio</span><span className="col-span-3 text-right">Acciones</span>
-                        </div>
-                        <div className="divide-y divide-[color:var(--border)]">
-                          {group.products.map((product) => <div key={product.id} className="grid grid-cols-2 items-center gap-2 px-2 py-3 text-sm sm:grid-cols-12">
-                            <label className="col-span-2 sm:col-span-1"><input type="checkbox" aria-label={`Seleccionar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} checked={selectedCurrentIds.includes(product.id)} onChange={() => toggleSelection([product.id])} className="h-4 w-4 accent-cyan-400" /></label>
-                            <strong className="text-base text-[color:var(--text)] sm:col-span-2">{product.size || 'Sin definir'}</strong>
-                            <span className="sm:col-span-2"><span className="sm:hidden">Disponible: </span>{product.stockAvailable}</span>
-                            <span className="sm:col-span-2"><span className="sm:hidden">Reservado: </span>{product.stockReserved}</span>
-                            <span className="font-semibold text-[color:var(--text)] sm:col-span-2">{formatCurrency(product.price)}</span>
-                            <div className="col-span-2 flex flex-wrap gap-x-3 gap-y-2 sm:col-span-3 sm:justify-end">
-                              <button type="button" className="erp-toggle-link min-h-9 text-sm" aria-label={`Editar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => openEditForm(product)}>Editar {variantWord}</button>
-                              <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" aria-label={`Desactivar ${variantWord} ${product.size || 'sin definir'} de ${group.displayName}`} onClick={() => openDeactivation([product.id], true)}>Desactivar</button>
-                            </div>
-                          </div>)}
-                        </div>
-                        <div className="flex justify-end border-t border-[color:var(--border)] pt-2">
-                          <button type="button" className="erp-toggle-link min-h-9 text-sm" aria-label={`Editar modelo ${group.displayName}`} onClick={() => openEditModelForm(fullGroup)}>Editar modelo</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            : flatProducts.map((product) => {
-                const low = product.stockAvailable <= LOW_STOCK_THRESHOLD;
-                const meta = [product.productType, product.productModel].filter(Boolean).join(' · ');
-
-                return (
-                  <div key={product.id} className="grid min-w-[52rem] items-center gap-2 border-l-4 border-l-transparent px-3 py-2.5 transition-colors hover:bg-[color:var(--card-hover)]" style={{ gridTemplateColumns: gridTemplate }}>
-                    <label className="flex items-center justify-center"><input type="checkbox" aria-label={`Seleccionar producto ${product.name}`} checked={selectedCurrentIds.includes(product.id)} onChange={() => toggleSelection([product.id])} className="h-4 w-4 accent-cyan-400" /></label>
-                    {gridColumns.map((id) => <div key={id} className="min-w-0 px-2 py-2">
-                      {id === 'name' && <span className="type-title block truncate text-base text-[color:var(--text)]">{product.name}</span>}
-                      {id === 'category' && <span className="block truncate text-sm text-[color:var(--muted)]">{meta || 'Sin categoría'}</span>}
-                      {id === 'stock' && <span className="inline-flex items-center gap-2 text-sm tabular-nums"><strong className="type-metric text-base">{product.stockAvailable}</strong>{product.stockReserved > 0 && <span className="text-xs text-[color:var(--muted)]">{product.stockReserved} reserv.</span>}{low && <span className="rounded-full border border-[color:var(--warning)] px-2 py-0.5 text-[11px] font-semibold" style={{ color: 'var(--warning)', background: 'var(--warning-soft)' }}>Bajo</span>}</span>}
-                      {id === 'price' && <span className="text-sm font-semibold tabular-nums text-[color:var(--text)]">{formatCurrency(product.price)}</span>}
-                      {id === 'actions' && <div className="flex items-center justify-end gap-3"><button type="button" className="erp-toggle-link min-h-9 text-sm" onClick={() => openEditForm(product)}>Editar</button><button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" onClick={() => openDeactivation([product.id], true)}>Desactivar</button></div>}
-                    </div>)}
-                  </div>
-                );
-              })}
-          </div>
-
-          {products.length === 0 && <div className="px-1 py-6 text-sm text-[color:var(--muted)]">No hay productos cargados todavía.</div>}
-          {products.length > 0 && (preset.useVariants ? filteredGroups.length === 0 : flatProducts.length === 0) && (
-            <div className="rounded-2xl border border-dashed border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-8 text-center text-sm text-[color:var(--muted)]">
-              {onlyLowStock
-                ? 'No hay productos con stock bajo o agotado.'
-                : `No se encontraron productos para '${searchQuery.trim()}'`}
-            </div>
-          )}
-        </div>
+        <DataGrid<InventoryGridRow>
+          label="Grilla de productos"
+          storageKey={preset.useVariants ? 'erpvoice.products-grid.variants.v2' : 'erpvoice.products-grid.flat.v2'}
+          columns={gridColumns}
+          sections={gridSections}
+          getRowId={(row) => row.kind === 'model' ? row.group.key : row.product.id}
+          getRowLabel={(row) => row.kind === 'model' ? 'modelo ' + row.group.displayName : 'producto ' + row.product.name}
+          getRowSelection={selectionFor}
+          onToggleRows={(rows) => toggleSelection(rows.flatMap((row) => rowProducts(row).map((product) => product.id)))}
+          renderExpandedRow={renderModelDetails}
+          toolbar={<><label className="flex items-center gap-3 text-sm font-medium text-[color:var(--muted)]">Agrupar por
+            <select className="erp-input !w-auto !min-w-36" value={grouping} onChange={(event) => setGroupBy(event.target.value as InventoryGrouping)}>
+              {preset.useVariants && <option value="model">Modelo</option>}
+              {preset.useVariants && <option value="size">{preset.variantLabel}</option>}
+              <option value="productType">{preset.productTypeLabel}</option><option value="none">Sin agrupar</option>
+            </select>
+          </label><span className="text-xs text-[color:var(--muted)]">{grouping === 'model' ? filteredGroups.length + (filteredGroups.length === 1 ? ' modelo' : ' modelos') + ' · ' : ''}{flatProducts.length} de {products.length} productos</span></>}
+          emptyState={products.length === 0 ? 'No hay productos cargados todavía.' : <div><p>No hay productos que coincidan con los filtros.</p><button type="button" className="erp-toggle-link mt-2" onClick={() => { setSearchQuery(''); setSizeFilter(''); setTypeFilter(''); onStockFilterChange?.('all'); }}>Limpiar filtros</button></div>}
+          footer={<span>{flatProducts.length} productos visibles · {flatProducts.reduce((total, product) => total + product.stockAvailable, 0).toLocaleString('es-AR')} unidades disponibles{sizeFilter && ' · ' + (preset.variantLabel || 'Variante') + ': ' + (filterOptions.sizes.find((option) => option.value === sizeFilter)?.label || 'Sin definir')}</span>}
+        />
 
         {isFormOpen && preset.useVariants && !editingProductId && !addingToGroup && (
           <NewModelModal
