@@ -13,6 +13,8 @@
     "dev:all": "npm run dev:frontback",
     "start": "node server/index.js",
     "db:migrate": "node scripts/migrate-postgres.js",
+    "db:check:universal": "node scripts/migrate-universal-conversation.js --check",
+    "db:migrate:universal": "node scripts/migrate-universal-conversation.js --apply",
     "db:seed-dev": "node scripts/seed-dev-tenant.js",
     "test:parser": "node scripts/test-parser-robustness.js",
     "test:voice-stock-batches": "node scripts/test-voice-stock-batch-regression.js",

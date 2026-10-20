@@ -11,6 +11,7 @@ import { runUniversalMetaChecks } from './universal-meta-postgres-checks.js';
 import { runUniversalQueryChecks } from './universal-query-postgres-checks.js';
 import { runUniversalReviewedSetChecks } from './universal-reviewed-set-postgres-checks.js';
 import { runOrdinaryMetaRecoveryChecks } from './ordinary-meta-recovery-postgres-checks.js';
+import { runUniversalSchemaMigrationChecks } from './universal-schema-migration-postgres-checks.js';
 import { runProductFamilyChecks } from './product-family-postgres-checks.js';
 import { runInventorySetAdjustmentChecks } from './inventory-set-adjustment-postgres-checks.js';
 import { runOrderChecks } from './order-postgres-checks.js';
@@ -81,6 +82,7 @@ try {
   await db.closeDatabase();
   await db.migrateDatabase();
   sql = new Client({ connectionString: connection }); await sql.connect();
+  await runUniversalSchemaMigrationChecks({ db, sql, check });
   await runInventoryCoreChecks({ db, sql, check });
   await runInventorySalesChecks({ db, sql, check });
   await runInventoryAdjustmentsChecks({ db, sql, check });

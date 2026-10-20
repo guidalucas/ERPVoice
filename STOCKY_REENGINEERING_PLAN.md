@@ -8,8 +8,8 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada. H5 inicial: Gemini real 10/10 casos; Meta y PostgreSQL con
-  conexión de lectura comprobada. La base contiene datos reales y necesita migración;
-  no migrar antes de verificar backup/restauración. Audio real aún sin clave configurada.
+  conexión comprobada. Migración remota universal aplicada y verificada; datos existentes
+  preservados. Usuario dispensó backup explícitamente. Audio real aún sin clave configurada.
 - Último alcance integrado: H4.5e, retiro del parser del navegador/endpoint antiguo y
   transcripción privada compartida. H4.5d2 WhatsApp/conjuntos `3c51c65`, panel/consultas
   `bf8e2c1`; familias H4.6b2 y cambios del usuario preservados. Ver git log para cierre audio.
@@ -24,7 +24,7 @@
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | Entrada ordinaria, consultas y drafts/patches compartidos verificados localmente |
 | H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Implementación local integrada; compatibilidad histórica al mismo núcleo conservada hasta piloto H5 |
-| H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
+| H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Gemini y migración remota verificados; audio, despliegue y piloto pendientes |
 
 ## Contratos y decisiones
 
@@ -48,7 +48,7 @@
 
 - Referencia inicial: motor 48; PostgreSQL aislado 42; audio largo y borrados aprobados.
   Los dos fallos históricos de presentación de River quedaron corregidos el 2026-10-18;
-  ver cierre al final del registro. Última validación integrada: 321 PG/HTTP, 151 puras,
+  ver cierre al final del registro. Última validación integrada: 323 PG/HTTP, 151 puras,
   10 casos sintéticos del evaluador, 50 regresiones del motor y build aprobados.
   Edge chat/audio, revisión universal y recuperación legacy aprobados al cierre H4.5e;
   familias aprobadas en su hito. Proveedores reales sin configurar.
@@ -63,17 +63,19 @@
 
 ## Próximo paso exacto
 
-H5 siguiente: obtener backup recuperable de la base con datos reales y restaurarlo en
-una base aislada antes de ejecutar migraciones remotas. En la inspección de lectura falta
-universal_meta_commands y universal_drafts todavía no admite answered. Conservar recibos.
-Configurar GROQ_API_KEY o VOICE_TRANSCRIPTION_API_KEY para audio real. Gemini ya completó
+H5 siguiente: configurar GROQ_API_KEY o VOICE_TRANSCRIPTION_API_KEY para audio real.
+La migración remota universal ya está aplicada y comprobada; no repetir bootstrap global
+para resolver esa incidencia. Usuario indicó explícitamente que no necesita backup:
+no volver a bloquear la continuación con ese requisito ni declarar restauración validada.
+Gemini ya completó
 el corpus de 10 casos tras corregir instrucciones; mantener ese resultado como muestra
 acotada, no como aceptación del piloto. Completar después login/webhook y envío real Meta,
 despliegue SHA/readiness y piloto texto/audio con confirmación/reintento en entorno aislado.
 Tras el piloto y sin propuestas/lotes antiguos pendientes, retirar adaptadores históricos
 de /api/state/apply y reanudación legacy. Hoy usan el mismo núcleo; no son otro escritor.
-El usuario configuró .env.local y confirmó que la base contiene datos reales. Las pruebas
-remotas hechas fueron de lectura; no hubo migraciones ni mensajes enviados. No desplegar
+El usuario configuró .env.local y confirmó que la base contiene datos reales. Autorizó
+continuar sin backup: migración acotada confirmada, datos preservados. Smoke de borrador
+real dentro de una transacción revertida; no hubo mensajes enviados. No desplegar
 ni confundir conexiones API con aceptación del piloto. No reauditar ni duplicar escritores.
 
 ## Registro de hitos
@@ -870,3 +872,28 @@ ni confundir conexiones API con aceptación del piloto. No reauditar ni duplicar
   lectura y Gemini no sustituyen transcripción, webhook entrante, login y piloto completos.
 - Regresiones tras cambios: 151 pruebas puras, evaluador simulado y 321 checks PostgreSQL/
   HTTP en base temporal aislada aprobados. No se usó la base real para esas escrituras.
+
+### H5b — migración remota autorizada sin backup (2026-10-19)
+
+- El usuario dispensó explícitamente el backup: «no pasa nada con el backup. no es
+  necesario». Esa instrucción reemplaza el requisito operativo anterior de esta sesión.
+  No se creó backup ni se afirma restauración verificada; no volver a pedir lo dispensado.
+- Agregados inspector y migrador acotados: server/universalSchemaMigration.js y
+  scripts/migrate-universal-conversation.js. --check predeterminado solo lectura;
+  --apply usa transacción, timeout/bloqueo acotados, SQL existente de borradores y Meta,
+  RLS/revocación a PUBLIC/anon/authenticated y verificación posterior antes de commit.
+- No se ejecutó el bootstrap global ni la normalización de owners. Huellas y cantidades
+  de tablas de negocio, recibos y tablas universales existentes comparadas dentro de la
+  transacción: preservadas. Hashes, datos reales y credenciales no se imprimen ni guardan.
+- 323 checks PG/HTTP en base temporal aprobados. Pruebas nuevas simulan esquema antiguo,
+  permisos API indebidos, borrador existente, answered/comandos válidos, repetición segura
+  y fallo inyectado después de DDL que revierte tabla, CHECK y permisos al estado anterior.
+- Aplicación REAL --apply aprobada: creada universal_meta_commands, CHECK actualizado
+  para answered, RLS y permisos completos. --check en conexión nueva: ready=true,
+  missingTables=[], answeredSupported=true, rlsEnabled=true, apiRolesRevoked=true.
+- Smoke REAL combinado: Gemini con catálogo sintético público; borrador answered, comando,
+  replay idempotente y respuesta outbox coincidente en PostgreSQL remoto. Transacción
+  revertida al final; comprobado cero filas de prueba restantes y cero mensajes enviados.
+- Comandos recuperables: npm run db:check:universal y npm run db:migrate:universal. No
+  repetir bootstrap ni migrar otra base por inferencia. Pendiente H5: audio con clave,
+  entrada/salida Meta y login desde despliegue, SHA/readiness y piloto completo.
