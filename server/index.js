@@ -1,4 +1,3 @@
-import { processStockBatchMessage } from './voiceStockWorkflow.js';
 import { createMetaWebhookSignatureMiddleware, hasMetaWebhookAppSecret } from './metaWebhookSecurity.js';
 import express from 'express';
 import dotenv from 'dotenv';
@@ -17,7 +16,7 @@ import {
   deleteClientRecord,
   deleteProveedorRecord,
   deletePedidoRecord,
-  applyActionsToDatabase,
+  recoverPanelOperation,
   executeInventoryOperation,
   executeUniversalOperation,
   publishProductFamily,
@@ -25,6 +24,7 @@ import {
   prepareUniversalDraft,
   processMetaUniversalMessage,
   replayCommittedMetaMessage,
+  processRetiredMetaMessage,
   replyUniversalDraft,
   getUniversalDraft,
   confirmUniversalDraft,
@@ -49,16 +49,11 @@ import {
   mergeProveedorRecords,
   saveBusinessProfile,
   saveMetaEvent,
-  saveVoiceStockShadowBaseline,
-  getVoiceStockBatchMode,
-  setVoiceStockBatchMode,
   upsertAuthUser,
   hasDatabaseConfig,
   updateProductRecord,
   previewInventorySelection,
   confirmInventorySelection,
-  processMetaInventorySelectionCommand,
-  resumeMetaInventorySelection,
   updateProductModelRecords,
   updateClientRecord,
   updateProveedorRecord,
@@ -454,29 +449,8 @@ app.post('/api/business-profile', authenticateRequest, async (req, res) => {
   }
 });
 
-app.get('/api/settings/voice-stock-batches', authenticateRequest, async (req, res) => {
-  try {
-    res.json({ mode: await getVoiceStockBatchMode(tenantPhoneOf(req)) });
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
-});
-
-app.put('/api/settings/voice-stock-batches', authenticateRequest, async (req, res) => {
-  try {
-    if (normalizePhone(authPhoneOf(req)) !== normalizePhone(tenantPhoneOf(req))) {
-      res.status(403).json({ error: 'Solo el titular del negocio puede cambiar este modo.' });
-      return;
-    }
-    const mode = String(req.body?.mode ?? '').trim().toLowerCase();
-    if (!['active', 'shadow', 'disabled'].includes(mode)) {
-      res.status(400).json({ error: 'El modo debe ser active, shadow o disabled.' });
-      return;
-    }
-    res.json({ mode: await setVoiceStockBatchMode(tenantPhoneOf(req), mode) });
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
-  }
+app.all('/api/settings/voice-stock-batches',authenticateRequest,(_req,res)=>{
+  res.status(410).json({code:'LEGACY_WRITER_RETIRED',error:'El modo de lotes anterior fue retirado. Las operaciones usan el flujo universal.'});
 });
 
 app.get('/api/team', authenticateRequest, async (req, res) => {
@@ -934,24 +908,19 @@ app.post('/api/inventory/selections/:id/confirm', authenticateRequest, async (re
 });
 
 app.post('/api/state/apply', authenticateRequest, async (req, res) => {
-  try {
-    const clientPhone = tenantPhoneOf(req);
-    const sourceText = typeof req.body?.sourceText === 'string' ? req.body.sourceText : '';
-    const actions = Array.isArray(req.body?.actions) ? req.body.actions : [];
-    const mutationActions = actions.filter(
-      (action) => action?.type !== 'query_stock' && action?.type !== 'query_pedidos',
-    );
-    const snapshot = await applyActionsToDatabase(mutationActions, sourceText, clientPhone, {
-      operationId: req.body?.operationId, actorId: authPhoneOf(req), channel: 'panel',
-    });
-    res.json(snapshot);
-  } catch (error) {
-    res.status(error.name === 'InventoryOperationError' ? 409 : 500).json({ error: error instanceof Error ? error.message : String(error), code: error.code });
+  res.status(410).json({code:'LEGACY_WRITER_RETIRED',error:'La ejecución anterior fue retirada. Consultá el recibo o prepará una revisión universal.'});
+});
+
+app.post('/api/operations/recovery',authenticateRequest,async(req,res)=>{
+  res.setHeader('Cache-Control','no-store');
+  try {res.json(await recoverPanelOperation(req.body,universalRequestContext(req)));}
+  catch(error) {
+    if(error.code==='INVALID_RECOVERY_REQUEST') return res.status(400).json({code:error.code,error:error.message});
+    universalHttpError(res,error);
   }
 });
 
-// The former parsing endpoint cannot create fresh legacy proposals. Existing
-// saved proposals keep their idempotent confirmation adapter, without parsing.
+// Both historical execution and parsing are closed. Receipt recovery is read-only.
 app.post('/api/voice/parse', authenticateRequest, (_req,res) => {
   res.status(410).json({code:'LEGACY_INTERPRETER_RETIRED',error:'Prepará la solicitud con la revisión universal de operaciones.'});
 });
@@ -1082,20 +1051,16 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
     const results = await processMetaWebhook(processingBody, {
       loadTranscript: loadMetaTranscript,
       saveTranscript: saveMetaTranscript,
-      processStockText: async ({ sourceText, businessCategory, metaMessage }) => {
+      processStockText: async ({ sourceText, metaMessage }) => {
         const scope = {sourceText,ownerPhone:await resolveTenant(metaMessage.fromNumber),senderPhone:metaMessage.fromNumber,
-          messageId:metaMessage.messageId ?? createEventId()};
+          messageId:metaMessage.messageId ?? createEventId(),replyToMessageId:metaMessage.replyToMessageId};
         const committedReply = await replayCommittedMetaMessage(scope);
         if (committedReply) return committedReply;
         const universalReply = await processMetaUniversalMessage(scope);
         if (universalReply) return universalReply;
-        const selectionReply = await processMetaInventorySelectionCommand(scope);
-        if (selectionReply) return selectionReply;
-        const prepared = await resumeMetaInventorySelection(scope);
-        if (prepared) return prepared;
-        const legacyBatch = await processStockBatchMessage({...scope,businessCategory,
-          replyToMessageId:metaMessage.replyToMessageId,resumeOnly:true});
-        return legacyBatch ?? processMetaUniversalMessage(scope,{ordinary:true});
+        const retiredReply = await processRetiredMetaMessage(scope);
+        if (retiredReply) return retiredReply;
+        return processMetaUniversalMessage(scope,{ordinary:true});
       },
       resolveBusinessCategory: async (fromNumber) => {
         try {
@@ -1131,11 +1096,10 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
 
     for (const result of results) {
       const incomingId = result.messageId ?? createEventId();
-      await saveVoiceStockShadowBaseline(incomingId, result.parsed);
       const existingEvent = await findMetaEventById(incomingId);
 
       if (existingEvent?.processed && existingEvent.replyText) {
-        await enqueueMetaReply(incomingId, result.fromNumber, existingEvent.replyText);
+        await enqueueMetaReply(result.stockBatchResponse?.replyEventId ?? incomingId, result.fromNumber, existingEvent.replyText);
         await completeMetaMessageClaim(incomingId);
         await dispatchPendingMetaReplies();
         continue;
@@ -1181,7 +1145,7 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
 
       await saveMetaEvent(eventRecord);
       await markMetaEventProcessed(eventRecord.id, { processed: eventRecord.processed });
-      if (finalReplyText) await enqueueMetaReply(incomingId, result.fromNumber, finalReplyText);
+      if (finalReplyText) await enqueueMetaReply(stockBatchResponse?.replyEventId ?? incomingId, result.fromNumber, finalReplyText);
       await completeMetaMessageClaim(incomingId);
 
       // Siempre enviar el resultado final (aunque ya haya habido un ACK de "procesando").

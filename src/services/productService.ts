@@ -1,4 +1,4 @@
-import type { Client, InventoryAttributes, ParsedActionUnion, Pedido, PedidoEstado, Product, Proveedor, Transaction } from '../domain/types';
+import type { Client, InventoryAttributes, Pedido, PedidoEstado, Product, Proveedor, Transaction } from '../domain/types';
 import { requestJson } from './apiClient';
 
 export type PersistedState = {
@@ -57,12 +57,48 @@ export type PedidoInput = {
 
 export const fetchPersistedState = async () => requestJson<PersistedState>('/api/state');
 
-/** Aplica acciones con el mismo shape que el parser de voz (add_stock, sell, etc.). */
-export const applyStateActions = async (sourceText: string, actions: ParsedActionUnion[], operationId: string = crypto.randomUUID()) =>
-  requestJson<PersistedState>('/api/state/apply', {
+export type ManualInventoryAction = {
+  itemId: string;
+  target: { kind: 'existing'; skuId: string; expectedRevision: number; expectedFingerprint: string };
+  quantity: { value: number; unit: string };
+} & ({ type: 'stock.receive' } | { type: 'stock.sell'; salePrice?: { amount: number; currency: string } });
+
+export type ManualInventoryOperation = {
+  contractVersion: 1;
+  businessId: string;
+  operationId: string;
+  source: { channel: 'manual'; text: string };
+  actions: [ManualInventoryAction];
+};
+
+export const executeManualInventoryOperation = async (plan: ManualInventoryOperation) => {
+  const receipt = await requestJson<unknown>('/api/operations', {
     method: 'POST',
-    body: JSON.stringify({ sourceText, actions, operationId }),
+    body: JSON.stringify(plan),
   });
+  const record = (value: unknown): Record<string, unknown> =>
+    value != null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const root = record(receipt), domain = record(root.domainResult);
+  const items = Array.isArray(domain.items) ? domain.items : [];
+  const item = record(items[0]), quantity = record(item.quantity), action = plan.actions[0];
+  const integer = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+  const currency = (value: unknown) => typeof value === 'string' && /^[A-Z]{3}$/.test(value);
+  const sale = action.type === 'stock.sell' ? action.salePrice : undefined;
+  const priceMatches = action.type === 'stock.receive'
+    ? integer(item.price) && currency(item.currency)
+    : item.price === (sale?.amount ?? null) && item.currency === (sale?.currency ?? null)
+      && item.totalAmount === (sale ? sale.amount * action.quantity.value : null);
+  if (root.contractVersion !== 1 || root.operationId !== plan.operationId || root.businessId !== plan.businessId
+    || root.status !== 'applied' || root.domain !== 'inventory' || domain.contractVersion !== 1
+    || domain.businessId !== plan.businessId || domain.status !== 'applied'
+    || typeof domain.operationId !== 'string' || !domain.operationId.startsWith('universal-child:')
+    || items.length !== 1 || item.itemId !== action.itemId || item.type !== action.type
+    || item.skuId !== action.target.skuId || quantity.value !== action.quantity.value || quantity.unit !== action.quantity.unit
+    || !integer(item.stockAvailable) || !integer(item.stockReserved) || !priceMatches) {
+    throw Object.assign(new Error('No pudimos verificar el recibo del movimiento. Reintentá la misma operación para recuperar su resultado.'), { uncertain: true });
+  }
+  return receipt;
+};
 
 export type ProductCreation = { operationId: string };
 export type ProductModelInput = { productType: string; productModel: string; attributes?: InventoryAttributes; unit?: string; priceCurrency?: string; variants: Array<{ size: string; stockAvailable: number; stockReserved?: number; price: number }> };

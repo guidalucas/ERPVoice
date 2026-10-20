@@ -7,6 +7,7 @@ const browser = await chromium.launch(process.platform === 'win32' ? { channel: 
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const products = [{
   id: 'product-1',
+  revision: 4, identityFingerprint: 'fingerprint-S', unit: 'unit', priceCurrency: 'XXX',
   name: 'Camiseta Argentina',
   productType: 'Camiseta',
   productModel: 'Argentina',
@@ -39,22 +40,33 @@ await page.route('**/api/**', async (route) => {
   if (path === '/api/state') {
     return json({ products, clients: [], proveedores: [], pedidos: [], transactions: [] });
   }
-  if (path === '/api/state/apply' && request.method() === 'POST') {
+  if (path === '/api/state/apply') throw new Error('Retired manual endpoint was called');
+  if (path === '/api/operations' && request.method() === 'POST') {
     const input = request.postDataJSON();
     movementAttempts.push(input);
     if (movementAttempts.length === 1) return json({ error: 'No se pudo registrar el movimiento. Reintentá.' }, 503);
     for (const action of input.actions) {
-      const product = products.find((item) => item.name === action.productName && item.size === action.size);
+      const product = products.find((item) => item.id === action.target.skuId);
       if (!product) return json({ error: 'No se encontró el talle.' }, 404);
-      product.stockAvailable += action.type === 'add_stock' ? action.qty : -action.qty;
+      assert.equal(input.contractVersion, 1);
+      assert.equal(input.businessId, '5491100000000');
+      assert.equal(action.target.expectedRevision, product.revision);
+      assert.equal(action.target.expectedFingerprint, product.identityFingerprint);
+      assert.equal(Object.hasOwn(action, 'price'), false);
+      product.stockAvailable += action.type === 'stock.receive' ? action.quantity.value : -action.quantity.value;
+      product.revision++;
     }
     movements.push(input);
-    return json({ products, clients: [], proveedores: [], pedidos: [], transactions: [] });
+    const action = input.actions[0], product = products.find(item => item.id === action.target.skuId);
+    return json({ contractVersion: 1, operationId: input.operationId, businessId: input.businessId, status: 'applied', domain: 'inventory',
+      domainResult: { contractVersion: 1, operationId: 'universal-child:inventory-fixture', businessId: input.businessId, status: 'applied',
+        items: [{ itemId: action.itemId, type: action.type, skuId: product.id, quantity: action.quantity,
+          stockAvailable: product.stockAvailable, stockReserved: product.stockReserved, price: product.price, currency: product.priceCurrency }] } });
   }
   if (path === '/api/products' && request.method() === 'POST') {
     const input = request.postDataJSON();
     created.push(input);
-    const product = { id: `product-${products.length + 1}`, ...input };
+    const product = { id: `product-${products.length + 1}`, revision: 3, identityFingerprint: `fingerprint-${input.size}`, unit: 'unit', priceCurrency: 'XXX', ...input };
     products.push(product);
     return json(product, 201);
   }
@@ -63,6 +75,7 @@ await page.route('**/api/**', async (route) => {
     createdModels.push(input);
     const newProducts = input.variants.map((variant, index) => ({
       id: `model-product-${products.length + index + 1}`,
+      revision: 0, identityFingerprint: `model-fingerprint-${index}`, unit: 'unit', priceCurrency: 'XXX',
       name: `${input.productType} ${input.productModel}`,
       productType: input.productType,
       productModel: input.productModel,
@@ -180,7 +193,8 @@ try {
   await page.getByRole('button', { name: /Camiseta Argentina Selección M/ }).click();
   await page.getByLabel('Cantidad').fill('3');
   await page.getByRole('button', { name: '+ Confirmar ingreso' }).click();
-  await page.getByText('Podés corregir y volver a confirmar.').waitFor();
+  await page.getByText('El resultado está pendiente de verificar. Reintentá el mismo movimiento para recuperar su recibo.').waitFor();
+  assert.equal(await page.getByLabel('Cantidad').isDisabled(), true);
   assert.equal(await page.getByRole('button', { name: 'Reintentar ingreso' }).isVisible(), true);
   assert.equal(movementAttempts.length, 1);
   assert.equal(movements.length, 0);
@@ -196,11 +210,11 @@ try {
   assert.ok(movementAttempts[0].operationId);
   for (const attempt of movementAttempts) {
     assert.equal(attempt.actions.length, 1);
-    assert.equal(attempt.actions[0].type, 'add_stock');
-    assert.equal(attempt.actions[0].productId, selectedM.id);
-    assert.equal(attempt.actions[0].qty, 3);
-    assert.equal(attempt.actions[0].unit, 'unit');
-    assert.equal(attempt.actions[0].priceCurrency, 'XXX');
+    assert.equal(attempt.actions[0].type, 'stock.receive');
+    assert.deepEqual(attempt.actions[0].target, { kind: 'existing', skuId: selectedM.id, expectedRevision: 3, expectedFingerprint: selectedM.identityFingerprint });
+    assert.deepEqual(attempt.actions[0].quantity, { value: 3, unit: 'unit' });
+    assert.equal(Object.hasOwn(attempt.actions[0], 'price'), false);
+    assert.equal(Object.hasOwn(attempt.actions[0], 'salePrice'), false);
   }
 
   await page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name: 'Inventario' }).click();

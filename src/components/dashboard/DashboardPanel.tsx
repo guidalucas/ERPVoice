@@ -373,7 +373,7 @@ function ActivityFeed({
 }
 
 export function DashboardPanel() {
-  const { products, transactions, pedidos, applyActions } = useInventory();
+  const { products, transactions, pedidos, executeManualMovement, refreshState } = useInventory();
   const [activeSection, setActiveSection] = useState<DashboardSection>('inicio');
   const [productsStockFilter, setProductsStockFilter] = useState<'all' | 'low-stock'>('all');
   const [movementMode, setMovementMode] = useState<StockMovementMode | null>(null);
@@ -512,7 +512,7 @@ export function DashboardPanel() {
       )}
 
       {movementMode && (
-        <StockMovementModal mode={movementMode} products={products} onClose={() => setMovementMode(null)} onSubmit={applyActions} />
+        <StockMovementModal mode={movementMode} products={products} onClose={() => setMovementMode(null)} onSubmit={executeManualMovement} onRefresh={refreshState} />
       )}
       {teamOpen && <EquipoPanel onClose={() => setTeamOpen(false)} />}
     </DashboardShell>

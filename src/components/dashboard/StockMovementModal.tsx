@@ -1,7 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
-import type { ParsedActionUnion, Product } from '../../domain/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Product } from '../../domain/types';
+import type { ManualInventoryAction, ManualInventoryOperation } from '../../services/productService';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { toUserFacingError } from '../../services/apiClient';
+import { useAuth } from '../../store/AuthStore';
+import { clearManualInventoryAttempt, loadManualInventoryAttempt, manualInventoryAttemptKey, saveManualInventoryAttempt } from '../../services/manualInventoryAttemptStorage';
 
 export type StockMovementMode = 'ingreso' | 'venta';
 
@@ -9,7 +12,8 @@ type StockMovementModalProps = {
   mode: StockMovementMode;
   products: Product[];
   onClose: () => void;
-  onSubmit: (sourceText: string, actions: ParsedActionUnion[], operationId?: string) => Promise<void>;
+  onSubmit: (operation: Omit<ManualInventoryOperation, 'contractVersion' | 'businessId'>) => Promise<void>;
+  onRefresh: () => Promise<void>;
 };
 
 const normalizeSearch = (value: string) =>
@@ -27,8 +31,10 @@ const productLabel = (product: Product, includeSize: boolean) => {
   return meta || product.name;
 };
 
-export function StockMovementModal({ mode, products, onClose, onSubmit }: StockMovementModalProps) {
+export function StockMovementModal({ mode, products, onClose, onSubmit, onRefresh }: StockMovementModalProps) {
   const preset = useBusinessCategoryPreset();
+  const { session } = useAuth();
+  const storageKey = session ? manualInventoryAttemptKey(session.tenantPhone, session.phoneNumber, mode) : null;
   const isIngreso = mode === 'ingreso';
   const includeSize = !isIngreso || preset.useVariants;
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,8 +43,36 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
   const [salePriceText, setSalePriceText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const requestRef = useRef<{ key: string; id: string } | null>(null);
+  const [committed, setCommitted] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const [recoveredSource, setRecoveredSource] = useState('');
+  const [storageReady, setStorageReady] = useState(false);
+  const requestRef = useRef<Omit<ManualInventoryOperation, 'contractVersion' | 'businessId'> | null>(null);
   const inFlightRef = useRef(false);
+  const committedRef = useRef(false);
+  const activeScope = useRef(storageKey);
+  activeScope.current = storageKey;
+
+  useEffect(() => {
+    setStorageReady(false);
+    requestRef.current = null; committedRef.current = false;
+    setCommitted(false); setUncertain(false); setRecoveredSource(''); setError(null);
+    if (!storageKey) { setError('Iniciá sesión para registrar el movimiento.'); return; }
+    try {
+      const saved = loadManualInventoryAttempt(storageKey, mode);
+      if (saved) {
+        requestRef.current = saved.operation;
+        committedRef.current = saved.acknowledged;
+        setCommitted(saved.acknowledged); setUncertain(!saved.acknowledged);
+        setRecoveredSource(saved.operation.source.text);
+        const action = saved.operation.actions[0];
+        setSelectedProductId(action.target.skuId); setQtyText(String(action.quantity.value));
+        setSalePriceText(action.type === 'stock.sell' && action.salePrice ? String(action.salePrice.amount) : '');
+        setError(saved.acknowledged ? 'El movimiento ya fue registrado. Actualizá los datos para terminar.' : 'Hay un movimiento pendiente de verificar. Reintentá para recuperar su recibo.');
+      }
+      setStorageReady(true);
+    } catch (storageError) { setError(toUserFacingError(storageError, 'No pudimos recuperar el movimiento guardado. No se enviaron cambios.')); }
+  }, [storageKey, mode]);
 
   const selectedProduct = useMemo(
     () => products.find((product) => product.id === selectedProductId) ?? null,
@@ -73,12 +107,77 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
   const salePrice = Number(salePriceText);
   const salePriceValid = !hasSalePrice || (Number.isSafeInteger(salePrice) && salePrice >= 0);
   const exceedsStock = !isIngreso && selectedProduct != null && qtyValid && qty > selectedProduct.stockAvailable;
-  const canSubmit = Boolean(selectedProduct) && qtyValid && (isIngreso || salePriceValid) && !exceedsStock && !submitting;
+  const snapshotValid = selectedProduct != null && Number.isSafeInteger(selectedProduct.revision)
+    && selectedProduct.revision! >= 0 && typeof selectedProduct.identityFingerprint === 'string'
+    && Boolean(selectedProduct.identityFingerprint.trim()) && typeof selectedProduct.unit === 'string'
+    && Boolean(selectedProduct.unit.trim()) && typeof selectedProduct.priceCurrency === 'string'
+    && /^[A-Z]{3}$/.test(selectedProduct.priceCurrency) && Boolean(selectedProduct.id.trim())
+    && Number.isSafeInteger(selectedProduct.stockAvailable) && selectedProduct.stockAvailable >= 0;
+  const fieldsLocked = !storageReady || committed || uncertain || submitting;
+  const canSubmit = storageReady && !submitting && (committed || uncertain || (snapshotValid && qtyValid && (isIngreso || salePriceValid) && !exceedsStock));
+
+  const sendMovement = async (operation: Omit<ManualInventoryOperation, 'contractVersion' | 'businessId'>) => {
+    // A later rejection says nothing about whether an earlier uncertain attempt committed.
+    const hadUncertainOutcome = uncertain;
+    setError(null);
+    setSubmitting(true);
+    inFlightRef.current = true;
+    requestRef.current = operation;
+    try {
+      if (!storageReady || !storageKey || activeScope.current !== storageKey) throw new Error('No pudimos recuperar el movimiento guardado. No se enviaron cambios.');
+      // Persist intent before HTTP; after an uncertain response the exact request survives reloads.
+      saveManualInventoryAttempt(storageKey, mode, { version: 1, operation, acknowledged: false });
+      await onSubmit(operation);
+      if (activeScope.current !== storageKey) return;
+      // If saving acknowledgement fails, leave the durable uncertain request for same-ID recovery.
+      saveManualInventoryAttempt(storageKey, mode, { version: 1, operation, acknowledged: true });
+      committedRef.current = true;
+      setCommitted(true);
+      setUncertain(false);
+      await onRefresh();
+      if (activeScope.current !== storageKey) return;
+      clearManualInventoryAttempt(storageKey);
+      onClose();
+    } catch (submitError) {
+      if (activeScope.current !== storageKey) return;
+      if (!committedRef.current) {
+        const status = (submitError as { status?: number } | null)?.status;
+        const definitive = !hadUncertainOutcome && status != null && [400, 401, 403, 404, 409, 410, 422].includes(status);
+        setUncertain(!definitive);
+        // A new explicit confirmation may replace a definitively rejected intent.
+        // Keep its durable reference until that happens or recovery completes.
+        if (definitive) requestRef.current = null;
+      }
+      setError(committedRef.current
+        ? 'El movimiento ya fue registrado. No pudimos actualizar los datos. Reintentá la actualización.'
+        : toUserFacingError(submitError, 'No se pudo registrar el movimiento. Reintentá.'));
+    } finally {
+      inFlightRef.current = false;
+      setSubmitting(false);
+    }
+  };
 
   const handleSubmit = async () => {
-    if (inFlightRef.current) return;
+    if (inFlightRef.current || !storageReady || !storageKey) return;
+    if (committedRef.current) {
+      setSubmitting(true);
+      inFlightRef.current = true;
+      try { await onRefresh(); if (activeScope.current !== storageKey) return; clearManualInventoryAttempt(storageKey); onClose(); }
+      catch { setError('El movimiento ya fue registrado. No pudimos actualizar los datos. Reintentá la actualización.'); }
+      finally { inFlightRef.current = false; setSubmitting(false); }
+      return;
+    }
+    if (requestRef.current) {
+      await sendMovement(requestRef.current);
+      return;
+    }
     if (!selectedProduct || !qtyValid) {
       setError('Elegí un producto y una cantidad válida.');
+      return;
+    }
+
+    if (!snapshotValid) {
+      setError('Faltan datos de revisión del producto. Actualizá la página y volvé a abrir el formulario.');
       return;
     }
 
@@ -92,53 +191,19 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
       return;
     }
 
-    setError(null);
-    setSubmitting(true);
-    inFlightRef.current = true;
-
-    const action: ParsedActionUnion = isIngreso
-      ? {
-          type: 'add_stock',
-          productId: selectedProduct.id,
-          expectedFingerprint: selectedProduct.identityFingerprint,
-          unit: selectedProduct.unit ?? 'unit',
-          priceCurrency: selectedProduct.priceCurrency ?? 'XXX',
-          productName: selectedProduct.name,
-          productType: selectedProduct.productType ?? undefined,
-          productModel: selectedProduct.productModel ?? undefined,
-          size: selectedProduct.size ?? undefined,
-          qty,
-          price: selectedProduct.price,
-        }
-      : {
-          type: 'sell',
-          productId: selectedProduct.id,
-          expectedFingerprint: selectedProduct.identityFingerprint,
-          unit: selectedProduct.unit ?? 'unit',
-          priceCurrency: selectedProduct.priceCurrency ?? 'XXX',
-          productName: selectedProduct.name,
-          productType: selectedProduct.productType ?? undefined,
-          productModel: selectedProduct.productModel ?? undefined,
-          size: selectedProduct.size ?? undefined,
-          qty,
-          ...(hasSalePrice ? { price: salePrice } : {}),
-        };
+    const target = { kind: 'existing' as const, skuId: selectedProduct.id,
+      expectedRevision: selectedProduct.revision!, expectedFingerprint: selectedProduct.identityFingerprint! };
+    const quantity = { value: qty, unit: selectedProduct.unit! };
+    const action: ManualInventoryAction = isIngreso
+      ? { itemId: 'movement', type: 'stock.receive', target, quantity }
+      : { itemId: 'movement', type: 'stock.sell', target, quantity,
+          ...(hasSalePrice ? { salePrice: { amount: salePrice, currency: selectedProduct.priceCurrency! } } : {}) };
 
     const sourceText = isIngreso
       ? `Ingreso manual: +${qty} ${productLabel(selectedProduct, includeSize)}`
       : `Venta manual: -${qty} ${productLabel(selectedProduct, includeSize)}`;
 
-    try {
-      const key = JSON.stringify({ sourceText, action });
-      if (requestRef.current?.key !== key) requestRef.current = { key, id: crypto.randomUUID() };
-      await onSubmit(sourceText, [action], requestRef.current.id);
-      onClose();
-    } catch (submitError) {
-      setError(toUserFacingError(submitError, 'No se pudo registrar el movimiento. Reintentá.'));
-    } finally {
-      inFlightRef.current = false;
-      setSubmitting(false);
-    }
+    await sendMovement({ source: { channel: 'manual', text: sourceText }, actions: [action], operationId: crypto.randomUUID() });
   };
 
   const searchLabel =
@@ -158,10 +223,12 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
               {isIngreso ? 'Suma stock disponible al producto elegido.' : 'Resta del stock disponible (sin tocar reservado).'}
             </p>
           </div>
-          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" onClick={onClose}>
+          <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" onClick={onClose} disabled={submitting || uncertain}>
             ×
           </button>
         </div>
+
+        {recoveredSource && <p role="status" className="mt-3 rounded-xl border border-amber-500/30 p-3 text-sm">Movimiento recuperado: {recoveredSource}</p>}
 
         <label className="mt-5 block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
           {searchLabel}
@@ -171,6 +238,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             autoFocus
+            disabled={fieldsLocked}
           />
         </label>
 
@@ -184,6 +252,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
                 <button
                   key={product.id}
                   type="button"
+                  disabled={fieldsLocked}
                   onClick={() => {
                     setSelectedProductId(product.id);
                     setError(null);
@@ -208,6 +277,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
             className="erp-input h-11 rounded-xl text-[15px]"
             type="number"
             min={1}
+            disabled={fieldsLocked}
             step={1}
             value={qtyText}
             onChange={(event) => {
@@ -224,6 +294,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
               className="erp-input h-11 rounded-xl text-[15px]"
               type="number"
               min={0}
+              disabled={fieldsLocked}
               step={1}
               value={salePriceText}
               onChange={(event) => {
@@ -246,7 +317,9 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
           </p>
         )}
 
-        {exceedsStock && (
+        {selectedProduct && !snapshotValid && !committed && <p role="alert" className="mt-2 text-sm text-rose-700 dark:text-rose-200">Faltan datos de revisión del producto. Actualizá la página y volvé a abrir el formulario.</p>}
+
+        {exceedsStock && !committed && (
           <p className="mt-2 text-sm text-amber-600 dark:text-amber-300">
             La cantidad supera el stock disponible ({selectedProduct?.stockAvailable}).
           </p>
@@ -255,12 +328,12 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
         {error && (
           <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2.5">
             <p className="text-sm text-rose-700 dark:text-rose-200">{error}</p>
-            <p className="mt-1 text-xs text-rose-700/80 dark:text-rose-200/80">Podés corregir y volver a confirmar.</p>
+            {!committed && <p className="mt-1 text-xs text-rose-700/80 dark:text-rose-200/80">{uncertain ? 'El resultado está pendiente de verificar. Reintentá el mismo movimiento para recuperar su recibo.' : 'Podés corregir y volver a confirmar.'}</p>}
           </div>
         )}
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button type="button" onClick={onClose} className="erp-button-secondary min-h-11" disabled={submitting}>
+          <button type="button" onClick={onClose} className="erp-button-secondary min-h-11" disabled={submitting || uncertain}>
             Cancelar
           </button>
           <button
@@ -269,7 +342,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit }: StockM
             disabled={!canSubmit}
             className={`${isIngreso ? 'erp-button-primary' : 'erp-button-danger'} min-h-11`}
           >
-            {submitting ? 'Guardando...' : error ? (isIngreso ? 'Reintentar ingreso' : 'Reintentar venta') : isIngreso ? '+ Confirmar ingreso' : '− Confirmar venta'}
+            {submitting ? 'Guardando...' : committed ? 'Actualizar datos' : error ? (isIngreso ? 'Reintentar ingreso' : 'Reintentar venta') : isIngreso ? '+ Confirmar ingreso' : '− Confirmar venta'}
           </button>
         </div>
       </div>

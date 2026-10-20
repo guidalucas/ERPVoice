@@ -93,6 +93,9 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const retired=await request('/api/voice/parse',{body:{text:'Vendí tres productos'}});
       assert.equal(retired.status,410);assert.equal(retired.json.code,'LEGACY_INTERPRETER_RETIRED');
       assert.equal(retired.json.actions,undefined);
+      assert.equal((await request('/api/settings/voice-stock-batches',{method:'GET',auth:false})).status,401);
+      assert.equal((await request('/api/settings/voice-stock-batches',{method:'GET'})).status,410);
+      assert.equal((await request('/api/settings/voice-stock-batches',{method:'PUT',body:{mode:'active'}})).status,410);
     });
     await run('audio boundary authenticates bytes, enforces limits and missing provider never creates a proposal',async()=>{
       const before=await db.getStateSnapshotStrict(owner),headers={'Content-Type':'audio/webm;codecs=opus'},raw=Buffer.from('synthetic audio');
@@ -390,7 +393,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
     };
     const reviewedUniversalCommand = async (requestId, text, actions) => {
       const preview = await db.prepareUniversalDraft({ requestId, text },
-        { businessId: owner, actorId: owner, channel: 'panel', permissions: ['inventory:sell', 'orders:update', 'accounts:payment'] },
+        { businessId: owner, actorId: owner, channel: 'panel', permissions: ['inventory:sell', 'inventory:receive','inventory:update','inventory:adjust','inventory:deactivate','orders:update', 'accounts:payment'] },
         { complete: async () => ({ ok: true, json: { contractVersion: 1, kind: 'proposal', actions,
           evidence: actions.map(({ itemId }) => ({ itemId, quote: text })) } }) });
       assert.equal(preview.status, 'awaiting_confirmation');
@@ -400,6 +403,25 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
     const legacySelection = (messageId, product, changes) => db.prepareMetaInventorySelection({
       messageId, ownerPhone: owner, senderPhone: owner, sourceText: 'Selección histórica revisada',
       actions: [{ type: changes ? 'update_product' : 'delete_product', productId: product.id, ...changes }],
+    });
+    await run('retired command crash recovery preserves its single immutable outbox ID', async () => {
+      const messageId = 'http-retired-crash-replay', sourceText = 'CONFIRMAR BAJA deadbeef';
+      const rawBody = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: {
+        messages: [{ id: messageId, from: owner, type: 'text', text: { body: sourceText } }],
+      } }] }] };
+      assert.equal(await db.claimMetaMessage({ messageId, ownerPhone: owner, senderPhone: owner, rawBody }), true);
+      const result = await db.processRetiredMetaMessage({ messageId, sourceText, ownerPhone: owner, senderPhone: owner });
+      assert.equal(result.errorCode, 'LEGACY_WRITER_RETIRED');
+      assert.ok(result.replyEventId && result.replyEventId !== messageId);
+      await db.saveMetaEvent({ id: messageId, at: new Date().toISOString(), fromNumber: owner, ownerPhone: owner,
+        body: JSON.stringify(rawBody), kind: 'text', sourceText, replyText: result.replyText,
+        error: result.errorCode, actionsJson: JSON.stringify([]), processed: true });
+      // Simulate a crash after saving the event and before completing its claim.
+      await sql.query("UPDATE meta_message_claims SET claimed_at=NOW()-INTERVAL '6 minutes' WHERE message_id=$1", [messageId]);
+      assert.deepEqual(await universalWebhook(messageId, sourceText), result);
+      assert.equal((await sql.query('SELECT 1 FROM meta_reply_outbox WHERE event_id=$1', [messageId])).rowCount, 0);
+      const rows = (await sql.query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1', [result.replyEventId])).rows;
+      assert.equal(rows.length, 1); assert.equal(rows[0].reply_text, result.replyText);
     });
     await run('signed ordinary WhatsApp without a provider fails terminally without legacy writes', async () => {
       await createHttpFixtureProduct({ name: 'HTTP Ordinary No Provider', stockAvailable: 5, price: 900 }, owner);
@@ -622,24 +644,24 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal((await sql.query('SELECT operation_id FROM inventory_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, 'http-receive'])).rowCount, 1);
       assert.equal(Number((await stock(skuId))[0].stock_available), 3);
     });
-    await run('state apply intake returns exact state and stable retry', async () => {
+    await run('retired panel writer refuses new effects while recovery reads immutable receipts', async () => {
       const body = { operationId: 'http-panel', sourceText: 'Ingresaron dos HTTP panel', actions: [{ type: 'add_stock', productName: 'HTTP panel', qty: 2, price: 120 }] };
-      const response = await request('/api/state/apply', { body });
-      assert.equal(response.status, 200);
-      const product = response.json.products.find((item) => item.name === 'HTTP panel');
-      assert.ok(product); assert.equal(product.stockAvailable, 2); assert.equal(product.stockReserved, 0); assert.equal(product.price, 120);
-      const retry = await request('/api/state/apply', { body });
-      assert.equal(retry.status, 200); assert.deepEqual(retry.json, response.json);
-      assert.deepEqual(await ledger('panel:http-panel'), [{ sku_id: product.id, delta_available: '2', delta_reserved: '0', unit: 'unit' }]);
-      assert.equal((await sql.query('SELECT id FROM transactions WHERE owner_phone=$1 AND batch_id=$2', [owner, `${owner}:panel:http-panel`])).rowCount, 1);
-      assert.equal((await db.getStateSnapshotStrict(owner)).products.find((item) => item.id === product.id).stockAvailable, 2);
-      const changed = await request('/api/state/apply', { body: { ...body, actions: [{ ...body.actions[0], qty: 3 }] } });
-      assert.equal(changed.status, 409); assert.equal(changed.json.code, 'IDEMPOTENCY_CONFLICT');
-      const { operationId: _operationId, ...withoutId } = body;
-      const missing = await request('/api/state/apply', { body: withoutId });
-      assert.equal(missing.status, 409); assert.equal(missing.json.code, 'OPERATION_ID_REQUIRED');
-      assert.equal((await db.getStateSnapshotStrict(owner)).products.find((item) => item.id === product.id).stockAvailable, 2);
-      assert.equal((await ledger('panel:http-panel')).length, 1);
+      const before = await db.getStateSnapshotStrict(owner);
+      assert.equal((await request('/api/state/apply', { body, auth:false })).status,401);
+      const closed=await request('/api/state/apply',{body});assert.equal(closed.status,410);assert.equal(closed.json.code,'LEGACY_WRITER_RETIRED');
+      assert.deepEqual(await db.getStateSnapshotStrict(owner),before);
+      const legacy=await db.applyActionsToDatabase(body.actions,body.sourceText,owner,{operationId:body.operationId,actorId:owner,channel:'panel'});
+      const stored=await db.getStateSnapshotStrict(owner);
+      const recovered=await request('/api/operations/recovery',{body});assert.equal(recovered.status,200);assert.equal(recovered.json.status,'applied');assert.deepEqual(recovered.json.operationResult,legacy.operationResult);
+      assert.deepEqual((await request('/api/operations/recovery',{body})).json,recovered.json);
+      assert.equal((await request('/api/operations/recovery',{body,auth:false})).status,401);
+      const altered=await request('/api/operations/recovery',{body:{...body,actions:[{...body.actions[0],qty:3}]}});assert.equal(altered.status,409);assert.equal(altered.json.code,'IDEMPOTENCY_CONFLICT');
+      const absent=await request('/api/operations/recovery',{body:{...body,operationId:'not-written-old-proposal'}});assert.equal(absent.status,200);assert.equal(absent.json.status,'not_applied');
+      assert.equal((await request('/api/operations/recovery',{body:{...body,permissions:['all']}})).status,400);
+      const {operationId,...missingId}=body;assert.equal((await request('/api/operations/recovery',{body:missingId})).status,400);
+      assert.equal((await request('/api/state/apply',{body})).status,410);
+      assert.deepEqual(await db.getStateSnapshotStrict(owner),stored);
+      assert.equal((await ledger('panel:http-panel')).length,1);
     });
     await run('price conflict is 409 and leaves stock and ledger unchanged', async () => {
       const before = await stock(skuId);
@@ -648,12 +670,12 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(response.status, 409); assert.equal(response.json.code, 'PRICE_CONFLICT');
       assert.deepEqual(await stock(skuId), before); assert.equal((await ledger('http-price-conflict')).length, 0);
     });
-    await run('mixed inventory and unmigrated operation reject atomically', async () => {
+    await run('retired writer rejects mixed batches without effects', async () => {
       const before = await db.getStateSnapshotStrict(owner);
       const response = await request('/api/state/apply', { body: { operationId: 'http-mixed', sourceText: 'mixed', actions: [
         { type: 'add_stock', productName: 'HTTP mixed must not exist', qty: 4 }, { type: 'add_debt', clientName: 'Not migrated', amount: 1 },
       ] } });
-      assert.equal(response.status, 409); assert.equal(response.json.code, 'UNSUPPORTED_MIXED_OPERATION');
+      assert.equal(response.status, 410); assert.equal(response.json.code, 'LEGACY_WRITER_RETIRED');
       assert.deepEqual(await db.getStateSnapshotStrict(owner), before); assert.equal((await ledger('panel:http-mixed')).length, 0);
     });
     await run('canonical sale and panel reservation share receipt effects and reject insufficient stock', async () => {
@@ -666,14 +688,14 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.deepEqual((await request('/api/inventory/operations', { body: plan('http-sell', [sale]) })).json, sold.json);
       assert.equal(sold.json.items[0].stockAvailable, 1); assert.equal(sold.json.items[0].catalogPrice, 450);
       const product = (await db.getStateSnapshotStrict(owner)).products.find((row) => row.id === id);
-      const body = { operationId: 'http-reserve', sourceText: 'Reservar SKU confirmado', actions: [{ type: 'reserve_stock',
-        productId: id, productName: 'Etiqueta no autoritativa', expectedFingerprint: product.identityFingerprint, qty: 1, unit: 'unit' }] };
-      const reserved = await request('/api/state/apply', { body });
-      assert.equal(reserved.status, 200); assert.match(reserved.json.replyText, /Reserva registrada/);
-      assert.match(reserved.json.replyText, /Venta HTTP precisa/); assert.doesNotMatch(reserved.json.replyText, /Etiqueta no autoritativa/);
-      assert.equal(reserved.json.products.find((row) => row.id === id).stockReserved, 1);
-      assert.deepEqual((await request('/api/state/apply', { body })).json.operationResult, reserved.json.operationResult);
-      assert.equal((await ledger('http-sell')).length, 1); assert.equal((await ledger('panel:http-reserve')).length, 1);
+      const body=plan('http-reserve',[{itemId:'reserve',type:'stock.reserve',target:{kind:'existing',skuId:id,expectedRevision:product.revision,expectedFingerprint:product.identityFingerprint},quantity:{value:1,unit:'unit'}}]);
+      const reserved=await request('/api/operations',{body});assert.equal(reserved.status,200);
+      assert.equal(reserved.json.domainResult.items[0].skuId,id);assert.equal(reserved.json.domainResult.items[0].stockReserved,1);
+      assert.equal(reserved.json.domainResult.items[0].skuName,'Venta HTTP precisa');
+      assert.deepEqual((await request('/api/operations',{body})).json,reserved.json);
+      assert.equal((await ledger('http-sell')).length,1);
+      assert.equal((await ledger(reserved.json.domainResult.operationId)).length,1);
+
       const denied = await request('/api/inventory/operations', { body: plan('http-insufficient', [sale]) });
       assert.equal(denied.status, 409); assert.equal(denied.json.code, 'INSUFFICIENT_STOCK');
       assert.equal((await ledger('http-insufficient')).length, 0);
@@ -736,7 +758,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       }
       assert.equal((await sql.query('SELECT count(*) FROM products WHERE owner_phone=$1', [owner])).rows[0].count, count);
       const forged = await request('/api/state/apply', { body: { operationId: 'http-create-event-forged', actions: [history[0].actions_json[0]] } });
-      assert.equal(forged.json.code, 'UNSUPPORTED_OPERATION');
+      assert.equal(forged.status,410);assert.equal(forged.json.code,'LEGACY_WRITER_RETIRED');
     });
     await run('POST model uses one atomic create plan and replays original products after later stock changes', async () => {
       const body = { operationId: 'http-create-model', productType: 'Prenda', productModel: 'Alta HTTP', unit: 'pack', priceCurrency: 'UYU',
@@ -790,46 +812,20 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const changed = await request(`/api/products/${single}`, { method: 'DELETE', body: { selectionId: one.json.selectionId, digest: one.json.digest } });
       assert.equal(changed.status, 200); assert.equal(changed.json.operationResult.items[0].skuId, single);
     });
-    await run('signed WhatsApp deactivation requires its code, scopes actors and respects cancel/stale/replay', async () => {
-      const sendText = async (id, text, sender = owner) => {
-        const body = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [{ id, from: sender, type: 'text', text: { body: text } }] } }] }] };
-        const raw = JSON.stringify(body), headers = { 'X-Hub-Signature-256': `sha256=${crypto.createHmac('sha256', appSecret).update(Buffer.from(raw)).digest('hex')}` };
-        assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
-        const deadline = Date.now() + 5000;
-        while (Date.now() < deadline) {
-          const claim = (await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1', [id])).rows[0];
-          if (claim?.status === 'completed') return (await sql.query('SELECT error,actions_json,reply_text,processed FROM meta_events WHERE id=$1', [id])).rows[0];
-          await new Promise((resolve) => setTimeout(resolve, 30));
-        }
-        assert.fail('WhatsApp archive command did not complete');
-      };
-      const product = await createHttpFixtureProduct({ name: 'Taladro Archivo', stockAvailable: 4, price: 900 }, owner);
-      const pending = await legacySelection('http-meta-archive-preview', product);
-      assert.deepEqual(pending.actions, []); assert.match(pending.replyText, /CONFIRMAR BAJA/);
-      const code = /CONFIRMAR BAJA ([A-F0-9]{8})/.exec(pending.replyText)[1];
-      assert.equal(Number((await stock(product.id))[0].stock_available), 4);
-      const foreign = await sendText('http-meta-archive-foreign', `CONFIRMAR BAJA ${code}`, '59899000515');
-      assert.equal(foreign.error, 'SELECTION_NOT_FOUND');
-      const confirmed = await sendText('http-meta-archive-confirm', `CONFIRMAR BAJA ${code}`);
-      assert.equal(confirmed.error, null); assert.equal(confirmed.actions_json[0].productId, product.id); assert.equal(confirmed.actions_json[0].status, 'inactive');
-      assert.match(confirmed.reply_text, /SKU desactivado/);
-      assert.equal((await sendText('http-meta-archive-confirm', `CONFIRMAR BAJA ${code}`)).reply_text, confirmed.reply_text);
-      assert.equal((await sendText('http-meta-archive-confirm-again', `CONFIRMAR BAJA ${code}`)).reply_text, confirmed.reply_text);
-      assert.equal((await sql.query("SELECT inventory_status FROM products WHERE id=$1", [product.id])).rows[0].inventory_status, 'inactive');
-      const cancelProduct = await createHttpFixtureProduct({ name: 'Taladro Cancelable', stockAvailable: 4 }, owner);
-      const cancelPreview = await legacySelection('http-meta-archive-cancel-preview', cancelProduct);
-      const cancelCode = /CONFIRMAR BAJA ([A-F0-9]{8})/.exec(cancelPreview.replyText)[1];
-      assert.match((await sendText('http-meta-archive-cancel', `CANCELAR BAJA ${cancelCode}`)).reply_text, /cancelada/);
-      assert.equal((await sendText('http-meta-archive-cancelled-confirm', `CONFIRMAR BAJA ${cancelCode}`)).error, 'SELECTION_CANCELLED');
-      assert.equal((await sql.query('SELECT inventory_status FROM products WHERE id=$1', [cancelProduct.id])).rows[0].inventory_status, 'active');
-      const staleProduct = await createHttpFixtureProduct({ name: 'Taladro Obsoleto', stockAvailable: 4 }, owner);
-      const stalePreview = await legacySelection('http-meta-archive-stale-preview', staleProduct);
-      const staleCode = /CONFIRMAR BAJA ([A-F0-9]{8})/.exec(stalePreview.replyText)[1];
-      await request('/api/inventory/operations', { body: plan('http-meta-archive-stale-sale', [{ itemId: 'one', type: 'stock.sell',
-        target: { kind: 'existing', skuId: staleProduct.id }, quantity: { value: 1, unit: 'unit' } }]) });
-      const stale = await sendText('http-meta-archive-stale-confirm', `CONFIRMAR BAJA ${staleCode}`);
-      assert.equal(stale.error, 'REVISION_MISMATCH'); assert.deepEqual(stale.actions_json, []);
-      assert.equal(Number((await stock(staleProduct.id))[0].stock_available), 3);
+    await run('signed WhatsApp refuses old deactivation codes and applies only a universal reviewed draft',async()=>{
+      const product=await createHttpFixtureProduct({name:'Baja universal HTTP',stockAvailable:4},owner);
+      const pending=await legacySelection('http-meta-archive-old-preview',product);
+      const code=/CONFIRMAR BAJA ([A-F0-9]{8})/.exec(pending.replyText)[1];
+      const before=await db.getStateSnapshotStrict(owner);
+      for(const [id,text] of [['http-retired-baja','CONFIRMAR BAJA '+code],['http-retired-cancel','CANCELAR BAJA '+code],['http-retired-malformed','CONFIRMAR BAJA incorrecto']]){
+        const result=await universalWebhook(id,text);assert.equal(result.errorCode,'LEGACY_WRITER_RETIRED');assert.deepEqual(result.actions,[]);assert.equal(result.requiresConfirmation,false);
+        assert.deepEqual(await universalWebhook(id,text),result);
+      }
+      assert.deepEqual(await db.getStateSnapshotStrict(owner),before);
+      const command=await reviewedUniversalCommand('http-new-universal-deactivate','Dar de baja el producto revisado.',[{itemId:'deactivate',type:'sku.deactivate',target:{kind:'existing',skuId:product.id},reason:'Baja explícita revisada'}]);
+      const applied=await universalWebhook('http-new-universal-deactivate-confirm',command);assert.equal(applied.status,'applied');assert.equal(applied.actions[0].productId,product.id);
+      assert.equal((await sql.query('SELECT inventory_status FROM products WHERE id=$1',[product.id])).rows[0].inventory_status,'inactive');
+      assert.deepEqual(await universalWebhook('http-new-universal-deactivate-confirm',command),applied);
     });
     await run('product PUT uses reviewed revision and returns frozen receipt after later changes', async () => {
       const seeded = await request('/api/inventory/operations', { body: plan('http-edit-seed', [{ ...fresh,
@@ -856,46 +852,20 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(foreign.status, 404);
       assert.equal(Number((await stock(id))[0].stock_available), 4);
     });
-    await run('signed WhatsApp catalog update previews exact SKU then confirms zero price once', async () => {
-      const product = await createHttpFixtureProduct({ name: 'Taladro Contador', stockAvailable: 3, price: 900 }, owner);
-      const messageId = 'http-meta-update-zero';
-      const sendText = async (id, text) => {
-        const body = { object: 'whatsapp_business_account', entry: [{ changes: [{ value: { messages: [{ id, from: owner, type: 'text', text: { body: text } }] } }] }] };
-        const raw = JSON.stringify(body), headers = { 'X-Hub-Signature-256': `sha256=${crypto.createHmac('sha256', appSecret).update(Buffer.from(raw)).digest('hex')}` };
-        assert.equal((await request('/api/meta-webhook', { raw, headers, auth: false })).status, 200);
-        const deadline = Date.now() + 5000;
-        while (Date.now() < deadline) {
-          if ((await sql.query('SELECT status FROM meta_message_claims WHERE message_id=$1', [id])).rows[0]?.status === 'completed') return (await sql.query('SELECT error,actions_json,reply_text FROM meta_events WHERE id=$1', [id])).rows[0];
-          await new Promise((resolve) => setTimeout(resolve, 30));
-        }
-        assert.fail('WhatsApp selection message did not complete');
-      };
-      const before = (await sql.query('SELECT * FROM inventory_movements WHERE owner_phone=$1 ORDER BY 1', [owner])).rows;
-      const pending = await legacySelection(messageId, product, { price: 0 });
-      assert.deepEqual(pending.actions, []); assert.match(pending.replyText, /CONFIRMAR CAMBIO/);
-      const selection = (await sql.query('SELECT preview_json FROM inventory_selections WHERE owner_phone=$1 AND request_id=$2', [owner, `meta-selection:${messageId}`])).rows[0].preview_json;
-      assert.deepEqual(selection.members.map(({ skuId }) => skuId), [product.id]); assert.equal(selection.mutation.changes.price, 0);
-      assert.equal(Number((await stock(product.id))[0].price), 900);
-      assert.deepEqual((await sql.query('SELECT * FROM inventory_movements WHERE owner_phone=$1 ORDER BY 1', [owner])).rows, before);
-      assert.equal((await sql.query('SELECT 1 FROM inventory_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, `selection:${selection.selectionId}`])).rowCount, 0);
-      const confirmId = 'http-meta-update-zero-confirm', text = `CONFIRMAR CAMBIO ${selection.digest.slice(0, 8).toUpperCase()}`;
-      const event = await sendText(confirmId, text);
-      assert.equal(event.error, null); assert.equal(event.actions_json[0].productId, product.id); assert.equal(event.actions_json[0].price, 0);
-      assert.equal(event.actions_json.length, 1); assert.match(event.reply_text, /SKU actualizado/);
-      assert.equal((await ledger(`selection:${selection.selectionId}`)).length, 1);
-      assert.equal((await sql.query('SELECT 1 FROM transactions WHERE owner_phone=$1 AND batch_id=$2', [owner, `${owner}:selection:${selection.selectionId}`])).rowCount, 1);
-      assert.equal(Number((await stock(product.id))[0].stock_available), 3); assert.equal(Number((await stock(product.id))[0].price), 0);
-      assert.deepEqual(await sendText(confirmId, text), event);
-      assert.equal((await ledger(`selection:${selection.selectionId}`)).length, 1);
-      const adjustmentProduct = await createHttpFixtureProduct({ name: 'HTTP Ajuste histórico', stockAvailable: 4 }, owner);
-      const adjustment = await legacySelection('http-meta-adjust-old-preview', adjustmentProduct, { stockAvailable: 0 });
-      const adjustmentCommand = /CONFIRMAR AJUSTE [A-F0-9]{8}/.exec(adjustment.replyText)?.[0];
-      assert.ok(adjustmentCommand);
-      const adjusted = await sendText('http-meta-adjust-old-confirm', adjustmentCommand);
-      assert.equal(adjusted.error, null); assert.equal(adjusted.actions_json[0].stockAvailable, 0);
-      assert.equal(Number((await stock(adjustmentProduct.id))[0].stock_available), 0);
-      assert.deepEqual(await sendText('http-meta-adjust-old-confirm', adjustmentCommand), adjusted);
-      assert.deepEqual(await sendText('http-meta-adjust-old-confirm-again', adjustmentCommand), adjusted);
+    await run('signed WhatsApp update and adjustment retire old codes and use universal reviewed receipts',async()=>{
+      const product=await createHttpFixtureProduct({name:'Cambio universal HTTP',stockAvailable:3,price:900},owner);
+      const old=await legacySelection('http-old-cambio-preview',product,{price:0});const code=/CONFIRMAR CAMBIO ([A-F0-9]{8})/.exec(old.replyText)[1];
+      const retired=await universalWebhook('http-old-cambio-retired','CONFIRMAR CAMBIO '+code);assert.equal(retired.errorCode,'LEGACY_WRITER_RETIRED');assert.deepEqual(retired.actions,[]);
+      assert.equal(Number((await stock(product.id))[0].price),900);
+      const command=await reviewedUniversalCommand('http-new-update-ready','Cambiar el precio del producto a cero.',[{itemId:'update',type:'sku.update',target:{kind:'existing',skuId:product.id},changes:{price:0},reason:'Precio cero revisado'}]);
+      const applied=await universalWebhook('http-new-update-confirm',command);assert.equal(applied.status,'applied');assert.equal(applied.actions[0].price,0);assert.equal(Number((await stock(product.id))[0].price),0);
+      assert.deepEqual(await universalWebhook('http-new-update-confirm',command),applied);
+      const adjustmentProduct=await createHttpFixtureProduct({name:'Ajuste universal HTTP',stockAvailable:4},owner);
+      const oldAdjustment=await legacySelection('http-old-ajuste-preview',adjustmentProduct,{stockAvailable:0});const oldCode=/CONFIRMAR AJUSTE ([A-F0-9]{8})/.exec(oldAdjustment.replyText)[1];
+      assert.equal((await universalWebhook('http-old-ajuste-retired','CONFIRMAR AJUSTE '+oldCode)).errorCode,'LEGACY_WRITER_RETIRED');assert.equal(Number((await stock(adjustmentProduct.id))[0].stock_available),4);
+      const adjust=await reviewedUniversalCommand('http-new-adjust-ready','Ajustar el producto a cero disponibles.',[{itemId:'adjust',type:'stock.adjust',target:{kind:'existing',skuId:adjustmentProduct.id},balances:{available:0},reason:'Conteo revisado'}]);
+      const adjusted=await universalWebhook('http-new-adjust-confirm',adjust);assert.equal(adjusted.status,'applied');assert.equal(Number((await stock(adjustmentProduct.id))[0].stock_available),0);
+      assert.deepEqual(await universalWebhook('http-new-adjust-confirm',adjust),adjusted);
     });
     await run('signed WhatsApp insufficient sale completes rejection and cannot execute after replenishment', async () => {
       const product = await createHttpFixtureProduct({ name: 'Taladro Delta', stockAvailable: 2, price: 900 }, owner);
@@ -952,7 +922,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(removed.json.inventoryResult.items[0].type,'stock.withdraw'); assert.equal(Number((await stock(product.id))[0].stock_available),0);
       assert.deepEqual((await request(route,{method:'DELETE',body:deletion})).json,removed.json);
       assert.deepEqual((await request(route,{method:'PUT',body:transition})).json,changed.json);
-      assert.equal((await request('/api/state/apply',{body:{operationId:'forged-withdraw-history',actions:[{type:'withdraw_stock',productId:product.id,qty:1}]}})).status,409);
+      assert.equal((await request('/api/state/apply',{body:{operationId:'forged-withdraw-history',actions:[{type:'withdraw_stock',productId:product.id,qty:1}]}})).status,410);
     });
     await run('signed WhatsApp order transitions use the bound SKU, outbox and terminal insufficiency', async () => {
       const product = await createHttpFixtureProduct({name:'Taladro Pedido HTTP',stockAvailable:0},owner);

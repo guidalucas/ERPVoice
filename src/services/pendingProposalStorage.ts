@@ -43,23 +43,21 @@ export function restorePendingProposal(key: string): ParsedVoicePayload | null {
   } catch {
     // Malformed or inaccessible storage must never break session bootstrapping.
   }
-  clearStoredProposal(key);
   return null;
 }
 
-export function persistPendingProposal(key: string, proposal: ParsedVoicePayload): boolean {
+// Archive only after the caller has durably copied the source to the composer.
+export function archivePendingProposal(key: string, proposal: ParsedVoicePayload, reason: 'universal-review-handoff' | 'verified-applied' = 'universal-review-handoff'): boolean {
   try {
-    sessionStorage.setItem(key, JSON.stringify({ version: 1, proposal }));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function clearStoredProposal(key: string, operationId?: string): void {
-  try {
-    // A response from an unmounted provider must not erase a newer draft in this scope.
-    if (operationId && restorePendingProposal(key)?.operationId !== operationId) return;
+    const raw = sessionStorage.getItem(key);
+    if (!raw || JSON.stringify(restorePendingProposal(key)) !== JSON.stringify(proposal)) return false;
+    const archiveKey = key + ':archive:' + encodeURIComponent(proposal.operationId!);
+    const archive = JSON.stringify({ version: 1, reason, snapshot: JSON.parse(raw) });
+    const existing = sessionStorage.getItem(archiveKey);
+    if (existing !== null && existing !== archive) return false;
+    sessionStorage.setItem(archiveKey, archive);
+    if (sessionStorage.getItem(archiveKey) !== archive || sessionStorage.getItem(key) !== raw) return false;
     sessionStorage.removeItem(key);
-  } catch { /* Storage can be disabled by browser policy. */ }
+    return sessionStorage.getItem(key) === null;
+  } catch { return false; }
 }
