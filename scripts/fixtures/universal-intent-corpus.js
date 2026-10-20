@@ -37,8 +37,32 @@ const context = {
   ],
 };
 const readContext = { ...context, permissions: ['inventory:read', 'orders:read', 'accounts:read'] };
+const groupProducts = ['River','Barcelona'].flatMap(team=>['L','M'].map(size=>product(`${team.toLowerCase()}-${size.toLowerCase()}`,`Camiseta ${team}`,{size})));
+const groupSource = 'Ingresá una unidad de camiseta River y una unidad de camiseta Barcelona.';
+const groupQuestion = '¿Qué talle corresponde a cada una de las camisetas River y Barcelona?';
+const groupAction = (team,size)=>({type:'stock.receive',skuId:`${team}-${size.toLowerCase()}`,quantity:{value:1,unit:'unit'}});
 
 export const universalIntentCorpus = [
+  ...['talle L','L'].map((answer,index)=>({
+    id:`group-clarification-shared-size-${index+1}`,
+    sourceText:`${groupSource}\n${answer}`,
+    clarifications:[{question:groupQuestion,answer}],
+    catalog:{products:groupProducts},context,
+    expected:{kind:'ready',actions:[groupAction('river','L'),groupAction('barcelona','L')]},
+  })),
+  {
+    id:'group-clarification-explicit-subset',
+    sourceText:`${groupSource}\nL solo la de River`,
+    clarifications:[{question:groupQuestion,answer:'L solo la de River'}],
+    catalog:{products:groupProducts},context,expected:{kind:'clarification'},
+  },
+  {
+    id:'group-clarification-preserves-explicit-other-size',
+    sourceText:'Ingresá una unidad de camiseta River talle M y una unidad de camiseta Barcelona.\ntalle L',
+    clarifications:[{question:'¿Qué talle corresponde a la camiseta Barcelona?',answer:'talle L'}],
+    catalog:{products:groupProducts},context,
+    expected:{kind:'ready',actions:[groupAction('river','M'),groupAction('barcelona','L')]},
+  },
   {
     id: 'explicit-directional-converters-two-skus',
     sourceText: 'Vendé 3 convertidores USB a HDMI y 2 convertidores HDMI a USB.',

@@ -1,0 +1,321 @@
+{
+  "runId": "1a295d7a-bd39-4a18-9cb6-ec5a070c1298",
+  "mode": "LIVE_PRODUCTION_TEMP_TABLES",
+  "connectionMode": "session",
+  "startedAt": "2026-10-20T20:39:40.905Z",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "minPauseMs": 6000,
+  "parallelRequests": 1,
+  "automaticRetries": 0,
+  "cases": [
+    {
+      "id": "03-polleras-y-tops-nuevos",
+      "category": "Productos nuevos",
+      "text": "Cargame como productos nuevos dos polleras plisadas beige talle 2 y tres tops acanalados chocolate talle único. Las polleras van a 32 lucas pesos argentinos y los tops a 18 lucas pesos argentinos.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "new",
+            "quantity": 2,
+            "terms": [
+              "poller",
+              "plisad",
+              "beige"
+            ],
+            "size": "2",
+            "price": 32000
+          },
+          {
+            "type": "new",
+            "quantity": 3,
+            "terms": [
+              "top",
+              "acanalad",
+              "chocolate"
+            ],
+            "size": "único",
+            "price": 18000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Cargame como productos nuevos dos polleras plisadas beige talle 2 y tres tops acanalados chocolate talle único. Las polleras van a 32 lucas pesos argentinos y los tops a 18 lucas pesos argentinos.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "new-pollera-plisada-beige-2",
+              "type": "stock.receive",
+              "target": {
+                "kind": "new",
+                "sku": {
+                  "name": "Pollera plisada beige",
+                  "productType": "Pollera",
+                  "productModel": "Plisada beige",
+                  "size": "2",
+                  "attributes": {},
+                  "unit": "unit"
+                }
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "unit"
+              },
+              "price": {
+                "amount": 32000,
+                "currency": "ARS",
+                "policy": "initialize"
+              }
+            },
+            {
+              "itemId": "new-top-acanalado-chocolate-unico",
+              "type": "stock.receive",
+              "target": {
+                "kind": "new",
+                "sku": {
+                  "name": "Top acanalado chocolate",
+                  "productType": "Top",
+                  "productModel": "Acanalado chocolate",
+                  "size": "único",
+                  "attributes": {},
+                  "unit": "unit"
+                }
+              },
+              "quantity": {
+                "value": 3,
+                "unit": "unit"
+              },
+              "price": {
+                "amount": 18000,
+                "currency": "ARS",
+                "policy": "initialize"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 3187,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 571,
+      "persisted": {
+        "newProducts": [
+          {
+            "name": "Top acanalado chocolate",
+            "size": "único",
+            "available": 3,
+            "reserved": 0,
+            "price": 18000,
+            "currency": "ARS"
+          },
+          {
+            "name": "Pollera plisada beige",
+            "size": "2",
+            "available": 2,
+            "reserved": 0,
+            "price": 32000,
+            "currency": "ARS"
+          }
+        ],
+        "productChanges": [],
+        "accountChanges": [],
+        "transactions": 2
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "05-medias-por-par",
+      "category": "Productos nuevos",
+      "text": "Entraron 4 pares de medias lisas negras talle único, nuevas, y cada par sale 4 lucas pesos argentinos. Cargalas al stock.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "new",
+            "quantity": 4,
+            "terms": [
+              "media",
+              "negra"
+            ],
+            "size": "único",
+            "price": 4000,
+            "units": [
+              "par",
+              "pares",
+              "pair",
+              "pairs"
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Entraron 4 pares de medias lisas negras talle único, nuevas, y cada par sale 4 lucas pesos argentinos. Cargalas al stock.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "action-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "new",
+                "sku": {
+                  "name": "Medias lisas negras",
+                  "productType": "Medias",
+                  "productModel": "Lisas negras",
+                  "size": "Único",
+                  "attributes": {},
+                  "unit": "unit"
+                }
+              },
+              "quantity": {
+                "value": 4,
+                "unit": "unit"
+              },
+              "price": {
+                "amount": 4000,
+                "currency": "ARS",
+                "policy": "initialize"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 1661,
+            "ok": true
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se perdió la unidad par: unit"
+      }
+    },
+    {
+      "id": "16-conservar-talle-previo",
+      "category": "Aclaración parcial",
+      "text": "Sumá una remera oversize negra M y un short running azul.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Sumá una remera oversize negra M y un short running azul.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "1a295d7a-bd39-4a18-9cb6-ec5a070c1298-remera-m",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "1a295d7a-bd39-4a18-9cb6-ec5a070c1298-remera-m",
+                "expectedFingerprint": "9e35b43451241dc485c155b851b2e81a5b43fdd145cf8c1e4893019110d81eda",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            },
+            {
+              "itemId": "1a295d7a-bd39-4a18-9cb6-ec5a070c1298-short-m",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "1a295d7a-bd39-4a18-9cb6-ec5a070c1298-short-m",
+                "expectedFingerprint": "764e761281070c6d63c051a7293c50e83d6fb6fc95df57a4081fc6f34b39eb72",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 6568,
+            "ok": true
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se esperaba clarification; recibido ready\n+ actual - expected\n\n+ 'ready'\n- 'clarification'\n"
+      }
+    },
+    {
+      "id": "21-mixta-sin-stock-atomica",
+      "category": "Atomicidad",
+      "text": "Vendí 99 camisetas Barrio Norte titular 2026 talle L y a Mica Rojas sumale 5 lucas a su cuenta por esa compra fiada.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.sell",
+            "key": "camiseta-l",
+            "quantity": 99
+          },
+          {
+            "type": "account.charge",
+            "client": "mica",
+            "amount": 5000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Vendí 99 camisetas Barrio Norte titular 2026 talle L y a Mica Rojas sumale 5 lucas a su cuenta por esa compra fiada.",
+          "kind": "clarification",
+          "question": "Por favor, especificá a qué cliente corresponde la venta y el saldo a cobrar, ya que no se indicó un cliente para la venta de las camisetas y hay más de un cliente registrado en el sistema.",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 6291,
+            "ok": true
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se esperaba ready; recibido clarification: Por favor, especificá a qué cliente corresponde la venta y el saldo a cobrar, ya que no se indicó un cliente para la venta de las camisetas y hay más de un cliente registrado en el sistema.\n+ actual - expected\n\n+ 'clarification'\n- 'ready'\n"
+      }
+    }
+  ],
+  "wireCalls": 4,
+  "usage": {
+    "promptTokens": 26611,
+    "completionTokens": 1083
+  },
+  "permanentTablesModified": false,
+  "productionSnapshot": {
+    "businessFingerprint": "2e27e5144cee",
+    "activeProducts": 31,
+    "copiedAt": "2026-10-20T20:39:43.329Z",
+    "rawSnapshotHash": "3a78826f5a37a40a083d91f2ef2655135c9562c9cf8f21638a4966e6b873fc89"
+  },
+  "plannedCases": 4,
+  "syntheticProducts": 11,
+  "finishedAt": "2026-10-20T20:40:28.230Z",
+  "passed": 1,
+  "failed": 3,
+  "tempTableIsolationVerified": true,
+  "completed": true,
+  "temporaryTablesRemoved": true
+}

@@ -1,0 +1,122 @@
+{
+  "runId": "aa11833f-c4c5-43ca-b922-4da2a9b7ad96",
+  "mode": "LIVE_PRODUCTION_TEMP_TABLES",
+  "connectionMode": "session",
+  "startedAt": "2026-10-20T21:03:03.412Z",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "minPauseMs": 6000,
+  "parallelRequests": 1,
+  "automaticRetries": 0,
+  "cases": [
+    {
+      "id": "16-conservar-talle-previo",
+      "category": "Aclaración parcial",
+      "text": "Sumá una remera oversize negra M y un short running azul.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Sumá una remera oversize negra M y un short running azul.",
+          "kind": "clarification",
+          "question": "¿Qué talle tiene el short running azul, M o L?",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 2185,
+            "ok": true
+          }
+        },
+        {
+          "text": "La L",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-remera-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "aa11833f-c4c5-43ca-b922-4da2a9b7ad96-remera-m",
+                "expectedFingerprint": "9e35b43451241dc485c155b851b2e81a5b43fdd145cf8c1e4893019110d81eda",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            },
+            {
+              "itemId": "accion-short-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "aa11833f-c4c5-43ca-b922-4da2a9b7ad96-short-l",
+                "expectedFingerprint": "c17fea838f030fb724016c910ba62cf5728b7b145fa1b1d7d54c1d0e959f3612",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 5989,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 643,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Remera oversize negra",
+            "size": "M",
+            "available": 6,
+            "reserved": 0,
+            "price": 25000
+          },
+          {
+            "name": "Short running azul",
+            "size": "L",
+            "available": 7,
+            "reserved": 0,
+            "price": 22000
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 2
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    }
+  ],
+  "wireCalls": 2,
+  "usage": {
+    "promptTokens": 19342,
+    "completionTokens": 357
+  },
+  "permanentTablesModified": false,
+  "productionSnapshot": {
+    "businessFingerprint": "2e27e5144cee",
+    "activeProducts": 31,
+    "copiedAt": "2026-10-20T21:03:05.564Z",
+    "rawSnapshotHash": "3a78826f5a37a40a083d91f2ef2655135c9562c9cf8f21638a4966e6b873fc89"
+  },
+  "plannedCases": 1,
+  "syntheticProducts": 19,
+  "finishedAt": "2026-10-20T21:03:36.867Z",
+  "passed": 1,
+  "failed": 0,
+  "tempTableIsolationVerified": true,
+  "completed": true,
+  "temporaryTablesRemoved": true
+}

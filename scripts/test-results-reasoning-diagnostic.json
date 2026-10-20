@@ -1,0 +1,100 @@
+{
+  "runId": "656f72f4-22ad-43a9-9539-58742b613949",
+  "mode": "LIVE_PRODUCTION_TEMP_TABLES",
+  "connectionMode": "session",
+  "startedAt": "2026-10-20T21:14:16.431Z",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "minPauseMs": 6000,
+  "parallelRequests": 1,
+  "automaticRetries": 0,
+  "maxFormatRepairsPerTurn": 1,
+  "cases": [
+    {
+      "id": "01-remeras-coloquial",
+      "category": "Ingreso",
+      "text": "Che, entraron tres remeras oversize negras talle L. Sumalas nomás.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.receive",
+            "key": "remera-l",
+            "quantity": 3
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Che, entraron tres remeras oversize negras talle L. Sumalas nomás.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "ingreso-remera-l",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "656f72f4-22ad-43a9-9539-58742b613949-remera-l",
+                "expectedFingerprint": "e4049b4b8e968b16f879fa6c81863b86293815ae3bc3c5a70a3a42bf1ba136f4",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 3,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 3099,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 414,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Remera oversize negra",
+            "size": "L",
+            "unit": "unit",
+            "available": 11,
+            "reserved": 0,
+            "price": 25000
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    }
+  ],
+  "wireCalls": 1,
+  "usage": {
+    "promptTokens": 9677,
+    "completionTokens": 200
+  },
+  "permanentTablesModified": false,
+  "productionSnapshot": {
+    "businessFingerprint": "2e27e5144cee",
+    "activeProducts": 31,
+    "copiedAt": "2026-10-20T21:14:18.477Z",
+    "rawSnapshotHash": "3a78826f5a37a40a083d91f2ef2655135c9562c9cf8f21638a4966e6b873fc89"
+  },
+  "plannedCases": 1,
+  "syntheticProducts": 19,
+  "reasoningEffort": "medium",
+  "finishedAt": "2026-10-20T21:14:40.575Z",
+  "passed": 1,
+  "failed": 0,
+  "tempTableIsolationVerified": true,
+  "completed": true,
+  "temporaryTablesRemoved": true
+}

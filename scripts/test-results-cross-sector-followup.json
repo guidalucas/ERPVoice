@@ -1,0 +1,587 @@
+{
+  "runId": "5d27e113-d23e-4bbe-a239-fe8a1ed72640",
+  "mode": "LIVE_PRODUCTION_TEMP_TABLES",
+  "connectionMode": "session",
+  "startedAt": "2026-10-20T21:23:00.328Z",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "minPauseMs": 6000,
+  "parallelRequests": 1,
+  "automaticRetries": 0,
+  "maxFormatRepairsPerTurn": 1,
+  "cases": [
+    {
+      "id": "03-polleras-y-tops-nuevos",
+      "category": "Productos nuevos",
+      "text": "Cargame como productos nuevos dos polleras plisadas beige talle 2 y tres tops acanalados chocolate talle único. Las polleras van a 32 lucas pesos argentinos y los tops a 18 lucas pesos argentinos.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "new",
+            "quantity": 2,
+            "terms": [
+              "poller",
+              "plisad",
+              "beige"
+            ],
+            "size": "2",
+            "price": 32000
+          },
+          {
+            "type": "new",
+            "quantity": 3,
+            "terms": [
+              "top",
+              "acanalad",
+              "chocolate"
+            ],
+            "size": "único",
+            "price": 18000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Cargame como productos nuevos dos polleras plisadas beige talle 2 y tres tops acanalados chocolate talle único. Las polleras van a 32 lucas pesos argentinos y los tops a 18 lucas pesos argentinos.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "pollera-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "new",
+                "sku": {
+                  "name": "Pollera plisada beige",
+                  "size": "2",
+                  "attributes": {},
+                  "unit": "unit"
+                }
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "unit"
+              },
+              "price": {
+                "amount": 32000,
+                "currency": "ARS",
+                "policy": "initialize"
+              }
+            },
+            {
+              "itemId": "top-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "new",
+                "sku": {
+                  "name": "Top acanalado chocolate",
+                  "size": "único",
+                  "attributes": {},
+                  "unit": "unit"
+                }
+              },
+              "quantity": {
+                "value": 3,
+                "unit": "unit"
+              },
+              "price": {
+                "amount": 18000,
+                "currency": "ARS",
+                "policy": "initialize"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 6113,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 489,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [
+          {
+            "name": "Pollera plisada beige",
+            "size": "2",
+            "unit": "unit",
+            "available": 2,
+            "reserved": 0,
+            "price": 32000,
+            "currency": "ARS"
+          },
+          {
+            "name": "Top acanalado chocolate",
+            "size": "único",
+            "unit": "unit",
+            "available": 3,
+            "reserved": 0,
+            "price": 18000,
+            "currency": "ARS"
+          }
+        ],
+        "productChanges": [],
+        "accountChanges": [],
+        "transactions": 2
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "05-medias-por-par",
+      "category": "Productos nuevos",
+      "text": "Entraron 4 pares de medias lisas negras talle único, nuevas, y cada par sale 4 lucas pesos argentinos. Cargalas al stock.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "new",
+            "quantity": 4,
+            "terms": [
+              "media",
+              "negra"
+            ],
+            "size": "único",
+            "price": 4000,
+            "units": [
+              "par",
+              "pares",
+              "pair",
+              "pairs"
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Entraron 4 pares de medias lisas negras talle único, nuevas, y cada par sale 4 lucas pesos argentinos. Cargalas al stock.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "ingreso-medias",
+              "type": "stock.receive",
+              "target": {
+                "kind": "new",
+                "sku": {
+                  "name": "Medias lisas negras",
+                  "size": "único",
+                  "attributes": {},
+                  "unit": "par"
+                }
+              },
+              "quantity": {
+                "value": 4,
+                "unit": "par"
+              },
+              "price": {
+                "amount": 4000,
+                "currency": "ARS",
+                "policy": "initialize"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 4169,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 330,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [
+          {
+            "name": "Medias lisas negras",
+            "size": "único",
+            "unit": "par",
+            "available": 4,
+            "reserved": 0,
+            "price": 4000,
+            "currency": "ARS"
+          }
+        ],
+        "productChanges": [],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "15-talle-para-grupo",
+      "category": "Aclaración grupal",
+      "text": "Entraron dos shorts running azules y dos remeras oversize negras. Sumalos al stock.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Entraron dos shorts running azules y dos remeras oversize negras. Sumalos al stock.",
+          "kind": "clarification",
+          "question": "¿Qué talle tienen los shorts running azules y las remeras oversize negras?",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 3320,
+            "ok": true
+          }
+        },
+        {
+          "text": "talle L",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "rec-short-l",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "5d27e113-d23e-4bbe-a239-fe8a1ed72640-short-l",
+                "expectedFingerprint": "c17fea838f030fb724016c910ba62cf5728b7b145fa1b1d7d54c1d0e959f3612",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "unit"
+              }
+            },
+            {
+              "itemId": "rec-remera-l",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "5d27e113-d23e-4bbe-a239-fe8a1ed72640-remera-l",
+                "expectedFingerprint": "e4049b4b8e968b16f879fa6c81863b86293815ae3bc3c5a70a3a42bf1ba136f4",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 7636,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 643,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Remera oversize negra",
+            "size": "L",
+            "unit": "unit",
+            "available": 10,
+            "reserved": 0,
+            "price": 25000
+          },
+          {
+            "name": "Short running azul",
+            "size": "L",
+            "unit": "unit",
+            "available": 8,
+            "reserved": 0,
+            "price": 22000
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 2
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "16-conservar-talle-previo",
+      "category": "Aclaración parcial",
+      "text": "Sumá una remera oversize negra M y un short running azul.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Sumá una remera oversize negra M y un short running azul.",
+          "kind": "clarification",
+          "question": "¿Qué talle tiene el short running azul, M o L?",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 5015,
+            "ok": true
+          }
+        },
+        {
+          "text": "La L",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "5d27e113-d23e-4bbe-a239-fe8a1ed72640-remera-m",
+                "expectedFingerprint": "9e35b43451241dc485c155b851b2e81a5b43fdd145cf8c1e4893019110d81eda",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            },
+            {
+              "itemId": "accion-2",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "5d27e113-d23e-4bbe-a239-fe8a1ed72640-short-l",
+                "expectedFingerprint": "c17fea838f030fb724016c910ba62cf5728b7b145fa1b1d7d54c1d0e959f3612",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 7852,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 643,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Remera oversize negra",
+            "size": "M",
+            "unit": "unit",
+            "available": 6,
+            "reserved": 0,
+            "price": 25000
+          },
+          {
+            "name": "Short running azul",
+            "size": "L",
+            "unit": "unit",
+            "available": 7,
+            "reserved": 0,
+            "price": 22000
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 2
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "19-precio-cero",
+      "category": "Precio",
+      "text": "La calza ciclista negra M va gratis en la promo, dejale el precio en cero pesos argentinos.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "sku.update",
+            "key": "calza-m",
+            "changes": {
+              "price": 0,
+              "priceCurrency": "ARS"
+            }
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "La calza ciclista negra M va gratis en la promo, dejale el precio en cero pesos argentinos.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "sku-update-calza",
+              "type": "sku.update",
+              "target": {
+                "kind": "existing",
+                "skuId": "5d27e113-d23e-4bbe-a239-fe8a1ed72640-calza-m",
+                "expectedFingerprint": "0131867f14989d2eeb9b7bc11d3b39f6b90e850f7d791d82337b8f01ee7a5e6b",
+                "expectedRevision": 0
+              },
+              "reason": "Promoción",
+              "changes": {
+                "price": 0,
+                "priceCurrency": "ARS"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 11146,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 452,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Calza ciclista negra",
+            "size": "M",
+            "unit": "unit",
+            "available": 6,
+            "reserved": 0,
+            "price": 0
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "21-mixta-sin-stock-atomica",
+      "category": "Atomicidad",
+      "text": "Vendí 99 camisetas Barrio Norte titular 2026 talle L y a Mica Rojas sumale 5 lucas a su cuenta por esa compra fiada.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.sell",
+            "key": "camiseta-l",
+            "quantity": 99
+          },
+          {
+            "type": "account.charge",
+            "client": "mica",
+            "amount": 5000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Vendí 99 camisetas Barrio Norte titular 2026 talle L y a Mica Rojas sumale 5 lucas a su cuenta por esa compra fiada.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "5d27e113-d23e-4bbe-a239-fe8a1ed72640-camiseta-l",
+                "expectedFingerprint": "c453f9ab10d4313c201a64cb86ca8b4beefa056252772aa7d4f8ce77fcabbf92",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 99,
+                "unit": "unit"
+              }
+            },
+            {
+              "itemId": "accion-2",
+              "type": "account.charge",
+              "target": {
+                "kind": "existing",
+                "clientId": "5d27e113-d23e-4bbe-a239-fe8a1ed72640-mica",
+                "expectedRevision": 0
+              },
+              "amount": {
+                "value": 5000,
+                "unit": "legacy-money"
+              },
+              "reason": "por esa compra fiada"
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 5464,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 563,
+      "expectedRejection": "INSUFFICIENT_STOCK",
+      "rollbackVerified": true
+    },
+    {
+      "id": "36-kiosco-no-inventar-conversion",
+      "category": "Kiosco · unidad ambigua",
+      "text": "Vendí una caja de agua mineral sin gas de 1,5 litros. Registrala.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Vendí una caja de agua mineral sin gas de 1,5 litros. Registrala.",
+          "kind": "clarification",
+          "question": "¿Cuántas botellas contiene una caja de agua mineral sin gas de 1,5 litros?",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 4506,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 261,
+      "clarificationWithoutEffects": true
+    }
+  ],
+  "wireCalls": 9,
+  "usage": {
+    "promptTokens": 87432,
+    "completionTokens": 2002
+  },
+  "permanentTablesModified": false,
+  "productionSnapshot": {
+    "businessFingerprint": "2e27e5144cee",
+    "activeProducts": 31,
+    "copiedAt": "2026-10-20T21:23:02.450Z",
+    "rawSnapshotHash": "3a78826f5a37a40a083d91f2ef2655135c9562c9cf8f21638a4966e6b873fc89"
+  },
+  "plannedCases": 7,
+  "syntheticProducts": 19,
+  "reasoningEffort": "medium",
+  "finishedAt": "2026-10-20T21:24:52.711Z",
+  "passed": 7,
+  "failed": 0,
+  "tempTableIsolationVerified": true,
+  "completed": true,
+  "temporaryTablesRemoved": true
+}

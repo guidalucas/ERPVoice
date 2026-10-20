@@ -1734,7 +1734,7 @@ export const processMetaDeactivationCommand = async (input) => parseMetaDeactiva
 // All channels read the same persisted snapshot; storage failures are never empty inventory.
 export const getStateSnapshot = (ownerPhone = DEFAULT_OWNER_PHONE) => getStateSnapshotStrict(ownerPhone);
 
-const persistInventoryTransactions = async (client, plan, result, originalActions = []) => {
+export const persistInventoryTransactions = async (client, plan, result, originalActions = []) => {
   const appliedActions = inventoryResultActions(result, originalActions);
   for (const [index, item] of result.items.entries()) {
     const transactionId = `inventory-${crypto.createHash('sha256').update(JSON.stringify([plan.businessId,plan.operationId,item.itemId])).digest('hex')}`;

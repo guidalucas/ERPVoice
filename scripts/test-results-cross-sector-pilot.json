@@ -1,0 +1,301 @@
+{
+  "runId": "6f746101-36c6-4643-a78d-6fc5e1be5383",
+  "mode": "LIVE_PRODUCTION_TEMP_TABLES",
+  "connectionMode": "session",
+  "startedAt": "2026-10-20T21:01:47.703Z",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "minPauseMs": 6000,
+  "parallelRequests": 1,
+  "automaticRetries": 0,
+  "cases": [
+    {
+      "id": "16-conservar-talle-previo",
+      "category": "Aclaración parcial",
+      "text": "Sumá una remera oversize negra M y un short running azul.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Sumá una remera oversize negra M y un short running azul.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-remera-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "6f746101-36c6-4643-a78d-6fc5e1be5383-remera-m",
+                "expectedFingerprint": "9e35b43451241dc485c155b851b2e81a5b43fdd145cf8c1e4893019110d81eda",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            },
+            {
+              "itemId": "accion-short-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "6f746101-36c6-4643-a78d-6fc5e1be5383-short-m",
+                "expectedFingerprint": "764e761281070c6d63c051a7293c50e83d6fb6fc95df57a4081fc6f34b39eb72",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 2815,
+            "ok": true
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se esperaba clarification; recibido ready\n+ actual - expected\n\n+ 'ready'\n- 'clarification'\n"
+      }
+    },
+    {
+      "id": "28-ferreteria-aclarar-medida",
+      "category": "Ferretería · aclaración",
+      "text": "Sumá dos kilos de tornillos zincados.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Sumá dos kilos de tornillos zincados.",
+          "kind": "clarification",
+          "question": "¿De qué tamaño querés los tornillos zincados?",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 6044,
+            "ok": true
+          }
+        },
+        {
+          "text": "Los de 8 mm",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "6f746101-36c6-4643-a78d-6fc5e1be5383-accion-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "6f746101-36c6-4643-a78d-6fc5e1be5383-tornillo-8",
+                "expectedFingerprint": "0228572f4fa540da24b143a0abf64351282cb39f38cd7e143cb3a7fb701e7b06",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "kg"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 5536,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 402,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Tornillo zincado",
+            "size": "8 mm",
+            "available": 10,
+            "reserved": 0,
+            "price": 5200
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "33-kiosco-rollback-cargo-previo",
+      "category": "Kiosco · atomicidad",
+      "text": "A Mica Rojas sumale 5 lucas a su cuenta y registrá la venta de 99 botellas de gaseosa cola de 2,25 litros.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "account.charge",
+            "client": "mica",
+            "amount": 5000
+          },
+          {
+            "type": "stock.sell",
+            "key": "gaseosa-225",
+            "quantity": 99,
+            "unit": "botella"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "A Mica Rojas sumale 5 lucas a su cuenta y registrá la venta de 99 botellas de gaseosa cola de 2,25 litros.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "acc-1",
+              "type": "account.charge",
+              "target": {
+                "kind": "existing",
+                "clientId": "6f746101-36c6-4643-a78d-6fc5e1be5383-mica",
+                "expectedRevision": 0
+              },
+              "amount": {
+                "value": 5000,
+                "unit": "legacy-money"
+              },
+              "reason": "Suma a cuenta"
+            },
+            {
+              "itemId": "stock-1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "6f746101-36c6-4643-a78d-6fc5e1be5383-gaseosa-225",
+                "expectedFingerprint": "f3c744ebf312e51296d6630b13d601688a7a0bd3385f6b368839ec8f714564c0",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 99,
+                "unit": "botella"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 1524,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 539,
+      "expectedRejection": "INSUFFICIENT_STOCK",
+      "rollbackVerified": true
+    },
+    {
+      "id": "37-almacen-alta-sin-precio",
+      "category": "Almacén · alta sin precio",
+      "text": "Dame de alta 3 paquetes nuevos de fideos tirabuzón marca Molino Chico, todavía no tengo el precio de venta.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "new",
+            "quantity": 3,
+            "terms": [
+              "fideo",
+              "tirabuz",
+              "molino",
+              "chico"
+            ],
+            "units": [
+              "paquete"
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Dame de alta 3 paquetes nuevos de fideos tirabuzón marca Molino Chico, todavía no tengo el precio de venta.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-fideos-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "new",
+                "sku": {
+                  "name": "Fideos tirabuzón Molino Chico",
+                  "productType": "Fideos",
+                  "productModel": "Tirabuzón",
+                  "attributes": {},
+                  "unit": "paquete"
+                }
+              },
+              "quantity": {
+                "value": 3,
+                "unit": "paquete"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 2828,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 311,
+      "persisted": {
+        "newProducts": [
+          {
+            "name": "Fideos tirabuzón Molino Chico",
+            "size": null,
+            "available": 3,
+            "reserved": 0,
+            "price": 0,
+            "currency": "XXX"
+          }
+        ],
+        "productChanges": [],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    }
+  ],
+  "wireCalls": 5,
+  "usage": {
+    "promptTokens": 46986,
+    "completionTokens": 896
+  },
+  "permanentTablesModified": false,
+  "productionSnapshot": {
+    "businessFingerprint": "2e27e5144cee",
+    "activeProducts": 31,
+    "copiedAt": "2026-10-20T21:01:49.764Z",
+    "rawSnapshotHash": "3a78826f5a37a40a083d91f2ef2655135c9562c9cf8f21638a4966e6b873fc89"
+  },
+  "plannedCases": 4,
+  "syntheticProducts": 19,
+  "finishedAt": "2026-10-20T21:02:42.128Z",
+  "passed": 3,
+  "failed": 1,
+  "tempTableIsolationVerified": true,
+  "completed": true,
+  "temporaryTablesRemoved": true
+}
