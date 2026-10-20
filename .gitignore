@@ -152,3 +152,8 @@ scripts/test-results-universal-live.json
 # Local Cursor/agent skills (npx skills)
 .agents/
 skills-lock.json
+
+# FullMatch local supervisor state/logs and generated Studio output
+.fullmatch-runtime/
+dist-studio/
+dist-catalog/

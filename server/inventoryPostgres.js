@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { validateOperationPlan, operationDigest, planInventoryOperation, inventoryProductFingerprint, productIdentity, InventoryOperationError } from './inventoryOperations.js';
 import { loadProductFamilySchemas } from './productFamilyPostgres.js';
+import { enforceInventoryMoneyPolicy, inventoryPriceToMoney } from './inventoryMoneyPolicy.js';
 
 // Additive metadata; numeric widening preserves the existing integer values.
 export const INVENTORY_SCHEMA_SQL = `
@@ -66,6 +67,13 @@ export async function executeInventoryPlanInTransaction(client, input, context) 
     return replay.rows[0].result_json;
   }
 
+  // Optional, explicitly migrated/confirmed per-business policy. Historical replay above is immutable.
+  const policyTable = (await client.query("SELECT to_regclass('public.inventory_money_policies') AS relation")).rows[0].relation;
+  const policyRow = policyTable ? (await client.query('SELECT currency,storage_unit,fraction_digits,revision FROM inventory_money_policies WHERE owner_phone=$1', [context.businessId])).rows[0] : null;
+  const moneyPolicy = policyRow ? { currency: policyRow.currency, storageUnit: policyRow.storage_unit,
+    fractionDigits: Number(policyRow.fraction_digits), revision: Number(policyRow.revision) } : null;
+  if (moneyPolicy) enforceInventoryMoneyPolicy(plan.actions, moneyPolicy);
+
   // Required until the legacy writer stops replacing whole tenant tables.
   // LLM calls never run while this lock is held.
   await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
@@ -76,6 +84,12 @@ export async function executeInventoryPlanInTransaction(client, input, context) 
   const usesFamilies=products.some(product=>product.family)||plan.actions.some(action=>action.target.sku?.family||action.changes?.family);
   const familySchemas=usesFamilies ? await loadProductFamilySchemas(client,owners) : [];
   const effect = planInventoryOperation(plan, products, { createId: () => `sku-${crypto.randomUUID()}`,familySchemas });
+  if (moneyPolicy) for (const action of plan.actions) {
+    if (action.type === 'sku.update' && ['price', 'priceCurrency'].some(key => Object.hasOwn(action.changes, key))) {
+      const product = effect.changedProducts.find(value => value.id === action.target.skuId);
+      if (product) inventoryPriceToMoney(product.price, product.priceCurrency, moneyPolicy);
+    }
+  }
   const persisted = new Map();
   for (const product of effect.changedProducts) {
     const values = [product.id, context.businessId, product.name, product.productType ?? null,

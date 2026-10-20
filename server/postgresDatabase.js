@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import crypto from 'crypto';
-import { Pool } from 'pg';
+import { createDatabaseRuntime, inspectStockyFoundation } from './dbRuntime.js';
 import { normalizePhone, getWhatsAppVariants } from './phone.js';
 import { productMatchKey, normalizeProductMetadata } from './productIdentity.js';
 import { validateStockDraft, hasExplicitStockSize, productFingerprint, stockReferenceIssues, explicitIdentityConflict } from './voiceStockEngine.js';
@@ -119,29 +119,16 @@ const shouldUseSsl = () => {
   return !/localhost|127\.0\.0\.1|::1/i.test(connectionString);
 };
 
-let pool;
 let initializePromise;
-
-const getPool = () => {
-  const connectionString = getConnectionString();
-
-  if (!connectionString) {
-    throw new Error('Missing PostgreSQL connection string. Set SUPABASE_DATABASE_URL or DATABASE_URL in your environment.');
-  }
-
-  if (!pool) {
-    pool = new Pool({
-      connectionString,
-      ssl: shouldUseSsl() ? { rejectUnauthorized: false } : false,
-    });
-  }
-
-  return pool;
-};
+// Runtime access is separate from schema bootstrap. Commercial modules never call ensureReady.
+export const stockyDatabaseRuntime = createDatabaseRuntime({ connectionString: getConnectionString,
+  ssl: () => shouldUseSsl() ? { rejectUnauthorized: false } : false });
+const getPool = stockyDatabaseRuntime.getPool;
 
 const ensureReady = async () => {
   if (!initializePromise) {
-    initializePromise = initializeDatabase().catch((error) => {
+    const verifyOnly = process.env.NODE_ENV === 'production' || process.env.STOCKY_SCHEMA_MODE === 'verify';
+    initializePromise = (verifyOnly ? stockyDatabaseRuntime.withClient(inspectStockyFoundation) : initializeDatabase()).catch((error) => {
       initializePromise = undefined;
       throw error;
     });
@@ -150,7 +137,13 @@ const ensureReady = async () => {
   return initializePromise;
 };
 
-export const migrateDatabase = () => ensureReady();
+export const migrateDatabase = () => {
+  if (process.env.NODE_ENV === 'production' && process.env.STOCKY_ALLOW_SCHEMA_MIGRATION !== 'true') {
+    throw Object.assign(new Error('Production schema changes require an explicit maintenance command.'), { code: 'EXPLICIT_MIGRATION_REQUIRED' });
+  }
+  initializePromise = initializeDatabase().catch(error => { initializePromise = undefined; throw error; });
+  return initializePromise;
+};
 
 const withClient = async (callback) => {
   const client = await getPool().connect();
@@ -2315,8 +2308,8 @@ export const getStateSnapshotStrict = async (ownerPhone) => {
 };
 
 export const closeDatabase = async () => {
-  if (pool) await pool.end();
-  pool = undefined; initializePromise = undefined;
+  await stockyDatabaseRuntime.close();
+  initializePromise = undefined;
 };
 
 export const completeMetaMessageClaim = async (messageId) => {
