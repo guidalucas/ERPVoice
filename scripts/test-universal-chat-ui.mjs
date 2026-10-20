@@ -6,10 +6,30 @@ import { chromium } from 'playwright';
 const browser = await chromium.launch(process.platform === 'win32' ? { channel: 'msedge', headless: true } : { headless: true });
 async function fixture() {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  const prepares = [], replies = [], confirms = [], gets = [], errors = [], forbidden = [], drafts = new Map();
+  const prepares = [], replies = [], confirms = [], gets = [], errors = [], forbidden = [], transcriptions = [], external = [], drafts = new Map();
   let mode = 'ok', writes = 0, release, failRefresh = false, identity = { phoneNumber: '5491100000000', tenantPhone: '5491100000000' };
   page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:5173' && !['fonts.googleapis.com', 'fonts.gstatic.com'].includes(url.hostname)) external.push(request.url());
+  });
   await page.addInitScript(() => { localStorage.setItem('erpvoice.auth.token', 'universal-draft-ui'); localStorage.setItem('erpvoice.auth.phoneNumber', '5491100000000'); });
+  await page.addInitScript(() => {
+    window.audioTracksStopped = 0;
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
+      getUserMedia: async () => ({ getTracks: () => [{ stop: () => { window.audioTracksStopped++; } }] }),
+    } });
+    window.MediaRecorder = class {
+      state = 'inactive'; mimeType = 'audio/webm';
+      constructor(stream) { this.stream = stream; }
+      start() { this.state = 'recording'; }
+      stop() {
+        this.state = 'inactive';
+        this.ondataavailable?.({ data: new Blob(['private-audio-fixture'], { type: this.mimeType }) });
+        this.onstop?.();
+      }
+    };
+  });
   const ready = (draftId, text, version = 1) => ({ draftId, version, text, status: 'awaiting_confirmation', digest: String(version).repeat(64), expiresAt: mode === 'expired' ? '2000-01-01T00:00:00.000Z' : '2099-10-17T12:00:00.000Z',
     plan: { actions: [{ itemId: 'stock' }, { itemId: 'account' }] }, evidence: [{ itemId: 'stock', quote: text }, { itemId: 'account', quote: text }],
     review: [{ itemId: 'stock', title: 'Ingreso de inventario', details: ['SKU Taladro (sku-1)', 'Disponible: 2 → 5', 'Unidad: unit'] }, { itemId: 'account', title: 'Cargo a cuenta', details: ['Cliente Ana (client-1)', 'Saldo: 0 → 7', 'Importe explícito: 7'] }] });
@@ -17,6 +37,15 @@ async function fixture() {
     const req = route.request(), path = new URL(req.url()).pathname;
     if (/parse|state\/apply/.test(path)) forbidden.push(path);
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (path === '/api/voice/transcribe') {
+      transcriptions.push({ url: req.url(), headers: req.headers(), body: req.postData(), method: req.method() });
+      assert.equal(req.headers().authorization, 'Bearer universal-draft-ui');
+      assert.equal(req.headers()['content-type'], 'audio/webm');
+      assert.equal(req.method(), 'POST'); assert.equal(req.postData(), 'private-audio-fixture');
+      if (mode === 'hold-transcription') await new Promise(resolve => { release = resolve; });
+      if (mode === 'transcription503') { mode = 'ok'; return json({ error: 'Transcripción no disponible.', code: 'TRANSCRIPTION_UNAVAILABLE' }, 503); }
+      return json({ text: '  Ingresaron tres taladros y cargá siete a Ana.  ' });
+    }
     if (path === '/api/auth/me') return json({ ...identity, role: 'owner', businessName: 'Draft UI', businessCategory: 'general', needsOnboarding: false, hasOwnBusiness: true });
     if (path === '/api/state') {
       if (failRefresh) { failRefresh = false; return json({ error: 'Datos desactualizados.' }, 503); }
@@ -76,7 +105,7 @@ async function fixture() {
   const prepare = async () => { await dialog.getByLabel('Solicitud', { exact: true }).fill('Ingresaron tres taladros y cargá siete a Ana.'); await button('Preparar revisión').click(); };
   const waitHold = async () => { const deadline = Date.now() + 5000; while (!release && Date.now() < deadline) await page.waitForTimeout(20); assert.ok(release); };
   await page.goto('http://127.0.0.1:5173'); await page.getByRole('button', { name: 'Abrir simulador WhatsApp', exact: true }).click();
-  return { page, dialog, button, consent, prepare, open, forbidden, prepares, replies, confirms, gets, drafts, errors, waitHold, writes: () => writes, setMode: value => { mode = value; }, release: () => { mode = 'ok'; release(); release = undefined; }, setIdentity: value => { identity = value; } };
+  return { page, dialog, button, consent, prepare, open, forbidden, prepares, replies, confirms, gets, drafts, errors, transcriptions, external, waitHold, writes: () => writes, setMode: value => { mode = value; }, release: () => { mode = 'ok'; release(); release = undefined; }, setIdentity: value => { identity = value; } };
 }
 const send = async (f, text) => {
   await f.page.getByPlaceholder('Escribí un mensaje...').fill(text);
@@ -84,6 +113,41 @@ const send = async (f, text) => {
   await f.dialog.waitFor();
 };
 try {
+  {
+    const f = await fixture();
+    await f.page.getByRole('button', { name: 'Grabar audio', exact: true }).click();
+    await f.page.getByRole('button', { name: 'Detener grabación', exact: true }).click();
+    await f.dialog.waitFor();
+    const transcript = 'Ingresaron tres taladros y cargá siete a Ana.';
+    assert.equal(await f.dialog.getByLabel('Solicitud', { exact: true }).inputValue(), transcript);
+    assert.equal(f.transcriptions.length, 1); assert.equal(f.prepares.length, 0); assert.equal(f.writes(), 0);
+    assert.equal(await f.page.evaluate(() => window.audioTracksStopped), 1);
+    const stored = await f.page.evaluate(() => Object.entries(localStorage).filter(([key]) => key.startsWith('universal-chat-input:')));
+    assert.ok(stored.some(([, value]) => value.includes(transcript)));
+    assert.ok(stored.every(([, value]) => !value.includes('private-audio-fixture')));
+    await f.page.reload(); await f.open();
+    assert.equal(await f.dialog.getByLabel('Solicitud', { exact: true }).inputValue(), transcript);
+    await f.button('Preparar revisión').click(); await f.consent().waitFor();
+    assert.equal(f.prepares.length, 1); assert.equal(f.writes(), 0);
+    assert.deepEqual(f.forbidden, []); assert.deepEqual(f.external, []); assert.deepEqual(f.errors, []);
+    await f.page.close();
+  }
+  {
+    const f = await fixture(); const input = f.page.getByPlaceholder('Escribí un mensaje...');
+    await input.fill('Texto que no debe perderse'); f.setMode('transcription503');
+    await f.page.getByRole('button', { name: 'Grabar audio', exact: true }).click();
+    await f.page.getByRole('button', { name: 'Detener grabación', exact: true }).click();
+    await f.page.getByText('Transcripción no disponible.', { exact: true }).waitFor();
+    assert.equal(await input.inputValue(), 'Texto que no debe perderse');
+    assert.equal(f.prepares.length, 0); assert.equal(f.writes(), 0); assert.equal(await f.dialog.count(), 0);
+    await f.page.getByRole('button', { name: 'Grabar audio', exact: true }).click();
+    await f.page.getByRole('button', { name: 'Detener grabación', exact: true }).click();
+    await f.dialog.waitFor(); assert.equal(f.transcriptions.length, 2); assert.equal(f.prepares.length, 0);
+    const storage = await f.page.evaluate(() => JSON.stringify(localStorage));
+    assert.ok(!storage.includes('private-audio-fixture'));
+    assert.deepEqual(f.forbidden, []); assert.deepEqual(f.external, []); assert.deepEqual(f.errors, []);
+    await f.page.close();
+  }
   {
     const f = await fixture(); f.setMode('query');
     await send(f, '¿Cuánto stock y precio tiene el taladro?');
@@ -169,5 +233,5 @@ try {
     await f.page.getByRole('alert').getByText(/No pudimos recuperar tu mensaje guardado/).waitFor();
     assert.deepEqual(f.errors, []); assert.equal(f.prepares.length, 0); await f.page.close();
   }
-  console.log('Universal ordinary chat UI passed: shared draft entry, durable answered recovery, explicit write consent, stable retry IDs, and preserving existing review plus incoming composer text.');
+  console.log('Universal ordinary chat UI passed: authenticated audio transcription and retry, durable transcript review, shared draft entry, durable answered recovery, explicit write consent, and stable retry IDs.');
 } finally { await browser.close(); }

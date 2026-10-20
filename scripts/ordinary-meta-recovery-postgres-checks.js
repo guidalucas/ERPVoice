@@ -68,7 +68,7 @@ export async function runOrdinaryMetaRecoveryChecks({db,sql,check}) {
     {name:'order',text:'Anotá un pedido de Producto pendiente para Cliente recibo anterior.',actions:[{type:'client_order',clientName:client.name,productName:'Producto pendiente',qty:1}]},
   ];
   for (const fixture of cases) await check(`ordinary meta recovery: ${fixture.name} receipt committed before meta event replays without new effects`,async()=>{
-    const request=input(fixture.text);await claim(request);
+    const request=input(fixture.text);await claim({...request,sourceText:`  ${request.sourceText}\n`});
     const applied=await db.applyActionsToDatabase(fixture.actions,request.sourceText,owner,
       {messageId:request.messageId,recipient:sender,actorId:sender,channel:'whatsapp'});
     assert.equal(await db.findMetaEventById(request.messageId),null);

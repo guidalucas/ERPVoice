@@ -128,9 +128,10 @@ Usa `.env.local` para configurar:
 - `LLM_PROVIDER` (`gemini` por default, o `groq`)
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL_NAME` (opcional; default `gemini-3.5-flash-lite`)
-- `VITE_VOICE_MODEL_ENDPOINT` / `VITE_VOICE_MODEL_API_KEY` / `VITE_VOICE_MODEL_NAME` (fallback Groq)
-- `VITE_VOICE_TRANSCRIPTION_ENDPOINT`
-- `VITE_VOICE_TRANSCRIPTION_MODEL`
+- `GROQ_API_KEY` (fallback del intérprete y transcripción, solo backend)
+- `VITE_VOICE_MODEL_ENDPOINT` / `VITE_VOICE_MODEL_NAME` (configuración antigua del fallback backend)
+- `VOICE_TRANSCRIPTION_API_KEY` (opcional si se usa `GROQ_API_KEY`, solo backend)
+- `VOICE_TRANSCRIPTION_ENDPOINT` / `VOICE_TRANSCRIPTION_MODEL` (opcional)
 - `META_WEBHOOK_PORT`
 - `META_VERIFY_TOKEN`
 - `META_ACCESS_TOKEN`

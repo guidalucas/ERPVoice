@@ -8,9 +8,9 @@
 - Trabajo previo preservado: modificaciones en postgresDatabase, metaWebhookProcessor,
   voiceCatalogContext y sus dos scripts de regresión de borrado/PG.
 - Producción NO verificada; no hay claves LLM locales. Nunca presentar mocks como IA real.
-- Último alcance integrado: H4.5d2, consultas y entrada ordinaria universal del panel/WhatsApp,
-  conjuntos y bajas mediante revisión completa; recuperación de conversaciones anteriores.
-  Familias H4.6b2 preservadas. Panel/consultas `bf8e2c1`; ver git log para cierre WhatsApp.
+- Último alcance integrado: H4.5e, retiro del parser del navegador/endpoint antiguo y
+  transcripción privada compartida. H4.5d2 WhatsApp/conjuntos `3c51c65`, panel/consultas
+  `bf8e2c1`; familias H4.6b2 y cambios del usuario preservados. Ver git log para cierre audio.
 - Cambios del usuario preservados: login `9801920`/`17763fa`, talles `d35145f`; b1 en `e22a459` y H4.6a en `0f084ec` (last version).
 
 ## Hitos y dependencias
@@ -21,7 +21,7 @@
 | H1 / P1 | Contrato OperationPlan v1, dominio SKU/atributos tipados/unidades/precios, motor determinista y adapter PostgreSQL. | Contrato cerrado; tenant desde contexto autorizado; efectos exactos; rollback, concurrencia, idempotencia, resultados persistidos. | Implementado para todas las operaciones de inventario; verificado localmente |
 | H2 / P2 | Ingresos resueltos de WhatsApp y panel al mismo ejecutor. | Única escritura add_stock por núcleo, sin segunda inferencia de nombre; outbox y lote atómicos; regresiones. | Implementado; verificado localmente |
 | H3 / P3 | Borradores/preguntas con IDs y parches; intérprete IA desacoplado. | Correcciones parciales sin reextraer; errores técnicos tipados; replay y respuestas tardías seguras. | Entrada ordinaria, consultas y drafts/patches compartidos verificados localmente |
-| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Núcleo, composición, familias y flujos principales migrados; cierre de interfaces antiguas y transcripción pendiente |
+| H4 / P4 | Ventas, reservas, atributos, selectores/conjuntos y confirmaciones; retirar escritores anteriores. | Estado/respuesta exactos, stock insuficiente explícito; selección congelada y confirmación versionada. | Implementación local integrada; compatibilidad histórica al mismo núcleo conservada hasta piloto H5 |
 | H5 | Comparación pipelines, evaluación real, piloto y limpieza final. | Corpus reservado, métricas completas, SHA desplegado, aislamiento, sin escritores duplicados. | Pendiente / acceso externo |
 
 ## Contratos y decisiones
@@ -46,9 +46,10 @@
 
 - Referencia inicial: motor 48; PostgreSQL aislado 42; audio largo y borrados aprobados.
   Los dos fallos históricos de presentación de River quedaron corregidos el 2026-10-18;
-  ver cierre al final del registro. Última validación integrada: 319 PG/HTTP, 141 puras,
+  ver cierre al final del registro. Última validación integrada: 321 PG/HTTP, 151 puras,
   10 casos sintéticos del evaluador, 50 regresiones del motor y build aprobados.
-  Edge panel/chat y familias aprobados en sus hitos; proveedores reales sin configurar.
+  Edge chat/audio, revisión universal y recuperación legacy aprobados al cierre H4.5e;
+  familias aprobadas en su hito. Proveedores reales sin configurar.
 - Cada hito: pruebas puras/contratos, PG temporal cuando aplica, regresiones de consumidores,
   estado final y respuesta. Build/typecheck no sustituyen integración.
 - Migración PostgreSQL aditiva/repetible, probada en base temporal antes de producción.
@@ -60,12 +61,14 @@
 
 ## Próximo paso exacto
 
-H4.5e: retirar el método frontend y endpoint /api/voice/parse sin consumidores activos;
-llevar transcripción del panel al backend autenticado para no distribuir claves VITE.
-Conservar /api/state/apply como adapter del mismo núcleo para propuestas antiguas y
-formularios tipados aún compatibles. No borrar recuperadores ni recibos persistidos.
-H5 real: ejecutar `npm run eval:universal:live` con configuración disponible antes del
-retiro definitivo; luego backup/restauración, despliegue SHA/readiness y piloto aislado.
+H5: configurar un entorno aislado con Gemini o Groq, VOICE_TRANSCRIPTION_API_KEY o
+GROQ_API_KEY, Meta y PostgreSQL. Usar .env.example actualizado; las claves son privadas
+del servidor. No hace falta volver a investigar arquitectura ni reimplementar H0-H4.
+Ejecutar `npm run eval:universal:live` y revisar cada fallo semántico; después comprobar
+backup/restauración en base aislada, migración repetida, despliegue SHA/readiness y piloto
+con texto/audio, consulta y confirmación/reintento desde panel/WhatsApp.
+Tras el piloto y sin propuestas/lotes antiguos pendientes, retirar adaptadores históricos
+de /api/state/apply y reanudación legacy. Hoy usan el mismo núcleo; no son otro escritor.
 El usuario confirmó (2026-10-18) que todavía no hay otro entorno configurado. No desplegar
 ni declarar calidad LLM real a partir de mocks. No reauditar ni duplicar escritores.
 
@@ -808,3 +811,29 @@ ni declarar calidad LLM real a partir de mocks. No reauditar ni duplicar escrito
   Esto valida el evaluador, no calidad de un proveedor real.
 - Próximo paso exacto: H4.5e indicado al inicio. No eliminar compatibilidad transaccional
   necesaria para borradores históricos ni declarar H5 realizado sin entorno externo.
+
+### H4.5e — retiro del parser duplicado y audio privado (2026-10-19)
+
+- Eliminado voiceParserService.ts y método de parsing del navegador. /api/voice/parse
+  autenticado devuelve 410 sin catálogo, proveedor ni propuesta. Las entradas principales
+  ya usan interpretación/revisión universal. Se conservan únicamente adapters del mismo
+  núcleo para formularios tipados y recuperación de propuestas/lotes existentes.
+- Panel envía bytes a /api/voice/transcribe con JWT; backend y Meta comparten transcripción.
+  Credenciales VOICE_TRANSCRIPTION_API_KEY/GROQ_API_KEY privadas; sin claves/configuración
+  del proveedor en el frontend. MIME permitido, 12 MiB, texto máximo 12000, timeout y
+  errores sanitizados; audio no se interpreta ni ejecuta en esta frontera.
+- Descarga Meta limitada incluso sin Content-Length; transcripción guardada antes de la
+  interpretación y reutilizada al reintentar. No se persiste audio en almacenamiento web.
+  apiClient conserva Authorization al enviar un Content-Type binario personalizado.
+- Revisión independiente encontró recuperación fallida si el cuerpo WhatsApp tenía espacios
+  exteriores: extractMetaMessages los quitaba y el replay comparaba el cuerpo crudo.
+  Corregido con la misma normalización y regresión en inventario/cuenta/pedido; texto
+  distinto sigue rechazado. Sin otros hallazgos concretos en la revisión enfocada.
+- Cierre verificado: 321 checks PostgreSQL/HTTP, 151 pruebas puras, 50 regresiones del
+  motor, build, evaluador sintético de 10 casos y Edge universal-chat-ui (incluye audio),
+  universal-draft-ui y panel-draft-recovery aprobados. Bundle sin endpoints/claves de
+  proveedores. HTTP cubre 401/400/413/415/503 y parser retirado, sin efectos de inventario.
+- Implementación principal integrada y recuperable. H5 NO está completado: faltan calidad
+  real LLM/transcripción, Meta real, backup/restauración remota, despliegue y piloto. No se
+  atribuyen estas validaciones a mocks. El retiro definitivo de compatibilidad histórica
+  se hará después de validar el piloto y agotar los borradores activos, sin borrar recibos.

@@ -2163,7 +2163,10 @@ export const replayCommittedMetaMessage = async ({messageId,ownerPhone,senderPho
     const raw=parseJsonValue(claim.raw_body_json);
     const original=(raw?.entry ?? []).flatMap(entry=>(entry.changes ?? []).flatMap(change=>change.value?.messages ?? []))
       .find(message=>message.id===messageId && normalizePhone(message.from)===sender);
-    const storedText=claim.transcript ?? original?.text?.body ?? claim.source_text;
+    // Match the normalization at extractMetaMessages, while keeping saved
+    // transcripts and domain source text exact for idempotency checks.
+    const originalText=typeof original?.text?.body==='string' ? original.text.body.trim() : undefined;
+    const storedText=claim.transcript ?? originalText ?? claim.source_text;
     if (storedText!=null && storedText!==sourceText) conflict();
     const batch=await queryRow(`SELECT id FROM voice_stock_batches WHERE owner_phone=$1 AND sender_phone=$2
       AND (source_message_id=$3 OR payload_json->'handledMessages' @> $4::jsonb) LIMIT 1`,

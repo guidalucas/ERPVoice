@@ -30,7 +30,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
   const env = { ...process.env, PORT: String(port), META_WEBHOOK_PORT: String(port), AUTH_JWT_SECRET: secret,
     META_APP_SECRET: appSecret, META_VERIFY_TOKEN: verifyToken, RENDER_GIT_COMMIT: deployment,
     POSTGRES_SSL: 'false', AUTH_DEV_BYPASS: 'false', NODE_ENV: 'test',
-    GEMINI_API_KEY: '', GROQ_API_KEY: '', VITE_VOICE_MODEL_API_KEY: '', META_ACCESS_TOKEN: '' };
+    GEMINI_API_KEY: '', GROQ_API_KEY: '', VITE_VOICE_MODEL_API_KEY: '', VOICE_TRANSCRIPTION_API_KEY: '', META_ACCESS_TOKEN: '' };
   for (const key of aliases) env[key] = connection;
   const temporaryRoot = await fs.realpath(os.tmpdir());
   const childCwd = await fs.mkdtemp(path.join(temporaryRoot, 'erpvoice-http-checks-'));
@@ -87,6 +87,24 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const response = await request('/api/health', { method: 'GET', auth: false });
       assert.equal(response.status, 200); assert.equal(response.json.ok, true);
       assert.equal(response.json.deployment, deployment); assert.equal(response.json.operationContractVersion, 1); assert.equal(response.json.metaWebhookReady, true);
+    });
+    await run('retired parser cannot prepare fresh legacy operations and remains authenticated',async()=>{
+      assert.equal((await request('/api/voice/parse',{auth:false,body:{text:'Vendí tres productos'}})).status,401);
+      const retired=await request('/api/voice/parse',{body:{text:'Vendí tres productos'}});
+      assert.equal(retired.status,410);assert.equal(retired.json.code,'LEGACY_INTERPRETER_RETIRED');
+      assert.equal(retired.json.actions,undefined);
+    });
+    await run('audio boundary authenticates bytes, enforces limits and missing provider never creates a proposal',async()=>{
+      const before=await db.getStateSnapshotStrict(owner),headers={'Content-Type':'audio/webm;codecs=opus'},raw=Buffer.from('synthetic audio');
+      assert.equal((await request('/api/voice/transcribe',{raw,headers,auth:false})).status,401);
+      assert.equal((await request('/api/voice/transcribe',{raw:Buffer.alloc(0),headers})).status,400);
+      assert.equal((await request('/api/voice/transcribe',{raw,headers:{'Content-Type':'application/octet-stream'}})).status,415);
+      const tooBig=await request('/api/voice/transcribe',{raw:Buffer.alloc(12*1024*1024+1),headers});
+      assert.equal(tooBig.status,413);
+      const missing=await request('/api/voice/transcribe?endpoint=https://attacker.invalid',{raw,headers});
+      assert.equal(missing.status,503);assert.equal(missing.json.code,'transcription_not_configured');
+      assert.equal(missing.json.text,undefined);assert.equal(missing.json.actions,undefined);
+      assert.deepEqual(await db.getStateSnapshotStrict(owner),before);
     });
     await run('Meta verification and exact UTF-8 raw-body signatures', async () => {
       const challenge = await request(`/api/meta-webhook?hub.mode=subscribe&hub.verify_token=${verifyToken}&hub.challenge=123456`, { method: 'GET', auth: false });

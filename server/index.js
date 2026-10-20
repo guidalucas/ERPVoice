@@ -3,7 +3,8 @@ import { createMetaWebhookSignatureMiddleware, hasMetaWebhookAppSecret } from '.
 import express from 'express';
 import dotenv from 'dotenv';
 import { InventoryOperationError } from './inventoryOperations.js';
-import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, parseVoiceText, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
+import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
+import { transcribeAudio, MAX_AUDIO_BYTES, TranscriptionError } from './audioTranscription.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
 import {
   createProductRecord,
@@ -949,53 +950,27 @@ app.post('/api/state/apply', authenticateRequest, async (req, res) => {
   }
 });
 
-app.post('/api/voice/parse', authenticateRequest, async (req, res) => {
+// The former parsing endpoint cannot create fresh legacy proposals. Existing
+// saved proposals keep their idempotent confirmation adapter, without parsing.
+app.post('/api/voice/parse', authenticateRequest, (_req,res) => {
+  res.status(410).json({code:'LEGACY_INTERPRETER_RETIRED',error:'Prepará la solicitud con la revisión universal de operaciones.'});
+});
+
+const readVoiceAudio=express.raw({type:()=>true,limit:MAX_AUDIO_BYTES});
+app.post('/api/voice/transcribe', authenticateRequest, (req,res,next) => {
+  res.setHeader('Cache-Control','no-store');
+  readVoiceAudio(req,res,error=>{
+    if (error) return res.status(error.type==='entity.too.large' ? 413 : 400)
+      .json({code:error.type==='entity.too.large' ? 'AUDIO_TOO_LARGE' : 'INVALID_AUDIO',error:'El audio no es válido o supera el límite permitido.'});
+    next();
+  });
+}, async (req,res) => {
   try {
-    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-
-    if (!text) {
-      res.status(400).json({ error: 'Texto vacío' });
-      return;
-    }
-
-    const phoneNumber = String(req.auth?.phoneNumber ?? '').trim();
-    const clientPhone = tenantPhoneOf(req);
-    let businessCategory = null;
-    let catalog = null;
-    if (phoneNumber) {
-      try {
-        const profile = await getAuthUserProfile(phoneNumber);
-        businessCategory = profile?.businessCategory ?? null;
-      } catch (error) {
-        console.warn('[voice/parse] failed to load business category:', error instanceof Error ? error.message : error);
-      }
-    }
-
-    if (clientPhone) {
-      try {
-        catalog = await getStateSnapshot(clientPhone);
-      } catch (error) {
-        console.warn('[voice/parse] failed to load catalog:', error instanceof Error ? error.message : error);
-      }
-    }
-
-    const parsed = await parseVoiceText(text, { businessCategory, catalog });
-
-    if (!parsed) {
-      res.json({
-        schemaVersion: 1,
-        sourceText: text,
-        intent: 'unknown',
-        confidence: 0,
-        requiresConfirmation: true,
-        actions: [],
-      });
-      return;
-    }
-
-    res.json(parsed);
-  } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+    res.json(await transcribeAudio({audio:req.body,contentType:req.get('Content-Type')}));
+  } catch(error) {
+    const typed=error instanceof TranscriptionError;
+    res.status(typed ? error.status : 503).json({code:typed ? error.code : 'TRANSCRIPTION_UNAVAILABLE',
+      error:typed ? error.message : 'No pude transcribir el audio. Intentá de nuevo.'});
   }
 });
 

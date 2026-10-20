@@ -9,16 +9,14 @@ import {
 import { formatCatalogPromptSection, groundActionsAgainstCatalog, hasBulkSelection, hasProductMatchHold, missingVariantSelectionFromText } from './voiceCatalogContext.js';
 import {
   UNUSABLE_AUDIO_REPLY,
-  appendTranscriptionOptions,
   looksLikeUnusableTranscript,
 } from './transcriptQuality.js';
 import { completeChatJson, hasAnyLlmApiKey } from './llmChatClient.js';
 import { normalizeProductMetadata, productMatchKey } from './productIdentity.js';
+import { transcribeAudio, MAX_AUDIO_BYTES, TranscriptionError } from './audioTranscription.js';
 
 const DEFAULT_MODEL_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
-const DEFAULT_TRANSCRIPTION_ENDPOINT = 'https://api.groq.com/openai/v1/audio/transcriptions';
-const DEFAULT_TRANSCRIPTION_MODEL = 'whisper-large-v3-turbo';
 const DEFAULT_META_GRAPH_API_VERSION = 'v21.0';
 const MAX_CONVERSATION_TURNS = 4;
 const MAX_CONTEXT_REPLY_CHARS = 450;
@@ -299,9 +297,6 @@ const readEnv = () => ({
   modelEndpoint: process.env.VITE_VOICE_MODEL_ENDPOINT || DEFAULT_MODEL_ENDPOINT,
   apiKey: process.env.VITE_VOICE_MODEL_API_KEY,
   model: process.env.VITE_VOICE_MODEL_NAME || DEFAULT_MODEL,
-  transcriptionEndpoint: process.env.VITE_VOICE_TRANSCRIPTION_ENDPOINT || DEFAULT_TRANSCRIPTION_ENDPOINT,
-  transcriptionApiKey: process.env.VITE_VOICE_TRANSCRIPTION_API_KEY || process.env.VITE_VOICE_MODEL_API_KEY,
-  transcriptionModel: process.env.VITE_VOICE_TRANSCRIPTION_MODEL || DEFAULT_TRANSCRIPTION_MODEL,
   metaAccessToken: process.env.META_ACCESS_TOKEN,
   metaPhoneNumberId: process.env.META_PHONE_NUMBER_ID,
   metaGraphApiVersion: process.env.META_GRAPH_API_VERSION || DEFAULT_META_GRAPH_API_VERSION,
@@ -2079,17 +2074,15 @@ export const buildConversationTurnsFromEvents = (events, { excludeMessageId = nu
 };
 
 const transcribeMetaAudioId = async (audioId) => {
-  const { transcriptionApiKey, transcriptionEndpoint, transcriptionModel, metaAccessToken, metaGraphApiVersion } = readEnv();
-
-  if (!transcriptionApiKey) {
-    throw new Error('Missing transcription API key');
-  }
+  const { metaAccessToken, metaGraphApiVersion } = readEnv();
 
   if (!metaAccessToken) {
     throw new Error('Missing META_ACCESS_TOKEN');
   }
+  if (typeof audioId!=='string' || !/^[\w-]{1,200}$/.test(audioId)) throw new TranscriptionError(400,'invalid_audio','El identificador del audio no es válido.');
 
   const mediaInfoResponse = await fetch(`https://graph.facebook.com/${metaGraphApiVersion}/${audioId}?fields=url,mime_type`, {
+    signal:AbortSignal.timeout(45000),redirect:'error',
     headers: {
       Authorization: `Bearer ${metaAccessToken}`,
     },
@@ -2105,8 +2098,12 @@ const transcribeMetaAudioId = async (audioId) => {
   if (!mediaUrl) {
     throw new Error('Meta media metadata did not include a downloadable URL');
   }
+  const parsedMediaUrl=new URL(mediaUrl);
+  if (parsedMediaUrl.protocol!=='https:' || parsedMediaUrl.username || parsedMediaUrl.password)
+    throw new TranscriptionError(502,'invalid_audio','No pude descargar el audio de WhatsApp.');
 
   const mediaResponse = await fetch(mediaUrl, {
+    signal:AbortSignal.timeout(45000),redirect:'error',
     headers: {
       Authorization: `Bearer ${metaAccessToken}`,
     },
@@ -2117,37 +2114,23 @@ const transcribeMetaAudioId = async (audioId) => {
   }
 
   const mediaContentType = mediaResponse.headers.get('content-type') || mediaInfo?.mime_type || 'audio/ogg';
-  const audioBuffer = await mediaResponse.arrayBuffer();
-  const formData = new FormData();
-  formData.append('file', new Blob([audioBuffer], { type: mediaContentType }), 'meta-media.ogg');
-  formData.append('model', transcriptionModel);
-  appendTranscriptionOptions(formData);
-
-  const transcriptionResponse = await fetch(transcriptionEndpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${transcriptionApiKey}`,
-    },
-    body: formData,
-  });
-
-  if (!transcriptionResponse.ok) {
-    const errorText = await transcriptionResponse.text();
-    throw new Error(`Transcription failed with status ${transcriptionResponse.status}: ${errorText}`);
+  if(Number(mediaResponse.headers.get('content-length'))>MAX_AUDIO_BYTES) {
+    await mediaResponse.body?.cancel();
+    throw new TranscriptionError(413,'audio_too_large','El audio supera el tamaño máximo permitido.');
   }
-
-  const responseText = await transcriptionResponse.text();
-
+  // Enforce the same cap even when Meta omits Content-Length.
+  const reader=mediaResponse.body?.getReader();
+  if(!reader) throw new TranscriptionError(400,'empty_audio','Se requiere un audio no vacío.');
+  const chunks=[];let length=0;
   try {
-    const parsed = JSON.parse(responseText);
-    if (typeof parsed.text === 'string') {
-      return parsed.text.trim();
+    for(;;) {
+      const {done,value}=await reader.read();if(done) break;
+      length+=value.byteLength;
+      if(length>MAX_AUDIO_BYTES) {await reader.cancel();throw new TranscriptionError(413,'audio_too_large','El audio supera el tamaño máximo permitido.');}
+      chunks.push(Buffer.from(value));
     }
-  } catch {
-    // fall through to raw text
-  }
-
-  return responseText.trim();
+  } finally {reader.releaseLock();}
+  return (await transcribeAudio({audio:Buffer.concat(chunks,length),contentType:mediaContentType})).text;
 };
 
 const parseVoiceTextWithModel = async (
