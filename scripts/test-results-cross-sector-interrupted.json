@@ -1,0 +1,70 @@
+{
+  "runId": "49c6bc2f-e801-4eea-a64e-fb9e06683b61",
+  "mode": "LIVE_PRODUCTION_TEMP_TABLES",
+  "connectionMode": "session",
+  "startedAt": "2026-10-20T21:12:39.593Z",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "minPauseMs": 6000,
+  "parallelRequests": 1,
+  "automaticRetries": 0,
+  "maxFormatRepairsPerTurn": 1,
+  "cases": [
+    {
+      "id": "01-remeras-coloquial",
+      "category": "Ingreso",
+      "text": "Che, entraron tres remeras oversize negras talle L. Sumalas nomás.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.receive",
+            "key": "remera-l",
+            "quantity": 3
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Che, entraron tres remeras oversize negras talle L. Sumalas nomás.",
+          "kind": "unavailable",
+          "reason": "INTERPRETER_UNAVAILABLE",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 5153,
+            "ok": false
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se esperaba ready; recibido unavailable: INTERPRETER_UNAVAILABLE\n+ actual - expected\n\n+ 'unavailable'\n- 'ready'\n"
+      }
+    }
+  ],
+  "wireCalls": 1,
+  "usage": {
+    "promptTokens": 0,
+    "completionTokens": 0
+  },
+  "permanentTablesModified": false,
+  "productionSnapshot": {
+    "businessFingerprint": "2e27e5144cee",
+    "activeProducts": 31,
+    "copiedAt": "2026-10-20T21:12:41.631Z",
+    "rawSnapshotHash": "3a78826f5a37a40a083d91f2ef2655135c9562c9cf8f21638a4966e6b873fc89"
+  },
+  "plannedCases": 38,
+  "syntheticProducts": 19,
+  "reasoningEffort": "medium",
+  "finishedAt": "2026-10-20T21:13:00.996Z",
+  "passed": 0,
+  "failed": 1,
+  "stoppedReason": "Proveedor no disponible o límite HTTP; no se reintentó ni se continuó enviando solicitudes.",
+  "tempTableIsolationVerified": true,
+  "completed": false,
+  "temporaryTablesRemoved": true
+}

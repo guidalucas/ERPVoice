@@ -115,6 +115,7 @@ const evaluateFixture = async (fixture, { complete = undefined } = {}) => {
   const started = Date.now();
   const result = await interpretUniversalIntent({
     sourceText: fixture.sourceText,
+    ...(fixture.clarifications ? {clarifications:fixture.clarifications} : {}),
     catalog: fixture.catalog,
     context: fixture.context,
     operationId: `${universalEvaluationDefaults.operationIdPrefix}-${fixture.id}`,

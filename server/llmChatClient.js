@@ -256,7 +256,7 @@ const buildRequestBody = (provider, model, messages, options, { jsonObject, incl
     body.response_format = { type: 'json_object' };
   }
   if (includeReasoning && provider.reasoningEffort) {
-    body.reasoning_effort = provider.reasoningEffort;
+    body.reasoning_effort = options.reasoningEffort ?? provider.reasoningEffort;
   }
   return body;
 };
@@ -422,7 +422,8 @@ const tryProvider = async (provider, messages, options, retries) => {
   };
 };
 
-export const completeChatJson = async ({ messages, temperature = 0, maxTokens, sourceTextChars = 0, preferPrimaryModel = false } = {}) => {
+export const completeChatJson = async ({ messages, temperature = 0, maxTokens, sourceTextChars = 0, preferPrimaryModel = false, reasoningEffort } = {}) => {
+  if (reasoningEffort !== undefined && !['none','minimal','low','medium','high'].includes(reasoningEffort)) return {ok:false,reason:'invalid_reasoning_effort'};
   const chain = resolveProviderChain();
   if (!chain.length) {
     return { ok: false, reason: 'missing_api_key' };
@@ -432,7 +433,7 @@ export const completeChatJson = async ({ messages, temperature = 0, maxTokens, s
   for (let index = 0; index < chain.length; index += 1) {
     const provider = chain[index];
     const retries = index === 0 ? PRIMARY_RETRIES : SECONDARY_RETRIES;
-    const result = await tryProvider(provider, messages, { temperature, maxTokens, sourceTextChars, preferPrimaryModel }, retries);
+    const result = await tryProvider(provider, messages, { temperature, maxTokens, sourceTextChars, preferPrimaryModel, reasoningEffort }, retries);
     if (result.ok) {
       if (failures.length) {
         console.warn(`[LLM] ${provider.id} respondió después de fallar ${failures.map((item) => item.provider).join(' → ')}`);

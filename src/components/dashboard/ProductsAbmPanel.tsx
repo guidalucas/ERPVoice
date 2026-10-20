@@ -53,6 +53,27 @@ type ProductGroup = {
   products: ProductRow[];
 };
 
+type ProductGridColumn = 'name' | 'category' | 'stock' | 'price' | 'actions';
+const PRODUCT_GRID_COLUMNS: { id: ProductGridColumn; label: string; width: string }[] = [
+  { id: 'name', label: 'Producto', width: 'minmax(12rem, 2.4fr)' },
+  { id: 'category', label: 'Tipo / modelo', width: 'minmax(9rem, 1.5fr)' },
+  { id: 'stock', label: 'Stock disponible', width: 'minmax(8rem, 1fr)' },
+  { id: 'price', label: 'Precio', width: 'minmax(8rem, 1fr)' },
+  { id: 'actions', label: 'Acciones', width: 'minmax(10rem, 1.3fr)' },
+];
+const PRODUCT_GRID_DEFAULTS = PRODUCT_GRID_COLUMNS.map((column) => column.id);
+const PRODUCT_GRID_STORAGE_KEY = 'erpvoice.products-grid.columns.v1';
+
+const readProductGridColumns = (): ProductGridColumn[] => {
+  if (typeof window === 'undefined') return PRODUCT_GRID_DEFAULTS;
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem(PRODUCT_GRID_STORAGE_KEY) ?? 'null');
+    if (!Array.isArray(stored)) return PRODUCT_GRID_DEFAULTS;
+    const valid = stored.filter((item): item is ProductGridColumn => PRODUCT_GRID_DEFAULTS.includes(item));
+    return [...new Set(valid), ...PRODUCT_GRID_DEFAULTS.filter((id) => !valid.includes(id))];
+  } catch { return PRODUCT_GRID_DEFAULTS; }
+};
+
 const SIZE_ORDER = ['xxs', 'xs', 's', 'm', 'l', 'xl', 'xxl', 'xxxl'];
 
 const normalizeSearch = (value: string) =>
@@ -517,7 +538,24 @@ export function ProductsAbmPanel({
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [gridColumns, setGridColumns] = useState<ProductGridColumn[]>(readProductGridColumns);
+  const [draggedColumn, setDraggedColumn] = useState<ProductGridColumn | null>(null);
   const onlyLowStock = stockFilter === 'low-stock';
+
+  useEffect(() => { window.localStorage.setItem(PRODUCT_GRID_STORAGE_KEY, JSON.stringify(gridColumns)); }, [gridColumns]);
+
+  const moveGridColumn = (source: ProductGridColumn, target: ProductGridColumn) => {
+    setGridColumns((current) => {
+      const next = [...current];
+      const from = next.indexOf(source);
+      const to = next.indexOf(target);
+      if (from < 0 || to < 0) return current;
+      next.splice(to, 0, next.splice(from, 1)[0]!);
+      return next;
+    });
+  };
+
+  const gridTemplate = `2.75rem ${gridColumns.map((id) => PRODUCT_GRID_COLUMNS.find((column) => column.id === id)!.width).join(' ')}`;
 
   const stockSummary = useMemo(() => {
     const totalAvailable = products.reduce((total, product) => total + product.stockAvailable, 0);
@@ -1038,16 +1076,25 @@ export function ProductsAbmPanel({
           </div>
         )}
 
-        <div className="mt-4 overflow-hidden rounded-2xl border border-[color:var(--border)]">
-          <div className="hidden grid-cols-12 items-center gap-3 border-b border-[color:var(--border)] bg-[color:var(--overlay-soft)] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)] lg:grid">
-            <label className="col-span-1 flex items-center" title="Seleccionar visibles"><input type="checkbox" aria-label="Seleccionar todos los visibles" checked={allVisibleSelected} onChange={() => toggleSelection(visibleIds)} disabled={visibleIds.length === 0} className="h-4 w-4 accent-cyan-400" /></label>
-            <span className="col-span-4">{preset.useVariants ? 'Modelo' : 'Producto'}</span>
-            <span className="col-span-2">{preset.useVariants ? 'Talles' : 'Tipo / modelo'}</span>
-            <span className="col-span-1">Stock</span>
-            <span className="col-span-2">Precio</span>
-            <span className="col-span-2 text-right">Acciones</span>
-          </div>
-          <div className="divide-y divide-[color:var(--border)]">
+        {!preset.useVariants && <div className="mb-2 flex justify-end">
+          <details className="relative">
+            <summary className="erp-button-secondary flex cursor-pointer list-none items-center gap-2">Columnas <span aria-hidden="true">☷</span></summary>
+            <div className="absolute right-0 z-20 mt-2 w-80 rounded-xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-3 shadow-xl">
+              <p className="mb-2 text-xs text-[color:var(--muted)]">Arrastrá los encabezados para cambiar el orden.</p>
+              {PRODUCT_GRID_COLUMNS.map((column) => <label key={column.id} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-[color:var(--card-hover)]">
+                <input type="checkbox" checked={gridColumns.includes(column.id)} disabled={column.id === 'name' || column.id === 'actions'} onChange={() => setGridColumns((current) => current.includes(column.id) ? current.filter((id) => id !== column.id) : [...current, column.id])} />
+                {column.label}{(column.id === 'name' || column.id === 'actions') && <span className="ml-auto text-xs text-[color:var(--muted)]">Fija</span>}
+              </label>)}
+              <button type="button" className="erp-toggle-link mt-2 min-h-9 text-sm" onClick={() => setGridColumns(PRODUCT_GRID_DEFAULTS)}>Restablecer columnas</button>
+            </div>
+          </details>
+        </div>}
+        <div className="overflow-x-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)]">
+          {!preset.useVariants && <div className="grid min-w-[52rem] items-center gap-2 border-b-2 border-[color:var(--border)] bg-[color:var(--surface-elevated)] px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]" style={{ gridTemplateColumns: gridTemplate }}>
+            <label className="flex items-center" title="Seleccionar visibles"><input type="checkbox" aria-label="Seleccionar todos los visibles" checked={allVisibleSelected} onChange={() => toggleSelection(visibleIds)} disabled={visibleIds.length === 0} className="h-4 w-4 accent-cyan-400" /></label>
+            {gridColumns.map((id) => { const column = PRODUCT_GRID_COLUMNS.find((item) => item.id === id)!; return <span key={id} draggable className="cursor-grab select-none rounded-md px-2 py-2 hover:bg-[color:var(--card-hover)]" onDragStart={() => setDraggedColumn(id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedColumn) moveGridColumn(draggedColumn, id); setDraggedColumn(null); }} onDragEnd={() => setDraggedColumn(null)}>{column.label} <span aria-hidden="true" className="opacity-50">⠿</span></span>; })}
+          </div>}
+          <div className={preset.useVariants ? 'divide-y divide-[color:var(--border)]' : 'min-w-[52rem] divide-y divide-[color:var(--border)]'}>
           {preset.useVariants
             ? filteredGroups.map((group) => {
                 const totalAvailable = group.products.reduce((sum, product) => sum + product.stockAvailable, 0);
@@ -1063,7 +1110,7 @@ export function ProductsAbmPanel({
                 const partlySelected = !allGroupSelected && groupIds.some((id) => selectedCurrentIds.includes(id));
 
                 return (
-                  <div key={group.key} className={group.products.some((product) => product.stockAvailable <= LOW_STOCK_THRESHOLD) ? 'border-l-[3px] border-l-[color:var(--warning)] bg-[color:var(--warning-soft)]' : 'bg-[color:var(--surface-elevated)]'}>
+                  <div key={group.key} className="border-b border-[color:var(--border)] bg-[color:var(--surface-elevated)]">
                     <div className="grid grid-cols-12 items-center gap-x-3 gap-y-2 px-4 py-3.5">
                       <label className="col-span-1 flex items-center" title={`Seleccionar modelo ${group.displayName}`}>
                         <input type="checkbox" aria-label={`Seleccionar modelo ${group.displayName}`} checked={allGroupSelected} ref={(node) => { if (node) node.indeterminate = partlySelected; }} onChange={() => toggleSelection(groupIds)} className="h-4 w-4 accent-cyan-400" />
@@ -1115,16 +1162,15 @@ export function ProductsAbmPanel({
                 const meta = [product.productType, product.productModel].filter(Boolean).join(' · ');
 
                 return (
-                  <div key={product.id} className={`grid grid-cols-12 items-center gap-x-3 gap-y-2 px-4 py-3.5 ${low ? 'border-l-[3px] border-l-[color:var(--warning)] bg-[color:var(--warning-soft)]' : 'bg-[color:var(--surface-elevated)]'}`}>
-                    <label className="col-span-1"><input type="checkbox" aria-label={`Seleccionar producto ${product.name}`} checked={selectedCurrentIds.includes(product.id)} onChange={() => toggleSelection([product.id])} className="h-4 w-4 accent-cyan-400" /></label>
-                    <div className="col-span-11 min-w-0 lg:col-span-4"><span className="type-title text-base text-[color:var(--text)]">{product.name}</span>{low && <span className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold text-[#0b0b10]" style={{ background: 'var(--warning)' }}>Stock bajo</span>}</div>
-                    <span className="col-span-11 col-start-2 text-sm text-[color:var(--muted)] lg:col-span-2 lg:col-start-auto">{meta || 'Sin categoría'}</span>
-                    <span className="col-span-3 col-start-2 text-sm lg:col-span-1 lg:col-start-auto"><span className="lg:hidden">Stock: </span>{product.stockAvailable}{product.stockReserved > 0 ? ` · R:${product.stockReserved}` : ''}</span>
-                    <span className="col-span-4 text-sm font-semibold lg:col-span-2"><span className="lg:hidden">Precio: </span>{formatCurrency(product.price)}</span>
-                    <div className="col-span-11 col-start-2 flex gap-3 lg:col-span-2 lg:col-start-auto lg:justify-end">
-                      <button type="button" className="erp-toggle-link min-h-9 text-sm" onClick={() => openEditForm(product)}>Editar</button>
-                      <button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" onClick={() => openDeactivation([product.id], true)}>Desactivar</button>
-                    </div>
+                  <div key={product.id} className="grid min-w-[52rem] items-center gap-2 border-l-4 border-l-transparent px-3 py-2.5 transition-colors hover:bg-[color:var(--card-hover)]" style={{ gridTemplateColumns: gridTemplate }}>
+                    <label className="flex items-center justify-center"><input type="checkbox" aria-label={`Seleccionar producto ${product.name}`} checked={selectedCurrentIds.includes(product.id)} onChange={() => toggleSelection([product.id])} className="h-4 w-4 accent-cyan-400" /></label>
+                    {gridColumns.map((id) => <div key={id} className="min-w-0 px-2 py-2">
+                      {id === 'name' && <span className="type-title block truncate text-base text-[color:var(--text)]">{product.name}</span>}
+                      {id === 'category' && <span className="block truncate text-sm text-[color:var(--muted)]">{meta || 'Sin categoría'}</span>}
+                      {id === 'stock' && <span className="inline-flex items-center gap-2 text-sm tabular-nums"><strong className="type-metric text-base">{product.stockAvailable}</strong>{product.stockReserved > 0 && <span className="text-xs text-[color:var(--muted)]">{product.stockReserved} reserv.</span>}{low && <span className="rounded-full border border-[color:var(--warning)] px-2 py-0.5 text-[11px] font-semibold" style={{ color: 'var(--warning)', background: 'var(--warning-soft)' }}>Bajo</span>}</span>}
+                      {id === 'price' && <span className="text-sm font-semibold tabular-nums text-[color:var(--text)]">{formatCurrency(product.price)}</span>}
+                      {id === 'actions' && <div className="flex items-center justify-end gap-3"><button type="button" className="erp-toggle-link min-h-9 text-sm" onClick={() => openEditForm(product)}>Editar</button><button type="button" className="min-h-9 text-sm font-semibold text-rose-600 hover:underline dark:text-rose-300" onClick={() => openDeactivation([product.id], true)}>Desactivar</button></div>}
+                    </div>)}
                   </div>
                 );
               })}

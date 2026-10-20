@@ -107,6 +107,7 @@ export async function runUniversalMetaChecks({ db, sql, check }) {
       const supplied=JSON.parse(options.messages[1].content);
       assert.equal(supplied.sourceText,`${original}\nTalle L`);
       assert.deepEqual(supplied.clarifications,[{question:'¿De qué talle son las camisetas?',answer:'Talle L'}]);
+      assert.deepEqual(supplied.latestClarification,supplied.clarifications.at(-1));
       return proposal([item],original);
     });
     assert.equal(ready.status,'awaiting_confirmation');assert.equal(ready.version,2);

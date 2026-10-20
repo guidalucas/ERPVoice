@@ -7,6 +7,7 @@ const envKeys = [
   'GEMINI_API_KEY',
   'GEMINI_MODEL_ENDPOINT',
   'GEMINI_MODEL_NAME',
+  'GEMINI_REASONING_EFFORT',
   'GROQ_API_KEY',
   'VITE_VOICE_MODEL_API_KEY',
 ];
@@ -48,8 +49,21 @@ try {
   process.env.GEMINI_API_KEY = 'fake-test-key';
   process.env.GEMINI_MODEL_NAME = 'gemini-3.5-flash-lite';
   process.env.GEMINI_MODEL_ENDPOINT = 'https://fake.invalid/chat/completions';
+  process.env.GEMINI_REASONING_EFFORT = 'minimal';
   delete process.env.GROQ_API_KEY;
   delete process.env.VITE_VOICE_MODEL_API_KEY;
+
+  const bodies=[];
+  globalThis.fetch=async (_url,request)=>{
+    bodies.push(JSON.parse(request.body));
+    return response({ok:true,status:200,data:{choices:[{message:{content:'{"ok":true}'}}]}});
+  };
+  assert.equal((await completeChatJson({messages:[],reasoningEffort:'medium'})).ok,true);
+  assert.equal(bodies.at(-1).reasoning_effort,'medium');
+  assert.equal((await completeChatJson({messages:[]})).ok,true);
+  assert.equal(bodies.at(-1).reasoning_effort,'minimal','A request override must not change the provider default.');
+  assert.equal((await completeChatJson({messages:[],reasoningEffort:'unsupported'})).reason,'invalid_reasoning_effort');
+  assert.equal(bodies.length,2,'Invalid reasoning must not contact a provider.');
 
   const providerErrorMarker = 'PRIVATE_PROVIDER_BODY_8f3c';
   globalThis.fetch = async () => response({

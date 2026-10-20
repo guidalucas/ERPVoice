@@ -1,0 +1,2562 @@
+{
+  "runId": "150e1f1b-6713-476b-875e-fdbd360288e0",
+  "mode": "LIVE_PRODUCTION_TEMP_TABLES",
+  "connectionMode": "session",
+  "startedAt": "2026-10-20T21:04:54.572Z",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "minPauseMs": 6000,
+  "parallelRequests": 1,
+  "automaticRetries": 0,
+  "cases": [
+    {
+      "id": "01-remeras-coloquial",
+      "category": "Ingreso",
+      "text": "Che, entraron tres remeras oversize negras talle L. Sumalas nomás.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.receive",
+            "key": "remera-l",
+            "quantity": 3
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Che, entraron tres remeras oversize negras talle L. Sumalas nomás.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-remera-l-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-remera-l",
+                "expectedFingerprint": "e4049b4b8e968b16f879fa6c81863b86293815ae3bc3c5a70a3a42bf1ba136f4",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 3,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 3315,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 414,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Remera oversize negra",
+            "size": "L",
+            "unit": "unit",
+            "available": 11,
+            "reserved": 0,
+            "price": 25000
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "02-short-y-buzo",
+      "category": "Ingreso",
+      "text": "Me llegaron 2 shorts running azules M y 1 buzo frisa gris XL, metelos al stock.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.receive",
+            "key": "short-m",
+            "quantity": 2
+          },
+          {
+            "type": "stock.receive",
+            "key": "buzo-xl",
+            "quantity": 1
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Me llegaron 2 shorts running azules M y 1 buzo frisa gris XL, metelos al stock.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-shorts",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-short-m",
+                "expectedFingerprint": "764e761281070c6d63c051a7293c50e83d6fb6fc95df57a4081fc6f34b39eb72",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "unit"
+              }
+            },
+            {
+              "itemId": "accion-buzo",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-buzo-xl",
+                "expectedFingerprint": "83f3fa6ad3f806a05d3cf3eaa22f45092cba010c2365c118794c544ed8efd543",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 8999,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 632,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Buzo frisa gris",
+            "size": "XL",
+            "unit": "unit",
+            "available": 7,
+            "reserved": 0,
+            "price": 45000
+          },
+          {
+            "name": "Short running azul",
+            "size": "M",
+            "unit": "unit",
+            "available": 9,
+            "reserved": 0,
+            "price": 22000
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 2
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "03-polleras-y-tops-nuevos",
+      "category": "Productos nuevos",
+      "text": "Cargame como productos nuevos dos polleras plisadas beige talle 2 y tres tops acanalados chocolate talle único. Las polleras van a 32 lucas pesos argentinos y los tops a 18 lucas pesos argentinos.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "new",
+            "quantity": 2,
+            "terms": [
+              "poller",
+              "plisad",
+              "beige"
+            ],
+            "size": "2",
+            "price": 32000
+          },
+          {
+            "type": "new",
+            "quantity": 3,
+            "terms": [
+              "top",
+              "acanalad",
+              "chocolate"
+            ],
+            "size": "único",
+            "price": 18000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Cargame como productos nuevos dos polleras plisadas beige talle 2 y tres tops acanalados chocolate talle único. Las polleras van a 32 lucas pesos argentinos y los tops a 18 lucas pesos argentinos.",
+          "kind": "invalid",
+          "reason": "INVALID_EVIDENCE",
+          "modelOutput": {
+            "contractVersion": 1,
+            "kind": "proposal",
+            "actions": [
+              {
+                "itemId": "alta-pollera",
+                "type": "sku.create",
+                "target": {
+                  "kind": "new",
+                  "sku": {
+                    "name": "Pollera plisada beige",
+                    "unit": "unit",
+                    "size": "2"
+                  }
+                },
+                "initialStock": {
+                  "available": 2,
+                  "reserved": 0
+                },
+                "price": {
+                  "amount": 32000,
+                  "currency": "ARS",
+                  "policy": "initialize"
+                }
+              },
+              {
+                "itemId": "alta-top",
+                "type": "sku.create",
+                "target": {
+                  "kind": "new",
+                  "sku": {
+                    "name": "Top acanalado chocolate",
+                    "unit": "unit",
+                    "size": "único"
+                  }
+                },
+                "initialStock": {
+                  "available": 3,
+                  "reserved": 0
+                },
+                "price": {
+                  "amount": 18000,
+                  "currency": "ARS",
+                  "policy": "initialize"
+                }
+              }
+            ],
+            "evidence": [
+              {
+                "itemId": "alta-pollera",
+                "quote": "Cargame como productos nuevos dos polleras plisadas beige talle 2 y tres tops acanalados chocolate talle único. Las polleras van a 32 lucas pesos argentinos y los tops a 18 lucas pesos argentinos."
+              }
+            ]
+          },
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 4891,
+            "ok": false
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se esperaba ready; recibido invalid: INVALID_EVIDENCE\n\n'invalid' !== 'ready'\n"
+      }
+    },
+    {
+      "id": "04-campera-jean",
+      "category": "Productos nuevos",
+      "text": "Agregá al inventario una campera de jean nueva, azul, talle S, a 58.500 pesos argentinos.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "new",
+            "quantity": 1,
+            "terms": [
+              "campera",
+              "jean",
+              "azul"
+            ],
+            "size": "S",
+            "price": 58500
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Agregá al inventario una campera de jean nueva, azul, talle S, a 58.500 pesos argentinos.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-campera-jean",
+              "type": "stock.receive",
+              "target": {
+                "kind": "new",
+                "sku": {
+                  "name": "Campera de jean",
+                  "productType": "Campera",
+                  "productModel": "Jean",
+                  "size": "S",
+                  "attributes": {
+                    "color": {
+                      "state": "known",
+                      "type": "text",
+                      "value": "azul"
+                    }
+                  },
+                  "unit": "unit"
+                }
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              },
+              "price": {
+                "amount": 58500,
+                "currency": "ARS",
+                "policy": "initialize"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 6124,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 386,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [
+          {
+            "name": "Campera de jean",
+            "size": "S",
+            "unit": "unit",
+            "available": 1,
+            "reserved": 0,
+            "price": 58500,
+            "currency": "ARS"
+          }
+        ],
+        "productChanges": [],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "05-medias-por-par",
+      "category": "Productos nuevos",
+      "text": "Entraron 4 pares de medias lisas negras talle único, nuevas, y cada par sale 4 lucas pesos argentinos. Cargalas al stock.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "new",
+            "quantity": 4,
+            "terms": [
+              "media",
+              "negra"
+            ],
+            "size": "único",
+            "price": 4000,
+            "units": [
+              "par",
+              "pares",
+              "pair",
+              "pairs"
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Entraron 4 pares de medias lisas negras talle único, nuevas, y cada par sale 4 lucas pesos argentinos. Cargalas al stock.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "stock-receive-medias-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "new",
+                "sku": {
+                  "name": "Medias lisas negras",
+                  "size": "talu00e9nico",
+                  "attributes": {},
+                  "unit": "par"
+                }
+              },
+              "quantity": {
+                "value": 4,
+                "unit": "par"
+              },
+              "price": {
+                "amount": 4000,
+                "currency": "ARS",
+                "policy": "initialize"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 22601,
+            "ok": true
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Talle nuevo incorrecto.\n+ actual - expected\n\n+ 'talu00e9nico'\n- 'unico'\n"
+      }
+    },
+    {
+      "id": "06-venta-lucas",
+      "category": "Venta",
+      "text": "Se fueron dos remeras oversize negras L, cobré 25 lucas pesos argentinos cada una. Registrá la venta.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.sell",
+            "key": "remera-l",
+            "quantity": 2,
+            "salePrice": 25000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Se fueron dos remeras oversize negras L, cobré 25 lucas pesos argentinos cada una. Registrá la venta.",
+          "kind": "invalid",
+          "reason": "INVALID_EVIDENCE",
+          "modelOutput": {
+            "contractVersion": 1,
+            "kind": "proposal",
+            "actions": [
+              {
+                "itemId": "venta-remera-l-1",
+                "type": "stock.sell",
+                "target": {
+                  "kind": "existing",
+                  "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-remera-l"
+                },
+                "quantity": {
+                  "value": 2,
+                  "unit": "unit"
+                },
+                "salePrice": {
+                  "amount": 25000,
+                  "currency": "ARS"
+                }
+              }
+            ],
+            "evidence": [
+              {
+                "itemId": "venta-remera-l-1",
+                "quote": "Se fueron two remeras oversize negras L, cobré 25 lucas pesos argentinos cada una. Registrá la venta."
+              }
+            ]
+          },
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 10337,
+            "ok": false
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se esperaba ready; recibido invalid: INVALID_EVIDENCE\n\n'invalid' !== 'ready'\n"
+      }
+    },
+    {
+      "id": "07-reserva-sin-venta",
+      "category": "Reserva",
+      "text": "Guardame un short running azul talle M para mañana. Reservalo nomás, todavía no lo vendí.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.reserve",
+            "key": "short-m",
+            "quantity": 1
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Guardame un short running azul talle M para mañana. Reservalo nomás, todavía no lo vendí.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-reserva-short",
+              "type": "stock.reserve",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-short-m",
+                "expectedFingerprint": "764e761281070c6d63c051a7293c50e83d6fb6fc95df57a4081fc6f34b39eb72",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 7069,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 393,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Short running azul",
+            "size": "M",
+            "unit": "unit",
+            "available": 6,
+            "reserved": 1,
+            "price": 22000
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "08-fiado-mica",
+      "category": "Cuenta corriente",
+      "text": "A Mica Rojas anotale 35 lucas en la cuenta por las prendas que se llevó fiadas.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "account.charge",
+            "client": "mica",
+            "amount": 35000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "A Mica Rojas anotale 35 lucas en la cuenta por las prendas que se llevó fiadas.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-cuenta-1",
+              "type": "account.charge",
+              "target": {
+                "kind": "existing",
+                "clientId": "150e1f1b-6713-476b-875e-fdbd360288e0-mica",
+                "expectedRevision": 0
+              },
+              "amount": {
+                "value": 35000,
+                "unit": "legacy-money"
+              },
+              "reason": "prendas que se llevó fiadas"
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 2058,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 326,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [],
+        "accountChanges": [
+          {
+            "name": "Mica Rojas",
+            "balance": 45000
+          }
+        ],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "09-pago-bauti",
+      "category": "Cuenta corriente",
+      "text": "Bauti Pérez me pasó 12 lucas, descontáselas de lo que debe.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "account.payment",
+            "client": "bauti",
+            "amount": 12000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Bauti Pérez me pasó 12 lucas, descontáselas de lo que debe.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "acc-pay-1",
+              "type": "account.payment",
+              "target": {
+                "kind": "existing",
+                "clientId": "150e1f1b-6713-476b-875e-fdbd360288e0-bauti",
+                "expectedRevision": 0
+              },
+              "amount": {
+                "value": 12000,
+                "unit": "legacy-money"
+              },
+              "reason": "Pago recibido de Bauti Pérez"
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 2233,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 327,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [],
+        "accountChanges": [
+          {
+            "name": "Bauti Pérez",
+            "balance": 18000
+          }
+        ],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "10-venta-y-fiado",
+      "category": "Operación mixta",
+      "text": "Se vendió una campera rompeviento negra M y a Mica Rojas sumale 48 lucas que quedó debiendo.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.sell",
+            "key": "campera-m",
+            "quantity": 1
+          },
+          {
+            "type": "account.charge",
+            "client": "mica",
+            "amount": 48000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Se vendió una campera rompeviento negra M y a Mica Rojas sumale 48 lucas que quedó debiendo.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-campera-m",
+                "expectedFingerprint": "83a02ea2eba95633757191b269f83881828631b782c99fd155b4040c6c4bdb48",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            },
+            {
+              "itemId": "accion-2",
+              "type": "account.charge",
+              "target": {
+                "kind": "existing",
+                "clientId": "150e1f1b-6713-476b-875e-fdbd360288e0-mica",
+                "expectedRevision": 0
+              },
+              "amount": {
+                "value": 48000,
+                "unit": "legacy-money"
+              },
+              "reason": "Quedó debiendo"
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 3364,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 539,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Campera rompeviento negra",
+            "size": "M",
+            "unit": "unit",
+            "available": 3,
+            "reserved": 0,
+            "price": 48000
+          }
+        ],
+        "accountChanges": [
+          {
+            "name": "Mica Rojas",
+            "balance": 58000
+          }
+        ],
+        "transactions": 2
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "11-pedido-cargo",
+      "category": "Pedido",
+      "text": "Anotale a Bauti Pérez un pedido de dos pantalones cargo verdes talle 44 con Textil Sur; dejalo pendiente.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "order.create",
+            "client": "bauti",
+            "supplier": "textil",
+            "quantity": 2,
+            "size": "44",
+            "terms": [
+              "cargo"
+            ],
+            "estado": "pendiente"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Anotale a Bauti Pérez un pedido de dos pantalones cargo verdes talle 44 con Textil Sur; dejalo pendiente.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "pedido-1",
+              "type": "order.create",
+              "order": {
+                "proveedorId": "150e1f1b-6713-476b-875e-fdbd360288e0-textil",
+                "productType": null,
+                "productModel": null,
+                "talle": "44",
+                "notas": null,
+                "productId": "150e1f1b-6713-476b-875e-fdbd360288e0-cargo-44",
+                "qty": 2,
+                "estado": "pendiente",
+                "clienteId": "150e1f1b-6713-476b-875e-fdbd360288e0-bauti",
+                "producto": "Pantalón cargo verde"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 2260,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 440,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "12-corregir-pedido",
+      "category": "Pedido",
+      "text": "El pedido pendiente de Mica Rojas por la calza ciclista negra M dejalo en tres, que me pidió dos más.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "order.update",
+            "order": "calza",
+            "changes": {
+              "qty": 3
+            }
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "El pedido pendiente de Mica Rojas por la calza ciclista negra M dejalo en tres, que me pidió dos más.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "150e1f1b-6713-476b-875e-fdbd360288e0-pedido-calza",
+              "type": "order.update",
+              "target": {
+                "kind": "existing",
+                "pedidoId": "150e1f1b-6713-476b-875e-fdbd360288e0-pedido-calza",
+                "expectedRevision": 0
+              },
+              "changes": {
+                "qty": 3
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 3258,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 284,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "13-consulta-variantes",
+      "category": "Consulta",
+      "text": "¿Cuántas remeras oversize negras talle L me quedan? Decime también las M.",
+      "expected": {
+        "kind": "answer",
+        "queryTypes": [
+          "inventory.query"
+        ],
+        "productKeys": [
+          "remera-l",
+          "remera-m"
+        ]
+      },
+      "turns": [
+        {
+          "text": "¿Cuántas remeras oversize negras talle L me quedan? Decime también las M.",
+          "kind": "answer",
+          "queries": [
+            {
+              "itemId": "q1",
+              "type": "inventory.query",
+              "selector": {
+                "kind": "ids",
+                "ids": [
+                  "150e1f1b-6713-476b-875e-fdbd360288e0-remera-l",
+                  "150e1f1b-6713-476b-875e-fdbd360288e0-remera-m"
+                ]
+              }
+            }
+          ],
+          "querySummary": [
+            {
+              "type": "inventory.query",
+              "count": 2,
+              "summary": {
+                "count": 2,
+                "totals": [
+                  {
+                    "unit": "unit",
+                    "available": 13,
+                    "reserved": 0
+                  }
+                ]
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 1484,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 239,
+      "queryVerified": true
+    },
+    {
+      "id": "14-venta-ambigua-y-respuesta",
+      "category": "Aclaración",
+      "text": "Vendí una remera oversize negra.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Vendí una remera oversize negra.",
+          "kind": "clarification",
+          "question": "¿Qué talle tiene la remera oversize negra, M o L?",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 4380,
+            "ok": true
+          }
+        },
+        {
+          "text": "La L",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-remera-l",
+                "expectedFingerprint": "e4049b4b8e968b16f879fa6c81863b86293815ae3bc3c5a70a3a42bf1ba136f4",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 7945,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 397,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Remera oversize negra",
+            "size": "L",
+            "unit": "unit",
+            "available": 7,
+            "reserved": 0,
+            "price": 25000
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "15-talle-para-grupo",
+      "category": "Aclaración grupal",
+      "text": "Entraron dos shorts running azules y dos remeras oversize negras. Sumalos al stock.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Entraron dos shorts running azules y dos remeras oversize negras. Sumalos al stock.",
+          "kind": "clarification",
+          "question": "¿Qué talle tiene cada short running azul, M o L?",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 1224,
+            "ok": true
+          }
+        },
+        {
+          "text": "talle L",
+          "kind": "clarification",
+          "question": "¿Qué talle tienen las remeras oversize negras, M o L?",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 4611,
+            "ok": true
+          }
+        }
+      ],
+      "passed": false,
+      "previewChars": 235,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se esperaba ready; recibido clarification: ¿Qué talle tienen las remeras oversize negras, M o L?\n+ actual - expected\n\n+ 'clarification'\n- 'ready'\n"
+      }
+    },
+    {
+      "id": "16-conservar-talle-previo",
+      "category": "Aclaración parcial",
+      "text": "Sumá una remera oversize negra M y un short running azul.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Sumá una remera oversize negra M y un short running azul.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-remera-m",
+                "expectedFingerprint": "9e35b43451241dc485c155b851b2e81a5b43fdd145cf8c1e4893019110d81eda",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            },
+            {
+              "itemId": "accion-2",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-short-m",
+                "expectedFingerprint": "764e761281070c6d63c051a7293c50e83d6fb6fc95df57a4081fc6f34b39eb72",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 7939,
+            "ok": true
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se esperaba clarification; recibido ready\n+ actual - expected\n\n+ 'ready'\n- 'clarification'\n"
+      }
+    },
+    {
+      "id": "17-rectificar-cantidad",
+      "category": "Corrección",
+      "text": "Vendí dos buzos frisa grises XL.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.sell",
+            "key": "buzo-xl",
+            "quantity": 2
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Vendí dos buzos frisa grises XL.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-buzo-xl",
+                "expectedFingerprint": "83f3fa6ad3f806a05d3cf3eaa22f45092cba010c2365c118794c544ed8efd543",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 6994,
+            "ok": true
+          }
+        },
+        {
+          "text": "Pará, fue uno solo. Me confundí.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-buzo-xl",
+                "expectedFingerprint": "83f3fa6ad3f806a05d3cf3eaa22f45092cba010c2365c118794c544ed8efd543",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 4819,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 386,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Buzo frisa gris",
+            "size": "XL",
+            "unit": "unit",
+            "available": 5,
+            "reserved": 0,
+            "price": 45000
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "18-no-pedir-precio-opcional",
+      "category": "Ingreso",
+      "text": "Me llegaron dos musculosas deportivas blancas S y no sé a cuánto venderlas todavía. Sumalas.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.receive",
+            "key": "musculosa-s",
+            "quantity": 2
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Me llegaron dos musculosas deportivas blancas S y no sé a cuánto venderlas todavía. Sumalas.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-musculosa",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-musculosa-s",
+                "expectedFingerprint": "ddbf3dc604de188f00714abdf400bb2d0c6117ee91ef3d3f84137abfea76eb12",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 2125,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 424,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Musculosa deportiva blanca",
+            "size": "S",
+            "unit": "unit",
+            "available": 7,
+            "reserved": 0,
+            "price": 18000
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "19-precio-cero",
+      "category": "Precio",
+      "text": "La calza ciclista negra M va gratis en la promo, dejale el precio en cero pesos argentinos.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "sku.update",
+            "key": "calza-m",
+            "changes": {
+              "price": 0,
+              "priceCurrency": "ARS"
+            }
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "La calza ciclista negra M va gratis en la promo, dejale el precio en cero pesos argentinos.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-venta-calza",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-calza-m",
+                "expectedFingerprint": "0131867f14989d2eeb9b7bc11d3b39f6b90e850f7d791d82337b8f01ee7a5e6b",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "unit"
+              },
+              "salePrice": {
+                "amount": 0,
+                "currency": "ARS"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 2700,
+            "ok": true
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Tipo incorrecto en la operación 1.\n+ actual - expected\n\n+ 'stock.sell'\n- 'sku.update'\n"
+      }
+    },
+    {
+      "id": "20-stock-insuficiente",
+      "category": "Validación",
+      "text": "Vendí 99 camisetas Barrio Norte titular 2026 talle L.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.sell",
+            "key": "camiseta-l",
+            "quantity": 99
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Vendí 99 camisetas Barrio Norte titular 2026 talle L.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-camiseta-l",
+                "expectedFingerprint": "c453f9ab10d4313c201a64cb86ca8b4beefa056252772aa7d4f8ce77fcabbf92",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 99,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 6492,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 424,
+      "expectedRejection": "INSUFFICIENT_STOCK",
+      "rollbackVerified": true
+    },
+    {
+      "id": "21-mixta-sin-stock-atomica",
+      "category": "Atomicidad",
+      "text": "Vendí 99 camisetas Barrio Norte titular 2026 talle L y a Mica Rojas sumale 5 lucas a su cuenta por esa compra fiada.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.sell",
+            "key": "camiseta-l",
+            "quantity": 99
+          },
+          {
+            "type": "account.charge",
+            "client": "mica",
+            "amount": 5000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Vendí 99 camisetas Barrio Norte titular 2026 talle L y a Mica Rojas sumale 5 lucas a su cuenta por esa compra fiada.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-venta-1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-camiseta-l",
+                "expectedFingerprint": "c453f9ab10d4313c201a64cb86ca8b4beefa056252772aa7d4f8ce77fcabbf92",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 99,
+                "unit": "unit"
+              }
+            },
+            {
+              "itemId": "accion-cuenta-1",
+              "type": "account.charge",
+              "target": {
+                "kind": "existing",
+                "clientId": "150e1f1b-6713-476b-875e-fdbd360288e0-mica",
+                "expectedRevision": 0
+              },
+              "amount": {
+                "value": 5000,
+                "unit": "legacy-money"
+              },
+              "reason": "Compra fiada"
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 4245,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 555,
+      "expectedRejection": "INSUFFICIENT_STOCK",
+      "rollbackVerified": true
+    },
+    {
+      "id": "22-alta-clienta",
+      "category": "Cliente",
+      "text": "Dame de alta a Cami Fernández como clienta, dejá anotado que retira por el local.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "client.create",
+            "name": "Cami Fernández",
+            "noteTerms": [
+              "retira",
+              "local"
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Dame de alta a Cami Fernández como clienta, dejá anotado que retira por el local.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "client-create-1",
+              "type": "client.create",
+              "name": "Cami Fernández",
+              "notas": "retira por el local"
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 3103,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 242,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "23-cancelar-carga",
+      "category": "Cancelación",
+      "text": "Che, entraron tres remeras oversize negras talle L.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.receive",
+            "key": "remera-l",
+            "quantity": 3
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Che, entraron tres remeras oversize negras talle L.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-remera-l-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-remera-l",
+                "expectedFingerprint": "e4049b4b8e968b16f879fa6c81863b86293815ae3bc3c5a70a3a42bf1ba136f4",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 3,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 17625,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 414,
+      "cancelledWithoutEffects": true
+    },
+    {
+      "id": "24-consulta-catalogo-produccion",
+      "category": "Catálogo real",
+      "text": "Decime cuánto stock disponible y reservado tengo del producto \"Camiseta Argentina suplente 2026 versión jugador\", talle M.",
+      "expected": {
+        "kind": "answer",
+        "queryTypes": [
+          "inventory.query"
+        ],
+        "productionProductId": "product-camiseta-argentina-suplente-2026-version-21-xjnn"
+      },
+      "turns": [
+        {
+          "text": "Decime cuánto stock disponible y reservado tengo del producto \"Camiseta Argentina suplente 2026 versión jugador\", talle M.",
+          "kind": "answer",
+          "queries": [
+            {
+              "itemId": "query-1",
+              "type": "inventory.query",
+              "selector": {
+                "kind": "ids",
+                "ids": [
+                  "product-camiseta-argentina-suplente-2026-version-21-xjnn"
+                ]
+              }
+            }
+          ],
+          "querySummary": [
+            {
+              "type": "inventory.query",
+              "count": 1,
+              "summary": {
+                "count": 1,
+                "totals": [
+                  {
+                    "unit": "unit",
+                    "available": 1,
+                    "reserved": 0
+                  }
+                ]
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 3732,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 181,
+      "queryVerified": true
+    },
+    {
+      "id": "25-ferreteria-cable-metros",
+      "category": "Ferretería · ingreso",
+      "text": "Che, llegaron siete metros de cable unipolar de 2,5 mm². Sumalos al stock.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.receive",
+            "key": "cable-25",
+            "quantity": 7,
+            "unit": "metro"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Che, llegaron siete metros de cable unipolar de 2,5 mm². Sumalos al stock.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-cable-25",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-cable-25",
+                "expectedFingerprint": "ce7eda80d1912ba0871ceae8267fc5b4b65955cc1e392beb5ec4ddc2fdd0ff9f",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 7,
+                "unit": "metro"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 12531,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 417,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Cable unipolar 2,5 mm²",
+            "size": "2,5 mm²",
+            "unit": "metro",
+            "available": 107,
+            "reserved": 0,
+            "price": 1400
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "26-ferreteria-tornillos-kilos",
+      "category": "Ferretería · venta",
+      "text": "Vendí dos kilos de tornillos zincados de 6 mm, sin anotar precio por ahora.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.sell",
+            "key": "tornillo-6",
+            "quantity": 2,
+            "unit": "kg"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Vendí dos kilos de tornillos zincados de 6 mm, sin anotar precio por ahora.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "act-1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-tornillo-6",
+                "expectedFingerprint": "1835075673227738453dd46d36cfaa0e55c5f9b0c3d7197667bd92f1500ddeac",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "kg"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 2476,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 386,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Tornillo zincado",
+            "size": "6 mm",
+            "unit": "kg",
+            "available": 8,
+            "reserved": 0,
+            "price": 4500
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "27-ferreteria-cajas-nuevas",
+      "category": "Ferretería · alta",
+      "text": "Cargá como producto nuevo 4 cajas de tarugos de nylon de 8 mm. Cada caja va a 12 lucas pesos argentinos.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "new",
+            "quantity": 4,
+            "terms": [
+              "tarugo",
+              "nylon",
+              "8"
+            ],
+            "units": [
+              "caja"
+            ],
+            "price": 12000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Cargá como producto nuevo 4 cajas de tarugos de nylon de 8 mm. Cada caja va a 12 lucas pesos argentinos.",
+          "kind": "clarification",
+          "question": "¿Cuál es la moneda de los 12000 pesos argentinos para el precio de los tarugos?",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 20212,
+            "ok": true
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se esperaba ready; recibido clarification: ¿Cuál es la moneda de los 12000 pesos argentinos para el precio de los tarugos?\n+ actual - expected\n\n+ 'clarification'\n- 'ready'\n"
+      }
+    },
+    {
+      "id": "28-ferreteria-aclarar-medida",
+      "category": "Ferretería · aclaración",
+      "text": "Sumá dos kilos de tornillos zincados.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Sumá dos kilos de tornillos zincados.",
+          "kind": "clarification",
+          "question": "¿Los tornillos zincados son de 6 o de 8 mm?",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 6758,
+            "ok": true
+          }
+        },
+        {
+          "text": "Los de 8 mm",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-tornillo-8",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-tornillo-8",
+                "expectedFingerprint": "0228572f4fa540da24b143a0abf64351282cb39f38cd7e143cb3a7fb701e7b06",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "kg"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 4996,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 402,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Tornillo zincado",
+            "size": "8 mm",
+            "unit": "kg",
+            "available": 10,
+            "reserved": 0,
+            "price": 5200
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "29-ferreteria-merma",
+      "category": "Ferretería · merma",
+      "text": "Sacá del stock dos rollos de cinta de embalar transparente de 48 mm porque se arruinaron con el agua. No fue una venta.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.withdraw",
+            "key": "cinta-48",
+            "quantity": 2,
+            "unit": "rollo"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Sacá del stock dos rollos de cinta de embalar transparente de 48 mm porque se arruinaron con el agua. No fue una venta.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-retiro-1",
+              "type": "stock.withdraw",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-cinta-48",
+                "expectedFingerprint": "df486fa84bb270fec9e3baa810f461558e98b2cca319cffcdac0fe6671e40ec6",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "rollo"
+              },
+              "reason": "Se arruinaron con el agua"
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 1961,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 466,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Cinta de embalar transparente 48 mm",
+            "size": "48 mm",
+            "unit": "rollo",
+            "available": 8,
+            "reserved": 0,
+            "price": 1800
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "30-kiosco-yerba-paquetes",
+      "category": "Kiosco · ingreso",
+      "text": "Me dejaron cinco paquetes de yerba suave de medio kilo. Cargalos al stock.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.receive",
+            "key": "yerba-500",
+            "quantity": 5,
+            "unit": "paquete"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Me dejaron cinco paquetes de yerba suave de medio kilo. Cargalos al stock.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "acc-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-yerba-500",
+                "expectedFingerprint": "b7f9c2fcdda5cc81fd2fbe46f3e0302583c42c07927005bfd96d12d41a692f7d",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 5,
+                "unit": "paquete"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 1970,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 420,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Yerba suave 500 gramos",
+            "size": "500 gramos",
+            "unit": "paquete",
+            "available": 20,
+            "reserved": 0,
+            "price": 2800
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "31-kiosco-venta-botellas",
+      "category": "Kiosco · venta",
+      "text": "Se vendieron tres botellas de agua mineral sin gas de un litro y medio, a 1.500 pesos argentinos cada una.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.sell",
+            "key": "agua-15",
+            "quantity": 3,
+            "salePrice": 1500,
+            "unit": "botella"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Se vendieron tres botellas de agua mineral sin gas de un litro y medio, a 1.500 pesos argentinos cada una.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-venta-agua-15",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-agua-15",
+                "expectedFingerprint": "ab63dae9298b9bfb2a8e7bb2467dcffdd9bdd69858cbd7e37cb40589d49b8ed6",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 3,
+                "unit": "botella"
+              },
+              "salePrice": {
+                "amount": 1500,
+                "currency": "ARS"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 21384,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 473,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Agua mineral sin gas 1,5 litros",
+            "size": "1,5 litros",
+            "unit": "botella",
+            "available": 21,
+            "reserved": 0,
+            "price": 1500
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "32-kiosco-caramelos-nuevos",
+      "category": "Kiosco · alta",
+      "text": "Dame de alta dos cajas de caramelos frutales, producto nuevo. Las vendo a 3 lucas pesos argentinos la caja.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "new",
+            "quantity": 2,
+            "terms": [
+              "caramelo",
+              "frutal"
+            ],
+            "units": [
+              "caja"
+            ],
+            "price": 3000
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Dame de alta dos cajas de caramelos frutales, producto nuevo. Las vendo a 3 lucas pesos argentinos la caja.",
+          "kind": "clarification",
+          "question": "¿Cuál es la moneda de los 3000 pesos argentinos para el precio de los caramelos frutales?",
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 4171,
+            "ok": true
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se esperaba ready; recibido clarification: ¿Cuál es la moneda de los 3000 pesos argentinos para el precio de los caramelos frutales?\n+ actual - expected\n\n+ 'clarification'\n- 'ready'\n"
+      }
+    },
+    {
+      "id": "33-kiosco-rollback-cargo-previo",
+      "category": "Kiosco · atomicidad",
+      "text": "A Mica Rojas sumale 5 lucas a su cuenta y registrá la venta de 99 botellas de gaseosa cola de 2,25 litros.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "account.charge",
+            "client": "mica",
+            "amount": 5000
+          },
+          {
+            "type": "stock.sell",
+            "key": "gaseosa-225",
+            "quantity": 99,
+            "unit": "botella"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "A Mica Rojas sumale 5 lucas a su cuenta y registrá la venta de 99 botellas de gaseosa cola de 2,25 litros.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "acc-1",
+              "type": "account.charge",
+              "target": {
+                "kind": "existing",
+                "clientId": "150e1f1b-6713-476b-875e-fdbd360288e0-mica",
+                "expectedRevision": 0
+              },
+              "amount": {
+                "value": 5000,
+                "unit": "legacy-money"
+              },
+              "reason": "Suma a cuenta"
+            },
+            {
+              "itemId": "stock-1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-gaseosa-225",
+                "expectedFingerprint": "f3c744ebf312e51296d6630b13d601688a7a0bd3385f6b368839ec8f714564c0",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 99,
+                "unit": "botella"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 6742,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 539,
+      "expectedRejection": "INSUFFICIENT_STOCK",
+      "rollbackVerified": true
+    },
+    {
+      "id": "34-kiosco-ingreso-mixto",
+      "category": "Kiosco · varias unidades",
+      "text": "Ingresá dos paquetes de yerba suave de 500 gramos y seis alfajores triples de chocolate.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.receive",
+            "key": "yerba-500",
+            "quantity": 2,
+            "unit": "paquete"
+          },
+          {
+            "type": "stock.receive",
+            "key": "alfajor-triple",
+            "quantity": 6
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Ingresá dos paquetes de yerba suave de 500 gramos y seis alfajores triples de chocolate.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "ingreso-yerba",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-yerba-500",
+                "expectedFingerprint": "b7f9c2fcdda5cc81fd2fbe46f3e0302583c42c07927005bfd96d12d41a692f7d",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 2,
+                "unit": "paquete"
+              }
+            },
+            {
+              "itemId": "ingreso-alfajores",
+              "type": "stock.receive",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-alfajor-triple",
+                "expectedFingerprint": "c526dad21b5afa3f1b46688bef293f47132d97b33e7f36b05f83f938c3c70378",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 6,
+                "unit": "unit"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 2142,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 663,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Alfajor triple de chocolate",
+            "size": "",
+            "unit": "unit",
+            "available": 36,
+            "reserved": 0,
+            "price": 1600
+          },
+          {
+            "name": "Yerba suave 500 gramos",
+            "size": "500 gramos",
+            "unit": "paquete",
+            "available": 17,
+            "reserved": 0,
+            "price": 2800
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 2
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "35-kiosco-consulta-bebidas",
+      "category": "Kiosco · consulta",
+      "text": "¿Cuántas botellas me quedan de agua mineral sin gas de 1,5 litros y de gaseosa cola de 2,25 litros?",
+      "expected": {
+        "kind": "answer",
+        "queryTypes": [
+          "inventory.query"
+        ],
+        "productKeys": [
+          "agua-15",
+          "gaseosa-225"
+        ]
+      },
+      "turns": [
+        {
+          "text": "¿Cuántas botellas me quedan de agua mineral sin gas de 1,5 litros y de gaseosa cola de 2,25 litros?",
+          "kind": "answer",
+          "queries": [
+            {
+              "itemId": "query-agua",
+              "type": "inventory.query",
+              "selector": {
+                "kind": "ids",
+                "ids": [
+                  "150e1f1b-6713-476b-875e-fdbd360288e0-agua-15"
+                ]
+              }
+            },
+            {
+              "itemId": "query-gaseosa",
+              "type": "inventory.query",
+              "selector": {
+                "kind": "ids",
+                "ids": [
+                  "150e1f1b-6713-476b-875e-fdbd360288e0-gaseosa-225"
+                ]
+              }
+            }
+          ],
+          "querySummary": [
+            {
+              "type": "inventory.query",
+              "count": 1,
+              "summary": {
+                "count": 1,
+                "totals": [
+                  {
+                    "unit": "botella",
+                    "available": 24,
+                    "reserved": 0
+                  }
+                ]
+              }
+            },
+            {
+              "type": "inventory.query",
+              "count": 1,
+              "summary": {
+                "count": 1,
+                "totals": [
+                  {
+                    "unit": "botella",
+                    "available": 12,
+                    "reserved": 0
+                  }
+                ]
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 1695,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 296,
+      "queryVerified": true
+    },
+    {
+      "id": "36-kiosco-no-inventar-conversion",
+      "category": "Kiosco · unidad ambigua",
+      "text": "Vendí una caja de agua mineral sin gas de 1,5 litros. Registrala.",
+      "expected": {
+        "kind": "clarification"
+      },
+      "turns": [
+        {
+          "text": "Vendí una caja de agua mineral sin gas de 1,5 litros. Registrala.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "action-1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-agua-15",
+                "expectedFingerprint": "ab63dae9298b9bfb2a8e7bb2467dcffdd9bdd69858cbd7e37cb40589d49b8ed6",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 1,
+                "unit": "botella"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 4597,
+            "ok": true
+          }
+        }
+      ],
+      "passed": false,
+      "error": {
+        "code": "ERR_ASSERTION",
+        "message": "Se esperaba clarification; recibido ready\n+ actual - expected\n\n+ 'ready'\n- 'clarification'\n"
+      }
+    },
+    {
+      "id": "37-almacen-alta-sin-precio",
+      "category": "Almacén · alta sin precio",
+      "text": "Dame de alta 3 paquetes nuevos de fideos tirabuzón marca Molino Chico, todavía no tengo el precio de venta.",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "new",
+            "quantity": 3,
+            "terms": [
+              "fideo",
+              "tirabuz",
+              "molino",
+              "chico"
+            ],
+            "units": [
+              "paquete"
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Dame de alta 3 paquetes nuevos de fideos tirabuzón marca Molino Chico, todavía no tengo el precio de venta.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-fideos-1",
+              "type": "stock.receive",
+              "target": {
+                "kind": "new",
+                "sku": {
+                  "name": "Fideos tirabuzón Molino Chico",
+                  "attributes": {},
+                  "unit": "paquete"
+                }
+              },
+              "quantity": {
+                "value": 3,
+                "unit": "paquete"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 6168,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 276,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [
+          {
+            "name": "Fideos tirabuzón Molino Chico",
+            "size": null,
+            "unit": "paquete",
+            "available": 3,
+            "reserved": 0,
+            "price": 0,
+            "currency": "XXX"
+          }
+        ],
+        "productChanges": [],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    },
+    {
+      "id": "38-ferreteria-corregir-cantidad",
+      "category": "Ferretería · corrección",
+      "text": "Vendí diez metros de cable unipolar de 2,5 mm².",
+      "expected": {
+        "kind": "ready",
+        "actions": [
+          {
+            "type": "stock.sell",
+            "key": "cable-25",
+            "quantity": 10,
+            "unit": "metro"
+          }
+        ]
+      },
+      "turns": [
+        {
+          "text": "Vendí diez metros de cable unipolar de 2,5 mm².",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-cable-25",
+                "expectedFingerprint": "ce7eda80d1912ba0871ceae8267fc5b4b65955cc1e392beb5ec4ddc2fdd0ff9f",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 10,
+                "unit": "metro"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 2877,
+            "ok": true
+          }
+        },
+        {
+          "text": "Pará, fueron ocho metros, corregilo.",
+          "kind": "ready",
+          "actions": [
+            {
+              "itemId": "accion-1",
+              "type": "stock.sell",
+              "target": {
+                "kind": "existing",
+                "skuId": "150e1f1b-6713-476b-875e-fdbd360288e0-cable-25",
+                "expectedFingerprint": "ce7eda80d1912ba0871ceae8267fc5b4b65955cc1e392beb5ec4ddc2fdd0ff9f",
+                "expectedRevision": 0
+              },
+              "quantity": {
+                "value": 8,
+                "unit": "metro"
+              }
+            }
+          ],
+          "trace": {
+            "stage": "universal_intent",
+            "provider": "gemini",
+            "model": "gemini-3.5-flash-lite",
+            "latencyMs": 4742,
+            "ok": true
+          }
+        }
+      ],
+      "passed": true,
+      "previewChars": 400,
+      "persistedEffectsVerified": true,
+      "persisted": {
+        "newProducts": [],
+        "productChanges": [
+          {
+            "name": "Cable unipolar 2,5 mm²",
+            "size": "2,5 mm²",
+            "unit": "metro",
+            "available": 92,
+            "reserved": 0,
+            "price": 1400
+          }
+        ],
+        "accountChanges": [],
+        "transactions": 1
+      },
+      "confirmed": true,
+      "replayWithoutDuplicateEffects": true,
+      "rollbackVerified": true
+    }
+  ],
+  "wireCalls": 43,
+  "usage": {
+    "promptTokens": 410422,
+    "completionTokens": 7094
+  },
+  "permanentTablesModified": false,
+  "productionSnapshot": {
+    "businessFingerprint": "2e27e5144cee",
+    "activeProducts": 31,
+    "copiedAt": "2026-10-20T21:04:56.634Z",
+    "rawSnapshotHash": "3a78826f5a37a40a083d91f2ef2655135c9562c9cf8f21638a4966e6b873fc89"
+  },
+  "plannedCases": 38,
+  "syntheticProducts": 19,
+  "finishedAt": "2026-10-20T21:12:24.107Z",
+  "passed": 29,
+  "failed": 9,
+  "tempTableIsolationVerified": true,
+  "completed": true,
+  "temporaryTablesRemoved": true
+}
