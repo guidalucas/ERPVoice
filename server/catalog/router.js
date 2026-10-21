@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { CommerceError } from '../commerce/errors.js';
 import { createCatalogService } from '../commerce/catalogService.js';
 import { renderCatalogList, renderCatalogProduct, renderCatalogError, renderInquiryPage } from './render.js';
-import { textOnColor } from '../commerce/appearance.js';
+import { catalogThemeCss } from '../../src/shared/catalogAppearance.js';
 
 export function createPublicCatalogRouters(runtime) {
   const catalog = createCatalogService(runtime), api = express.Router(), pages = express.Router();
@@ -22,13 +22,12 @@ export function createPublicCatalogRouters(runtime) {
   api.get('/:shop/products/:slug/images/:imageId', async (req, res, next) => { try { res.type('image/jpeg').send(await catalog.image(req.params.shop, req.params.slug, req.params.imageId, req.query.variant ?? 'master')); } catch (error) { next(error); } });
   api.use((error, _req, res, _next) => { const known = error instanceof CommerceError; res.status(known ? error.status : 503).json({ error: { code: known ? error.code : 'CATALOG_UNAVAILABLE', message: known ? error.message : 'El catálogo no está disponible.' } }); });
   pages.get('/catalog-assets/catalog.css', (_req, res) => { res.setHeader('X-Content-Type-Options', 'nosniff'); res.sendFile(fileURLToPath(new URL('./assets/catalog.css', import.meta.url))); });
+  pages.get('/catalog-assets/templates.css', (_req, res) => { res.setHeader('X-Content-Type-Options', 'nosniff'); res.sendFile(fileURLToPath(new URL('./assets/templates.css', import.meta.url))); });
   pages.get('/catalog-assets/cart.js', (_req, res) => { res.setHeader('X-Content-Type-Options', 'nosniff'); res.sendFile(fileURLToPath(new URL('./assets/cart.js', import.meta.url))); });
   pages.get('/catalog-assets/:shop/theme.css', headers, async (req, res, next) => {
     try {
       const { appearance } = await catalog.brand(req.params.shop);
-      const primary = /^#[0-9a-f]{6}$/i.test(appearance.primaryColor) ? appearance.primaryColor : '#001A4D';
-      const accent = /^#[0-9a-f]{6}$/i.test(appearance.accentColor) ? appearance.accentColor : '#FF6A00';
-      res.type('css').send(`:root{--navy:${primary};--orange:${accent};--hero-ink:${textOnColor(primary)};--accent-ink:${textOnColor(accent)}}`);
+      res.type('css').send(catalogThemeCss(appearance));
     } catch (error) { next(error); }
   });
   pages.use('/c', headers, (_req, res, next) => { res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"); res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin'); next(); });
