@@ -52,9 +52,25 @@ try {
   await page.getByRole('heading', { name: 'Identidad visual' }).waitFor();
   assert.equal(await page.title(), 'Stocky Studio');
   assert.equal(await page.getByLabel('Título de portada', { exact: true }).inputValue(), appearance.heroTitle);
-  const uploadResponse = page.waitForResponse(response => response.url().endsWith('/brand-assets/logo') && response.request().method() === 'POST');
+  let rejectFirstUpload = true;
+  await page.route('**/api/commerce/v1/brand-assets/logo', async route => {
+    if (route.request().method() === 'POST' && rejectFirstUpload) {
+      rejectFirstUpload = false;
+      return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: {
+        code: 'APPEARANCE_SCHEMA_NOT_READY', message: 'La personalización necesita una actualización del servicio comercial.' } }) });
+    }
+    return route.continue();
+  });
   await page.getByLabel('Logo del negocio', { exact: true }).setInputFiles({ name: 'mi-logo.png', mimeType: 'image/png', buffer: logo });
+  await page.getByText('mi-logo.png · No se pudo cargar.', { exact: true }).waitFor();
+  await page.getByText('La personalización necesita una actualización del servicio comercial.', { exact: true }).waitFor();
+  assert.equal(await page.getByLabel('Logo del negocio', { exact: true }).inputValue(), '');
+  const uploadResponse = page.waitForResponse(response => response.url().endsWith('/brand-assets/logo') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Reintentar logo', exact: true }).click();
   assert.equal((await uploadResponse).status(), 201);
+  await page.getByText('mi-logo.png · Cargado. Guardá la configuración para aplicarlo.', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Reintentar logo', exact: true }).count(), 0);
+  await page.unroute('**/api/commerce/v1/brand-assets/logo');
   await page.waitForFunction(() => !document.querySelector('.settings fieldset').disabled);
   await page.getByLabel('Título de portada', { exact: true }).fill('Elegí tu próxima casaca');
   await page.getByRole('button', { name: 'Guardar configuración', exact: true }).click();

@@ -8,3 +8,5 @@
 .settings fieldset{border:0;margin:0;padding:0;min-width:0}
 
 .brand-preview-hero{color:var(--brand-ink)}.preview-cta{color:var(--brand-accent-ink)}
+
+.brand-file-control{position:relative;cursor:pointer}.brand-file-control input[type=file]{position:absolute;width:1px;height:1px;opacity:0;clip-path:inset(50%)}.brand-file-button{display:block;border:1px solid var(--border);border-radius:5px;padding:12px;background:#f8fafc;text-align:center;font-size:12px!important;font-weight:600}.brand-file-control:focus-within .brand-file-button{outline:3px solid #ff9c55;outline-offset:3px}.brand-file-control.disabled{opacity:.55;cursor:default}.brand-uploads .brand-upload-status{overflow-wrap:anywhere;color:var(--navy)}

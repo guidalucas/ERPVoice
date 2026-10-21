@@ -54,12 +54,12 @@ Guardar variables y desplegar el servicio para activarlas. No cambiar `PORT` ni 
 
 ### Alternativa sin Shell: SQL Editor de Supabase
 
-El archivo [SUPABASE_COMMERCIAL_SCHEMA.sql](SUPABASE_COMMERCIAL_SCHEMA.sql) contiene las tres migraciones y su registro de versiones. Se genera desde los SQL originales con `npm run commerce:schema:sql`; no incluye claves ni datos DEMO.
+El archivo [SUPABASE_COMMERCIAL_SCHEMA.sql](SUPABASE_COMMERCIAL_SCHEMA.sql) contiene las cuatro migraciones y su registro de versiones. Se genera desde los SQL originales con `npm run commerce:schema:sql`; no incluye claves ni datos DEMO.
 
 1. Verificar el respaldo y seleccionar en Supabase el proyecto que usa la base de Stocky.
 2. Abrir **SQL Editor → New query** con el rol administrador del proyecto.
 3. Abrir el archivo local y copiar **todo** su contenido, desde `BEGIN` hasta el `SELECT` final, incluyendo los comentarios si se desea. Ejecutar el archivo completo una sola vez con **Run**, sin seleccionar una parte del texto.
-4. El resultado debe mostrar las versiones **1, 2 y 3**. Recargar Studio para volver a comprobar el esquema.
+4. El resultado debe mostrar las versiones **1, 2, 3 y 4**. Recargar Studio para volver a comprobar el esquema.
 
 El script usa una sola transacción, comprueba las huellas del inventario antes/después, limita tiempos de espera, registra los mismos checksums que las herramientas CLI, activa RLS y retira acceso directo de los roles API sobre las tablas comerciales. Una excepción cancela toda la instalación; si el editor conserva una transacción fallida, ejecutar `ROLLBACK;` antes de reintentar. Los checksums anteriores con saltos de línea de Windows también se reconocen; un checksum desconocido se rechaza. No elimina tablas ni incorpora perfiles, políticas monetarias o publicaciones.
 
@@ -85,6 +85,7 @@ El despliegue no crea ni habilita automáticamente el dominio comercial. Selecci
 npm run commerce:schema:check -- --allow-remote-database
 npm run commerce:catalog:schema:check -- --allow-remote-database
 npm run commerce:content:schema:check -- --allow-remote-database
+npm run commerce:appearance:schema:check -- --allow-remote-database
 ```
 
 Si faltan migraciones, revisarlas y aplicarlas en orden después de verificar el respaldo y la base objetivo:
@@ -93,6 +94,7 @@ Si faltan migraciones, revisarlas y aplicarlas en orden después de verificar el
 npm run commerce:schema:apply -- --allow-remote-database
 npm run commerce:catalog:schema:apply -- --allow-remote-database
 npm run commerce:content:schema:apply -- --allow-remote-database
+npm run commerce:appearance:schema:apply -- --allow-remote-database
 ```
 
 Las migraciones no generan el perfil habilitado del negocio ni confirman moneda/escala. Antes del piloto, verificar `commerce_profiles` para el propietario real y `inventory_money_policies` con hechos confirmados. El perfil debe estar habilitado; el backend no concede acceso por ver el enlace. No usar el seed de DEMO en una base real ni inferir la moneda a partir del símbolo `$`.
