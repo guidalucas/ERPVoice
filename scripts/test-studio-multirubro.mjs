@@ -93,12 +93,12 @@ try {
     }
     // Choosing a preset is one optional control in the current settings screen.
     await page.goto(fixture.url + '#/settings');
-    const presetSelect = page.getByLabel('Diseño del catálogo · opcional');
-    await presetSelect.selectOption('classic'); await page.getByRole('button', { name: 'Guardar configuración', exact: true }).click();
+    const presetRadio = preset => page.locator(`input[name="catalog-design"][value="${preset}"]`);
+    await presetRadio('classic').check(); await page.getByRole('button', { name: 'Guardar configuración', exact: true }).click();
     await page.getByText('Configuración guardada.', { exact: true }).waitFor(); await page.reload();
-    assert.equal(await presetSelect.inputValue(), 'classic');
+    assert.equal(await presetRadio('classic').isChecked(), true);
     assert.equal(await page.getByLabel('Título de portada', { exact: true }).inputValue(), appearance.heroTitle);
-    await presetSelect.selectOption(shop.preset); await page.getByRole('button', { name: 'Guardar configuración', exact: true }).click();
+    await presetRadio(shop.preset).check(); await page.getByRole('button', { name: 'Guardar configuración', exact: true }).click();
     await page.getByText('Configuración guardada.', { exact: true }).waitFor();
     await page.goto(fixture.url + `#/products/${shop.products[0].id}`); await page.getByRole('button', { name: 'Generar historia ↗' }).click();
     await page.getByRole('button', { name: 'Generar previsualización', exact: true }).click();

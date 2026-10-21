@@ -4,18 +4,29 @@ import { record, text, uuid } from './validation.js';
 import { fail } from './errors.js';
 import { requireCommerceAccess } from './operationRepository.js';
 import { processCommercialImage } from './imageProcessor.js';
+import { defaultAppearance, defaultHeroLayout } from '../../src/shared/catalogAppearance.js';
+export { defaultAppearance, appearanceOf, textOnColor } from '../../src/shared/catalogAppearance.js';
 
-export const defaultAppearance = Object.freeze({ logoId: null, coverId: null, primaryColor: '#001A4D', accentColor: '#FF6A00',
-  tagline: 'Productos con identidad', heroTitle: 'Conocé nuestros productos',
-  heroDescription: 'Explorá el catálogo y consultanos por WhatsApp.', collectionTitle: 'Nuestro catálogo' });
-export const appearanceOf = profile => ({ ...defaultAppearance, ...profile?.appearance });
-export const textOnColor = hex => {
-  const rgb = [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16) / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
-  return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 > 0.179 ? '#000000' : '#FFFFFF';
-};
 export function normalizeAppearance(input) {
-  const data = record(input, [...Object.keys(defaultAppearance), 'preset'], 'appearance');
+  const data = record(input, [...Object.keys(defaultAppearance), 'preset', 'heroContentVisible', 'heroButtonVisible', 'heroLayout'], 'appearance');
   const result = {};
+  for (const key of ['heroContentVisible', 'heroButtonVisible']) if (Object.hasOwn(data, key)) {
+    if (typeof data[key] !== 'boolean') fail('INVALID_COMMAND', 'Elegí si querés mostrar el contenido del banner.', 400);
+    result[key] = data[key];
+  }
+  if (Object.hasOwn(data, 'heroLayout')) {
+    result.heroLayout = null;
+    if (data.heroLayout !== null) {
+      const blocks = record(data.heroLayout, Object.keys(defaultHeroLayout), 'heroLayout');
+      result.heroLayout = {};
+      for (const key of Object.keys(defaultHeroLayout)) {
+        const position = record(blocks[key], ['x', 'y', 'width'], 'heroPosition');
+        for (const field of ['x', 'y', 'width']) if (!Number.isInteger(position[field]) || position[field] < (field === 'width' ? 20 : 0) || position[field] > 100)
+          fail('INVALID_COMMAND', 'La posición de los bloques debe quedar dentro del banner.', 400);
+        result.heroLayout[key] = position;
+      }
+    }
+  }
   if (Object.hasOwn(data, 'preset')) {
     if (!['classic', 'editorial', 'technical', 'local'].includes(data.preset)) fail('INVALID_COMMAND', 'Elegí un diseño disponible.', 400);
     result.preset = data.preset;
@@ -26,7 +37,7 @@ export function normalizeAppearance(input) {
     result[key] = data[key].toUpperCase();
   }
   for (const [key, max] of Object.entries({ tagline: 80, heroTitle: 120, heroDescription: 300, collectionTitle: 60 }))
-    result[key] = text(data[key], max, key, { empty: key === 'tagline' || key === 'heroDescription' });
+    result[key] = text(data[key], max, key, { empty: key !== 'collectionTitle' });
   return result;
 }
 export async function requireAppearanceSchema(client) {
