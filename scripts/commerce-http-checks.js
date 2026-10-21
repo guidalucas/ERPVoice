@@ -56,7 +56,7 @@ export async function runCommerceHttpChecks({ db, sql, check, request }) {
     const [one, two] = await Promise.all([post('/products', createBody), post('/products', createBody)]);
     assert.equal(one.status, 201, one.text); assert.equal(two.status, 201, two.text); assert.deepEqual(one.json, two.json);
     created = one.json.result; assert.equal(created.variants[0].stockAvailable, 3); assert.equal(created.availableQuantity, 3);
-    assert.equal(created.readiness.canPrepare, false); assert.ok(created.readiness.blockers.includes('COVER_REQUIRED'));
+    assert.equal(created.readiness.canPrepare, true); assert.equal(created.readiness.canGenerateStory, false);
     assert.equal((await sql.query('SELECT count(*)::int AS n FROM commercial_operations WHERE owner_phone=$1 AND operation_id=$2', [owner, createBody.operationId])).rows[0].n, 1);
   });
   await run('SKU links are unique and cross-tenant references fail without partial drafts', async () => {
@@ -93,10 +93,10 @@ export async function runCommerceHttpChecks({ db, sql, check, request }) {
     assert.equal(response.status, 200, response.text); updated = response.json.result; assert.equal(updated.variants.length, 2);
     assert.equal((await req('/inventory-candidates')).json.items.length, 0);
   });
-  await run('preparation blocks missing photos; archive/restore do not change stock', async () => {
+  await run('publication permits missing photos while story export requires a cover; archive/restore preserve stock', async () => {
     const make = status => ({ operationId: randomUUID(), expectedRevision: updated.revision, status, reason: 'HTTP fixture reviewed state' });
-    const rejected = await post(`/products/${created.id}/status`, make('ready')); assert.equal(rejected.status, 422, rejected.text);
-    assert.equal(rejected.json.error.code, 'PRODUCT_NOT_READY');
+    const preparedWithoutPhoto = await post(`/products/${created.id}/status`, make('ready')); assert.equal(preparedWithoutPhoto.status, 200, preparedWithoutPhoto.text);
+    updated = preparedWithoutPhoto.json.result; assert.equal(updated.readiness.canGenerateStory, false);
     const archived = await post(`/products/${created.id}/status`, make('archived')); assert.equal(archived.status, 200, archived.text); updated = archived.json.result;
     const restored = await post(`/products/${created.id}/status`, make('draft')); assert.equal(restored.status, 200, restored.text); updated = restored.json.result;
     assert.equal(updated.status, 'draft'); assert.equal(updated.variants[0].stockAvailable, 3);

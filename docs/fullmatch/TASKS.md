@@ -48,3 +48,10 @@ Completion means executed evidence, not merely files written. Production enablem
 - [x] Implement useful local cart/inquiry prototype without payment/reservation/shipping.
 - [x] Final authorized-scope acceptance audit, operation docs and validated local commits.
 - [x] Record remaining external production gates without falsely marking them implemented.
+
+## Rebranding multirrubro autorizado — 2026-10-21
+- [x] Inspeccionar personalización existente, rubro, familias y SKU.
+- [x] Reutilizar appearance y editor actual; presets opcionales sin duplicar configuración.
+- [x] Adaptar presentación comercial, catálogo y Studio sin modificar inventario.
+- [x] Validar escenarios aislados indumentaria/ferretería/kiosco, historias y aislamiento.
+- [x] Registrar evidencia visual, regresiones y límites en docs/STUDIO_MULTIRRUBRO.md.

@@ -6,16 +6,20 @@ import { requireCommerceAccess } from './operationRepository.js';
 import { processCommercialImage } from './imageProcessor.js';
 
 export const defaultAppearance = Object.freeze({ logoId: null, coverId: null, primaryColor: '#001A4D', accentColor: '#FF6A00',
-  tagline: 'Tu colección, con identidad', heroTitle: 'Encontrá tu próxima camiseta',
-  heroDescription: 'Explorá nuestra colección y consultanos por WhatsApp.', collectionTitle: 'La colección' });
+  tagline: 'Productos con identidad', heroTitle: 'Conocé nuestros productos',
+  heroDescription: 'Explorá el catálogo y consultanos por WhatsApp.', collectionTitle: 'Nuestro catálogo' });
 export const appearanceOf = profile => ({ ...defaultAppearance, ...profile?.appearance });
 export const textOnColor = hex => {
   const rgb = [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16) / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
   return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 > 0.179 ? '#000000' : '#FFFFFF';
 };
 export function normalizeAppearance(input) {
-  const data = record(input, Object.keys(defaultAppearance), 'appearance');
+  const data = record(input, [...Object.keys(defaultAppearance), 'preset'], 'appearance');
   const result = {};
+  if (Object.hasOwn(data, 'preset')) {
+    if (!['classic', 'editorial', 'technical', 'local'].includes(data.preset)) fail('INVALID_COMMAND', 'Elegí un diseño disponible.', 400);
+    result.preset = data.preset;
+  }
   for (const key of ['logoId', 'coverId']) result[key] = data[key] == null ? null : uuid(data[key]);
   for (const key of ['primaryColor', 'accentColor']) {
     if (typeof data[key] !== 'string' || !/^#[0-9a-f]{6}$/i.test(data[key])) fail('INVALID_COMMAND', 'Elegí un color válido.', 400);

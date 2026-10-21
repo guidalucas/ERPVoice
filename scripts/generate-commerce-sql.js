@@ -31,7 +31,7 @@ const fingerprint = variable => `
 `;
 
 export async function buildCommerceSqlBundle() {
-  const migrations = await Promise.all([1, 2, 3, 4].map(readCommerceMigration));
+  const migrations = await Promise.all([1, 2, 3, 4, 5].map(readCommerceMigration));
   const steps = migrations.map(({ version, sql, checksum, acceptedChecksums }) => `
   -- Migration ${version}; checksum matches the canonical repository source.
   SELECT checksum INTO previous_checksum FROM public.commerce_schema_migrations WHERE version = ${version};

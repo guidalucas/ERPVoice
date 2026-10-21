@@ -10,7 +10,7 @@
       const value = JSON.parse(raw); if (!Array.isArray(value) || value.length > 20) return [];
       const unique = new Map();
       for (const item of value) if (item && typeof item.productSlug === 'string' && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(item.productSlug) && item.productSlug.length <= 120
-        && typeof item.size === 'string' && item.size.length > 0 && item.size.length <= 40 && Number.isSafeInteger(item.quantity) && item.quantity >= 1 && item.quantity <= 10) {
+        && typeof item.size === 'string' && item.size.length > 0 && item.size.length <= 200 && Number.isSafeInteger(item.quantity) && item.quantity >= 1 && item.quantity <= 10) {
         const size = item.size.normalize('NFC').trim(); unique.set(JSON.stringify([item.productSlug, size.toLocaleLowerCase('es')]), { productSlug: item.productSlug, size, quantity: item.quantity });
       }
       return [...unique.values()];
@@ -39,11 +39,11 @@
     for (const [index, line] of (result?.lines ?? []).entries()) {
       const row = node('article', undefined, `inquiry-line${line.available ? '' : ' unavailable'}`), detail = node('div', undefined, 'inquiry-line-detail');
       const title = node(line.path ? 'a' : 'strong', line.title); if (line.path) title.href = line.path;
-      detail.append(title, node('small', `Talle ${line.size} · ${money(line.unitPrice)} c/u`));
-      if (!line.available) detail.append(node('p', 'Revisá el talle o la cantidad disponible.', 'line-warning'));
-      const quantityLabel = node('label', 'Cantidad'), quantity = node('input'); quantity.type = 'number'; quantity.min = '1'; quantity.max = '10'; quantity.step = '1'; quantity.value = String(line.quantity); quantity.setAttribute('aria-label', `Cantidad ${line.title} talle ${line.size}`);
+      detail.append(title, node('small', `Presentación ${line.size} · ${money(line.unitPrice)} c/u`));
+      if (!line.available) detail.append(node('p', 'Revisá la presentación o la cantidad disponible.', 'line-warning'));
+      const quantityLabel = node('label', 'Cantidad'), quantity = node('input'); quantity.type = 'number'; quantity.min = '1'; quantity.max = '10'; quantity.step = '1'; quantity.value = String(line.quantity); quantity.setAttribute('aria-label', `Cantidad ${line.title} presentación ${line.size}`);
       quantity.addEventListener('change', () => {
-        const value = Number(quantity.value); if (!Number.isSafeInteger(value) || value < 1 || value > 10) { quantity.value = String(cart[index].quantity); message('Elegí entre una y diez unidades por talle.'); return; }
+        const value = Number(quantity.value); if (!Number.isSafeInteger(value) || value < 1 || value > 10) { quantity.value = String(cart[index].quantity); message('Elegí entre una y diez unidades por presentación.'); return; }
         try { const next = cart.map((item, position) => position === index ? { ...item, quantity: value } : item); store(next); void refresh(false); } catch { message('No pude conservar el cambio en este navegador.'); }
       }); quantityLabel.append(quantity);
       const remove = node('button', 'Retirar'); remove.type = 'button'; remove.addEventListener('click', () => { try { store(cart.filter((_item, position) => position !== index)); void refresh(false); } catch { message('No pude conservar el cambio.'); } });
@@ -60,7 +60,7 @@
         body: JSON.stringify({ items: cart, previousFingerprint: previous }), signal: AbortSignal.timeout(15_000) });
       const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'No pude revisar la consulta.');
       if (attempt !== generation) return null; quote = result; render(result);
-      message(result.changed ? 'Cambiaron los datos de tu consulta. Revisá los importes actuales y volvé a confirmar.' : !result.canContact ? 'Hay camisetas, talles o cantidades que necesitan revisión.' : 'Tu consulta está lista para revisar con el comercio.');
+      message(result.changed ? 'Cambiaron los datos de tu consulta. Revisá los importes actuales y volvé a confirmar.' : !result.canContact ? 'Hay productos, presentaciones o cantidades que necesitan revisión.' : 'Tu consulta está lista para revisar con el comercio.');
       return result;
     } catch (error) { if (attempt === generation) { quote = null; message(error instanceof Error ? error.message : 'No pude revisar la consulta.'); } return null; }
     finally { if (attempt === generation) { busy = false; controls(); } }
@@ -71,10 +71,10 @@
     event.preventDefault(); const status = form.querySelector('[data-inquiry-status]');
     try {
       const productSlug = form.dataset.product, size = form.elements.namedItem('size').value, quantity = Number(form.elements.namedItem('quantity').value);
-      if (!size || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10) throw new Error('Elegí un talle y una cantidad válida.');
+      if (!size || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10) throw new Error('Elegí una presentación y una cantidad válida.');
       const next = read(), existing = next.find(item => item.productSlug === productSlug && item.size === size);
-      if (existing) { if (existing.quantity + quantity > 10) throw new Error('Podés consultar hasta diez unidades por talle.'); existing.quantity += quantity; }
-      else { if (next.length >= 20) throw new Error('Podés incluir hasta veinte talles en una consulta.'); next.push({ productSlug, size, quantity }); }
+      if (existing) { if (existing.quantity + quantity > 10) throw new Error('Podés consultar hasta diez unidades por presentación.'); existing.quantity += quantity; }
+      else { if (next.length >= 20) throw new Error('Podés incluir hasta veinte presentaciones en una consulta.'); next.push({ productSlug, size, quantity }); }
       store(next); status.textContent = 'Agregada a tu consulta. Podés seguir eligiendo o revisar el resumen.';
     } catch (error) { status.textContent = error instanceof Error ? error.message : 'No pude conservar la consulta en este navegador.'; }
   });

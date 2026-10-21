@@ -27,7 +27,7 @@ export async function runInquiryHttpChecks({ sql, check, req, request, product, 
     for (const quantity of [0, -1, 1.5, 11, '2']) assert.equal((await quote({ items: [{ ...item, quantity }] })).status, 400);
     assert.equal((await quote({ items: [] })).status, 400); assert.equal((await quote({ items: Array.from({ length: 21 }, () => item) })).status, 400);
     assert.equal((await quote({ items: [item], previousFingerprint: 'not-a-hash' })).status, 400);
-    const unknown = await quote({ items: [{ ...item, productSlug: 'private-or-other-business' }] }); assert.equal(unknown.status, 200); assert.equal(unknown.json.canContact, false); assert.equal(unknown.json.lines[0].title, 'Producto o talle no disponible');
+    const unknown = await quote({ items: [{ ...item, productSlug: 'private-or-other-business' }] }); assert.equal(unknown.status, 200); assert.equal(unknown.json.canContact, false); assert.equal(unknown.json.lines[0].title, 'Producto o presentación no disponible');
   });
   await run('current prices and stock override the old summary before any contact handoff', async () => {
     await sql.query('UPDATE products SET price=40000 WHERE owner_phone=$1 AND id=$2', [owner, sku.id]);

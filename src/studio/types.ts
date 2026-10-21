@@ -1,7 +1,7 @@
 export type Money = { amountMinor: string; currency: string; fractionDigits: number };
-export type Variant = { skuId: string; name: string; size: string; active: boolean; revision: number; identityFingerprint: string;
+export type Variant = { skuId: string; name: string; size: string; label?: string; unit?: string; productType?: string | null; specifications?: { label: string; value: string }[]; active: boolean; revision: number; identityFingerprint: string;
   identityReviewed: boolean; stockAvailable: number | null; stockReserved: number | null; price: Money | null };
-export type Candidate = { skuId: string; name: string; size: string; revision: number; identityFingerprint: string;
+export type Candidate = { label?: string; unit?: string; skuId: string; name: string; size: string; revision: number; identityFingerprint: string;
   productType?: string | null; productModel?: string | null;
   stockAvailable: number; stockReserved: number; price: Money | null };
 export type Photo = { id: string; status: string; altText: string; sortOrder: number; focalX: number; focalY: number;
@@ -12,11 +12,11 @@ export type Product = CommercialFields & { id: string; slug: string; status: 'dr
   coverImageId: string | null; images: Photo[]; variants: Variant[]; availableQuantity: number | null; availability: string;
   priceRange: { currency: string; fractionDigits: number; minAmountMinor: string; maxAmountMinor: string } | null;
   readiness: { canPrepare: boolean; canGenerateStory: boolean; blockers: string[]; missingFields?: string[]; moneyIssues?: { skuId: string; cause: string }[] }; moneyPolicyRevision: number | null; readAt: string };
-export type Appearance = { logoId: string | null; coverId: string | null; primaryColor: string; accentColor: string;
+export type Appearance = { preset?: 'classic' | 'editorial' | 'technical' | 'local'; logoId: string | null; coverId: string | null; primaryColor: string; accentColor: string;
   tagline: string; heroTitle: string; heroDescription: string; collectionTitle: string };
 export const defaultAppearance: Appearance = { logoId: null, coverId: null, primaryColor: '#001A4D', accentColor: '#FF6A00',
-  tagline: 'Tu colección, con identidad', heroTitle: 'Encontrá tu próxima camiseta',
-  heroDescription: 'Explorá nuestra colección y consultanos por WhatsApp.', collectionTitle: 'La colección' };
+  tagline: 'Productos con identidad', heroTitle: 'Conocé nuestros productos',
+  heroDescription: 'Explorá el catálogo y consultanos por WhatsApp.', collectionTitle: 'Nuestro catálogo' };
 export const brandInitials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() || 'S';
 export const textOnColor = (hex: string) => {
   const rgb = [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16) / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);

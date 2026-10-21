@@ -1,5 +1,6 @@
 import { inventoryPriceToMoney } from '../inventoryMoneyPolicy.js';
 import { inventoryProductFingerprint } from '../inventoryOperations.js';
+import { variantLabel, commercialSpecifications } from './presentation.js';
 
 export function buildCommercialReadiness(product, skus, images, policy) {
   const blockers = new Set(), seenSizes = new Set(), moneyIssues = [];
@@ -15,22 +16,23 @@ export function buildCommercialReadiness(product, skus, images, policy) {
     const active = sku.status === 'active';
     const identityReviewed = fingerprint !== null && fingerprint === sku.linkFingerprint;
     if (active && !identityReviewed) blockers.add('SKU_IDENTITY_CHANGED');
-    if (active && (!sku.size?.trim() || (sku.unit ?? 'unit') !== 'unit')) blockers.add('INVALID_VARIANT');
-    if (active && sku.size) {
-      const size = sku.size.normalize('NFC').trim().toLowerCase();
+    if (active && !(sku.unit ?? 'unit').trim()) blockers.add('INVALID_VARIANT');
+    if (active) {
+      const size = variantLabel(sku).normalize('NFC').trim().toLowerCase();
       if (seenSizes.has(size)) blockers.add('DUPLICATE_SIZE');
       seenSizes.add(size);
     }
     if (active && money && BigInt(money.amountMinor) <= 0n) blockers.add('PRICE_NOT_READY');
-    return { skuId: sku.id, name: sku.name, size: sku.size, active, revision: sku.revision,
+    return { skuId: sku.id, name: sku.name, size: sku.size, label: variantLabel(sku), unit: sku.unit ?? 'unit',
+      productType: sku.productType ?? null, specifications: commercialSpecifications(sku.attributes), active, revision: sku.revision,
       identityFingerprint: fingerprint, identityReviewed, stockAvailable: validStock ? sku.stockAvailable : null,
       stockReserved: validStock ? sku.stockReserved : null, price: money };
   });
   const active = variants.filter(variant => variant.active);
   if (!active.length) blockers.add('NO_ACTIVE_SKU');
-  if (!product.identityKey || !product.teamName || !product.teamKind) blockers.add('IDENTITY_INCOMPLETE');
+  if (!product.title?.trim()) blockers.add('IDENTITY_INCOMPLETE');
   const readyImages = images.filter(image => image.status === 'ready');
-  if (!readyImages.some(image => image.id === product.coverImageId)) blockers.add('COVER_REQUIRED');
+  const hasCover = readyImages.some(image => image.id === product.coverImageId);
   const available = active.filter(variant => variant.identityReviewed && variant.stockAvailable !== null && variant.stockAvailable > 0);
   const total = available.reduce((sum, variant) => sum + BigInt(variant.stockAvailable), 0n);
   const comparable = (available.length ? available : active).filter(variant => variant.price);
@@ -41,9 +43,9 @@ export function buildCommercialReadiness(product, skus, images, policy) {
       minAmountMinor: sorted[0], maxAmountMinor: sorted.at(-1) };
   }
   const blocked = [...blockers];
-  const missingFields = ['teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey'].filter(key => !product[key]);
+  const missingFields = product.title?.trim() ? [] : ['title'];
   return { variants, priceRange, availability: blockers.has('INVENTORY_INVALID') ? 'unavailable' : total > 0n ? 'in_stock' : 'out_of_stock',
     availableQuantity: total <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(total) : null,
     readiness: { blockers: blocked, missingFields, moneyIssues, canPrepare: blocked.length === 0 && product.status !== 'archived',
-      canGenerateStory: blocked.length === 0 && product.status === 'ready' && available.length > 0 } };
+      canGenerateStory: blocked.length === 0 && hasCover && product.status === 'ready' && available.length > 0 } };
 }
