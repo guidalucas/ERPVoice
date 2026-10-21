@@ -4,7 +4,7 @@ export type HeroLayout = Record<HeroBlock, HeroPosition>;
 export const catalogDesigns: readonly { id: 'classic' | 'editorial' | 'technical' | 'local'; name: string; description: string }[];
 export type Appearance = { preset?: 'classic' | 'editorial' | 'technical' | 'local'; logoId: string | null; coverId: string | null;
   primaryColor: string; accentColor: string; tagline: string; heroTitle: string; heroDescription: string; collectionTitle: string;
-  heroContentVisible?: boolean; heroButtonVisible?: boolean; heroLayout?: HeroLayout | null };
+  heroContentVisible?: boolean; heroButtonVisible?: boolean; heroTextBackground?: boolean; heroTextTone?: 'light' | 'dark'; heroLayout?: HeroLayout | null };
 export const defaultAppearance: Appearance;
 export const defaultHeroLayout: HeroLayout;
 export function appearanceOf(profile: { appearance?: Appearance }): Appearance;

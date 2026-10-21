@@ -233,3 +233,19 @@ body[data-preset] .catalog-hero.image-only .catalog-cover{position:absolute;inse
   body[data-preset=local] .category-tiles>a{flex-basis:215px}
   body[data-preset=local] .availability{font-size:8px;left:7px;top:7px}
 }
+
+/* Optional text directly on the cover, including manually positioned blocks. */
+body[data-preset] .catalog-hero.text-on-image:not(.image-only) .hero-copy{
+  background:transparent;border:0;box-shadow:none;color:var(--banner-text-ink,var(--hero-ink));text-shadow:var(--banner-text-shadow,none)
+}
+body[data-preset] .catalog-hero.text-on-image [data-hero-block]:not([data-hero-block=button]){
+  background:transparent;border:0;box-shadow:none;color:var(--banner-text-ink,var(--hero-ink));text-shadow:var(--banner-text-shadow,none)
+}
+body[data-preset] .catalog-hero.text-on-image [data-hero-block=button]{text-shadow:none}
+body[data-preset] .catalog-hero.text-on-image.has-cover:not(.image-only) .catalog-cover{
+  position:absolute;inset:0;grid-area:auto;width:100%;height:100%;min-height:0;max-height:none;object-fit:cover
+}
+@media(max-width:780px){
+  body[data-preset] .catalog-hero.text-on-image.has-cover:not(.image-only){display:flex;align-items:center;min-height:380px}
+  body[data-preset] .catalog-hero.text-on-image.has-cover:not(.image-only) .hero-copy{position:relative;flex:1;min-width:0;max-width:100%}
+}

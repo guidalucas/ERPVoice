@@ -110,11 +110,19 @@ try {
     assert.equal(browserColumns.split(' ').length, preset === 'technical' ? 2 : 1);
     assert.equal(await preview.locator('.catalog-card>a').first().evaluate(element => getComputedStyle(element).display), preset === 'local' ? 'grid' : 'block');
     await page.locator(`.catalog-design-option:has(input[value="${preset}"])`).screenshot({ path: path.join(output, `template-${preset}.png`) });
+    await page.getByLabel('Mostrar recuadro detrás del texto', { exact: true }).uncheck();
+    await preview.locator('.catalog-hero.text-on-image').waitFor();
+    assert.equal(await preview.locator('.hero-copy').evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)');
+    const overlayCover = await preview.locator('.catalog-cover').boundingBox(), overlayHero = await preview.locator('.catalog-hero').boundingBox();
+    assert.ok(Math.abs(overlayCover.width - overlayHero.width) < 3);
+    await preview.locator('.catalog-hero').screenshot({ path: path.join(output, `${preset}-cover-without-text-background.png`) });
     await page.getByRole('button', { name: 'Celular', exact: true }).click();
     await preview.locator(`body[data-preset="${preset}"]`).waitFor();
     assert.equal(await preview.locator('body').evaluate(element => element.scrollWidth <= innerWidth), true);
     assert.equal(await preview.locator('.catalog-grid').evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length), preset === 'local' ? 1 : 2);
+    assert.equal(await preview.locator('.hero-copy').evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)');
     await page.getByRole('button', { name: 'Escritorio', exact: true }).click();
+    await page.getByLabel('Mostrar recuadro detrás del texto', { exact: true }).check();
   }
   await page.locator('.catalog-design-options').screenshot({ path: path.join(output, 'four-template-standards.png') });
   const saveSettings = async () => {
@@ -156,15 +164,26 @@ try {
   await page.mouse.move(beforeDrag.x + 25, beforeDrag.y + 15); await page.mouse.down();
   await page.mouse.move(beforeDrag.x - 45, beforeDrag.y - 20, { steps: 6 }); await page.mouse.up();
   await page.waitForFunction(() => Number(document.querySelector('input[aria-label="Posición horizontal"]').value) < 88);
+  await page.getByLabel('Mostrar recuadro detrás del texto', { exact: true }).uncheck();
+  await page.getByLabel('Color del texto sobre la imagen', { exact: true }).selectOption('dark');
+  await preview.locator('.catalog-hero.text-on-image').waitFor();
+  assert.equal(await preview.locator('[data-hero-block="title"]').evaluate(element => getComputedStyle(element).color), 'rgb(23, 37, 54)');
+  await page.getByLabel('Color del texto sobre la imagen', { exact: true }).selectOption('light');
   await saveSettings();
   const customized = (await api(fixture, prefix + '/profile')).appearance;
   assert.ok(customized.heroLayout.title.x < 88); assert.equal(customized.heroLayout.title.width, 50);
   assert.equal(customized.heroLayout.description.x, 8);
+  assert.equal(customized.heroTextBackground, false); assert.equal(customized.heroTextTone, 'light');
   await page.reload(); await publicPage.setViewportSize({ width: 1440, height: 1050 }); await publicPage.reload();
+  assert.equal(await page.getByLabel('Mostrar recuadro detrás del texto', { exact: true }).isChecked(), false);
   assert.equal(await publicPage.locator('.catalog-hero.custom-layout').count(), 1);
   const positions = await publicPage.locator('[data-hero-block="title"]').evaluate(element => ({ position: getComputedStyle(element).position, left: getComputedStyle(element).left }));
   assert.equal(positions.position, 'absolute');
   assert.ok(parseFloat(positions.left) > 0);
+  assert.equal(await publicPage.locator('.hero-copy').evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)');
+  assert.equal(await publicPage.locator('[data-hero-block="title"]').evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)');
+  assert.equal(await publicPage.locator('[data-hero-block="title"]').evaluate(element => getComputedStyle(element).color), 'rgb(255, 255, 255)');
+  assert.equal(await publicPage.locator('[data-hero-block="button"]').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(204, 34, 119)');
   await page.screenshot({ path: path.join(output, 'design-selector-and-editor.png'), fullPage: true });
   await publicPage.screenshot({ path: path.join(output, 'custom-banner-desktop.png'), fullPage: true });
   await page.getByRole('button', { name: 'Celular', exact: true }).click();
@@ -173,6 +192,7 @@ try {
   await publicPage.setViewportSize({ width: 390, height: 844 }); await publicPage.reload();
   assert.equal(await publicPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.notEqual(await publicPage.locator('[data-hero-block="title"]').evaluate(element => getComputedStyle(element).position), 'absolute');
+  assert.equal(await publicPage.locator('.hero-copy').evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)');
   await publicPage.screenshot({ path: path.join(output, 'custom-banner-mobile.png'), fullPage: true });
   await page.getByRole('button', { name: 'Restablecer composición', exact: true }).click();
   await saveSettings(); assert.equal((await api(fixture, prefix + '/profile')).appearance.heroLayout, null);
