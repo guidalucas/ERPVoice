@@ -105,6 +105,68 @@ try {
     assert.equal(metadata.width, 1080); assert.equal(metadata.height, 1920);
     assert.ok(!requests.includes('/api/state'));
   });
+  const publicContext = await browser.newContext({ viewport: { width: 1440, height: 1050 } }), publicPage = await publicContext.newPage();
+  const publicRequests = []; publicPage.on('request', request => publicRequests.push(new URL(request.url()).pathname));
+  publicPage.on('pageerror', error => errors.push(error.message));
+  const shopUrl = `${fixture.apiUrl}/c/fullmatch-demo`;
+  let productUrl, productPhoto;
+  await check('anonymous SSR catalog has real photos, filters, stable product URLs and SEO', async () => {
+    const response = await publicPage.goto(shopUrl); assert.equal(response.status(), 200);
+    await publicPage.getByRole('heading', { name: 'La colección', exact: true }).waitFor();
+    assert.equal(await publicPage.locator('.catalog-card').count(), 3);
+    await publicPage.waitForFunction(() => [...document.querySelectorAll('.catalog-card-photo img')].every(image => image.complete && image.naturalWidth > 0));
+    await publicPage.screenshot({ path: path.join(output, 'catalog-desktop.png'), fullPage: true });
+    await publicPage.getByRole('searchbox', { name: 'Buscar camiseta', exact: true }).fill('Argentina');
+    await Promise.all([publicPage.waitForURL(/q=Argentina/), publicPage.getByRole('button', { name: 'Buscar', exact: true }).click()]);
+    assert.equal(await publicPage.locator('.catalog-card').count(), 1);
+    await publicPage.getByRole('heading', { name: 'Argentina titular 2025', exact: true }).click();
+    await publicPage.getByRole('heading', { name: 'Argentina titular 2025', exact: true, level: 1 }).waitFor();
+    productUrl = publicPage.url(); productPhoto = await publicPage.locator('.main-photo img').getAttribute('src');
+    assert.ok(productUrl.includes('/c/fullmatch-demo/p/argentina-'));
+    assert.equal(await publicPage.locator('link[rel=canonical]').getAttribute('href'), productUrl);
+    const schema = JSON.parse(await publicPage.locator('script[type="application/ld+json"]').textContent());
+    assert.equal(schema['@type'], 'Product'); assert.equal(schema.offers.price, '70000.00'); assert.equal(schema.offers.priceCurrency, 'ARS');
+    assert.ok((await publicPage.getByRole('link', { name: 'Consultar por WhatsApp ↗', exact: true }).getAttribute('href')).startsWith('https://wa.me/'));
+    await publicPage.waitForFunction(() => document.querySelector('.main-photo img').naturalWidth > 0);
+    await publicPage.screenshot({ path: path.join(output, 'catalog-product-desktop.png'), fullPage: true });
+    assert.ok(!publicRequests.includes('/api/state')); assert.ok(!publicRequests.some(route => route.startsWith('/api/auth/')));
+  });
+  await check('anonymous mobile product and catalog remain usable without horizontal overflow', async () => {
+    await publicPage.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await publicPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await publicPage.screenshot({ path: path.join(output, 'catalog-product-mobile.png'), fullPage: true });
+    await publicPage.goto(shopUrl); await publicPage.waitForFunction(() => [...document.querySelectorAll('.catalog-card-photo img')].every(image => image.complete && image.naturalWidth > 0));
+    assert.equal(await publicPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await publicPage.screenshot({ path: path.join(output, 'catalog-mobile.png'), fullPage: true });
+  });
+  await check('Studio publication controls immediately revoke anonymous product HTML and photo URLs', async () => {
+    const argentina = fixture.products.find(product => product.title.startsWith('Argentina'));
+    await page.goto(`${fixture.url}#/products/${argentina.id}`);
+    await page.getByRole('button', { name: 'Ocultar del catálogo', exact: true }).click();
+    await page.getByText('Oculta para clientes', { exact: true }).waitFor();
+    assert.equal((await publicPage.goto(productUrl)).status(), 404);
+    assert.equal((await publicContext.request.get(`${fixture.apiUrl}${productPhoto}`)).status(), 404);
+    await page.getByRole('button', { name: 'Publicar en catálogo', exact: true }).click();
+    await page.getByRole('button', { name: 'Ocultar del catálogo', exact: true }).waitFor();
+    assert.equal((await publicPage.goto(productUrl)).status(), 200);
+  });
+  await check('catalog master switch is explicit and leaves per-product publications independent', async () => {
+    await page.getByRole('button', { name: /Configuración/ }).first().click();
+    const toggle = page.getByRole('checkbox', { name: 'Habilitar acceso público al catálogo', exact: true });
+    await page.waitForFunction(() => { const input = document.querySelector('.catalog-settings input[type=checkbox]'); return input && !input.disabled && input.checked; });
+    await toggle.uncheck();
+    const disabledResponse = page.waitForResponse(response => response.url().endsWith('/api/commerce/v1/catalog') && response.request().method() === 'PUT');
+    await page.getByRole('button', { name: 'Guardar catálogo', exact: true }).click();
+    const disabled = await disabledResponse; assert.equal((await disabled.json()).result.publicEnabled, false);
+    await page.getByText('Configuración del catálogo guardada.', { exact: true }).waitFor();
+    assert.equal((await publicPage.goto(shopUrl)).status(), 404);
+    await toggle.check();
+    const enabledResponse = page.waitForResponse(response => response.url().endsWith('/api/commerce/v1/catalog') && response.request().method() === 'PUT');
+    await page.getByRole('button', { name: 'Guardar catálogo', exact: true }).click();
+    const enabled = await enabledResponse; assert.equal((await enabled.json()).result.publicEnabled, true);
+    await page.getByText('Configuración del catálogo guardada.', { exact: true }).waitFor();
+    assert.equal((await publicPage.goto(productUrl)).status(), 200);
+  });
   assert.deepEqual(errors, []);
   console.log(`Studio browser acceptance: ${checks} checks passed.`);
 } catch (error) {

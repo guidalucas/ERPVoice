@@ -31,6 +31,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
   const env = { ...process.env, PORT: String(port), META_WEBHOOK_PORT: String(port), AUTH_JWT_SECRET: secret,
     META_APP_SECRET: appSecret, META_VERIFY_TOKEN: verifyToken, RENDER_GIT_COMMIT: deployment,
     POSTGRES_SSL: 'false', AUTH_DEV_BYPASS: 'false', NODE_ENV: 'test', COMMERCE_STUDIO_ORIGIN: 'https://studio.fixture.invalid',
+    COMMERCE_CATALOG_ORIGIN: `http://127.0.0.1:${port}`,
     GEMINI_API_KEY: '', GROQ_API_KEY: '', VITE_VOICE_MODEL_API_KEY: '', VOICE_TRANSCRIPTION_API_KEY: '', META_ACCESS_TOKEN: '' };
   for (const key of aliases) env[key] = connection;
   const temporaryRoot = await fs.realpath(os.tmpdir());

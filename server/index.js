@@ -6,6 +6,7 @@ import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, proces
 import { transcribeAudio, MAX_AUDIO_BYTES, TranscriptionError } from './audioTranscription.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
 import { createCommerceRouter } from './commerce/router.js';
+import { createPublicCatalogRouters } from './catalog/router.js';
 import {
   createProductRecord,
   createProductModelRecords,
@@ -313,6 +314,9 @@ const recentEvents = [];
 app.use('/api/commerce/v1', authenticateRequest, createCommerceRouter({ runtime: stockyDatabaseRuntime,
   contextOf: req => ({ businessId: tenantPhoneOf(req), actorId: authPhoneOf(req),
     role: tenantPhoneOf(req) === authPhoneOf(req) ? 'owner' : 'member' }) }));
+const publicCatalog = createPublicCatalogRouters(stockyDatabaseRuntime);
+app.use('/api/catalog/v1', publicCatalog.api);
+app.use(publicCatalog.pages);
 
 app.get('/', (_req, res) => {
   res.status(200).json({ ok: true, service: 'meta-webhook', port });

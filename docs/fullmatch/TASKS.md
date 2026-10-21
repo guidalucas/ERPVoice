@@ -30,11 +30,11 @@ Completion means executed evidence, not merely files written. Production enablem
 - [x] Browser acceptance PC/mobile, fault recovery and Stocky regression checks.
 
 ## Stage 2
-- [ ] Incremental publication/public-contract specification.
-- [ ] Publication states separate from inventory and private preparation.
-- [ ] Public projection/API and media with explicit allowlist and isolation tests.
-- [ ] Responsive catalog, search/filters, stable product URLs, WhatsApp and SEO metadata.
-- [ ] Public browser/security acceptance and private Stocky regressions.
+- [x] Incremental publication/public-contract specification.
+- [x] Publication states separate from inventory and private preparation.
+- [x] Public projection/API and media with explicit allowlist and isolation tests.
+- [x] Responsive catalog, search/filters, stable product URLs, WhatsApp and SEO metadata.
+- [x] Public browser/security acceptance and private Stocky regressions.
 
 ## Stage 3
 - [ ] Incremental batch/library/promotion specification.

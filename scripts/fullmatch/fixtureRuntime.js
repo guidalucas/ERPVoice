@@ -53,6 +53,7 @@ export async function startCommerceFixture() {
     const env = { ...process.env, NODE_ENV: 'test', POSTGRES_SSL: 'false', COMMERCE_DATABASE_URL: connection, API_BIND_HOST: '127.0.0.1',
       AUTH_JWT_SECRET: randomBytes(32).toString('hex'), AUTH_DEV_BYPASS: 'false', COMMERCE_MEDIA_ADAPTER: 'local', COMMERCE_MEDIA_DIRECTORY: path.join(directory, 'media'),
       FULLMATCH_FIXTURE_SEED: 'isolated-local-only', FULLMATCH_FIXTURE_MANIFEST: manifest, PORT: String(apiPort), META_WEBHOOK_PORT: String(apiPort),
+      COMMERCE_CATALOG_ORIGIN: `http://127.0.0.1:${apiPort}`,
       META_APP_SECRET: '', META_ACCESS_TOKEN: '', GEMINI_API_KEY: '', GROQ_API_KEY: '', VITE_VOICE_MODEL_API_KEY: '', VOICE_TRANSCRIPTION_API_KEY: '',
       COMMERCE_STUDIO_ORIGIN: `http://127.0.0.1:${vitePort}` };
     for (const key of ['SUPABASE_DATABASE_URL', 'DATABASE_URL', 'POSTGRES_URL', 'POSTGRES_CONNECTION_STRING']) env[key] = connection;

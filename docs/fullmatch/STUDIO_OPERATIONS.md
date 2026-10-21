@@ -65,3 +65,20 @@ node scripts/maintain-commerce-media.js --owner <negocio> --apply --purge
 `--apply` marca cargas vencidas; `--purge` elimina objetos de fotos retiradas hace más de 24 horas y huérfanos antiguos sin referencia. Revalida la referencia y el intento bajo bloqueo antes de purgar; nunca borra un master ready ni un archivo de un intento activo. Registra `purged_at` y permite repetir la operación. Cada ejecución procesa como máximo 50 retiros y 100 objetos huérfanos. No se instala una tarea programada ni se ejecuta mantenimiento productivo automáticamente.
 
 Referencia de contrato del adaptador: [API oficial de Supabase Storage](https://supabase.github.io/storage/).
+
+## Catálogo público
+
+La migración 2 se inspecciona/aplica de forma explícita después de la fundación comercial:
+
+```powershell
+npm run commerce:catalog:schema:check
+npm run commerce:catalog:schema:apply
+```
+
+Usa `COMMERCE_DATABASE_URL`, sin bootstrap ni selección implícita de la base. No ejecutar la aplicación en producción como parte de estas instrucciones de desarrollo.
+
+En **Configuración → Catálogo público**, elegir un identificador estable y habilitar el acceso. El perfil debe tener WhatsApp de ventas. Luego usar **Publicar en catálogo** en cada ficha preparada. Ocultar una ficha o deshabilitar el catálogo corta los accesos posteriores a HTML, JSON y fotografías. Una ficha agotada puede seguir visible; una identidad, moneda o portada inválida se excluye del contrato público. Quitar el WhatsApp de ventas también hace que el catálogo deje de estar disponible.
+
+La URL es `/c/<identificador>` y cada ficha tiene `/c/<identificador>/p/<slug-estable>`. En la demostración aislada: `/c/fullmatch-demo` en el backend informado. Vite de Studio también puede mostrar esas rutas mediante su proxy local.
+
+`COMMERCE_CATALOG_ORIGIN` define explícitamente el origen absoluto para canonical y metadatos sociales. `VITE_CATALOG_ORIGIN` permite que los enlaces de Studio apunten a un dominio público separado. El catálogo entrega HTML renderizado, fotos privadas mediante API y CSS propios; no necesita un build React público ni expone el almacén operativo de Stocky.

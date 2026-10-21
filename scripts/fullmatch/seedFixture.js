@@ -9,6 +9,8 @@ import { migrateCommerce } from '../../server/commerce/migration.js';
 import { createCommerceProductService } from '../../server/commerce/productService.js';
 import { createCommerceMediaService } from '../../server/commerce/mediaService.js';
 import { sha256 } from '../../server/commerce/imageProcessor.js';
+import { migrateCatalog } from '../../server/commerce/catalogMigration.js';
+import { createCatalogService } from '../../server/commerce/catalogService.js';
 
 const connection = new URL(process.env.COMMERCE_DATABASE_URL ?? 'invalid:');
 const manifest = path.resolve(process.env.FULLMATCH_FIXTURE_MANIFEST ?? 'invalid');
@@ -17,10 +19,12 @@ if (process.env.FULLMATCH_FIXTURE_SEED !== 'isolated-local-only' || !['127.0.0.1
   || !path.basename(process.cwd()).startsWith('fullmatch-fixture-') || process.env.NODE_ENV !== 'test') throw new Error('ISOLATED_FIXTURE_REQUIRED');
 const owner = '59899000088', context = { businessId: owner, actorId: owner, role: 'owner' }, sql = new Client({ connectionString: connection.toString() });
 try {
-  await db.migrateDatabase(); await sql.connect(); await migrateCommerce(sql);
+  await db.migrateDatabase(); await sql.connect(); await migrateCommerce(sql); await migrateCatalog(sql);
   await db.saveBusinessProfile(owner, { businessName: 'FullMatch · DEMO', businessCategory: 'indumentaria' });
   await sql.query("INSERT INTO commerce_profiles(owner_phone,id,brand_name,enabled,created_by,sales_whatsapp) VALUES($1,$2,'FULLMATCH CASACAS · DEMO',true,$1,'59899000088')", [owner, randomUUID()]);
   await sql.query("INSERT INTO inventory_money_policies(owner_phone,currency,storage_unit,fraction_digits,confirmed_by,confirmed_at) VALUES($1,'ARS','major_integer',2,'fixture',NOW())", [owner]);
+  const catalog = createCatalogService(db.stockyDatabaseRuntime);
+  await catalog.configure(context, { operationId: randomUUID(), expectedRevision: 0, slug: 'fullmatch-demo', publicEnabled: true });
   const products = createCommerceProductService(db.stockyDatabaseRuntime), media = createCommerceMediaService(db.stockyDatabaseRuntime), created = [];
   const teams = [{ name: 'Barcelona', key: 'barcelona', color: '#b91e4a', accent: '#173c8a', stock: [2, 1], price: 65000 },
     { name: 'Argentina', key: 'argentina', color: '#76c8ef', accent: '#ffffff', stock: [1], price: 70000 },
@@ -38,6 +42,7 @@ try {
     const initialized = (await media.initialize(context, product.id, { operationId: randomUUID(), expectedRevision: product.revision, sourceSha256: sha256(bytes), sourceSizeBytes: bytes.length, altText: `Ilustración de prueba ${team.name}` })).result;
     product = await media.upload(context, product.id, initialized.imageId, bytes);
     product = (await products.setStatus(context, product.id, { operationId: randomUUID(), expectedRevision: product.revision, status: 'ready', reason: 'Isolated demonstration fixture' })).result;
+    await catalog.publish(context, product.id, { operationId: randomUUID(), expectedRevision: 0, expectedProductRevision: product.revision, status: 'published', reason: 'Only isolated DEMO fixture' });
     created.push({ id: product.id, title: product.title, skuIds: skus.map(sku => sku.id) });
   }
   await db.createProductRecord({ name: 'Demo Boca Juniors pendiente', size: 'XL', stockAvailable: 2, price: 63000, priceCurrency: 'ARS' }, owner, { operationId: randomUUID() });

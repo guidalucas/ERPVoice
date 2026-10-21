@@ -1,9 +1,9 @@
 {
   "version": 1,
   "status": "IN_PROGRESS",
-  "revision": 4,
-  "stage": 1,
-  "milestone": "stage-1-private-studio-acceptance-complete",
-  "nextAction": "Commit validated private Studio milestone, then incrementally specify and implement separate publication/catalog schema, public allowlisted contracts and responsive SSR catalog for stage 2. Keep all new migrations isolated and production disabled.",
-  "lastValidatedCommit": "e92484b"
+  "revision": 6,
+  "stage": 2,
+  "milestone": "stage-2-public-catalog-acceptance-complete",
+  "nextAction": "Commit Stage 2 validated by 375 PostgreSQL checks, nine real browser flows and Studio build; then implement Stage 3 incremental batch/library/promotion specification and bounded local content automation. No production publication or Meta account connection.",
+  "lastValidatedCommit": "ad3ac88"
 }

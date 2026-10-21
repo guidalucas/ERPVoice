@@ -4,6 +4,7 @@ import { issueJwt } from '../server/auth.js';
 import sharp from 'sharp';
 import { createHash } from 'node:crypto';
 import { runCommerceMediaFaultChecks } from './commerce-media-fault-checks.js';
+import { runCatalogHttpChecks } from './catalog-http-checks.js';
 
 /** Real HTTP + real temporary PostgreSQL, through Stocky's authentication middleware. */
 export async function runCommerceHttpChecks({ db, sql, check, request }) {
@@ -227,6 +228,8 @@ export async function runCommerceHttpChecks({ db, sql, check, request }) {
     await sql.query('UPDATE products SET stock_available=2 WHERE owner_phone=$1 AND id=$2', [owner, storySku.id]);
     assert.equal((await validateStory(last.json.result.snapshotId)).json.valid, false);
   });
+  const catalogChecks = await runCatalogHttpChecks({ sql, check, request, req, product: photoProduct, sku: storySku, owner, other, member });
+  photoProduct = catalogChecks.product;
   await run('gallery revision, focus, logical retirement and deleted content boundaries', async () => {
     const galleryBody = { operationId: randomUUID(), expectedRevision: photoProduct.revision, imageIds: [imageId], coverImageId: imageId };
     const gallery = await req(`/products/${photoProduct.id}/gallery`, { method: 'PUT', body: galleryBody });
@@ -244,5 +247,5 @@ export async function runCommerceHttpChecks({ db, sql, check, request }) {
     assert.equal((await upload(imageId, imageBytes)).status, 404);
   });
   await runCommerceMediaFaultChecks({ db, sql, check, owner });
-  return count + 4;
+  return count + 4 + catalogChecks.count;
 }

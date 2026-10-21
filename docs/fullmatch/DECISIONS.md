@@ -32,3 +32,9 @@ Sharp 0.35.4 was confirmed available from npm and installed with its prebuilt de
 ## D010 — independent Studio and fixture acceptance
 
 Studio builds from `studio.html`/`vite.studio.config.ts` into `dist-studio`; it reuses auth/session services without importing Stocky's application store or `/api/state`. Browser drafts and unconfirmed operations are scoped by the logged-in owner. Fixtures use a uniquely named loopback PostgreSQL database, random ports/secrets, actual authentication and local synthetic art clearly marked DEMO. Five Edge desktop/mobile acceptance flows passed, including a new ficha through SKU selection, photo processing and a real 1080x1920 export. Production enablement remains separate from fixture completion.
+
+## D011 — public catalog boundary and SSR
+
+Stage 2 adds explicit catalog migration 2; it does not modify migration 1 or auto-enable a production business. Catalog master switch and per-ficha publication have separate revisions/receipts. Public DTOs use an explicit allowlist and boolean availability, without SKU identities, internal quantities/reserves, owner IDs, keys or operational state. Every public image repeats the publication/readiness boundary. Invalid identity/money/cover/contact and disabled businesses fail closed. Replaying an old publication receipt cannot reverse a later hide.
+
+The public catalog uses Express-rendered HTML/CSS at stable `/c/:shop` and `/c/:shop/p/:slug` routes. This supplies crawlable content and SEO without another frontend runtime or rewrite requirement. Absolute canonical URLs require a configured origin; HTML and JSON-LD are escaped by context. Studio remains the separate React entry. Fixtures and tests contain DEMO data only; no production catalog or external account was published.

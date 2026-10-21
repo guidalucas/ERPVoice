@@ -6,6 +6,7 @@ await fs.mkdir(root, { recursive: true });
 const fixture = await startCommerceFixture();
 await fs.writeFile(path.join(root, 'fixture-session.json'), JSON.stringify({ owner: fixture.owner, token: fixture.token, url: fixture.url, products: fixture.products }), { mode: 0o600 });
 console.log(`FullMatch fixture: ${fixture.url}`);
+console.log(`Catálogo DEMO: ${fixture.apiUrl}/c/fullmatch-demo`);
 console.log('Datos y fotos de demostración descartables. Sesión local en .fullmatch-runtime/fixture-session.json; no es un acceso de producción.');
 console.log('Para detener y limpiar: crear .fullmatch-runtime/FIXTURE_STOP o Ctrl+C.');
 let stopped = false;
