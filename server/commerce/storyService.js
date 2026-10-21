@@ -86,7 +86,7 @@ export function createCommerceStoryService(runtime) {
         if (detail.revision !== command.expectedProductRevision) fail('REVISION_CONFLICT', 'La ficha cambió. Actualizá la previsualización.', 409);
         const content = await storyContent(client, context, productId, command.settings, { checkImageRevision: true });
         const now = Date.now();
-        return { snapshotId: data.operationId, schemaVersion: 1, rendererVersion: 3, width: 1080, height: 1920,
+        return { snapshotId: data.operationId, schemaVersion: 1, rendererVersion: 4, width: 1080, height: 1920,
           createdAt: new Date(now).toISOString(), expiresAt: new Date(Math.min(now + 86_400_000, content.promotion ? Date.parse(content.promotion.endsAt) : Infinity)).toISOString(),
           content, contentFingerprint: operationRequestDigest(content) };
       });

@@ -6,6 +6,7 @@
 npm run test:commerce
 npm run test:voice-stock-postgres
 npm run test:commerce:browser
+npm run test:studio:templates
 npm run build:studio
 ```
 
@@ -34,7 +35,9 @@ Detener con Ctrl+C o crear `.fullmatch-runtime/FIXTURE_STOP`. El proceso cierra 
 3. Vincular explícitamente las variantes físicas correspondientes. Revisar talles, moneda y precios provenientes de Stocky.
 4. Cargar fotos, elegir portada, ordenar la galería y ajustar su descripción/enfoque.
 5. Preparar la ficha. Este estado todavía es privado.
-6. Elegir una de las tres plantillas, foto, talles y encuadre; generar previsualización y descargar PNG/JPG.
+6. Elegir una de las cinco plantillas (nuevo ingreso, stock disponible, última unidad, día de fútbol o promoción), foto, talles y encuadre; generar previsualización y descargar PNG/JPG.
+
+Las historias nuevas usan `rendererVersion: 4`: plantillas HTML/CSS con fuentes Barlow empaquetadas localmente, convertidas al canvas de 1080 × 1920 para previsualizar y exportar. Las versiones 1–3 conservan el renderer Canvas anterior al reconstruir historias o lotes guardados. Los estilos de exportación tienen prefijo `.st` y se mantienen separados de las clases del editor. Los precios y las llamadas a la acción se ajustan al ancho disponible; si el contenido no entra, la exportación se rechaza con un mensaje para acortarlo.
 
 El servidor conserva el snapshot inmutable en el recibo comercial y revalida su contenido antes de habilitar y ejecutar la descarga. «Última unidad» exige una unidad total o especifica el talle con una unidad. Las reservas ya están descontadas de `stockAvailable`; no se descuentan otra vez.
 

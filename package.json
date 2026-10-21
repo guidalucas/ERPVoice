@@ -9,6 +9,7 @@
     "test:commerce:money-voice": "node --test scripts/test-business-money-voice.js",
     "test:commerce:browser": "node scripts/test-commerce-browser.js",
     "test:studio:deployment": "npm run build && node scripts/test-studio-deployment.mjs",
+    "test:studio:templates": "node scripts/test-story-templates.mjs",
     "dev:studio": "vite --config vite.studio.config.ts",
     "build:studio": "tsc --noEmit -p tsconfig.app.json && vite build --config vite.studio.config.ts",
     "dev:studio:fixture": "node scripts/dev-commerce-fixture.js",
@@ -69,10 +70,13 @@
     "commerce:appearance:schema:apply": "node scripts/migrate-commerce-appearance.js --apply"
   },
   "dependencies": {
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
     "@phosphor-icons/react": "^2.1.10",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "fflate": "^0.8.3",
+    "html-to-image": "^1.11.13",
     "pg": "^8.13.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
