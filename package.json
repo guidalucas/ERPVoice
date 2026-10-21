@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test:commerce": "node --test scripts/test-commerce-domain.js scripts/test-commerce-images.js scripts/test-fullmatch-supervisor.js",
+    "test:commerce": "node --test scripts/test-commerce-domain.js scripts/test-commerce-images.js scripts/test-commerce-promotions.js scripts/test-fullmatch-supervisor.js",
     "test:commerce:browser": "node scripts/test-commerce-browser.js",
     "dev:studio": "vite --config vite.studio.config.ts",
     "build:studio": "tsc --noEmit -p tsconfig.app.json && vite build --config vite.studio.config.ts",
@@ -14,6 +14,8 @@
     "commerce:schema:apply": "node scripts/migrate-commerce.js --apply",
     "commerce:catalog:schema:check": "node scripts/migrate-commerce-catalog.js",
     "commerce:catalog:schema:apply": "node scripts/migrate-commerce-catalog.js --apply",
+    "commerce:content:schema:check": "node scripts/migrate-commerce-content.js",
+    "commerce:content:schema:apply": "node scripts/migrate-commerce-content.js --apply",
     "commerce:media:inspect": "node scripts/maintain-commerce-media.js",
     "dev": "vite",
     "dev:api": "nodemon server/index.js",
@@ -62,10 +64,11 @@
     "@phosphor-icons/react": "^2.1.10",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "fflate": "^0.8.3",
     "pg": "^8.13.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "sharp": "^0.35.4"
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

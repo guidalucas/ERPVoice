@@ -12,7 +12,7 @@ test('orientation is applied to pixels and source EXIF is removed', async () => 
 });
 test('actual SVG and corrupt bytes cannot masquerade as commercial photos', async () => {
   await assert.rejects(() => processCommercialImage(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>')), { code: 'IMAGE_FORMAT_INVALID' });
-  await assert.rejects(() => processCommercialImage(Buffer.from('not a photo')), { code: 'IMAGE_DECODE_FAILED' });
+  await assert.rejects(() => processCommercialImage(Buffer.from([0xff, 0xd8, 0xff, 0x00])), { code: 'IMAGE_DECODE_FAILED' });
 });
 test('compressed images exceeding the pixel limit are rejected before decoding', async () => {
   const bytes = await sharp({ create: { width: 5001, height: 4800, channels: 3, background: '#ffffff' } }).png().toBuffer();

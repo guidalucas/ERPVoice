@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { command, imageBlob, query, studioFetch } from './api';
 import { renderStory, type StorySettings, type StorySnapshot } from './storyRenderer';
 import type { Product } from './types';
+import { reportExport } from './exportEvents';
+import { PromotionFields, defaultPromotion } from './PromotionFields';
 
 export function StoryEditor({ product, onBack }: { product: Product; onBack: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null), selectedImage = product.images.find(image => image.id === product.coverImageId)!;
@@ -27,10 +29,12 @@ export function StoryEditor({ product, onBack }: { product: Product; onBack: () 
       await check(prepared.snapshotId); setSnapshot(prepared); setBlob(rendered);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'No pude generar la historia.'); } finally { setBusy(false); }
   };
-  const filename = `${product.slug}-${settings.templateId}-${new Date().toISOString().slice(0, 10)}.${format === 'jpeg' ? 'jpg' : 'png'}`;
+  const filename = `${product.slug}-${settings.templateId}-${new Date().toISOString().slice(0, 10)}-${snapshot?.snapshotId.slice(0, 8) ?? 'preview'}.${format === 'jpeg' ? 'jpg' : 'png'}`;
   const finalAction = async (share = false) => {
     if (!snapshot || !blob) return; setBusy(true); setError('');
     try {
+      await check(snapshot.snapshotId);
+      await reportExport(snapshot, blob, filename, share ? 'share_requested' : 'download_requested');
       await check(snapshot.snapshotId);
       const file = new File([blob], filename, { type: blob.type });
       if (share && navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: product.title });
@@ -40,7 +44,7 @@ export function StoryEditor({ product, onBack }: { product: Product; onBack: () 
   };
   const patch = (change: Partial<StorySettings>) => setSettings(current => ({ ...current, ...change }));
   return <section className="page-section story-editor"><button className="back" onClick={onBack}>← Volver a la ficha</button><div className="section-heading"><div><p className="eyebrow dark">TU CAMISETA, LISTA PARA COMPARTIR</p><h1>Generar historia</h1></div><span className="muted">1080 × 1920</span></div>
-    {error && <div role="alert" className="notice">{error}</div>}<div className="story-layout"><div className="story-controls panel"><fieldset disabled={busy}><h2>Elegí tu presentación</h2><label className="field"><span>Plantilla</span><select aria-label="Plantilla" value={settings.templateId} onChange={event => patch({ templateId: event.target.value })}><option value="arrival">Nuevo ingreso</option><option value="available">Stock disponible</option><option value="last_unit">Última unidad</option></select></label><p className="control-help">«Nuevo ingreso» es una selección editorial. «Última unidad» se valida contra el stock actual.</p><label className="field"><span>Fotografía</span><select aria-label="Fotografía" value={settings.imageId} onChange={event => { const image = product.images.find(item => item.id === event.target.value)!; patch({ imageId: image.id, expectedImageRevision: image.revision, focalX: image.focalX, focalY: image.focalY }); }}>{product.images.filter(image => image.status === 'ready').map((image, index) => <option key={image.id} value={image.id}>Foto {index + 1}{image.id === product.coverImageId ? ' · Portada' : ''}</option>)}</select></label>
+    {error && <div role="alert" className="notice">{error}</div>}<div className="story-layout"><div className="story-controls panel"><fieldset disabled={busy}><h2>Elegí tu presentación</h2><label className="field"><span>Plantilla</span><select aria-label="Plantilla" value={settings.templateId} onChange={event => patch({ templateId: event.target.value, promotion: event.target.value === 'promo' ? settings.promotion ?? defaultPromotion() : null })}><option value="arrival">Nuevo ingreso</option><option value="available">Stock disponible</option><option value="last_unit">Última unidad</option><option value="matchday">Día de fútbol</option><option value="promo">Promoción</option></select></label>{settings.promotion && <PromotionFields promotion={settings.promotion} onChange={promotion => patch({ promotion })}/>}<p className="control-help">«Nuevo ingreso» es una selección editorial. «Última unidad» se valida contra el stock actual.</p><label className="field"><span>Fotografía</span><select aria-label="Fotografía" value={settings.imageId} onChange={event => { const image = product.images.find(item => item.id === event.target.value)!; patch({ imageId: image.id, expectedImageRevision: image.revision, focalX: image.focalX, focalY: image.focalY }); }}>{product.images.filter(image => image.status === 'ready').map((image, index) => <option key={image.id} value={image.id}>Foto {index + 1}{image.id === product.coverImageId ? ' · Portada' : ''}</option>)}</select></label>
       <div className="story-sizes"><span>Talles que querés mostrar</span><div className="sizes">{product.variants.filter(item => item.active && item.identityReviewed && (item.stockAvailable ?? 0) > 0).map(item => <label key={item.skuId}><input type="checkbox" checked={settings.skuIds.includes(item.skuId)} onChange={event => patch({ skuIds: event.target.checked ? [...settings.skuIds, item.skuId] : settings.skuIds.filter(id => id !== item.skuId) })}/>{item.size}</label>)}</div></div>
       <label className="checkbox-field"><input type="checkbox" checked={settings.showPrice} onChange={event => patch({ showPrice: event.target.checked })}/> Mostrar precio</label><label className="field"><span>Encuadre</span><select aria-label="Encuadre" value={settings.fit} onChange={event => patch({ fit: event.target.value as StorySettings['fit'] })}><option value="contain">Foto completa</option><option value="cover">Llenar el espacio</option></select></label>
       {([['zoom', 'Acercamiento', 1, 2], ['focalX', 'Posición horizontal', 0, 1], ['focalY', 'Posición vertical', 0, 1]] as const).map(([key, label, min, max]) => <label className="field" key={key}><span>{label}</span><input type="range" min={min} max={max} step="0.01" value={settings[key]} onChange={event => patch({ [key]: Number(event.target.value) })}/></label>)}

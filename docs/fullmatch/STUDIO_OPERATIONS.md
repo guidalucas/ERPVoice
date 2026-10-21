@@ -82,3 +82,22 @@ En **Configuración → Catálogo público**, elegir un identificador estable y 
 La URL es `/c/<identificador>` y cada ficha tiene `/c/<identificador>/p/<slug-estable>`. En la demostración aislada: `/c/fullmatch-demo` en el backend informado. Vite de Studio también puede mostrar esas rutas mediante su proxy local.
 
 `COMMERCE_CATALOG_ORIGIN` define explícitamente el origen absoluto para canonical y metadatos sociales. `VITE_CATALOG_ORIGIN` permite que los enlaces de Studio apunten a un dominio público separado. El catálogo entrega HTML renderizado, fotos privadas mediante API y CSS propios; no necesita un build React público ni expone el almacén operativo de Stocky.
+
+## Lotes, biblioteca y promociones
+
+La migración 3 agrega el índice de biblioteca:
+
+```powershell
+npm run commerce:content:schema:check
+npm run commerce:content:schema:apply
+```
+
+Seleccionar fichas preparadas en **Productos** y abrir **Generar historias por lote**. Elegir diseño/formato y generar. Una sola composición a la vez; máximo veinte fichas y 32 MiB. El ZIP usa nombres legibles y únicos. Si cambia el stock/precio/identidad o vence una promoción antes de descargar, se bloquea todo el ZIP para actualizar los datos.
+
+Cerrar/recargar conserva solicitudes y UUID de preparación por ficha. Volver a **Biblioteca → Retomar lote guardado** reconstruye los archivos desde los mismos snapshots y los revalida. **Actualizar datos y reiniciar intentos** crea nuevas preparaciones explícitas. Una falla individual no borra las historias preparadas de las demás fichas; corregirla o retirarla del lote antes de continuar.
+
+La biblioteca muestra snapshots preparados y eventos `generated/download_requested/share_requested` informados por el cliente. No guarda los PNG/JPG finales en backend ni confirma que el sistema operativo terminó de guardarlos. No muestra solicitudes de descarga como publicaciones en Instagram.
+
+Las plantillas **Día de fútbol** y **Promoción** se suman a las tres originales. El porcentaje promocional va de 1 a 90, con intervalo explícito de hasta 30 días y zona horaria registrada. Los precios se derivan exactamente en unidades menores con redondeo half-up; no se actualizan precios de Stocky ni se aplican descuentos a ventas/pagos. La vigencia se vuelve a comprobar antes de exportar.
+
+Publicación Meta: preparada/documentada pero deshabilitada. Ver META_PREPARATION.md. Ninguna variable de entorno activa publicaciones automáticas.

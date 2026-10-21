@@ -6,6 +6,7 @@ import { createCommerceMediaService } from './mediaService.js';
 import { MAX_IMAGE_BYTES } from './imageProcessor.js';
 import { createCommerceStoryService } from './storyService.js';
 import { createCatalogService } from './catalogService.js';
+import { createContentService } from './contentService.js';
 
 /** Authentication middleware must be mounted before this private router. */
 export function createCommerceRouter({ runtime, contextOf }) {
@@ -13,6 +14,7 @@ export function createCommerceRouter({ runtime, contextOf }) {
   const media = createCommerceMediaService(runtime);
   const stories = createCommerceStoryService(runtime);
   const catalog = createCatalogService(runtime);
+  const content = createContentService(runtime);
   router.use((req, res, next) => {
     res.setHeader('Cache-Control', 'private, no-store');
     req.commerceRequestId = randomUUID();
@@ -30,6 +32,8 @@ export function createCommerceRouter({ runtime, contextOf }) {
   router.get('/products/:id/publication', handle(req => catalog.publication(req.commerceContext, req.params.id)));
   router.put('/products/:id/publication', handle(req => catalog.publish(req.commerceContext, req.params.id, req.body)));
   router.get('/summary', handle(req => products.summary(req.commerceContext)));
+  router.get('/content-library', handle(req => content.library(req.commerceContext, req.query)));
+  router.post('/story-snapshots/:snapshotId/export-events', handle(req => content.recordExport(req.commerceContext, req.params.snapshotId, req.body), 201));
   router.get('/products', handle(req => products.list(req.commerceContext, req.query)));
   router.post('/products', handle(req => products.create(req.commerceContext, req.body), 201));
   router.get('/products/:id', handle(req => products.detail(req.commerceContext, req.params.id)));

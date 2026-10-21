@@ -1,0 +1,1 @@
+CREATE INDEX idx_commercial_operations_library ON commercial_operations(owner_phone,operation_type,created_at DESC,operation_id DESC);

@@ -1,12 +1,12 @@
 # FullMatch Studio — implementation checkpoint
 
 - Status: `IN_PROGRESS`
-- Stage: 2 — public publication and catalog.
-- Milestone: Stage 2 catalog/publication accepted locally: 375 PostgreSQL checks, nine browser flows and independent Studio build pass.
+- Stage: 3 — local content automation, library and promotions.
+- Milestone: Stage 3 accepted: 379 PostgreSQL checks, 26 pure/image/supervisor tests, 14 real browser flows and both production builds pass. Captures reviewed; compatible tooling updates verified.
 - Last completed task: real browser PNG/JPG export, mobile layout and lost-response recovery; PostgreSQL media COMMIT-acknowledgement and interrupted-upload fault checks.
-- Last validated local implementation commit: `ad3ac88`. Baseline: `4dc5d9b`.
+- Last validated local implementation commit: `2da4c0c`. Baseline: `4dc5d9b`.
 - Files changed: see `git status`; prior audit and plan were untracked user-requested documents and are preserved.
-- Next concrete action: finish final catalog browser/Stocky regression, update checkpoint and commit Stage 2; then specify and implement bounded batch generation, content history and simple promotions for Stage 3.
+- Next concrete action: implement bounded sequential ZIP batches with persisted operation IDs, private content history/export events, additional templates and exact promotional prices. See STAGE_3_CONTRACT.md. Meta remains documentation/preparation only.
 
 ## Verification
 
@@ -20,6 +20,9 @@
 - `npm run build:studio`: TypeScript and independent Vite production build passed, including accessible selectors and draft recovery.
 - Stage-2 final PostgreSQL run: 375 checks passed, including second migration idempotency/scoped FK/no inventory mutation, public field allowlist, hide/master-switch/replay boundaries, live stock/money/identity/contact, HTML/JSON-LD escaping and archive/restore.
 - Stage-2 final browser: all nine flows passed, including anonymous desktop/mobile catalog, SSR metadata/filtering, per-ficha and whole-catalog revoke/restoration. State-loading controls reject stale effect results; the test waits for initialized settings before changing the switch. Captures inspected visually.
+- Stage-3 final browser: 14/14 passed after Vite 6.4.4/Playwright-compatible tool updates; actual promotion PNG, unpacked ZIP JPGs, exact snapshot/operation resume IDs, changed-stock download refusal and mobile library/batch layout verified.
+- Stage-3 final PostgreSQL: 379 checks passed; pure/image/promotion/supervisor suite: 26/26. Both `npm run build:studio` and legacy `npm run build` passed.
+- Runtime dependency audit: zero. Full audit after compatible updates: eight development-only advisories (one moderate/seven high, no critical), associated with legacy Tailwind/glob/watch/parser chains. No forced major Tailwind migration was applied; these do not enter the deployed Node runtime dependency set.
 - PowerShell wrapper `-Status`, JS syntax and `git diff --check` passed.
 
 ## External enablement blockers (do not block fixture development)

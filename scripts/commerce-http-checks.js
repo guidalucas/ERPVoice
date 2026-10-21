@@ -5,6 +5,7 @@ import sharp from 'sharp';
 import { createHash } from 'node:crypto';
 import { runCommerceMediaFaultChecks } from './commerce-media-fault-checks.js';
 import { runCatalogHttpChecks } from './catalog-http-checks.js';
+import { runContentHttpChecks } from './content-http-checks.js';
 
 /** Real HTTP + real temporary PostgreSQL, through Stocky's authentication middleware. */
 export async function runCommerceHttpChecks({ db, sql, check, request }) {
@@ -174,7 +175,7 @@ export async function runCommerceHttpChecks({ db, sql, check, request }) {
     const corrupt = Buffer.from('not an image'); const initialized = await initialize(corrupt);
     assert.equal(initialized.status, 201, initialized.text); photoProduct = initialized.json.result.product;
     const id = initialized.json.result.imageId;
-    const invalid = await upload(id, corrupt); assert.equal(invalid.status, 422, invalid.text);
+    const invalid = await upload(id, corrupt); assert.equal(invalid.status, 415, invalid.text);
     photoProduct = await detail(); const image = photoProduct.images.find(item => item.id === id); assert.equal(image.status, 'failed');
     const retired = await req(`/products/${photoProduct.id}/images/${id}`, { method: 'PATCH', body: {
       operationId: randomUUID(), expectedRevision: photoProduct.revision, expectedImageRevision: image.revision, altText: image.altText,
@@ -230,6 +231,7 @@ export async function runCommerceHttpChecks({ db, sql, check, request }) {
   });
   const catalogChecks = await runCatalogHttpChecks({ sql, check, request, req, product: photoProduct, sku: storySku, owner, other, member });
   photoProduct = catalogChecks.product;
+  const contentChecks = await runContentHttpChecks({ sql, check, request, req, product: photoProduct, sku: storySku, owner, other, prepare: prepareStory });
   await run('gallery revision, focus, logical retirement and deleted content boundaries', async () => {
     const galleryBody = { operationId: randomUUID(), expectedRevision: photoProduct.revision, imageIds: [imageId], coverImageId: imageId };
     const gallery = await req(`/products/${photoProduct.id}/gallery`, { method: 'PUT', body: galleryBody });
@@ -247,5 +249,5 @@ export async function runCommerceHttpChecks({ db, sql, check, request }) {
     assert.equal((await upload(imageId, imageBytes)).status, 404);
   });
   await runCommerceMediaFaultChecks({ db, sql, check, owner });
-  return count + 4 + catalogChecks.count;
+  return count + 4 + catalogChecks.count + contentChecks;
 }

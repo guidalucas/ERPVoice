@@ -8,6 +8,11 @@ export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 /** Decode the actual bytes, orient pixels and re-encode without source metadata. */
 export async function processCommercialImage(bytes) {
   if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > MAX_IMAGE_BYTES) fail('IMAGE_SIZE_INVALID', 'La foto debe pesar hasta 12 MB.', 413);
+  // Do not invoke SVG/other native loaders even to inspect metadata.
+  const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const png = bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const webp = bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (!jpeg && !png && !webp) fail('IMAGE_FORMAT_INVALID', 'Usá una foto JPG, PNG o WebP.', 415);
   try {
     const options = { limitInputPixels: 24_000_000, failOn: 'warning', animated: false };
     const metadata = await sharp(bytes, options).metadata();

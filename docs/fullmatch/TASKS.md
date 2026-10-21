@@ -37,11 +37,11 @@ Completion means executed evidence, not merely files written. Production enablem
 - [x] Public browser/security acceptance and private Stocky regressions.
 
 ## Stage 3
-- [ ] Incremental batch/library/promotion specification.
-- [ ] Multiple selection, sequential batch export and recovery.
-- [ ] Content history/library, extra templates, simple promotions, mobile polish.
-- [ ] Verify current official Meta capabilities; preparation only, no account connection/publication.
-- [ ] Integration/browser acceptance and regression checks.
+- [x] Incremental batch/library/promotion specification.
+- [x] Multiple selection, sequential batch export and recovery.
+- [x] Content history/library, extra templates, simple promotions, mobile polish.
+- [x] Verify current official Meta capabilities; preparation only, no account connection/publication.
+- [x] Integration/browser acceptance and regression checks.
 
 ## Stage 4 and delivery
 - [ ] Evaluate commerce provider versus scoped local flow; record decision.

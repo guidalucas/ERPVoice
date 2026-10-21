@@ -38,3 +38,17 @@ Studio builds from `studio.html`/`vite.studio.config.ts` into `dist-studio`; it 
 Stage 2 adds explicit catalog migration 2; it does not modify migration 1 or auto-enable a production business. Catalog master switch and per-ficha publication have separate revisions/receipts. Public DTOs use an explicit allowlist and boolean availability, without SKU identities, internal quantities/reserves, owner IDs, keys or operational state. Every public image repeats the publication/readiness boundary. Invalid identity/money/cover/contact and disabled businesses fail closed. Replaying an old publication receipt cannot reverse a later hide.
 
 The public catalog uses Express-rendered HTML/CSS at stable `/c/:shop` and `/c/:shop/p/:slug` routes. This supplies crawlable content and SEO without another frontend runtime or rewrite requirement. Absolute canonical URLs require a configured origin; HTML and JSON-LD are escaped by context. Studio remains the separate React entry. Fixtures and tests contain DEMO data only; no production catalog or external account was published.
+
+## D012 — dependency findings and verified runtime fixes
+
+Installing the ZIP helper triggered a dependency audit. Production dependencies included advisories for Sharp/librsvg, proxy-addr, body-parser and qs. Verified the maintainer advisories and updated Sharp to 0.35.5 and Express to a compatible 5.3.0 resolution. The image pipeline additionally checks JPEG/PNG/WebP signatures before invoking any native metadata loader. `npm audit --omit=dev` then reported zero vulnerabilities; 375 PostgreSQL regressions and 24 domain/image/supervisor tests passed after these runtime changes. Subsequent Stage-3 acceptance reached 379 PostgreSQL checks, 26 domain/image/promotion/supervisor tests and 14 browser flows.
+
+Npm initially failed certificate verification for the ZIP package. Using Node's supported Windows system CA store succeeded with TLS verification intact; no registry/TLS bypass or persistent npm configuration change was made. ZIP helper: fflate 0.8.3. Compatible development-tool patch updates are being verified separately; no forced major framework migration is authorized by a blanket audit command.
+
+Sources: [Sharp maintainer advisory](https://github.com/lovell/sharp/security/advisories/GHSA-wq5f-xc86-pv6w), [proxy-addr advisory](https://github.com/advisories/GHSA-jqcg-44mw-7w3h), [fflate 0.8.3 release](https://github.com/101arrowz/fflate/releases/tag/v0.8.3).
+
+## D013 — local batch and truthful content history
+
+Batch progress stores one preparation operation ID/request per ficha before sending it. Reopening reconstructs images sequentially from those same immutable snapshots; it does not promise to retain image buffers. A single Canvas feeds a ZIP capped at 20 items and 32 MiB, with fresh semantic checks before making/downloading it. Actual browser acceptance unpacked the ZIP and checked real 1080x1920 JPGs, stable resume IDs and whole-ZIP refusal after stock changed.
+
+Content library reuses existing receipts instead of adding a second snapshot store. Migration 3 adds a private operations index. Export events are explicitly client-reported generation/download/share requests, never proof of filesystem delivery or network publication. Promotions use exact integer minor units with half-up rounding, explicit instants/time zone and validity checks, and never change inventory prices. Meta preparation is hard-disabled and documented from Meta's official workspace; real account/API requirements remain external gates.

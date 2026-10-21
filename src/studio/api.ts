@@ -34,9 +34,17 @@ function settleOperation(pending: Pending) {
   forgetOperation(pending.operationId);
 }
 export async function command<T>(route: string, method: string, input: Record<string, unknown>): Promise<T> {
-  const operationId = crypto.randomUUID(), body = { ...input, operationId };
+  return commandWithId(route, method, crypto.randomUUID(), input);
+}
+export async function commandWithId<T>(route: string, method: string, operationId: string, input: Record<string, unknown>): Promise<T> {
+  const body = { ...input, operationId };
   const pending = { operationId, route, method, body, at: new Date().toISOString() };
   const items = pendingOperations();
+  const existing = items.find(item => item.operationId === operationId);
+  if (existing) {
+    if (existing.route !== route || existing.method !== method || JSON.stringify(existing.body) !== JSON.stringify(body)) throw new StudioError('IDEMPOTENCY_CONFLICT', 'El intento pertenece a otro contenido. Actualizá el lote antes de continuar.', 409);
+    return retryOperation<T>(existing);
+  }
   if (items.length >= 30) throw new StudioError('PENDING_LIMIT', 'Recuperá los intentos pendientes antes de crear otros.', 409);
   savePending([...items, pending]);
   return retryOperation<T>(pending);

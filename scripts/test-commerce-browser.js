@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
+import { unzipSync } from 'fflate';
+import { Client } from 'pg';
 import { startCommerceFixture } from './fullmatch/fixtureRuntime.js';
 
 const output = path.resolve('.fullmatch-runtime/browser'); await fs.mkdir(output, { recursive: true });
@@ -166,6 +168,76 @@ try {
     const enabled = await enabledResponse; assert.equal((await enabled.json()).result.publicEnabled, true);
     await page.getByText('Configuración del catálogo guardada.', { exact: true }).waitFor();
     assert.equal((await publicPage.goto(productUrl)).status(), 200);
+  });
+  await check('promotional story exports exact derived money without changing the source price', async () => {
+    await page.getByRole('button', { name: /Productos/ }).first().click();
+    await page.getByRole('heading', { name: 'Argentina titular 2025', exact: true }).click();
+    await page.getByRole('button', { name: 'Generar historia ↗' }).click();
+    await page.getByLabel('Plantilla', { exact: true }).selectOption('promo');
+    await page.getByLabel('Descuento promocional (%)', { exact: true }).fill('15');
+    const prepareResponse = page.waitForResponse(response => /\/products\/[^/]+\/story-snapshots$/.test(new URL(response.url()).pathname) && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Generar previsualización', exact: true }).click();
+    const snapshot = (await (await prepareResponse).json()).result;
+    assert.equal(snapshot.content.price.minAmountMinor, '7000000'); assert.equal(snapshot.content.promotion.minAmountMinor, '5950000');
+    await page.waitForFunction(() => !document.querySelector('.export-actions button')?.hasAttribute('disabled'));
+    const pending = page.waitForEvent('download'); await page.getByRole('button', { name: 'Descargar PNG ↓' }).click(); const exported = await pending;
+    await exported.saveAs(path.join(output, 'promotion-story.png')); assert.equal((await sharp(await fs.readFile(await exported.path())).metadata()).width, 1080);
+    const publicData = await publicContext.request.get(`${fixture.apiUrl}/api/catalog/v1/fullmatch-demo/products`);
+    const argentina = (await publicData.json()).items.find(product => product.teamKey === 'argentina'); assert.equal(argentina.priceRange.minAmountMinor, '7000000');
+  });
+  await check('content library distinguishes prepared snapshots from requested downloads', async () => {
+    await page.getByRole('button', { name: /Biblioteca/ }).first().click();
+    await page.getByRole('heading', { name: 'Biblioteca de historias', exact: true }).waitFor();
+    await page.locator('.library-card').first().waitFor();
+    assert.ok(await page.locator('.library-card').count() >= 4);
+    assert.ok(await page.getByText('Descarga solicitada', { exact: true }).count() > 0);
+    assert.ok(!(await page.locator('.library-card').allTextContents()).some(text => text.includes('Publicado en Instagram')));
+    await page.screenshot({ path: path.join(output, 'library-desktop.png'), fullPage: true });
+  });
+  let batchBefore;
+  const batchValue = () => page.evaluate(() => { const key = Object.keys(localStorage).find(key => key.startsWith('fullmatch.batch.')); return JSON.parse(localStorage.getItem(key)); });
+  await check('batch uses one canvas, resumes exact snapshot IDs and exports a valid ZIP of real JPGs', async () => {
+    await page.getByRole('button', { name: /Productos/ }).first().click();
+    await page.getByRole('checkbox', { name: 'Seleccionar Argentina titular 2025', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Seleccionar Barcelona titular 2025', exact: true }).check();
+    await page.getByRole('button', { name: 'Generar historias por lote (2) ↗', exact: true }).click();
+    await page.getByRole('heading', { name: 'Historias por lote', exact: true }).waitFor();
+    assert.equal(await page.locator('.batch-render-canvas').count(), 1);
+    await page.getByRole('button', { name: 'Generar lote', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('.batch-download button')?.hasAttribute('disabled'));
+    batchBefore = await batchValue(); assert.ok(batchBefore.items.every(item => item.status === 'generated' && item.snapshotId));
+    await page.reload(); await page.getByRole('heading', { name: 'Historias por lote', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Reconstruir y validar lote', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('.batch-download button')?.hasAttribute('disabled'));
+    const resumed = await batchValue(); assert.deepEqual(resumed.items.map(item => item.snapshotId), batchBefore.items.map(item => item.snapshotId));
+    assert.deepEqual(resumed.items.map(item => item.operationId), batchBefore.items.map(item => item.operationId));
+    const pending = page.waitForEvent('download'); await page.getByRole('button', { name: 'Descargar lote ZIP ↓', exact: true }).click(); const downloaded = await pending;
+    await downloaded.saveAs(path.join(output, 'batch-export.zip'));
+    const files = unzipSync(new Uint8Array(await fs.readFile(await downloaded.path()))); assert.equal(Object.keys(files).length, 2);
+    for (const [name, bytes] of Object.entries(files)) { assert.ok(name.endsWith('.jpg')); const metadata = await sharp(bytes).metadata(); assert.equal(metadata.format, 'jpeg'); assert.equal(metadata.width, 1080); assert.equal(metadata.height, 1920); }
+    await page.screenshot({ path: path.join(output, 'batch-desktop.png'), fullPage: true });
+  });
+  await check('changed inventory after generation blocks the whole ZIP before download', async () => {
+    const sql = new Client({ connectionString: fixture.connection }); await sql.connect();
+    const argentina = fixture.products.find(product => product.title.startsWith('Argentina')), skuId = argentina.skuIds[0]; let downloads = 0;
+    const listener = () => downloads++; page.on('download', listener);
+    try {
+      await sql.query('UPDATE products SET stock_available=0 WHERE owner_phone=$1 AND id=$2', [fixture.owner, skuId]);
+      await page.getByRole('button', { name: 'Descargar lote ZIP ↓', exact: true }).click();
+      await page.getByText('Cambiaron los datos o venció la historia.', { exact: false }).waitFor();
+      assert.equal(downloads, 0); assert.equal(await page.getByRole('button', { name: 'Descargar lote ZIP ↓', exact: true }).isEnabled(), false);
+    } finally { page.off('download', listener); await sql.query('UPDATE products SET stock_available=1 WHERE owner_phone=$1 AND id=$2', [fixture.owner, skuId]); await sql.end(); }
+  });
+  await check('batch progress and library remain usable on mobile without horizontal overflow', async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.screenshot({ path: path.join(output, 'batch-mobile.png'), fullPage: true });
+    await page.getByRole('button', { name: /Biblioteca/ }).first().click();
+    await page.locator('.library-card').first().waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.getByRole('button', { name: 'Retomar lote guardado ↗', exact: true }).click();
+    await page.getByRole('heading', { name: 'Historias por lote', exact: true }).waitFor();
+    assert.equal((await batchValue()).batchId, batchBefore.batchId);
   });
   assert.deepEqual(errors, []);
   console.log(`Studio browser acceptance: ${checks} checks passed.`);

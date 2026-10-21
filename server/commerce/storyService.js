@@ -3,16 +3,20 @@ import { record, uuid, integer, text, denseArray } from './validation.js';
 import { fail } from './errors.js';
 import { executeCommerceCommand, requireCommerceAccess } from './operationRepository.js';
 import { readProductDetail, readProfile } from './productRepository.js';
+import { normalizePromotion, requireActivePromotion, promotionalAmount } from './promotions.js';
 
 export const storyTemplates = Object.freeze({ arrival: { version: 1, heading: 'NUEVO INGRESO' },
-  available: { version: 1, heading: 'STOCK DISPONIBLE' }, last_unit: { version: 1, heading: 'ÚLTIMA UNIDAD' } });
+  available: { version: 1, heading: 'STOCK DISPONIBLE' }, last_unit: { version: 1, heading: 'ÚLTIMA UNIDAD' },
+  matchday: { version: 1, heading: 'LA PASIÓN SE LLEVA PUESTA' }, promo: { version: 1, heading: 'PROMO FULLMATCH' } });
 const settingsOf = input => {
-  const data = record(input, ['templateId', 'templateVersion', 'imageId', 'expectedImageRevision', 'skuIds', 'showPrice', 'fit', 'zoom', 'focalX', 'focalY', 'caption', 'cta']);
+  const data = record(input, ['templateId', 'templateVersion', 'imageId', 'expectedImageRevision', 'skuIds', 'showPrice', 'fit', 'zoom', 'focalX', 'focalY', 'caption', 'cta', 'promotion']);
   if (!Object.hasOwn(storyTemplates, data.templateId) || data.templateVersion !== 1) fail('STORY_TEMPLATE_INVALID', 'Elegí una plantilla vigente.', 400);
   const range = (value, min, max) => { if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) fail('INVALID_COMMAND', 'Encuadre inválido.', 400); return value; };
   const skuIds = denseArray(data.skuIds, 100, 'story variants').map(id => text(id, 180, 'SKU id'));
   if (new Set(skuIds).size !== skuIds.length || !skuIds.length || typeof data.showPrice !== 'boolean' || !['contain', 'cover'].includes(data.fit)) fail('INVALID_COMMAND', 'Selección de historia inválida.', 400);
-  return { templateId: data.templateId, templateVersion: 1, imageId: uuid(data.imageId), expectedImageRevision: integer(data.expectedImageRevision, 1),
+  const promotion = data.promotion == null ? null : normalizePromotion(data.promotion);
+  if ((data.templateId === 'promo') !== Boolean(promotion)) fail('PROMOTION_INVALID', 'Usá una promoción completa con su plantilla correspondiente.', 400);
+  return { templateId: data.templateId, templateVersion: 1, imageId: uuid(data.imageId), expectedImageRevision: integer(data.expectedImageRevision, 1), promotion,
     skuIds: [...skuIds].sort(), showPrice: data.showPrice, fit: data.fit, zoom: range(data.zoom, 1, 2), focalX: range(data.focalX, 0, 1), focalY: range(data.focalY, 0, 1),
     caption: text(data.caption, 100, 'caption', { empty: true }), cta: text(data.cta, 50, 'CTA', { empty: true }) };
 };
@@ -40,11 +44,18 @@ async function storyContent(client, context, productId, settings, { checkImageRe
   const amounts = selected.map(variant => BigInt(variant.price.amountMinor)).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
   const currencies = new Set(selected.map(variant => variant.price.currency));
   if (currencies.size !== 1) fail('STORY_MONEY_INVALID', 'Las variantes no comparten moneda.', 422);
+  let promotion = null;
+  if (settings.promotion) {
+    requireActivePromotion(settings.promotion);
+    const promotional = selected.map(variant => promotionalAmount(variant.price.amountMinor, settings.promotion.percentage))
+      .sort((a, b) => BigInt(a) < BigInt(b) ? -1 : BigInt(a) > BigInt(b) ? 1 : 0);
+    promotion = { ...settings.promotion, minAmountMinor: promotional[0], maxAmountMinor: promotional.at(-1) }; heading = promotion.label;
+  }
   return { productId, title: detail.title, description: detail.description, teamName: detail.teamName, season: detail.season,
     kitKey: detail.kitKey, versionKey: detail.versionKey, sleeveKey: detail.sleeveKey,
     brandName: profile.brand_name, brandPreset: profile.brand_preset, salesWhatsapp: profile.sales_whatsapp,
     imageId: settings.imageId, imageSha256: image.master_sha256, imageAlt: photo.altText,
-    heading, assertion, availableQuantity: total, totalProductQuantity: detail.availableQuantity,
+    heading, assertion, promotion, availableQuantity: total, totalProductQuantity: detail.availableQuantity,
     variants: selected.map(variant => ({ skuId: variant.skuId, size: variant.size, stockAvailable: variant.stockAvailable,
       price: variant.price, identityFingerprint: variant.identityFingerprint })),
     price: { currency: selected[0].price.currency, fractionDigits: selected[0].price.fractionDigits,
@@ -72,8 +83,8 @@ export function createCommerceStoryService(runtime) {
         if (detail.revision !== command.expectedProductRevision) fail('REVISION_CONFLICT', 'La ficha cambió. Actualizá la previsualización.', 409);
         const content = await storyContent(client, context, productId, command.settings, { checkImageRevision: true });
         const now = Date.now();
-        return { snapshotId: data.operationId, schemaVersion: 1, rendererVersion: 1, width: 1080, height: 1920,
-          createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 86_400_000).toISOString(),
+        return { snapshotId: data.operationId, schemaVersion: 1, rendererVersion: 2, width: 1080, height: 1920,
+          createdAt: new Date(now).toISOString(), expiresAt: new Date(Math.min(now + 86_400_000, content.promotion ? Date.parse(content.promotion.endsAt) : Infinity)).toISOString(),
           content, contentFingerprint: operationRequestDigest(content) };
       });
     },

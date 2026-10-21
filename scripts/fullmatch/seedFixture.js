@@ -11,6 +11,7 @@ import { createCommerceMediaService } from '../../server/commerce/mediaService.j
 import { sha256 } from '../../server/commerce/imageProcessor.js';
 import { migrateCatalog } from '../../server/commerce/catalogMigration.js';
 import { createCatalogService } from '../../server/commerce/catalogService.js';
+import { migrateContent } from '../../server/commerce/contentMigration.js';
 
 const connection = new URL(process.env.COMMERCE_DATABASE_URL ?? 'invalid:');
 const manifest = path.resolve(process.env.FULLMATCH_FIXTURE_MANIFEST ?? 'invalid');
@@ -19,7 +20,7 @@ if (process.env.FULLMATCH_FIXTURE_SEED !== 'isolated-local-only' || !['127.0.0.1
   || !path.basename(process.cwd()).startsWith('fullmatch-fixture-') || process.env.NODE_ENV !== 'test') throw new Error('ISOLATED_FIXTURE_REQUIRED');
 const owner = '59899000088', context = { businessId: owner, actorId: owner, role: 'owner' }, sql = new Client({ connectionString: connection.toString() });
 try {
-  await db.migrateDatabase(); await sql.connect(); await migrateCommerce(sql); await migrateCatalog(sql);
+  await db.migrateDatabase(); await sql.connect(); await migrateCommerce(sql); await migrateCatalog(sql); await migrateContent(sql);
   await db.saveBusinessProfile(owner, { businessName: 'FullMatch · DEMO', businessCategory: 'indumentaria' });
   await sql.query("INSERT INTO commerce_profiles(owner_phone,id,brand_name,enabled,created_by,sales_whatsapp) VALUES($1,$2,'FULLMATCH CASACAS · DEMO',true,$1,'59899000088')", [owner, randomUUID()]);
   await sql.query("INSERT INTO inventory_money_policies(owner_phone,currency,storage_unit,fraction_digits,confirmed_by,confirmed_at) VALUES($1,'ARS','major_integer',2,'fixture',NOW())", [owner]);
