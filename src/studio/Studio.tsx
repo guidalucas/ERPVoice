@@ -249,14 +249,14 @@ function Settings({ profile, onSaved }: { profile: Profile; onSaved: (profile: P
       if (file.size > 12 * 1024 * 1024) throw new Error('La imagen debe pesar hasta 12 MB.');
       const result = await (await studioFetch(`/brand-assets/${kind}`, { method: 'POST', headers: { 'Content-Type': file.type }, body: file })).json();
       setAppearance(current => ({ ...current, [`${kind}Id`]: result.id }));
-    } catch (cause) { setError(message(cause)); } finally { setBusy(false); }
+    } catch (cause) { setError(message(cause)); throw cause; } finally { setBusy(false); }
   };
   return <section className="page-section settings"><p className="eyebrow dark">LA IDENTIDAD DE TU NEGOCIO</p><h1>Configuración</h1><form className="panel" onChange={() => setSaved(false)} onSubmit={async event => {
     event.preventDefault(); setBusy(true); setError(''); setSaved(false);
     try { onSaved(await command('/profile', 'PUT', { expectedRevision: profile.revision, brandName, salesWhatsapp: phone || null, appearance })); setSaved(true); }
     catch (cause) { setError(message(cause)); } finally { setBusy(false); }
   }}><fieldset disabled={busy}><h2>Información comercial</h2><Field label="Nombre de marca"><input required maxLength={80} value={brandName} onChange={event => setBrandName(event.target.value)}/></Field><Field label="WhatsApp de ventas · código de país y número"><input inputMode="tel" pattern="[0-9]{8,15}" value={phone} onChange={event => setPhone(event.target.value)} placeholder="598…"/></Field>
-    <AppearanceFields value={appearance} onChange={value => { setAppearance(value); setSaved(false); }} brandName={brandName} disabled={busy} onUpload={(kind, file) => void upload(kind, file)}/>
+    <AppearanceFields value={appearance} onChange={value => { setAppearance(value); setSaved(false); }} brandName={brandName} disabled={busy} onUpload={upload}/>
     </fieldset>{error && <Notice>{error}</Notice>}{saved && <Notice>Configuración guardada.</Notice>}<button className="primary" disabled={busy}>{busy ? 'Procesando…' : 'Guardar configuración'}</button></form>
     <div className="panel"><h2>Moneda y precios</h2><p>{profile.moneyPolicy ? `${profile.moneyPolicy.currency} · Importes de Stocky en unidades enteras` : 'Pendiente de confirmación para este negocio'}</p><small>La moneda fue confirmada al configurar tu negocio. Revisá las variantes históricas debajo; los cambios de precio se realizan en Stocky.</small></div><CatalogSettings/></section>;
 }

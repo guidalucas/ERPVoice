@@ -16,15 +16,28 @@ export function BrandImage({ id, alt = '', className = '' }: { id: string; alt?:
 
 export function AppearanceFields({ value, onChange, brandName, disabled, onUpload }: {
   value: Appearance; onChange: (value: Appearance) => void; brandName: string; disabled: boolean;
-  onUpload: (kind: 'logo' | 'cover', file: File) => void;
+  onUpload: (kind: 'logo' | 'cover', file: File) => Promise<void>;
 }) {
+  const [uploads, setUploads] = useState<Partial<Record<'logo' | 'cover', { file: File; status: 'uploading' | 'ready' | 'error' }>>>({});
+  const upload = async (kind: 'logo' | 'cover', file: File) => {
+    setUploads(current => ({ ...current, [kind]: { file, status: 'uploading' } }));
+    try {
+      await onUpload(kind, file);
+      setUploads(current => ({ ...current, [kind]: { file, status: 'ready' } }));
+    } catch {
+      setUploads(current => ({ ...current, [kind]: { file, status: 'error' } }));
+    }
+  };
   const patch = (change: Partial<Appearance>) => onChange({ ...value, ...change });
   return <><h2>Identidad visual</h2><p>El logo y los colores se usan en tu catálogo y en las nuevas historias. La portada y los textos personalizan tu página pública.</p>
     <div className="brand-uploads">{(['logo', 'cover'] as const).map(kind => <div key={kind}>
-      <label className="field"><span>{kind === 'logo' ? 'Logo del negocio' : 'Portada del catálogo'}</span>
-        <input type="file" disabled={disabled} accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) onUpload(kind, file); }}/>
-      </label><small>{kind === 'logo' ? 'Recomendado: cuadrado, PNG con transparencia.' : 'Recomendado: horizontal, 1600 × 900.'} JPG, PNG o WebP, hasta 12 MB.</small>
-      {value[`${kind}Id`] && <button type="button" disabled={disabled} onClick={() => patch({ [`${kind}Id`]: null })}>Quitar {kind === 'logo' ? 'logo' : 'portada'}</button>}
+      <label className={`field brand-file-control ${disabled ? 'disabled' : ''}`}><span>{kind === 'logo' ? 'Logo del negocio' : 'Portada del catálogo'}</span>
+        <input aria-label={kind === 'logo' ? 'Logo del negocio' : 'Portada del catálogo'} type="file" disabled={disabled} accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void upload(kind, file); }}/>
+        <span className="brand-file-button">Elegir {kind === 'logo' ? 'logo' : 'portada'}</span>
+      </label><small className="brand-upload-status" role="status">{uploads[kind] ? `${uploads[kind]!.file.name} · ${uploads[kind]!.status === 'uploading' ? 'Cargando…' : uploads[kind]!.status === 'ready' ? 'Cargado. Guardá la configuración para aplicarlo.' : 'No se pudo cargar.'}` : value[`${kind}Id`] ? 'Imagen cargada.' : 'Todavía no elegiste una imagen.'}</small>
+      <small>{kind === 'logo' ? 'Recomendado: cuadrado, PNG con transparencia.' : 'Recomendado: horizontal, 1600 × 900.'} JPG, PNG o WebP, hasta 12 MB. Adaptamos el tamaño automáticamente.</small>
+      {uploads[kind]?.status === 'error' && <button type="button" disabled={disabled} onClick={() => void upload(kind, uploads[kind]!.file)}>Reintentar {kind === 'logo' ? 'logo' : 'portada'}</button>}
+      {value[`${kind}Id`] && <button type="button" disabled={disabled} onClick={() => { patch({ [`${kind}Id`]: null }); setUploads(current => ({ ...current, [kind]: undefined })); }}>Quitar {kind === 'logo' ? 'logo' : 'portada'}</button>}
     </div>)}</div>
     <div className="brand-colors">{([['primaryColor', 'Color de fondo'], ['accentColor', 'Color de acento']] as const).map(([key, label]) => <label className="field" key={key}><span>{label}</span><input type="color" value={value[key]} onChange={event => patch({ [key]: event.target.value })}/></label>)}</div>
     <h2>Tu página</h2>{([['tagline', 'Frase de marca', 80], ['heroTitle', 'Título de portada', 120], ['heroDescription', 'Descripción de portada', 300], ['collectionTitle', 'Título de la colección', 60]] as const).map(([key, label, limit]) => <label className="field" key={key}><span>{label}</span>{key === 'heroDescription' ? <textarea maxLength={limit} value={value[key]} onChange={event => patch({ [key]: event.target.value })}/> : <input required={key === 'heroTitle' || key === 'collectionTitle'} maxLength={limit} value={value[key]} onChange={event => patch({ [key]: event.target.value })}/>}</label>)}
