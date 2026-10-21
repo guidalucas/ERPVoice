@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "test:commerce": "node --test scripts/test-commerce-domain.js scripts/test-commerce-images.js scripts/test-commerce-promotions.js scripts/test-fullmatch-supervisor.js",
+    "test:commerce:onboarding": "node scripts/test-commerce-onboarding.js",
+    "test:commerce:money-voice": "node --test scripts/test-business-money-voice.js",
     "test:commerce:browser": "node scripts/test-commerce-browser.js",
     "test:studio:deployment": "npm run build && node scripts/test-studio-deployment.mjs",
     "dev:studio": "vite --config vite.studio.config.ts",
@@ -13,6 +15,8 @@
     "commerce:inspect": "node scripts/inspect-commerce-data.js",
     "commerce:schema:check": "node scripts/migrate-commerce.js --check",
     "commerce:schema:apply": "node scripts/migrate-commerce.js --apply",
+    "commerce:schema:sql": "node scripts/generate-commerce-sql.js",
+    "test:commerce:sql": "node scripts/test-commerce-sql.js",
     "commerce:catalog:schema:check": "node scripts/migrate-commerce-catalog.js",
     "commerce:catalog:schema:apply": "node scripts/migrate-commerce-catalog.js --apply",
     "commerce:content:schema:check": "node scripts/migrate-commerce-content.js",

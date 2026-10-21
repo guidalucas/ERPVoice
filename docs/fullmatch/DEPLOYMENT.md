@@ -52,6 +52,33 @@ Guardar variables y desplegar el servicio para activarlas. No cambiar `PORT` ni 
 
 ## Base real: comprobación separada del deploy
 
+### Alternativa sin Shell: SQL Editor de Supabase
+
+El archivo [SUPABASE_COMMERCIAL_SCHEMA.sql](SUPABASE_COMMERCIAL_SCHEMA.sql) contiene las tres migraciones y su registro de versiones. Se genera desde los SQL originales con `npm run commerce:schema:sql`; no incluye claves ni datos DEMO.
+
+1. Verificar el respaldo y seleccionar en Supabase el proyecto que usa la base de Stocky.
+2. Abrir **SQL Editor → New query** con el rol administrador del proyecto.
+3. Abrir el archivo local y copiar **todo** su contenido, desde `BEGIN` hasta el `SELECT` final, incluyendo los comentarios si se desea. Ejecutar el archivo completo una sola vez con **Run**, sin seleccionar una parte del texto.
+4. El resultado debe mostrar las versiones **1, 2 y 3**. Recargar Studio para volver a comprobar el esquema.
+
+El script usa una sola transacción, comprueba las huellas del inventario antes/después, limita tiempos de espera, registra los mismos checksums que las herramientas CLI, activa RLS y retira acceso directo de los roles API sobre las tablas comerciales. Una excepción cancela toda la instalación; si el editor conserva una transacción fallida, ejecutar `ROLLBACK;` antes de reintentar. Los checksums anteriores con saltos de línea de Windows también se reconocen; un checksum desconocido se rechaza. No elimina tablas ni incorpora perfiles, políticas monetarias o publicaciones.
+
+Las doce pruebas de `npm run test:commerce:sql` usan PostgreSQL descartable: instalación inicial, repetición/compatibilidad con CLI, preservación de datos existentes, instalación parcial, compatibilidad CRLF, rollback por fuente desconocida, permisos de roles API, base incorrecta, relaciones dañadas, habilitación explícita de negocio y corrección administrativa de moneda con aislamiento/recibo/repetición. Son evidencia local; el archivo no fue ejecutado en producción desde este chat.
+
+### Alta autoservicio de cada negocio
+
+Después de preparar el esquema una sola vez por instalación, los propietarios pueden entrar en Stocky → FullMatch Studio o directamente en "/studio.html" con su sesión de WhatsApp. El asistente solicita nombre comercial, rubro si falta, contacto de ventas opcional, moneda (ARS/UYU/USD) y confirmación de unidades enteras. No necesita Shell, SQL ni credenciales de Supabase de parte del usuario.
+
+La activación queda en una transacción con recibo idempotente, revisión y aislamiento por el propietario autenticado. Un miembro no puede activar otro negocio; un perfil deshabilitado por el operador no se reactiva desde el asistente. Una moneda ya confirmada no se reemplaza ni convierte automáticamente. Si falta una migración, la interfaz indica que el administrador debe actualizar el servicio; una petición HTTP nunca crea tablas.
+
+Las variantes anteriores con XXX se revisan en **Configuración → Revisar moneda del inventario anterior**. El propietario selecciona hasta 100 variantes, revisa los importes y confirma la vista previa. La corrección usa **sku.update** y los recibos normales de inventario, con revisiones, motivo y selección limitada a su negocio. Cambiar un precio o resolver una moneda distinta de XXX requiere revisar el producto en Stocky. Los importes, stock y monedas ajenas a la selección no se convierten.
+
+Los generadores administrativos de habilitación y corrección SQL se conservan como antecedentes de mantenimiento y para verificar recibos ya emitidos. **No son el procedimiento de alta ni normalización vigente.** Si se aplicó antes un archivo de corrección, no se vuelve a corregir ni se fabrican recibos de inventario retroactivos: se conserva su historial administrativo y se revisa el estado actual.
+
+No hay variables de entorno nuevas para el asistente. Se reutilizan autenticación, base y Storage privado ya configurados. Desplegar backend y frontend actualizados antes de usarlo. La configuración del catálogo y la publicación de cada ficha continúan siendo decisiones explícitas del propietario, posteriores al alta.
+
+### Inspección y aplicación desde Shell
+
 El despliegue no crea ni habilita automáticamente el dominio comercial. Seleccionar expresamente la misma base de Stocky mediante `COMMERCE_DATABASE_URL`, sin imprimir su valor, y revisar primero:
 
 ```sh

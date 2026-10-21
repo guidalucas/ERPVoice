@@ -1,5 +1,4 @@
-import fs from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { readCommerceMigration } from './migrationSource.js';
 import { commerceTables, inspectCommerceSchema } from './schemaInspection.js';
 
 const protectedTables = ['products', 'clients', 'proveedores', 'pedidos', 'transactions', 'inventory_operations', 'inventory_movements'];
@@ -16,8 +15,7 @@ async function fingerprints(client) {
 
 /** Caller explicitly chooses the database; no env, bootstrap, money changes or fixture insertion. */
 export async function migrateCommerce(client) {
-  const sql = await fs.readFile(new URL('../migrations/commerce/001_foundation.sql', import.meta.url), 'utf8');
-  const checksum = createHash('sha256').update(sql).digest('hex');
+  const { sql, checksum, acceptedChecksums } = await readCommerceMigration(1);
   await client.query('BEGIN');
   try {
     await client.query("SET LOCAL search_path=public,pg_catalog; SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='45s'");
@@ -27,7 +25,7 @@ export async function migrateCommerce(client) {
     await client.query(`CREATE TABLE IF NOT EXISTS commerce_schema_migrations(version INTEGER PRIMARY KEY,
       checksum TEXT NOT NULL,applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
     const previous = (await client.query('SELECT checksum FROM commerce_schema_migrations WHERE version=1')).rows[0];
-    if (previous && previous.checksum !== checksum) throw Object.assign(new Error('Migration checksum differs.'), { code: 'MIGRATION_CHECKSUM_MISMATCH' });
+    if (previous && !acceptedChecksums.includes(previous.checksum)) throw Object.assign(new Error('Migration checksum differs.'), { code: 'MIGRATION_CHECKSUM_MISMATCH' });
     if (!previous) {
       await client.query(sql);
       await client.query('INSERT INTO commerce_schema_migrations(version,checksum) VALUES(1,$1)', [checksum]);

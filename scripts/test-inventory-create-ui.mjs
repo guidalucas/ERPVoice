@@ -44,6 +44,7 @@ const products = [];
 const attempts = [];
 const receipts = new Map();
 let category = 'general';
+let moneyCurrency = null;
 let mode = 'ok';
 let failNextRefresh = false;
 let releaseRequest;
@@ -57,6 +58,7 @@ await page.route('**/api/**', async (route) => {
   const path = new URL(request.url()).pathname;
   const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
   if (path === '/api/auth/me') return json({ phoneNumber: '5491100000000', tenantPhone: '5491100000000', role: 'owner', businessName: 'Creación local', businessCategory: category, needsOnboarding: false, pendingInvite: null, hasOwnBusiness: true });
+  if (path === '/api/commerce/v1/money-policy') return json({ moneyPolicy: moneyCurrency ? { currency: moneyCurrency, storageUnit: 'major_integer', fractionDigits: 2, revision: 1 } : null });
   if (path === '/api/state') {
     if (failNextRefresh) { failNextRefresh = false; return json({ error: 'Vista no disponible. Reintentá.' }, 503); }
     return json(snapshot());
@@ -113,6 +115,9 @@ try {
   assert.equal(products.length, 1);
   assert.equal(attempts[0].input.stockAvailable, 0);
   assert.equal(attempts[0].input.stockReserved, 0);
+  assert.equal(attempts[0].input.priceCurrency, undefined);
+  // An old applied body must replay byte-for-byte after business activation.
+  moneyCurrency = 'ARS';
   await dialog.getByRole('button', { name: 'Crear producto' }).click();
   await dialog.waitFor({ state: 'hidden' });
   assert.deepEqual(attempts[0], attempts[1]);
@@ -127,6 +132,7 @@ try {
   await dialog.waitFor({ state: 'hidden' });
   assert.notEqual(attempts[2].input.operationId, attempts[3].input.operationId);
   assert.equal(attempts[3].input.name, 'Borrador modificado');
+  assert.equal(attempts[3].input.priceCurrency, 'ARS');
 
   dialog = await openSku('Vista pendiente');
   mode = 'refresh';
@@ -166,9 +172,12 @@ try {
   await dialog.getByRole('alert').getByText('Vista no disponible. Reintentá.').waitFor();
   // Background sync hydrates the applied model; local duplicate checks must permit its retry.
   await page.getByRole('button', { name: 'Agregar talle a Camiseta Creación' }).waitFor({ timeout: 10000 });
+  moneyCurrency = 'UYU';
   await dialog.getByRole('button', { name: 'Crear modelo', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
   assert.deepEqual(attempts[modelStart], attempts[modelStart + 1]);
+  assert.equal(attempts[modelStart].input.priceCurrency, 'ARS');
+  moneyCurrency = 'ARS';
   assert.deepEqual(attempts[modelStart].input.variants.map((v) => v.stockAvailable), [0, 7]);
   assert.equal(products.filter((product) => product.productModel === 'Creación').length, 2);
 

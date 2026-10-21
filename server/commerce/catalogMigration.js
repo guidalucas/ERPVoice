@@ -1,5 +1,4 @@
-import fs from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { readCommerceMigration } from './migrationSource.js';
 import { inspectCommerceSchema } from './schemaInspection.js';
 const tables = ['commerce_catalogs', 'commercial_publications'];
 export async function inspectCatalogSchema(client) {
@@ -20,14 +19,14 @@ export async function inspectCatalogSchema(client) {
     missing: tables.filter(table => !rows.some(row => row.relname === table)), apiRolesRevoked: !grants.length, scopedReferences: scoped };
 }
 export async function migrateCatalog(client) {
-  const sql = await fs.readFile(new URL('../migrations/commerce/002_catalog.sql', import.meta.url), 'utf8'), checksum = createHash('sha256').update(sql).digest('hex');
+  const { sql, checksum, acceptedChecksums } = await readCommerceMigration(2);
   await client.query('BEGIN');
   try {
     await client.query("SET LOCAL search_path=public,pg_catalog; SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='45s'");
     await client.query("SELECT pg_advisory_xact_lock(hashtext('stocky:commerce:migration'))");
     if (!(await inspectCommerceSchema(client)).ready) throw new Error('COMMERCE_FOUNDATION_REQUIRED');
     const previous = (await client.query('SELECT checksum FROM commerce_schema_migrations WHERE version=2')).rows[0];
-    if (previous && previous.checksum !== checksum) throw new Error('MIGRATION_CHECKSUM_MISMATCH');
+    if (previous && !acceptedChecksums.includes(previous.checksum)) throw new Error('MIGRATION_CHECKSUM_MISMATCH');
     if (!previous) { await client.query(sql); await client.query('INSERT INTO commerce_schema_migrations(version,checksum) VALUES(2,$1)', [checksum]); }
     const roles = (await client.query("SELECT rolname FROM pg_roles WHERE rolname=ANY($1::text[])", [['anon', 'authenticated']])).rows;
     for (const table of tables) {
