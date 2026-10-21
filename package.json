@@ -13,6 +13,8 @@
     "commerce:inspect": "node scripts/inspect-commerce-data.js",
     "commerce:schema:check": "node scripts/migrate-commerce.js --check",
     "commerce:schema:apply": "node scripts/migrate-commerce.js --apply",
+    "commerce:schema:sql": "node scripts/generate-commerce-sql.js",
+    "test:commerce:sql": "node scripts/test-commerce-sql.js",
     "commerce:catalog:schema:check": "node scripts/migrate-commerce-catalog.js",
     "commerce:catalog:schema:apply": "node scripts/migrate-commerce-catalog.js --apply",
     "commerce:content:schema:check": "node scripts/migrate-commerce-content.js",

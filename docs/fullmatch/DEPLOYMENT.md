@@ -52,6 +52,33 @@ Guardar variables y desplegar el servicio para activarlas. No cambiar `PORT` ni 
 
 ## Base real: comprobación separada del deploy
 
+### Alternativa sin Shell: SQL Editor de Supabase
+
+El archivo [SUPABASE_COMMERCIAL_SCHEMA.sql](SUPABASE_COMMERCIAL_SCHEMA.sql) contiene las tres migraciones y su registro de versiones. Se genera desde los SQL originales con `npm run commerce:schema:sql`; no incluye claves ni datos DEMO.
+
+1. Verificar el respaldo y seleccionar en Supabase el proyecto que usa la base de Stocky.
+2. Abrir **SQL Editor → New query** con el rol administrador del proyecto.
+3. Abrir el archivo local y copiar **todo** su contenido, desde `BEGIN` hasta el `SELECT` final, incluyendo los comentarios si se desea. Ejecutar el archivo completo una sola vez con **Run**, sin seleccionar una parte del texto.
+4. El resultado debe mostrar las versiones **1, 2 y 3**. Recargar Studio para volver a comprobar el esquema.
+
+El script usa una sola transacción, comprueba las huellas del inventario antes/después, limita tiempos de espera, registra los mismos checksums que las herramientas CLI, activa RLS y retira acceso directo de los roles API sobre las tablas comerciales. Una excepción cancela toda la instalación; si el editor conserva una transacción fallida, ejecutar `ROLLBACK;` antes de reintentar. Los checksums anteriores con saltos de línea de Windows también se reconocen; un checksum desconocido se rechaza. No elimina tablas ni incorpora perfiles, políticas monetarias o publicaciones.
+
+Las diez pruebas de `npm run test:commerce:sql` usan PostgreSQL descartable: instalación inicial, repetición/compatibilidad con CLI, preservación de datos existentes, instalación parcial, compatibilidad CRLF, rollback por fuente desconocida, permisos de roles API, base incorrecta, relaciones dañadas y habilitación explícita de negocio con moneda/escala confirmadas. Son evidencia local; el archivo no fue ejecutado en producción desde este chat.
+
+Después de estas migraciones todavía se necesita confirmar el propietario, habilitar su perfil y registrar la moneda/escala reales. Un error de acceso 403 después de completar el esquema corresponde a ese paso, no se resuelve repitiendo las migraciones. No usar el seed local de demostración.
+
+Con número, moneda y escala confirmados expresamente, se puede generar un segundo SQL local:
+
+```sh
+node scripts/generate-commerce-business-sql.js --owner <numero-confirmado> --currency <ARS-UYU-USD> --confirm-major-integer
+```
+
+La bandera de escala solo se utiliza si se confirmó que, por ejemplo, $65.000 está almacenado como `65000`. El archivo `.fullmatch-runtime/ENABLE_FULLMATCH_BUSINESS.sql` es privado, queda fuera de Git y se ejecuta completo en otra consulta del mismo SQL Editor después del esquema. Verifica que el propietario exista en Stocky y que no pertenezca como miembro a otro negocio; habilita únicamente su perfil, conserva nombre/contacto existentes y rechaza políticas monetarias incompatibles. No convierte precios ni modifica `price_currency`: al final muestra las monedas actuales de sus SKU, para detectar registros `XXX` que necesitan revisión explícita. También es repetible sin incrementar revisiones si ya estaba habilitado.
+
+Referencia: [SQL Editor en Supabase](https://supabase.com/docs/guides/database/overview).
+
+### Inspección y aplicación desde Shell
+
 El despliegue no crea ni habilita automáticamente el dominio comercial. Seleccionar expresamente la misma base de Stocky mediante `COMMERCE_DATABASE_URL`, sin imprimir su valor, y revisar primero:
 
 ```sh
