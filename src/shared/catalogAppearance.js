@@ -21,11 +21,14 @@ export const defaultHeroLayout = Object.freeze({
 export function catalogThemeCss(appearance) {
   const primary = /^#[0-9a-f]{6}$/i.test(appearance.primaryColor) ? appearance.primaryColor : '#001A4D';
   const accent = /^#[0-9a-f]{6}$/i.test(appearance.accentColor) ? appearance.accentColor : '#FF6A00';
+  const textOverImage = appearance.heroTextBackground === false && Boolean(appearance.coverId);
+  const bannerInk = textOverImage ? appearance.heroTextTone === 'dark' ? '#172536' : '#FFFFFF' : textOnColor(primary);
+  const bannerShadow = textOverImage ? appearance.heroTextTone === 'dark' ? '0 1px 6px #ffffff66' : '0 1px 6px #00000088' : 'none';
   const positions = appearance.heroLayout ? Object.entries(defaultHeroLayout).map(([key, fallback]) => {
     const block = appearance.heroLayout[key] ?? fallback;
     const safe = (value, min, max, defaultValue) => Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : defaultValue;
     const x = safe(block.x, 0, 100, fallback.x), y = safe(block.y, 0, 100, fallback.y), width = safe(block.width, 20, 100, fallback.width);
     return `.catalog-hero [data-hero-block="${key}"]{left:${x}%;top:${y}%;width:${width}%;transform:translate(-${x}%,-${y}%)}`;
   }).join('') : '';
-  return `:root{--navy:${primary};--orange:${accent};--hero-ink:${textOnColor(primary)};--accent-ink:${textOnColor(accent)}}@media(min-width:781px){${positions}}`;
+  return `:root{--navy:${primary};--orange:${accent};--hero-ink:${textOnColor(primary)};--accent-ink:${textOnColor(accent)};--banner-text-ink:${bannerInk};--banner-text-shadow:${bannerShadow}}@media(min-width:781px){${positions}}`;
 }

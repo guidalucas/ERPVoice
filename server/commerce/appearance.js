@@ -8,11 +8,15 @@ import { defaultAppearance, defaultHeroLayout } from '../../src/shared/catalogAp
 export { defaultAppearance, appearanceOf, textOnColor } from '../../src/shared/catalogAppearance.js';
 
 export function normalizeAppearance(input) {
-  const data = record(input, [...Object.keys(defaultAppearance), 'preset', 'heroContentVisible', 'heroButtonVisible', 'heroLayout'], 'appearance');
+  const data = record(input, [...Object.keys(defaultAppearance), 'preset', 'heroContentVisible', 'heroButtonVisible', 'heroTextBackground', 'heroTextTone', 'heroLayout'], 'appearance');
   const result = {};
-  for (const key of ['heroContentVisible', 'heroButtonVisible']) if (Object.hasOwn(data, key)) {
+  for (const key of ['heroContentVisible', 'heroButtonVisible', 'heroTextBackground']) if (Object.hasOwn(data, key)) {
     if (typeof data[key] !== 'boolean') fail('INVALID_COMMAND', 'Elegí si querés mostrar el contenido del banner.', 400);
     result[key] = data[key];
+  }
+  if (Object.hasOwn(data, 'heroTextTone')) {
+    if (!['light', 'dark'].includes(data.heroTextTone)) fail('INVALID_COMMAND', 'Elegí texto claro u oscuro para la portada.', 400);
+    result.heroTextTone = data.heroTextTone;
   }
   if (Object.hasOwn(data, 'heroLayout')) {
     result.heroLayout = null;

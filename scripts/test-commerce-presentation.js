@@ -21,12 +21,26 @@ test('banner copy is optional and layout positions are validated before saving',
   assert.deepEqual(normalizeAppearance(appearance), appearance);
   assert.equal(normalizeAppearance({ ...defaultAppearance, heroLayout: null }).heroLayout, null);
   assert.throws(() => normalizeAppearance({ ...defaultAppearance, collectionTitle: '' }));
-  for (const field of ['heroContentVisible', 'heroButtonVisible']) for (const bad of [null, 0, 'false']) assert.throws(() => normalizeAppearance({ ...appearance, [field]: bad }));
+  for (const field of ['heroContentVisible', 'heroButtonVisible', 'heroTextBackground']) for (const bad of [null, 0, 'false']) assert.throws(() => normalizeAppearance({ ...appearance, [field]: bad }));
   for (const bad of [null, {}, { x: -1, y: 50, width: 50 }, { x: 101, y: 50, width: 50 }, { x: 1.5, y: 0, width: 50 }, { x: 50, y: 50, width: 19 }, { x: 50, y: '0; color:red', width: 50 }])
     assert.throws(() => normalizeAppearance({ ...appearance, heroLayout: { ...defaultHeroLayout, title: bad } }));
   assert.throws(() => normalizeAppearance({ ...appearance, heroLayout: { ...defaultHeroLayout, other: {} } }));
   assert.match(catalogThemeCss(appearance), /data-hero-block="title"\]\{left:8%;top:30%;width:65%/);
   assert.doesNotMatch(catalogThemeCss({ ...appearance, heroLayout: { title: { x: 'red;body{}' } } }), /red;body/);
+});
+test('banner text backgrounds and image text tones are optional and validated', () => {
+  for (const heroTextBackground of [true, false]) for (const heroTextTone of ['light', 'dark']) {
+    const appearance = { ...defaultAppearance, heroTextBackground, heroTextTone };
+    assert.deepEqual(normalizeAppearance(appearance), appearance);
+  }
+  for (const heroTextTone of [null, '', '#ffffff', 'light;body{}']) assert.throws(() => normalizeAppearance({ ...defaultAppearance, heroTextTone }));
+  const appearance = { ...defaultAppearance, coverId: 'cover', heroTextBackground: false };
+  assert.match(catalogThemeCss(appearance), /--banner-text-ink:#FFFFFF/);
+  assert.match(catalogThemeCss({ ...appearance, heroTextTone: 'dark' }), /--banner-text-ink:#172536/);
+  assert.match(catalogThemeCss({ ...appearance, coverId: null, primaryColor: '#FFFFFF' }), /--banner-text-ink:#000000/);
+  const html = renderCatalogList({ catalog: { slug: 'tienda', path: '/c/tienda', brandName: 'Tienda', appearance }, items: [] }, {}, '');
+  assert.match(html, /has-cover[^"\n]*text-on-image/);
+  assert.match(html, /data-hero-block="title"/); assert.match(html, /data-hero-block="button"/);
 });
 test('public banners can show only an image, omit empty copy, and keep movable text escaped', () => {
   const catalog = { slug: 'tienda', path: '/c/tienda', brandName: 'Tienda', appearance: { ...defaultAppearance, coverId: 'cover', heroContentVisible: false } };
