@@ -33,9 +33,11 @@ The supervisor lock prevents two cooperating supervisor instances. No local scri
 
 ## Quota and limits — important verification boundary
 
-Official JSONL documents turn completion/failure, but live installed-CLI quota/reset event shapes have not been observed. The detector accepts only explicit structured usage-limit codes. An arbitrary 429, textual error, test failure, network error or authentication failure is **not** treated as subscription quota. Unknown failures stop and retain the exact session/checkpoint; use the one-command manual recovery once the issue is resolved.
+Official JSONL documents turn completion/failure, but live installed-CLI quota/reset event shapes have not been observed. The detector accepts only explicit structured usage-limit codes. An arbitrary 429, textual error, test failure, network error or authentication failure is **not** treated as subscription quota. Unknown/interrupted failures use spaced recovery attempts and stop after eight retries; authentication and malformed events stop immediately. The exact session/checkpoint is retained.
 
-For supported structured quota events, PAUSED_QUOTA is saved, the last checkpoint/next action is retained and no calls occur before a supported reset or conservative 30-minute-to-4-hour backoff. After eight consecutive quota attempts human attention is required. A failed CLI may not emit enough structure to support automatic reset recovery: **automatic recovery after real quota exhaustion is not claimed verified**. No scraping or paid API fallback.
+For supported structured quota events, PAUSED_QUOTA is saved, the newest checkpoint/next action is retained and no calls occur before a supported reset or conservative 30-minute-to-4-hour backoff. Structured quota waits continue until STOP or recovery. A failed CLI may not emit enough structure to support automatic reset recovery: **automatic recovery after real quota exhaustion is not claimed verified**. No scraping or paid API fallback.
+
+`-Status` reports the supervisor PID, heartbeat, current phase and next retry; active requires a live PID and a recent heartbeat. Optional `-CodexPath` and `-NodePath` resolve machines where the executables are absent from PATH. Status/stop do not require locating Codex.
 
 Logs contain only allowlisted lifecycle fields, bounded to three roughly 128-KiB files. Raw command outputs, events, prompts, tokens and stderr are not persisted. Runtime session/lock files are gitignored. Ctrl+C is not advertised as an atomic checkpoint; prefer STOP and wait for the current unit.
 

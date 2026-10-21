@@ -20,3 +20,15 @@ The first commercial migration is a single atomic additive version with six doma
 
 ## D007 — Windows test environment
 Supervisor tests initially failed because the restricted Windows sandbox denies rename even for newly created temporary fixture files. The same eight tests pass with expanded local execution; no implementation fallback weakens atomic checkpoint writes. 165 baseline domain tests and 344 isolated PostgreSQL checks passed before the last constraint hardening; re-run integration after that change.
+
+## D008 — verified private commercial boundary
+
+Stage 1 uses scoped commercial commands/immutable receipts, owner-only access, explicit SKU links and optimistic revisions. A repeatable-read story snapshot is kept in its `story.prepare` receipt; semantic revalidation compares live commercial data rather than using timestamps or maximum revisions. Prices remain exact decimal strings in minor units. No product endpoint accepts inventory balances/prices as commercial edits.
+
+## D009 — real photo processing and uncertain commits
+
+Sharp 0.35.4 was confirmed available from npm and installed with its prebuilt dependency. Local storage is limited to nonproduction; the Supabase REST adapter requires an explicit private bucket and server-only credentials and has not been enabled against a real provider. Keep the planned eight-photo/12-MiB/24-megapixel limits. Upload TTL is 30 minutes; a two-minute reclaimable attempt lease is separate from the maintenance five-minute stale threshold. Processing/storage are outside SQL transactions. In an uncertain COMMIT outcome, preserve files until metadata can be rechecked; a verified ready reference wins over cleanup. Master reads verify the recorded SHA-256. Logical retire precedes an explicit purge after 24 hours. Maintenance has no automatic schedule and never writes inventory.
+
+## D010 — independent Studio and fixture acceptance
+
+Studio builds from `studio.html`/`vite.studio.config.ts` into `dist-studio`; it reuses auth/session services without importing Stocky's application store or `/api/state`. Browser drafts and unconfirmed operations are scoped by the logged-in owner. Fixtures use a uniquely named loopback PostgreSQL database, random ports/secrets, actual authentication and local synthetic art clearly marked DEMO. Five Edge desktop/mobile acceptance flows passed, including a new ficha through SKU selection, photo processing and a real 1080x1920 export. Production enablement remains separate from fixture completion.

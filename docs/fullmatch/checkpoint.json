@@ -1,9 +1,9 @@
 {
   "version": 1,
   "status": "IN_PROGRESS",
-  "revision": 2,
-  "stage": 0,
-  "milestone": "foundations-verified-private-operations-next",
-  "nextAction": "Confirm final 344-check PostgreSQL regression log; commit foundations; implement scoped commercial receipts and product/link/readiness services with private HTTP tests.",
-  "lastValidatedCommit": null
+  "revision": 4,
+  "stage": 1,
+  "milestone": "stage-1-private-studio-acceptance-complete",
+  "nextAction": "Commit validated private Studio milestone, then incrementally specify and implement separate publication/catalog schema, public allowlisted contracts and responsive SSR catalog for stage 2. Keep all new migrations isolated and production disabled.",
+  "lastValidatedCommit": "e92484b"
 }

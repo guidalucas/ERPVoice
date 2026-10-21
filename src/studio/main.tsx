@@ -1,0 +1,8 @@
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { AuthProvider } from '../store/AuthStore';
+import { Studio } from './Studio';
+import './studio.css';
+import './stories.css';
+import './refinements.css';
+ReactDOM.createRoot(document.getElementById('studio-root')!).render(<React.StrictMode><AuthProvider><Studio/></AuthProvider></React.StrictMode>);

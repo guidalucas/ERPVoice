@@ -16,17 +16,18 @@ Completion means executed evidence, not merely files written. Production enablem
 - [x] Add explicit additive schema migration and inspection, no automatic production migration.
 - [x] Verify migrations, constraints and no-change invariants in isolated PostgreSQL.
 - [x] Separate runtime connection/schema verification from implicit production DDL with regressions.
-- [ ] Implement owner/business authorization boundary and deterministic command receipts.
-- [ ] Provide explicit fixture setup; leave real money/resources unmodified.
+- [x] Implement owner/business authorization boundary and deterministic command receipts.
+- [x] Provide explicit fixture setup; leave real money/resources unmodified.
 
 ## Stage 1
-- [ ] Commercial products, pending SKU, stable links and preparation states.
-- [ ] Scoped private HTTP API, errors, revisions and recovery tests.
-- [ ] Private image adapter/validation/upload/recovery and gallery/cover.
-- [ ] Independent Studio React entry, session and responsive navigation.
-- [ ] Product editor, explicit SKU linking, photos, settings and pending view.
-- [ ] Three story templates, snapshot, semantic revalidation and PNG/JPG export.
-- [ ] Browser acceptance PC/mobile, fault recovery and Stocky regression checks.
+- [x] Commercial products, pending SKU, stable links and preparation states.
+- [x] Scoped private HTTP API, errors, revisions and recovery tests.
+- [x] Private image adapter/validation/upload/recovery and gallery/cover.
+- [x] Explicit image maintenance: inspect expired uploads, safe grace-period purge and orphan recovery.
+- [x] Independent Studio React entry, session and responsive navigation.
+- [x] Product editor, explicit SKU linking, photos, settings and pending view.
+- [x] Three story templates, snapshot, semantic revalidation and PNG/JPG export.
+- [x] Browser acceptance PC/mobile, fault recovery and Stocky regression checks.
 
 ## Stage 2
 - [ ] Incremental publication/public-contract specification.
