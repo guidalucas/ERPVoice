@@ -1446,6 +1446,10 @@ const interpretUniversalDraft = async (text,draftId,context,options,clarificatio
     catalog.proveedores=(await client.query('SELECT * FROM proveedores WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToProveedor);
     catalog.pedidos=(await client.query('SELECT * FROM pedidos WHERE owner_phone=ANY($1) ORDER BY id',owners)).rows.map(rowToPedido);
     catalog.familySchemas=await loadProductFamilySchemas(client,owners[0]);
+    if ((await client.query("SELECT to_regclass('public.inventory_money_policies') AS name")).rows[0].name) {
+      const policy = (await client.query('SELECT currency,storage_unit,fraction_digits,revision FROM inventory_money_policies WHERE owner_phone=$1', [context.businessId])).rows[0];
+      if (policy) catalog.moneyPolicy = { currency: policy.currency, storageUnit: policy.storage_unit, fractionDigits: Number(policy.fraction_digits), revision: Number(policy.revision) };
+    }
     return {catalog,observedAt};
   });
   const result=await interpretUniversalIntent({sourceText:text,catalog,clarifications,

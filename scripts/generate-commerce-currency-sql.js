@@ -3,7 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { normalizePhone } from '../server/phone.js';
 
-// Explicit administrative correction, never called by HTTP or application startup.
+// Legacy administrative maintenance. Normalization now uses the reviewed sku.update UI.
+// Keep this source for existing maintenance receipts; never call it from HTTP/startup.
 export function buildCurrencyCorrectionSql({ owner, currency, expectedUnknownCount, confirmedMajorInteger = false, operationId = randomUUID() }) {
   const phone = normalizePhone(owner);
   if (!/^[0-9]{8,15}$/.test(phone)) throw new Error('EXPLICIT_OWNER_REQUIRED');
@@ -86,6 +87,7 @@ WHERE owner_phone = '${phone}' GROUP BY price_currency ORDER BY price_currency;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  console.warn('LEGACY MAINTENANCE: use Studio > Configuración > Revisar moneda. This SQL is not the normal onboarding/correction procedure.');
   const args = process.argv.slice(2), value = key => args.includes(key) ? args[args.indexOf(key) + 1] : '';
   const sql = buildCurrencyCorrectionSql({ owner: value('--owner'), currency: value('--currency'),
     expectedUnknownCount: Number(value('--expected-unknown-count')), confirmedMajorInteger: args.includes('--confirm-major-integer') });

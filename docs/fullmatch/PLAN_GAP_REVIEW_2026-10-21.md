@@ -2,6 +2,8 @@
 
 Fecha: 21/10/2026. Código revisado: `c18838c`, rama local `codex/studio-deploy-access`.
 
+**Actualización posterior:** se implementaron el alta autoservicio y los cierres de código descritos en [SELF_SERVICE_IMPLEMENTATION.md](SELF_SERVICE_IMPLEMENTATION.md). Este informe conserva el diagnóstico anterior; F04/F05 y la aceptación en dispositivos/producción continúan pendientes. No interpretar sus descripciones de faltantes de código como el estado posterior a esa implementación.
+
 ## Dictamen
 
 Hay una base funcional amplia: fichas, fotos, historias individuales y por lotes, catálogo y consulta agrupada. No corresponde declarar cerrado el plan original de Etapas 0 y 1: quedan obligaciones monetarias, flujos de interfaz y aceptación productiva pendientes. El estado histórico `COMPLETED` describe la entrega local con fixtures; no demuestra estos criterios completos y su afirmación de que no quedan tareas independientes es demasiado amplia.

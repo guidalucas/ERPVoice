@@ -7,6 +7,8 @@ import { MAX_IMAGE_BYTES } from './imageProcessor.js';
 import { createCommerceStoryService } from './storyService.js';
 import { createCatalogService } from './catalogService.js';
 import { createContentService } from './contentService.js';
+import { createCommerceSetupService } from './setupService.js';
+import { readMoneyPolicy } from './productRepository.js';
 
 /** Authentication middleware must be mounted before this private router. */
 export function createCommerceRouter({ runtime, contextOf }) {
@@ -15,6 +17,7 @@ export function createCommerceRouter({ runtime, contextOf }) {
   const stories = createCommerceStoryService(runtime);
   const catalog = createCatalogService(runtime);
   const content = createContentService(runtime);
+  const setup = createCommerceSetupService(runtime);
   router.use((req, res, next) => {
     res.setHeader('Cache-Control', 'private, no-store');
     req.commerceRequestId = randomUUID();
@@ -25,7 +28,14 @@ export function createCommerceRouter({ runtime, contextOf }) {
   const handle = (callback, status = 200) => async (req, res, next) => {
     try { res.status(status).json(await callback(req)); } catch (error) { next(error); }
   };
+  router.get('/setup', handle(req => setup.status(req.commerceContext)));
+  router.get('/money-policy', handle(req => runtime.withClient(async client => {
+    const exists = (await client.query("SELECT to_regclass('public.inventory_money_policies') AS name")).rows[0].name;
+    return { moneyPolicy: exists ? await readMoneyPolicy(client, req.commerceContext.businessId) : null };
+  })));
+  router.post('/setup', handle(req => setup.activate(req.commerceContext, req.body)));
   router.get('/profile', handle(req => products.profile(req.commerceContext)));
+  router.get('/money-review', handle(req => products.moneyReview(req.commerceContext, req.query)));
   router.put('/profile', handle(req => products.updateProfile(req.commerceContext, req.body)));
   router.get('/catalog', handle(req => catalog.configuration(req.commerceContext)));
   router.put('/catalog', handle(req => catalog.configure(req.commerceContext, req.body)));
@@ -37,6 +47,7 @@ export function createCommerceRouter({ runtime, contextOf }) {
   router.get('/products', handle(req => products.list(req.commerceContext, req.query)));
   router.post('/products', handle(req => products.create(req.commerceContext, req.body), 201));
   router.get('/products/:id', handle(req => products.detail(req.commerceContext, req.params.id)));
+  router.get('/products/:id/availability', handle(req => products.availability(req.commerceContext, req.params.id)));
   router.post('/products/:id/story-snapshots', handle(req => stories.prepare(req.commerceContext, req.params.id, req.body), 201));
   router.get('/story-snapshots/:snapshotId', handle(req => stories.recover(req.commerceContext, req.params.snapshotId)));
   router.post('/story-snapshots/:snapshotId/validate', handle(req => stories.validate(req.commerceContext, req.params.snapshotId)));

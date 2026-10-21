@@ -9,6 +9,7 @@ import { StockSetAdjustmentForm } from './StockSetAdjustmentForm';
 import { ProductFamilyPanel } from './ProductFamilyPanel';
 import { ProductFamilyAssignmentPanel } from './ProductFamilyAssignmentPanel';
 import { DataGrid, type DataGridColumn, type DataGridSection } from '../ui/DataGrid';
+import { fetchBusinessMoneyPolicy } from '../../services/businessMoneyService';
 
 type ProductDraft = {
   name: string;
@@ -205,6 +206,7 @@ function DeactivateModal({ ids, reason, onReasonChange, preview, stale, error, b
 }
 
 function ProductFormModal({
+  currency,
   title,
   description,
   draft,
@@ -221,6 +223,7 @@ function ProductFormModal({
   adjustmentReason,
   onAdjustmentReasonChange,
 }: {
+  currency: string | null;
   title: string;
   description?: string;
   draft: ProductDraft;
@@ -248,7 +251,7 @@ function ProductFormModal({
         </div>
         {description && <p className="mt-2 text-sm text-[color:var(--muted)]">{description}</p>}
 
-        <form id="product-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
+        <p className="mt-3 text-sm">{currency ? `Precios en ${currency}, en unidades enteras (65000 = $65.000).` : "Moneda del negocio sin confirmar. Podés configurarla en FullMatch Studio."}</p><form id="product-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
           <fieldset disabled={submitting} className="min-w-0 space-y-5">
           {!variantOnly && (
             <fieldset>
@@ -317,6 +320,7 @@ function ProductFormModal({
 }
 
 function NewModelModal({
+  currency,
   draft,
   variants,
   preset,
@@ -329,6 +333,7 @@ function NewModelModal({
 }: {
   draft: ProductDraft;
   variants: NewVariantDraft[];
+  currency: string | null;
   preset: BusinessCategoryPreset;
   onDraftChange: (draft: ProductDraft) => void;
   onVariantsChange: (variants: NewVariantDraft[]) => void;
@@ -349,7 +354,7 @@ function NewModelModal({
           <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" disabled={saving} onClick={onClose}>×</button>
         </div>
         <p className="mt-2 text-sm text-[color:var(--muted)]">Cargá el modelo y todos los {pluralizeVariantLabel(preset.variantLabel)} que quieras vender.</p>
-        <form id="new-model-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
+        <p className="mt-3 text-sm">{currency ? `Precios en ${currency}, en unidades enteras (65000 = $65.000).` : "Moneda del negocio sin confirmar. Podés configurarla en FullMatch Studio."}</p><form id="new-model-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
           <fieldset disabled={saving} className="min-w-0 space-y-5">
           <fieldset>
             <legend className="mb-3 type-subtitle text-sm text-[color:var(--muted)]">Modelo</legend>
@@ -481,6 +486,13 @@ export function ProductsAbmPanel({
 }) {
   const { products, createProductRecord, createProductModelRecords, updateProductRecord, updateProductModelRecords, previewInventorySelection, deleteProductRecord, deleteProductRecords } = useInventory();
   const preset = useBusinessCategoryPreset();
+  const [priceCurrency, setPriceCurrency] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    const refreshMoney = () => { void fetchBusinessMoneyPolicy().then(policy => { if (active) setPriceCurrency(policy?.currency ?? null); }).catch(() => {}); };
+    refreshMoney(); addEventListener('focus', refreshMoney);
+    return () => { active = false; removeEventListener('focus', refreshMoney); };
+  }, []);
   const variantWord = getVariantWord(preset);
   const variantLabelPlural = pluralizeVariantLabel(preset.variantLabel);
   const [stockSetOpen, setStockSetOpen] = useState(false);
@@ -493,7 +505,7 @@ export function ProductsAbmPanel({
   const [editSnapshot, setEditSnapshot] = useState<ProductRow | null>(null);
   const [adjustmentReason, setAdjustmentReason] = useState('');
   // Keep the exact operation through ambiguous failures, including a failed refresh after success.
-  const editOperation = useRef<{ key: string; adjustment: ProductAdjustment } | null>(null);
+  const editOperation = useRef<{ key: string; adjustment: ProductAdjustment; changes: Partial<ProductInput> } | null>(null);
   const createOperation = useRef<
     | { kind: 'sku'; key: string; operationId: string; payload: ProductInput }
     | { kind: 'model'; key: string; operationId: string; payload: ProductModelInput }
@@ -744,9 +756,11 @@ export function ProductsAbmPanel({
     formBusy.current = true;
     setSaving(true);
     try {
+      const policy = retry ? null : await fetchBusinessMoneyPolicy();
       if (!retry) createOperation.current = { kind: 'model', key, operationId: crypto.randomUUID(), payload: {
         productType,
         productModel,
+        ...(policy ? { priceCurrency: policy.currency } : {}),
         variants: newVariants.map((variant) => ({
           size: variant.size.trim(),
           stockAvailable: Number(variant.stockAvailable),
@@ -907,6 +921,9 @@ export function ProductsAbmPanel({
     formBusy.current = true;
     setSaving(true);
     try {
+      const editKey = JSON.stringify({ productId: editingProductId, draft, reason: adjustmentReason.trim() });
+      const retryEdit = Boolean(editingProductId && editOperation.current?.key === editKey);
+      const policy = retry || retryEdit ? null : await fetchBusinessMoneyPolicy();
       const payload = {
         name: editingProductId && !draft.name.trim()
           ? editSnapshot?.name ?? buildProductName(draft)
@@ -917,23 +934,25 @@ export function ProductsAbmPanel({
         stockAvailable: quantities[0],
         stockReserved: quantities[1],
         price: quantities[2],
+        ...(policy ? { priceCurrency: policy.currency } : {}),
       };
 
       if (editingProductId) {
         const changes = preset.useVariants
-          ? { size: payload.size, stockAvailable: payload.stockAvailable, stockReserved: payload.stockReserved, price: payload.price }
+          ? { size: payload.size, stockAvailable: payload.stockAvailable, stockReserved: payload.stockReserved, price: payload.price, ...(payload.priceCurrency ? { priceCurrency: payload.priceCurrency } : {}) }
           : payload;
         const reason = adjustmentReason.trim();
-        const key = JSON.stringify({ productId: editingProductId, changes, reason });
+        const key = editKey;
         if (editOperation.current?.key !== key) {
-          editOperation.current = { key, adjustment: {
+          editOperation.current = { key, changes, adjustment: {
             operationId: crypto.randomUUID(),
             expectedRevision: editSnapshot!.revision!,
             expectedFingerprint: editSnapshot!.identityFingerprint,
             reason,
           } };
         }
-        await updateProductRecord(editingProductId, changes, editOperation.current.adjustment);
+        const operation = editOperation.current!;
+        await updateProductRecord(editingProductId, operation.changes, operation.adjustment);
       } else {
         if (!retry) createOperation.current = { kind: 'sku', key: createKey, operationId: crypto.randomUUID(), payload };
         const operation = createOperation.current!;
@@ -1093,7 +1112,7 @@ export function ProductsAbmPanel({
           getRowSelection={selectionFor}
           onToggleRows={(rows) => toggleSelection(rows.flatMap((row) => rowProducts(row).map((product) => product.id)))}
           renderExpandedRow={renderModelDetails}
-          toolbar={<><label className="flex items-center gap-3 text-sm font-medium text-[color:var(--muted)]">Agrupar por
+          toolbar={<><span className="text-xs text-[color:var(--muted)]">{priceCurrency ? `Precios en ${priceCurrency} · unidades enteras` : <a href="/studio.html">Configurar moneda del negocio</a>}</span><label className="flex items-center gap-3 text-sm font-medium text-[color:var(--muted)]">Agrupar por
             <select className="erp-input !w-auto !min-w-36" value={grouping} onChange={(event) => setGroupBy(event.target.value as InventoryGrouping)}>
               {preset.useVariants && <option value="model">Modelo</option>}
               {preset.useVariants && <option value="size">{preset.variantLabel}</option>}
@@ -1106,6 +1125,7 @@ export function ProductsAbmPanel({
 
         {isFormOpen && preset.useVariants && !editingProductId && !addingToGroup && (
           <NewModelModal
+            currency={priceCurrency}
             draft={draft}
             variants={newVariants}
             preset={preset}
@@ -1123,6 +1143,7 @@ export function ProductsAbmPanel({
 
         {isFormOpen && (!preset.useVariants || Boolean(editingProductId || addingToGroup)) && (
           <ProductFormModal
+            currency={priceCurrency}
             title={editingProductId ? preset.useVariants ? `Editar ${variantWord}` : 'Editar producto' : addingToGroup ? `Agregar ${variantWord}` : preset.useVariants ? 'Nuevo modelo' : 'Nuevo producto'}
             description={addingToGroup
               ? `Modelo: ${addingToGroup.displayName}. Precio sugerido del primer ${variantWord}.`

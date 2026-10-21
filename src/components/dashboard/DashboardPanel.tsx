@@ -374,7 +374,7 @@ function ActivityFeed({
 
 export function DashboardPanel() {
   const { products, transactions, pedidos, executeManualMovement, refreshState } = useInventory();
-  const [activeSection, setActiveSection] = useState<DashboardSection>('inicio');
+  const [activeSection, setActiveSection] = useState<DashboardSection>(() => new URLSearchParams(location.search).get('section') === 'productos' ? 'productos' : 'inicio');
   const [productsStockFilter, setProductsStockFilter] = useState<'all' | 'low-stock'>('all');
   const [movementMode, setMovementMode] = useState<StockMovementMode | null>(null);
   const [openPedidoForm, setOpenPedidoForm] = useState(false);

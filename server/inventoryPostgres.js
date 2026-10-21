@@ -67,7 +67,11 @@ export async function executeInventoryPlanInTransaction(client, input, context) 
     return replay.rows[0].result_json;
   }
 
-  // Optional, explicitly migrated/confirmed per-business policy. Historical replay above is immutable.
+  // Serialize new effects with first-time money confirmation. Keep the same
+  // table-first order used by orders/selections; historical replay is above.
+  // LLM calls never run while this lock is held.
+  await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
+  // Optional, explicitly migrated/confirmed per-business policy.
   const policyTable = (await client.query("SELECT to_regclass('public.inventory_money_policies') AS relation")).rows[0].relation;
   const policyRow = policyTable ? (await client.query('SELECT currency,storage_unit,fraction_digits,revision FROM inventory_money_policies WHERE owner_phone=$1', [context.businessId])).rows[0] : null;
   const moneyPolicy = policyRow ? { currency: policyRow.currency, storageUnit: policyRow.storage_unit,
@@ -75,8 +79,6 @@ export async function executeInventoryPlanInTransaction(client, input, context) 
   if (moneyPolicy) enforceInventoryMoneyPolicy(plan.actions, moneyPolicy);
 
   // Required until the legacy writer stops replacing whole tenant tables.
-  // LLM calls never run while this lock is held.
-  await client.query('LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE');
   const owners = context.ownerPhoneVariants ?? [context.businessId];
   const loaded = await client.query('SELECT * FROM products WHERE owner_phone = ANY($1) ORDER BY id FOR UPDATE', [owners]);
   const products = loaded.rows.map(inventoryRowToProduct);

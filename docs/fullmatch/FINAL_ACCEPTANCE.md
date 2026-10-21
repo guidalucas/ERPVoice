@@ -1,5 +1,7 @@
 # FullMatch Studio — aceptación del alcance local autorizado
 
+**Registro histórico:** la revisión posterior encontró brechas de moneda y recorridos que impiden tomar este cierre local como cumplimiento integral del plan. Ver [evaluación](PLAN_GAP_REVIEW_2026-10-21.md) y [implementación posterior de autoservicio](SELF_SERVICE_IMPLEMENTATION.md). La aceptación productiva y la restauración real siguen pendientes.
+
 Resultado: implementadas y verificadas localmente las etapas 0–4 dentro del alcance autorizado. No representa una habilitación productiva ni un ecommerce transaccional.
 
 ## Funcionalidad entregada

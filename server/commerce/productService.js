@@ -56,6 +56,22 @@ export function createCommerceProductService(runtime) {
   };
   return {
     detail: (context, id) => read(context, client => readProductDetail(client, context.businessId, uuid(id))),
+    availability: (context, id) => read(context, async client => {
+      const detail = await readProductDetail(client, context.businessId, uuid(id));
+      return Object.fromEntries(['revision', 'variants', 'availableQuantity', 'availability', 'priceRange', 'readiness', 'moneyPolicyRevision', 'readAt'].map(key => [key, detail[key]]));
+    }),
+    moneyReview: (context, query = {}) => read(context, async client => {
+      const data = record(query, ['cursor']);
+      const policy = await readMoneyPolicy(client, context.businessId);
+      if (!policy) fail('MONEY_UNCONFIRMED', 'Confirmá la moneda desde la configuración del negocio.', 422);
+      const rows = (await client.query(`SELECT id,name,size,price,price_currency,inventory_revision FROM products
+        WHERE owner_phone=$1 AND price_currency<>$2 AND ($3::text IS NULL OR id>$3) ORDER BY id LIMIT 101`,
+      [context.businessId, policy.currency, data.cursor ? text(data.cursor, 180, 'cursor') : null])).rows;
+      return { currency: policy.currency, items: rows.slice(0, 100).map(row => ({ skuId: row.id, name: row.name, size: row.size,
+        price: String(row.price), currency: row.price_currency, revision: Number(row.inventory_revision),
+        canConfirm: row.price_currency === 'XXX' && /^(0|[1-9]\d*)$/.test(String(row.price)) && BigInt(row.price) <= BigInt(Number.MAX_SAFE_INTEGER) })),
+      nextCursor: rows.length > 100 ? rows[99].id : null };
+    }),
     profile: context => read(context, async client => {
       const profile = await readProfile(client, context.businessId);
       return { brandName: profile.brand_name, salesWhatsapp: profile.sales_whatsapp, brandPreset: profile.brand_preset,
@@ -122,10 +138,18 @@ export function createCommerceProductService(runtime) {
       if (!row) fail('RESOURCE_NOT_FOUND', 'No encontré el recibo.', 404); return row.result_json;
     }),
     list: (context, query = {}) => read(context, async client => {
-      const data = record(query, ['q', 'status', 'team', 'season', 'version', 'sleeve', 'cursor', 'limit']);
+      const data = record(query, ['q', 'status', 'team', 'season', 'version', 'sleeve', 'photos', 'publication', 'cursor', 'limit']);
       const limit = data.limit === undefined ? 24 : typeof data.limit === 'string' && /^\d+$/.test(data.limit) ? integer(Number(data.limit), 1) : integer(data.limit, 1);
       if (limit > 50) fail('INVALID_COMMAND', 'Hasta 50 fichas por página.', 400);
       const filters = [context.businessId], conditions = ['owner_phone=$1'];
+      if (data.photos) {
+        if (!['missing', 'ready'].includes(data.photos)) fail('INVALID_COMMAND', 'Filtro de fotos inválido.', 400);
+        conditions.push(`${data.photos === 'missing' ? 'NOT ' : ''}EXISTS(SELECT 1 FROM commercial_product_images i WHERE i.owner_phone=commercial_products.owner_phone AND i.commercial_product_id=commercial_products.id AND i.status='ready')`);
+      }
+      if (data.publication) {
+        if (!['published', 'hidden'].includes(data.publication)) fail('INVALID_COMMAND', 'Filtro de publicación inválido.', 400);
+        conditions.push(`${data.publication === 'hidden' ? 'NOT ' : ''}EXISTS(SELECT 1 FROM commercial_publications p WHERE p.owner_phone=commercial_products.owner_phone AND p.commercial_product_id=commercial_products.id AND p.status='published')`);
+      }
       for (const [key, column] of Object.entries({ status: 'status', team: 'team_key', season: 'season', version: 'version_key', sleeve: 'sleeve_key' })) if (data[key]) {
         filters.push(text(data[key], 80, key)); conditions.push(`${column}=$${filters.length}`);
       }
@@ -163,6 +187,8 @@ export function createCommerceProductService(runtime) {
     }),
     summary: context => read(context, async client => ({
       products: (await client.query('SELECT status,count(*)::int AS count FROM commercial_products WHERE owner_phone=$1 GROUP BY status', [context.businessId])).rows,
+      withoutPhotos: (await client.query(`SELECT count(*)::int AS count FROM commercial_products p WHERE p.owner_phone=$1 AND p.status<>'archived'
+        AND NOT EXISTS(SELECT 1 FROM commercial_product_images i WHERE i.owner_phone=p.owner_phone AND i.commercial_product_id=p.id AND i.status='ready')`, [context.businessId])).rows[0].count,
       unlinkedSkus: (await client.query(`SELECT count(*)::int AS count FROM products p WHERE p.owner_phone=$1 AND inventory_status='active'
         AND NOT EXISTS(SELECT 1 FROM commercial_product_skus l WHERE l.owner_phone=p.owner_phone AND l.sku_id=p.id)`, [context.businessId])).rows[0].count,
     })),

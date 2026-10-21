@@ -65,27 +65,17 @@ El script usa una sola transacción, comprueba las huellas del inventario antes/
 
 Las doce pruebas de `npm run test:commerce:sql` usan PostgreSQL descartable: instalación inicial, repetición/compatibilidad con CLI, preservación de datos existentes, instalación parcial, compatibilidad CRLF, rollback por fuente desconocida, permisos de roles API, base incorrecta, relaciones dañadas, habilitación explícita de negocio y corrección administrativa de moneda con aislamiento/recibo/repetición. Son evidencia local; el archivo no fue ejecutado en producción desde este chat.
 
-Después de estas migraciones todavía se necesita confirmar el propietario, habilitar su perfil y registrar la moneda/escala reales. Un error de acceso 403 después de completar el esquema corresponde a ese paso, no se resuelve repitiendo las migraciones. No usar el seed local de demostración.
+### Alta autoservicio de cada negocio
 
-Con número, moneda y escala confirmados expresamente, se puede generar un segundo SQL local:
+Después de preparar el esquema una sola vez por instalación, los propietarios pueden entrar en Stocky → FullMatch Studio o directamente en "/studio.html" con su sesión de WhatsApp. El asistente solicita nombre comercial, rubro si falta, contacto de ventas opcional, moneda (ARS/UYU/USD) y confirmación de unidades enteras. No necesita Shell, SQL ni credenciales de Supabase de parte del usuario.
 
-```sh
-node scripts/generate-commerce-business-sql.js --owner <numero-confirmado> --currency <ARS-UYU-USD> --confirm-major-integer
-```
+La activación queda en una transacción con recibo idempotente, revisión y aislamiento por el propietario autenticado. Un miembro no puede activar otro negocio; un perfil deshabilitado por el operador no se reactiva desde el asistente. Una moneda ya confirmada no se reemplaza ni convierte automáticamente. Si falta una migración, la interfaz indica que el administrador debe actualizar el servicio; una petición HTTP nunca crea tablas.
 
-La bandera de escala solo se utiliza si se confirmó que, por ejemplo, $65.000 está almacenado como `65000`. El archivo `.fullmatch-runtime/ENABLE_FULLMATCH_BUSINESS.sql` es privado, queda fuera de Git y se ejecuta completo en otra consulta del mismo SQL Editor después del esquema. Verifica que el propietario exista en Stocky y que no pertenezca como miembro a otro negocio; habilita únicamente su perfil, conserva nombre/contacto existentes y rechaza políticas monetarias incompatibles. No convierte precios ni modifica `price_currency`: al final muestra las monedas actuales de sus SKU, para detectar registros `XXX` que necesitan revisión explícita. También es repetible sin incrementar revisiones si ya estaba habilitado.
+Las variantes anteriores con XXX se revisan en **Configuración → Revisar moneda del inventario anterior**. El propietario selecciona hasta 100 variantes, revisa los importes y confirma la vista previa. La corrección usa **sku.update** y los recibos normales de inventario, con revisiones, motivo y selección limitada a su negocio. Cambiar un precio o resolver una moneda distinta de XXX requiere revisar el producto en Stocky. Los importes, stock y monedas ajenas a la selección no se convierten.
 
-Si el propietario confirmó expresamente que esos importes `XXX` corresponden a la moneda y escala indicadas, el generador de corrección administrativa prepara un tercer archivo privado:
+Los generadores administrativos de habilitación y corrección SQL se conservan como antecedentes de mantenimiento y para verificar recibos ya emitidos. **No son el procedimiento de alta ni normalización vigente.** Si se aplicó antes un archivo de corrección, no se vuelve a corregir ni se fabrican recibos de inventario retroactivos: se conserva su historial administrativo y se revisa el estado actual.
 
-```sh
-node scripts/generate-commerce-currency-sql.js --owner <numero-confirmado> --currency <ARS-UYU-USD> --expected-unknown-count <conteo-revisado> --confirm-major-integer
-```
-
-El resultado es `.fullmatch-runtime/CORRECT_FULLMATCH_CURRENCY.sql`. El operador verifica proyecto/respaldo y lo ejecuta completo desde SQL Editor. Solo cambia `price_currency='XXX'` de ese propietario al código confirmado, incrementa `inventory_revision` y registra un recibo administrativo `maintenance.currency_confirmed` en `commercial_operations`. Rechaza perfiles/políticas no habilitados, importes incompatibles y conteos distintos de los revisados. El mismo archivo reutiliza su UUID y recibo al repetirse; no debe regenerarse para repetir el mismo intento. Los importes, saldos, identidades, fotos y SKU de otros negocios/monedas se conservan; ante una diferencia inesperada se revierte la transacción. Es una herramienta de mantenimiento explícita, no se ejecuta desde HTTP, arranque ni deploy.
-
-La moneda no forma parte de la huella de identidad del SKU, por lo que esta corrección conserva los vínculos comerciales revisados. Las revisiones de inventario se incrementan para rechazar propuestas de edición antiguas. La prueba local verifica que desaparece `MONEY_UNCONFIRMED` sin introducir `SKU_IDENTITY_CHANGED`, además del recibo, repetición, aislamiento y preservación de cada campo ajeno a moneda/revisión.
-
-Referencia: [SQL Editor en Supabase](https://supabase.com/docs/guides/database/overview).
+No hay variables de entorno nuevas para el asistente. Se reutilizan autenticación, base y Storage privado ya configurados. Desplegar backend y frontend actualizados antes de usarlo. La configuración del catálogo y la publicación de cada ficha continúan siendo decisiones explícitas del propietario, posteriores al alta.
 
 ### Inspección y aplicación desde Shell
 

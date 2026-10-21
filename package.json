@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "test:commerce": "node --test scripts/test-commerce-domain.js scripts/test-commerce-images.js scripts/test-commerce-promotions.js scripts/test-fullmatch-supervisor.js",
+    "test:commerce:onboarding": "node scripts/test-commerce-onboarding.js",
+    "test:commerce:money-voice": "node --test scripts/test-business-money-voice.js",
     "test:commerce:browser": "node scripts/test-commerce-browser.js",
     "test:studio:deployment": "npm run build && node scripts/test-studio-deployment.mjs",
     "dev:studio": "vite --config vite.studio.config.ts",

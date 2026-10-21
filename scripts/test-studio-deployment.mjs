@@ -31,6 +31,7 @@ try {
           businessName: 'FullMatch prueba', businessCategory: 'indumentaria', needsOnboarding: false, pendingInvite: null, hasOwnBusiness: true });
         if (path === '/api/state') return json({ products: [], clients: [], proveedores: [], pedidos: [], transactions: [] });
         if (path.startsWith('/api/commerce/v1/')) commerceRequests.push(path);
+        if (path === '/api/commerce/v1/setup') return json({ enabled: true, needsSetup: false, profile: { brandName: 'FullMatch prueba', revision: 1, moneyPolicy: { currency: 'ARS', storageUnit: 'major_integer', fractionDigits: 2, revision: 1 } } });
         if (path === '/api/commerce/v1/profile') return json({ brandName: 'FullMatch prueba', moneyPolicy: null, revision: 1 });
         if (path === '/api/commerce/v1/products') return json({ items: [], nextCursor: null });
         if (path === '/api/commerce/v1/summary') return json({ products: [], unlinkedSkus: 0 });
@@ -58,7 +59,7 @@ try {
       await page.getByRole('heading', { name: 'Productos comerciales' }).waitFor();
       assert.equal(page.url(), `${origin}/studio.html`);
       assert.equal(await page.getByRole('button', { name: 'Ingresar con WhatsApp ↗' }).count(), 0);
-      assert.ok(commerceRequests.includes('/api/commerce/v1/profile'));
+      assert.ok(commerceRequests.includes('/api/commerce/v1/setup'));
       assert.ok(commerceRequests.includes('/api/commerce/v1/products'));
       await page.reload();
       await page.getByRole('heading', { name: 'Productos comerciales' }).waitFor();

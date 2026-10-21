@@ -2,10 +2,13 @@ import { inventoryPriceToMoney } from '../inventoryMoneyPolicy.js';
 import { inventoryProductFingerprint } from '../inventoryOperations.js';
 
 export function buildCommercialReadiness(product, skus, images, policy) {
-  const blockers = new Set(), seenSizes = new Set();
+  const blockers = new Set(), seenSizes = new Set(), moneyIssues = [];
   const variants = skus.map(sku => {
     let money = null, fingerprint = null;
-    try { money = inventoryPriceToMoney(sku.price, sku.priceCurrency, policy); } catch { if (sku.status === 'active') blockers.add('MONEY_UNCONFIRMED'); }
+    try { money = inventoryPriceToMoney(sku.price, sku.priceCurrency, policy); } catch { if (sku.status === 'active') {
+      blockers.add('MONEY_UNCONFIRMED');
+      moneyIssues.push({ skuId: sku.id, cause: !policy ? 'POLICY_MISSING' : sku.priceCurrency !== policy.currency ? 'CURRENCY_MISMATCH' : 'INVALID_PRICE' });
+    } }
     try { fingerprint = inventoryProductFingerprint(sku); } catch { blockers.add('SKU_IDENTITY_INVALID'); }
     const validStock = [sku.stockAvailable, sku.stockReserved].every(value => Number.isSafeInteger(value) && value >= 0);
     if (!validStock) blockers.add('INVENTORY_INVALID');
@@ -38,8 +41,9 @@ export function buildCommercialReadiness(product, skus, images, policy) {
       minAmountMinor: sorted[0], maxAmountMinor: sorted.at(-1) };
   }
   const blocked = [...blockers];
+  const missingFields = ['teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey'].filter(key => !product[key]);
   return { variants, priceRange, availability: blockers.has('INVENTORY_INVALID') ? 'unavailable' : total > 0n ? 'in_stock' : 'out_of_stock',
     availableQuantity: total <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(total) : null,
-    readiness: { blockers: blocked, canPrepare: blocked.length === 0 && product.status !== 'archived',
+    readiness: { blockers: blocked, missingFields, moneyIssues, canPrepare: blocked.length === 0 && product.status !== 'archived',
       canGenerateStory: blocked.length === 0 && product.status === 'ready' && available.length > 0 } };
 }

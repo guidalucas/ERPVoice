@@ -47,5 +47,10 @@ try {
     created.push({ id: product.id, title: product.title, skuIds: skus.map(sku => sku.id) });
   }
   await db.createProductRecord({ name: 'Demo Boca Juniors pendiente', size: 'XL', stockAvailable: 2, price: 63000, priceCurrency: 'ARS' }, owner, { operationId: randomUUID() });
-  await fs.writeFile(manifest, JSON.stringify({ owner, token: issueJwt({ phoneNumber: owner }), products: created }), { mode: 0o600 });
+  const freshOwners = ['59899000091', '59899000092', '59899000094'].map(phoneNumber => ({ owner: phoneNumber, token: issueJwt({ phoneNumber }) }));
+  for (const fresh of freshOwners) await sql.query('INSERT INTO auth_users(phone_number) VALUES($1)', [fresh.owner]);
+  const member = { owner: '59899000093', token: issueJwt({ phoneNumber: '59899000093' }) };
+  await sql.query('INSERT INTO auth_users(phone_number) VALUES($1)', [member.owner]);
+  await sql.query("INSERT INTO business_members(tenant_phone,member_phone,role) VALUES($1,$2,'member')", [owner, member.owner]);
+  await fs.writeFile(manifest, JSON.stringify({ owner, token: issueJwt({ phoneNumber: owner }), products: created, freshOwners, member }), { mode: 0o600 });
 } finally { await db.closeDatabase(); await sql.end().catch(() => {}); }

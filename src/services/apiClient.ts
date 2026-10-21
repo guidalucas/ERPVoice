@@ -13,10 +13,11 @@ const parseErrorBody = (errorText: string, status: number) => {
   }
 
   try {
-    const parsed = JSON.parse(trimmed) as { error?: string; message?: string };
+    const parsed = JSON.parse(trimmed) as { error?: string | { message?: string }; message?: string };
     if (typeof parsed.error === 'string' && parsed.error.trim()) {
       return parsed.error.trim();
     }
+    if (parsed.error && typeof parsed.error === 'object' && typeof parsed.error.message === 'string' && parsed.error.message.trim()) return parsed.error.message.trim();
     if (typeof parsed.message === 'string' && parsed.message.trim()) {
       return parsed.message.trim();
     }
