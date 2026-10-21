@@ -63,7 +63,7 @@ export function DashboardShell({
           <StockyLogo size="md" withWordmark subtitle={displayBusinessName} />
         </div>
 
-        <DashboardNav activeSection={activeSection} onSectionChange={onSectionChange} variant="sidebar" />
+        <DashboardNav activeSection={activeSection} onSectionChange={onSectionChange} variant="sidebar" showStudio={role === 'owner'} />
 
         <div className="mt-auto space-y-3 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
           {(businessName || phoneNumber) && (
@@ -128,6 +128,7 @@ export function DashboardShell({
         onSectionChange={onSectionChange}
         variant="bottom"
         onLogout={onLogout}
+        showStudio={role === 'owner'}
       />
     </div>
   );

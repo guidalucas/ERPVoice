@@ -6,6 +6,7 @@
   "scripts": {
     "test:commerce": "node --test scripts/test-commerce-domain.js scripts/test-commerce-images.js scripts/test-commerce-promotions.js scripts/test-fullmatch-supervisor.js",
     "test:commerce:browser": "node scripts/test-commerce-browser.js",
+    "test:studio:deployment": "npm run build && node scripts/test-studio-deployment.mjs",
     "dev:studio": "vite --config vite.studio.config.ts",
     "build:studio": "tsc --noEmit -p tsconfig.app.json && vite build --config vite.studio.config.ts",
     "dev:studio:fixture": "node scripts/dev-commerce-fixture.js",
