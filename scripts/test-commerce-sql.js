@@ -8,6 +8,7 @@ import { inspectCommerceSchema } from '../server/commerce/schemaInspection.js';
 import { inspectCatalogSchema, migrateCatalog } from '../server/commerce/catalogMigration.js';
 import { inspectContentSchema, migrateContent } from '../server/commerce/contentMigration.js';
 import { migrateCommerce } from '../server/commerce/migration.js';
+import { migrateAppearance, inspectAppearanceSchema } from '../server/commerce/appearanceMigration.js';
 import { readCommerceMigration } from '../server/commerce/migrationSource.js';
 import { buildBusinessEnableSql } from './generate-commerce-business-sql.js';
 import { buildCurrencyCorrectionSql } from './generate-commerce-currency-sql.js';
@@ -25,6 +26,7 @@ const readiness = async client => {
   assert.equal((await inspectCommerceSchema(client)).ready, true);
   assert.equal((await inspectCatalogSchema(client)).ready, true);
   assert.equal((await inspectContentSchema(client)).ready, true);
+  assert.equal((await inspectAppearanceSchema(client)).ready, true);
 };
 const snapshot = async client => (await client.query('SELECT jsonb_agg(to_jsonb(p) ORDER BY id) AS data FROM products p')).rows[0].data;
 try {
@@ -53,7 +55,7 @@ try {
     await client.query(bundle); await readiness(client);
     assert.deepEqual((await client.query('SELECT * FROM commerce_schema_migrations ORDER BY version')).rows, ledger);
     assert.deepEqual(await snapshot(client), before);
-    for (const migrate of [migrateCommerce, migrateCatalog, migrateContent]) assert.equal((await migrate(client)).changed, false);
+    for (const migrate of [migrateCommerce, migrateCatalog, migrateContent, migrateAppearance]) assert.equal((await migrate(client)).changed, false);
   });
   await check('existing populated Studio survives SQL rerun unchanged', async () => {
     const before = await snapshot(admin);
@@ -71,13 +73,13 @@ try {
   });
   await check('legacy CRLF checksums stay valid for both SQL and CLI', async () => {
     const client = await fresh(); await client.query(bundle);
-    for (const version of [1, 2, 3]) {
+    for (const version of [1, 2, 3, 4]) {
       const source = await readCommerceMigration(version);
       await client.query('UPDATE commerce_schema_migrations SET checksum=$2 WHERE version=$1', [version, source.acceptedChecksums.at(-1)]);
     }
     const ledger = (await client.query('SELECT * FROM commerce_schema_migrations ORDER BY version')).rows;
     await client.query(bundle);
-    for (const migrate of [migrateCommerce, migrateCatalog, migrateContent]) assert.equal((await migrate(client)).changed, false);
+    for (const migrate of [migrateCommerce, migrateCatalog, migrateContent, migrateAppearance]) assert.equal((await migrate(client)).changed, false);
     assert.deepEqual((await client.query('SELECT * FROM commerce_schema_migrations ORDER BY version')).rows, ledger);
   });
   await check('unknown checksum rolls back earlier migration steps', async () => {

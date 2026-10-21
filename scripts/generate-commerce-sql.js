@@ -4,7 +4,7 @@ import { readCommerceMigration } from '../server/commerce/migrationSource.js';
 
 const protectedTables = ['products', 'clients', 'proveedores', 'pedidos', 'transactions', 'inventory_operations', 'inventory_movements'];
 const commerceTables = ['inventory_money_policies', 'commerce_profiles', 'commercial_products', 'commercial_product_skus',
-  'commercial_product_images', 'commercial_operations', 'commerce_catalogs', 'commercial_publications', 'commerce_schema_migrations'];
+  'commercial_product_images', 'commercial_operations', 'commerce_catalogs', 'commercial_publications', 'commerce_schema_migrations', 'commerce_brand_assets'];
 const references = [
   ['commercial_products', 'FOREIGN KEY (owner_phone) REFERENCES commerce_profiles(owner_phone)'],
   ['commercial_products', 'FOREIGN KEY (owner_phone, id, cover_image_id) REFERENCES commercial_product_images(owner_phone, commercial_product_id, id)'],
@@ -31,7 +31,7 @@ const fingerprint = variable => `
 `;
 
 export async function buildCommerceSqlBundle() {
-  const migrations = await Promise.all([1, 2, 3].map(readCommerceMigration));
+  const migrations = await Promise.all([1, 2, 3, 4].map(readCommerceMigration));
   const steps = migrations.map(({ version, sql, checksum, acceptedChecksums }) => `
   -- Migration ${version}; checksum matches the canonical repository source.
   SELECT checksum INTO previous_checksum FROM public.commerce_schema_migrations WHERE version = ${version};
@@ -115,9 +115,9 @@ END
 $fullmatch_schema$;
 COMMIT;
 
--- Success: versions 1, 2 and 3. Business/profile enablement is a separate step.
+-- Success: versions 1, 2, 3 and 4. Business/profile enablement is a separate step.
 SELECT version, applied_at FROM public.commerce_schema_migrations
-WHERE version IN (1, 2, 3) ORDER BY version;
+WHERE version IN (1, 2, 3, 4) ORDER BY version;
 `;
 }
 

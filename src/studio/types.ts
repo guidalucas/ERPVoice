@@ -12,7 +12,17 @@ export type Product = CommercialFields & { id: string; slug: string; status: 'dr
   coverImageId: string | null; images: Photo[]; variants: Variant[]; availableQuantity: number | null; availability: string;
   priceRange: { currency: string; fractionDigits: number; minAmountMinor: string; maxAmountMinor: string } | null;
   readiness: { canPrepare: boolean; canGenerateStory: boolean; blockers: string[]; missingFields?: string[]; moneyIssues?: { skuId: string; cause: string }[] }; moneyPolicyRevision: number | null; readAt: string };
-export type Profile = { brandName: string; salesWhatsapp: string | null; brandPreset: string; revision: number;
+export type Appearance = { logoId: string | null; coverId: string | null; primaryColor: string; accentColor: string;
+  tagline: string; heroTitle: string; heroDescription: string; collectionTitle: string };
+export const defaultAppearance: Appearance = { logoId: null, coverId: null, primaryColor: '#001A4D', accentColor: '#FF6A00',
+  tagline: 'Tu colección, con identidad', heroTitle: 'Encontrá tu próxima camiseta',
+  heroDescription: 'Explorá nuestra colección y consultanos por WhatsApp.', collectionTitle: 'La colección' };
+export const brandInitials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() || 'S';
+export const textOnColor = (hex: string) => {
+  const rgb = [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16) / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+  return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 > 0.179 ? '#000000' : '#FFFFFF';
+};
+export type Profile = { brandName: string; salesWhatsapp: string | null; brandPreset: string; revision: number; appearance?: Appearance;
   moneyPolicy: { currency: string; storageUnit: string; fractionDigits: number; revision: number } | null };
 export type Receipt<T> = { contractVersion: number; operationId: string; status: 'applied'; result: T };
 export const moneyLabel = (money: Money | null) => {

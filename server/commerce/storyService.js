@@ -4,10 +4,11 @@ import { fail } from './errors.js';
 import { executeCommerceCommand, requireCommerceAccess } from './operationRepository.js';
 import { readProductDetail, readProfile } from './productRepository.js';
 import { normalizePromotion, requireActivePromotion, promotionalAmount } from './promotions.js';
+import { appearanceOf } from './appearance.js';
 
 export const storyTemplates = Object.freeze({ arrival: { version: 1, heading: 'NUEVO INGRESO' },
   available: { version: 1, heading: 'STOCK DISPONIBLE' }, last_unit: { version: 1, heading: 'ÚLTIMA UNIDAD' },
-  matchday: { version: 1, heading: 'LA PASIÓN SE LLEVA PUESTA' }, promo: { version: 1, heading: 'PROMO FULLMATCH' } });
+  matchday: { version: 1, heading: 'LA PASIÓN SE LLEVA PUESTA' }, promo: { version: 1, heading: 'PROMOCIÓN' } });
 const settingsOf = input => {
   const data = record(input, ['templateId', 'templateVersion', 'imageId', 'expectedImageRevision', 'skuIds', 'showPrice', 'fit', 'zoom', 'focalX', 'focalY', 'caption', 'cta', 'promotion']);
   if (!Object.hasOwn(storyTemplates, data.templateId) || data.templateVersion !== 1) fail('STORY_TEMPLATE_INVALID', 'Elegí una plantilla vigente.', 400);
@@ -22,7 +23,7 @@ const settingsOf = input => {
 };
 
 /** Explicit semantic projection: revisions alone neither prove nor disprove freshness. */
-async function storyContent(client, context, productId, settings, { checkImageRevision = false } = {}) {
+async function storyContent(client, context, productId, settings, { checkImageRevision = false, includeAppearance = true } = {}) {
   const detail = await readProductDetail(client, context.businessId, productId);
   if (!detail.readiness.canGenerateStory) fail('STORY_PRODUCT_NOT_READY', 'Revisá la ficha, las fotos y el stock antes de generar la historia.', 422, { blockers: detail.readiness.blockers });
   const photo = detail.images.find(image => image.id === settings.imageId && image.status === 'ready');
@@ -54,6 +55,8 @@ async function storyContent(client, context, productId, settings, { checkImageRe
   return { productId, title: detail.title, description: detail.description, teamName: detail.teamName, season: detail.season,
     kitKey: detail.kitKey, versionKey: detail.versionKey, sleeveKey: detail.sleeveKey,
     brandName: profile.brand_name, brandPreset: profile.brand_preset, salesWhatsapp: profile.sales_whatsapp,
+    ...(includeAppearance ? { appearance: { logoId: appearanceOf(profile).logoId, primaryColor: appearanceOf(profile).primaryColor,
+      accentColor: appearanceOf(profile).accentColor, tagline: appearanceOf(profile).tagline } } : {}),
     imageId: settings.imageId, imageSha256: image.master_sha256, imageAlt: photo.altText,
     heading, assertion, promotion, availableQuantity: total, totalProductQuantity: detail.availableQuantity,
     variants: selected.map(variant => ({ skuId: variant.skuId, size: variant.size, stockAvailable: variant.stockAvailable,
@@ -83,7 +86,7 @@ export function createCommerceStoryService(runtime) {
         if (detail.revision !== command.expectedProductRevision) fail('REVISION_CONFLICT', 'La ficha cambió. Actualizá la previsualización.', 409);
         const content = await storyContent(client, context, productId, command.settings, { checkImageRevision: true });
         const now = Date.now();
-        return { snapshotId: data.operationId, schemaVersion: 1, rendererVersion: 2, width: 1080, height: 1920,
+        return { snapshotId: data.operationId, schemaVersion: 1, rendererVersion: 3, width: 1080, height: 1920,
           createdAt: new Date(now).toISOString(), expiresAt: new Date(Math.min(now + 86_400_000, content.promotion ? Date.parse(content.promotion.endsAt) : Infinity)).toISOString(),
           content, contentFingerprint: operationRequestDigest(content) };
       });
@@ -93,7 +96,7 @@ export function createCommerceStoryService(runtime) {
       const snapshot = await readSnapshot(client, context, id), checkedAt = new Date().toISOString();
       if (Date.parse(snapshot.expiresAt) <= Date.now()) return { valid: false, reasons: ['SNAPSHOT_EXPIRED'], checkedAt };
       try {
-        const current = await storyContent(client, context, snapshot.content.productId, { ...snapshot.content.settings, expectedImageRevision: 1 });
+        const current = await storyContent(client, context, snapshot.content.productId, { ...snapshot.content.settings, expectedImageRevision: 1 }, { includeAppearance: snapshot.rendererVersion >= 3 });
         const valid = operationRequestDigest(current) === snapshot.contentFingerprint;
         return { valid, reasons: valid ? [] : ['COMMERCIAL_CONTENT_CHANGED'], checkedAt };
       } catch (error) {

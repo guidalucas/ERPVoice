@@ -9,6 +9,7 @@ import { createCatalogService } from './catalogService.js';
 import { createContentService } from './contentService.js';
 import { createCommerceSetupService } from './setupService.js';
 import { readMoneyPolicy } from './productRepository.js';
+import { createBrandAssetService } from './appearance.js';
 
 /** Authentication middleware must be mounted before this private router. */
 export function createCommerceRouter({ runtime, contextOf }) {
@@ -18,6 +19,7 @@ export function createCommerceRouter({ runtime, contextOf }) {
   const catalog = createCatalogService(runtime);
   const content = createContentService(runtime);
   const setup = createCommerceSetupService(runtime);
+  const brandAssets = createBrandAssetService(runtime);
   router.use((req, res, next) => {
     res.setHeader('Cache-Control', 'private, no-store');
     req.commerceRequestId = randomUUID();
@@ -37,6 +39,12 @@ export function createCommerceRouter({ runtime, contextOf }) {
   router.get('/profile', handle(req => products.profile(req.commerceContext)));
   router.get('/money-review', handle(req => products.moneyReview(req.commerceContext, req.query)));
   router.put('/profile', handle(req => products.updateProfile(req.commerceContext, req.body)));
+  router.post('/brand-assets/:kind', express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: MAX_IMAGE_BYTES, inflate: false }),
+    handle(req => brandAssets.upload(req.commerceContext, req.params.kind, req.body), 201));
+  router.get('/brand-assets/:id', async (req, res, next) => {
+    try { const asset = await brandAssets.content(req.commerceContext, req.params.id); res.setHeader('X-Content-Type-Options', 'nosniff'); res.type(asset.mime_type).send(asset.content); }
+    catch (error) { next(error); }
+  });
   router.get('/catalog', handle(req => catalog.configuration(req.commerceContext)));
   router.put('/catalog', handle(req => catalog.configure(req.commerceContext, req.body)));
   router.get('/products/:id/publication', handle(req => catalog.publication(req.commerceContext, req.params.id)));

@@ -5,6 +5,7 @@ import { inspectCommerceSchema } from './schemaInspection.js';
 import { readProfile, readMoneyPolicy } from './productRepository.js';
 import { record, uuid, integer, text } from './validation.js';
 import { fail } from './errors.js';
+import { appearanceOf } from './appearance.js';
 
 // Activation only writes business configuration. DDL and inventory corrections
 // belong to their explicit migration and reviewed inventory-operation flows.
@@ -18,7 +19,7 @@ export function createCommerceSetupService(runtime) {
   const status = async (client, context) => {
     const profile = await readProfile(client, context.businessId), moneyPolicy = await readMoneyPolicy(client, context.businessId);
     return { enabled: profile?.enabled === true, needsSetup: !profile || !moneyPolicy,
-      profile: profile ? { brandName: profile.brand_name, salesWhatsapp: profile.sales_whatsapp, brandPreset: profile.brand_preset, revision: Number(profile.revision), moneyPolicy } : null,
+      profile: profile ? { brandName: profile.brand_name, salesWhatsapp: profile.sales_whatsapp, brandPreset: profile.brand_preset, appearance: appearanceOf(profile), revision: Number(profile.revision), moneyPolicy } : null,
       moneyPolicy };
   };
   return {

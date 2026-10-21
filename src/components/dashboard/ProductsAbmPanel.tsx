@@ -251,7 +251,7 @@ function ProductFormModal({
         </div>
         {description && <p className="mt-2 text-sm text-[color:var(--muted)]">{description}</p>}
 
-        <p className="mt-3 text-sm">{currency ? `Precios en ${currency}, en unidades enteras (65000 = $65.000).` : "Moneda del negocio sin confirmar. Podés configurarla en FullMatch Studio."}</p><form id="product-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
+        <p className="mt-3 text-sm">{currency ? `Precios en ${currency}, en unidades enteras (65000 = $65.000).` : "Moneda del negocio sin confirmar. Podés configurarla en Stocky Studio."}</p><form id="product-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
           <fieldset disabled={submitting} className="min-w-0 space-y-5">
           {!variantOnly && (
             <fieldset>
@@ -354,7 +354,7 @@ function NewModelModal({
           <button type="button" aria-label="Cerrar modal" className="erp-button-secondary h-8 w-8 px-0" disabled={saving} onClick={onClose}>×</button>
         </div>
         <p className="mt-2 text-sm text-[color:var(--muted)]">Cargá el modelo y todos los {pluralizeVariantLabel(preset.variantLabel)} que quieras vender.</p>
-        <p className="mt-3 text-sm">{currency ? `Precios en ${currency}, en unidades enteras (65000 = $65.000).` : "Moneda del negocio sin confirmar. Podés configurarla en FullMatch Studio."}</p><form id="new-model-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
+        <p className="mt-3 text-sm">{currency ? `Precios en ${currency}, en unidades enteras (65000 = $65.000).` : "Moneda del negocio sin confirmar. Podés configurarla en Stocky Studio."}</p><form id="new-model-form" className="mt-5 space-y-5" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>
           <fieldset disabled={saving} className="min-w-0 space-y-5">
           <fieldset>
             <legend className="mb-3 type-subtitle text-sm text-[color:var(--muted)]">Modelo</legend>

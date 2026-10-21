@@ -49,9 +49,9 @@ try {
     assert.equal(response.status(), 200);
     await page.getByRole('button', { name: 'Inventario', exact: true }).first().waitFor();
     if (scenario.mobile) await page.getByRole('button', { name: 'Más', exact: true }).click();
-    const link = page.getByRole('link', { name: 'FullMatch Studio', exact: true });
+    const link = page.getByRole('link', { name: 'Stocky Studio', exact: true });
     if (scenario.role === 'owner') {
-      const visibleLink = scenario.mobile ? page.getByRole('menu', { name: 'Más secciones' }).getByRole('link', { name: 'FullMatch Studio' }) : link;
+      const visibleLink = scenario.mobile ? page.getByRole('menu', { name: 'Más secciones' }).getByRole('link', { name: 'Stocky Studio' }) : link;
       assert.equal(await visibleLink.getAttribute('href'), '/studio.html');
       const navigation = page.waitForNavigation();
       await visibleLink.click();

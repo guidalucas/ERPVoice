@@ -8,6 +8,7 @@ import { readProfile, readMoneyPolicy, requireProduct, readProductDetail, rowToC
 import { executeCommerceCommand, requireCommerceAccess } from './operationRepository.js';
 import { inspectCommerceSchema } from './schemaInspection.js';
 import { fail } from './errors.js';
+import { appearanceOf, normalizeAppearance, requireAppearanceSchema, validateAppearanceAssets } from './appearance.js';
 
 const requireRevision = (row, expected) => { if (Number(row.revision) !== integer(expected, 1)) fail('REVISION_CONFLICT', 'La ficha cambió. Revisá tu borrador antes de guardar.', 409, { currentRevision: Number(row.revision) }); };
 function linksRequest(value = []) {
@@ -74,7 +75,7 @@ export function createCommerceProductService(runtime) {
     }),
     profile: context => read(context, async client => {
       const profile = await readProfile(client, context.businessId);
-      return { brandName: profile.brand_name, salesWhatsapp: profile.sales_whatsapp, brandPreset: profile.brand_preset,
+      return { brandName: profile.brand_name, salesWhatsapp: profile.sales_whatsapp, brandPreset: profile.brand_preset, appearance: appearanceOf(profile),
         revision: Number(profile.revision), moneyPolicy: await readMoneyPolicy(client, context.businessId) };
     }),
     create: async (context, input) => {
@@ -193,16 +194,21 @@ export function createCommerceProductService(runtime) {
         AND NOT EXISTS(SELECT 1 FROM commercial_product_skus l WHERE l.owner_phone=p.owner_phone AND l.sku_id=p.id)`, [context.businessId])).rows[0].count,
     })),
     updateProfile: async (context, input) => {
-      const data = record(input, ['operationId', 'expectedRevision', 'brandName', 'salesWhatsapp']);
+      const data = record(input, ['operationId', 'expectedRevision', 'brandName', 'salesWhatsapp', 'appearance']);
       const command = { operationId: uuid(data.operationId), expectedRevision: integer(data.expectedRevision, 1),
         brandName: text(data.brandName, 80, 'brand name'), salesWhatsapp: data.salesWhatsapp === null ? null : text(data.salesWhatsapp, 15, 'sales WhatsApp') };
       if (command.salesWhatsapp !== null && !/^\d{8,15}$/.test(command.salesWhatsapp)) fail('INVALID_COMMAND', 'WhatsApp comercial inválido.', 400);
+      if (Object.hasOwn(data, 'appearance')) command.appearance = normalizeAppearance(data.appearance);
       return mutate(context, { operationId: command.operationId, type: 'profile.update', command, permission: 'commerce:settings' }, async client => {
         const row = (await client.query('SELECT revision FROM commerce_profiles WHERE owner_phone=$1 FOR UPDATE', [context.businessId])).rows[0];
         requireRevision(row, command.expectedRevision);
+        if (command.appearance) {
+          await requireAppearanceSchema(client); await validateAppearanceAssets(client, context.businessId, command.appearance);
+          await client.query('UPDATE commerce_profiles SET appearance=$2::jsonb WHERE owner_phone=$1', [context.businessId, JSON.stringify(command.appearance)]);
+        }
         const profile = (await client.query(`UPDATE commerce_profiles SET brand_name=$2,sales_whatsapp=$3,revision=revision+1,updated_at=NOW()
           WHERE owner_phone=$1 RETURNING *`, [context.businessId, command.brandName, command.salesWhatsapp])).rows[0];
-        return { brandName: profile.brand_name, salesWhatsapp: profile.sales_whatsapp, brandPreset: profile.brand_preset,
+        return { brandName: profile.brand_name, salesWhatsapp: profile.sales_whatsapp, brandPreset: profile.brand_preset, appearance: appearanceOf(profile),
           revision: Number(profile.revision), moneyPolicy: await readMoneyPolicy(client, context.businessId) };
       });
     },

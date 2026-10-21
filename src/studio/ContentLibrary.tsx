@@ -8,7 +8,7 @@ function LibraryImage({ entry }: { entry: Entry }) {
   const [url, setUrl] = useState('');
   useEffect(() => { let active = true, local = ''; imageBlob(entry.productId, entry.imageId, true).then(blob => { if (active) { local = URL.createObjectURL(blob); setUrl(local); } }).catch(() => {});
     return () => { active = false; if (local) URL.revokeObjectURL(local); }; }, [entry.productId, entry.imageId]);
-  return url ? <img src={url} alt={entry.imageAlt || entry.title}/> : <span className="library-fm">FM／</span>;
+  return url ? <img src={url} alt={entry.imageAlt || entry.title}/> : <span className="library-fm">S／</span>;
 }
 export function ContentLibrary({ onOpen, onResumeBatch }: { onOpen: (id: string) => void; onResumeBatch: () => void }) {
   const [items, setItems] = useState<Entry[]>([]), [cursor, setCursor] = useState<string | null>(null), [busy, setBusy] = useState(true), [error, setError] = useState('');
