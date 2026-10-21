@@ -239,6 +239,53 @@ try {
     await page.getByRole('heading', { name: 'Historias por lote', exact: true }).waitFor();
     assert.equal((await batchValue()).batchId, batchBefore.batchId);
   });
+  const inquiryUrl = `${shopUrl}/consulta`;
+  await check('anonymous inquiry cart persists a selected size and gets exact current totals on reload', async () => {
+    await publicPage.setViewportSize({ width: 1440, height: 1050 }); await publicPage.goto(productUrl);
+    await publicPage.getByRole('combobox', { name: 'Talle para tu consulta', exact: true }).selectOption('M');
+    await publicPage.getByRole('button', { name: 'Agregar a mi consulta ＋', exact: true }).click();
+    await publicPage.getByText('Agregada a tu consulta.', { exact: false }).waitFor();
+    await publicPage.getByRole('link', { name: /^Mi consulta/ }).click();
+    await publicPage.getByRole('heading', { name: 'Mi consulta', exact: true }).waitFor();
+    await publicPage.waitForFunction(() => document.getElementById('inquiry-total')?.textContent === 'ARS $ 70.000');
+    assert.equal(await publicPage.locator('.inquiry-line').count(), 1); assert.equal(await publicPage.locator('[data-cart-count]').textContent(), '1');
+    await publicPage.reload(); await publicPage.waitForFunction(() => document.getElementById('inquiry-total')?.textContent === 'ARS $ 70.000');
+    assert.equal(await publicPage.locator('.inquiry-line').count(), 1);
+    await publicPage.screenshot({ path: path.join(output, 'inquiry-desktop.png'), fullPage: true });
+  });
+  await check('changed inquiry price requires review before locally intercepted WhatsApp handoff', async () => {
+    const sql = new Client({ connectionString: fixture.connection }); await sql.connect();
+    const argentina = fixture.products.find(product => product.title.startsWith('Argentina')), skuId = argentina.skuIds[0]; let destination = null;
+    await publicPage.route('https://wa.me/**', async route => { destination = route.request().url(); await route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Consulta interceptada localmente</title><p>No se contactó un destino externo.</p>' }); });
+    try {
+      await sql.query('UPDATE products SET price=80000 WHERE owner_phone=$1 AND id=$2', [fixture.owner, skuId]);
+      await publicPage.getByRole('button', { name: 'Consultar por WhatsApp ↗', exact: true }).click();
+      await publicPage.getByText('Cambiaron los datos de tu consulta.', { exact: false }).waitFor();
+      assert.equal(publicPage.url(), inquiryUrl); assert.equal(destination, null); assert.equal(await publicPage.locator('#inquiry-total').textContent(), 'ARS $ 80.000');
+      await Promise.all([publicPage.waitForURL('https://wa.me/**'), publicPage.getByRole('button', { name: 'Consultar por WhatsApp ↗', exact: true }).click()]);
+      assert.ok(destination); assert.ok(decodeURIComponent(destination).includes('ARS $ 80.000')); assert.ok(decodeURIComponent(destination).includes('no reserva stock'));
+    } finally { await sql.query('UPDATE products SET price=70000 WHERE owner_phone=$1 AND id=$2', [fixture.owner, skuId]); await sql.end(); }
+  });
+  await check('unavailable inquiry lines block contact and stay local, responsive and isolated by catalog', async () => {
+    const sql = new Client({ connectionString: fixture.connection }); await sql.connect();
+    const argentina = fixture.products.find(product => product.title.startsWith('Argentina')), skuId = argentina.skuIds[0];
+    try {
+      await publicPage.goto(inquiryUrl); await publicPage.waitForFunction(() => document.getElementById('inquiry-total')?.textContent === 'ARS $ 70.000');
+      await publicPage.evaluate(() => localStorage.setItem('fullmatch.inquiry.other-demo', JSON.stringify([{ productSlug: 'other-product', size: 'XL', quantity: 7 }])));
+      await sql.query('UPDATE products SET stock_available=0 WHERE owner_phone=$1 AND id=$2', [fixture.owner, skuId]);
+      await publicPage.getByRole('button', { name: 'Actualizar precios y disponibilidad', exact: true }).click();
+      await publicPage.getByText('Revisá el talle o la cantidad disponible.', { exact: true }).waitFor();
+      assert.equal(await publicPage.getByRole('button', { name: 'Consultar por WhatsApp ↗', exact: true }).isEnabled(), false);
+      assert.equal(await publicPage.locator('[data-cart-count]').textContent(), '1');
+      await publicPage.setViewportSize({ width: 390, height: 844 });
+      assert.equal(await publicPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await publicPage.screenshot({ path: path.join(output, 'inquiry-mobile.png'), fullPage: true });
+      await publicPage.getByRole('button', { name: 'Retirar', exact: true }).click();
+      await publicPage.getByRole('heading', { name: 'Tu consulta está esperando una camiseta.', exact: true }).waitFor();
+      assert.equal(await publicPage.locator('[data-cart-count]').textContent(), '0');
+      assert.equal(await publicPage.evaluate(() => JSON.parse(localStorage.getItem('fullmatch.inquiry.other-demo'))[0].quantity), 7);
+    } finally { await sql.query('UPDATE products SET stock_available=1 WHERE owner_phone=$1 AND id=$2', [fixture.owner, skuId]); await sql.end(); }
+  });
   assert.deepEqual(errors, []);
   console.log(`Studio browser acceptance: ${checks} checks passed.`);
 } catch (error) {

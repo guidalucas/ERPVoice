@@ -7,7 +7,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { getJwtSecret, issueJwt } from '../server/auth.js';
+import { issueJwt } from '../server/auth.js';
 import { runCommerceHttpChecks } from './commerce-http-checks.js';
 
 /** Exercise the real HTTP boundary against the harness's disposable local PostgreSQL. */
@@ -24,7 +24,8 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
   await new Promise((resolve, reject) => { socket.once('error', reject); socket.listen(0, '127.0.0.1', resolve); });
   const port = socket.address().port;
   await new Promise((resolve, reject) => socket.close((error) => error ? reject(error) : resolve()));
-  const secret = getJwtSecret();
+  const previousJwtSecret = process.env.AUTH_JWT_SECRET;
+  const secret = crypto.randomBytes(32).toString('hex');
   const appSecret = crypto.randomBytes(32).toString('hex');
   const verifyToken = 'inventory-http-verification';
   const deployment = '0123456789abcdef0123456789abcdef01234567';
@@ -47,6 +48,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
   const owner = '59899000505';
   let fixtureCreateSequence = 0;
   const createHttpFixtureProduct = (input, businessId) => db.createProductRecord(input, businessId, { operationId: `http-fixture-create-${++fixtureCreateSequence}` });
+  process.env.AUTH_JWT_SECRET = secret;
   const token = issueJwt({ phoneNumber: owner });
   let completed = 0;
   const run = async (label, fn) => { await check(`inventory HTTP: ${label}`, fn); completed++; };
@@ -1177,6 +1179,8 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
     safeLogs = safeLogs.replace(/postgres(?:ql)?:\/\/[^\s]+/gi, '[redacted database URL]');
     throw new Error(`${error.message}\nHTTP child output (bounded):\n${safeLogs}`, { cause: error });
   } finally {
+    if (previousJwtSecret === undefined) delete process.env.AUTH_JWT_SECRET;
+    else process.env.AUTH_JWT_SECRET = previousJwtSecret;
     if (child.exitCode === null && child.signalCode === null) {
       const exited = new Promise((resolve) => child.once('exit', resolve));
       child.kill('SIGTERM');

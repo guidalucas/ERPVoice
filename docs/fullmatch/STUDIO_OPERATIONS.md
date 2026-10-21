@@ -101,3 +101,13 @@ La biblioteca muestra snapshots preparados y eventos `generated/download_request
 Las plantillas **Día de fútbol** y **Promoción** se suman a las tres originales. El porcentaje promocional va de 1 a 90, con intervalo explícito de hasta 30 días y zona horaria registrada. Los precios se derivan exactamente en unidades menores con redondeo half-up; no se actualizan precios de Stocky ni se aplican descuentos a ventas/pagos. La vigencia se vuelve a comprobar antes de exportar.
 
 Publicación Meta: preparada/documentada pero deshabilitada. Ver META_PREPARATION.md. Ninguna variable de entorno activa publicaciones automáticas.
+
+## Consulta agrupada de clientes
+
+Desde una ficha pública, elegir talle/cantidad y **Agregar a mi consulta**. El navegador conserva únicamente referencias públicas y cantidades, separadas por catálogo; no almacena datos personales ni fija precios como autoridad.
+
+En **Mi consulta**, el backend vuelve a leer precios/disponibilidad y calcula el total orientativo. Antes de abrir WhatsApp se vuelve a validar. Si cambió algo, se muestra el resumen nuevo para otra confirmación explícita. Una línea sin disponibilidad bloquea el contacto grupal hasta corregirla o retirarla.
+
+El endpoint `inquiry-preview` es de solo lectura y no crea pedidos, cobros, reservas ni recibos. El pase final abre una consulta prellenada para que el cliente decida enviarla; backend no envía mensajes. En aceptación automatizada ese destino se intercepta localmente y no se contacta WhatsApp.
+
+Ver la evaluación de proveedores y condiciones para un futuro checkout real en STAGE_4_CONTRACT.md.

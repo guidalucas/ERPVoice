@@ -72,6 +72,7 @@ export async function runCatalogHttpChecks({ sql, check, request, req, product, 
     await sql.query('UPDATE commerce_profiles SET sales_whatsapp=$2 WHERE owner_phone=$1', [owner, contact]);
   });
   await run('SSR is escaped, has SEO metadata and never returns private operational state', async () => {
+    assert.equal((await get(`/c/${shop}?utm_source=instagram&fbclid=fixture-tracking`)).status, 200);
     const malicious = 'Camiseta <img src=x onerror=alert(1)> & colección';
     const updated = await req(`/products/${current.id}`, { method: 'PATCH', body: { operationId: randomUUID(), expectedRevision: current.revision, changes: { title: malicious, description: '</script><script>alert(1)</script>' } } });
     assert.equal(updated.status, 200, updated.text); current = updated.json.result;

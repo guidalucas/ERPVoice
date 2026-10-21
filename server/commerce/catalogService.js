@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { record, uuid, integer, text } from './validation.js';
+import { record, uuid, integer, text, denseArray } from './validation.js';
 import { fail } from './errors.js';
 import { requireCommerceAccess, executeCommerceCommand } from './operationRepository.js';
 import { readProductDetail, requireProduct } from './productRepository.js';
 import { inspectCatalogSchema } from './catalogMigration.js';
 import { createMediaStorage } from './mediaStorage.js';
 import { sha256 } from './imageProcessor.js';
+import { operationRequestDigest } from '../operationHash.js';
+import { formatMoneyAmount } from './moneyPresentation.js';
 
 const catalogDTO = row => row ? { slug: row.slug, publicEnabled: row.public_enabled, revision: Number(row.revision), path: `/c/${row.slug}` } : null;
 const publicationDTO = row => ({ status: row?.status ?? 'hidden', revision: Number(row?.revision ?? 0), publishedAt: row?.published_at?.toISOString() ?? null });
@@ -97,6 +99,38 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
       });
     },
     brand: shop => publicRead(shop, async (_client, row) => publicBrand(row)),
+    inquiry: (shop, input) => {
+      const data = record(input, ['items', 'previousFingerprint']);
+      const items = denseArray(data.items, 20, 'inquiry items').map(raw => {
+        const item = record(raw, ['productSlug', 'size', 'quantity']);
+        const quantity = integer(item.quantity, 1); if (quantity > 10) fail('INQUIRY_QUANTITY_INVALID', 'Hasta diez unidades por talle en una consulta.', 400);
+        return { productSlug: slug(item.productSlug), size: text(item.size, 40, 'size'), quantity };
+      });
+      if (!items.length || new Set(items.map(item => JSON.stringify([item.productSlug, item.size.toLocaleLowerCase('es')]))).size !== items.length) fail('INQUIRY_ITEMS_INVALID', 'Elegí camisetas sin repetir el mismo talle.', 400);
+      const previous = data.previousFingerprint == null ? null : text(data.previousFingerprint, 64, 'previous fingerprint');
+      if (previous && !/^[a-f0-9]{64}$/.test(previous)) fail('INVALID_COMMAND', 'Huella de consulta inválida.', 400);
+      return publicRead(shop, async (client, catalog) => {
+        const lines = [];
+        for (const item of items) {
+          let product;
+          try { product = await publicProduct(client, catalog, item.productSlug); }
+          catch (error) { if (error.status !== 404) throw error; }
+          const variant = product?.variants.find(variant => variant.active && variant.size.normalize('NFC').trim().toLocaleLowerCase('es') === item.size.toLocaleLowerCase('es'));
+          if (!product || !variant) { lines.push({ ...item, title: 'Producto o talle no disponible', available: false, unitPrice: null, lineTotal: null, path: null }); continue; }
+          const total = (BigInt(variant.price.amountMinor) * BigInt(item.quantity)).toString();
+          lines.push({ ...item, size: variant.size, title: product.title, available: variant.stockAvailable >= item.quantity,
+            unitPrice: variant.price, lineTotal: { ...variant.price, amountMinor: total }, path: `/c/${shop}/p/${product.slug}` });
+        }
+        const currencies = new Set(lines.filter(line => line.unitPrice).map(line => line.unitPrice.currency));
+        const canContact = lines.every(line => line.available) && currencies.size === 1;
+        const total = canContact ? { ...lines[0].unitPrice, amountMinor: lines.reduce((sum, line) => sum + BigInt(line.lineTotal.amountMinor), 0n).toString() } : null;
+        const brand = publicBrand(catalog), fingerprint = operationRequestDigest({ catalog: brand, lines, total });
+        const format = amount => formatMoneyAmount(amount.amountMinor, amount.currency, amount.fractionDigits);
+        const contactText = canContact ? `Hola, quiero consultar estas camisetas de ${brand.brandName}:\n${lines.map(line => `• ${line.quantity} × ${line.title.slice(0, 80)} · talle ${line.size.slice(0, 20)} · ${format(line.unitPrice)} c/u`).join('\n')}\nTotal orientativo: ${format(total)}.\nA confirmar con el comercio. Esta consulta no reserva stock ni realiza un pago.` : null;
+        return { catalog: brand, lines, total, canContact, fingerprint, changed: Boolean(previous && previous !== fingerprint),
+          quotedAt: new Date().toISOString(), contactUrl: contactText ? `https://wa.me/${brand.salesWhatsapp}?text=${encodeURIComponent(contactText)}` : null };
+      });
+    },
     detail: (shop, productSlug) => publicRead(shop, async (client, catalog) => ({ catalog: publicBrand(catalog), product: publicProductProjection(await publicProduct(client, catalog, productSlug), shop) })),
     list: (shop, query = {}) => publicRead(shop, async (client, catalog) => {
       const data = record(query, ['q', 'team', 'season', 'version', 'sleeve', 'kit', 'cursor', 'limit']);

@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { runCommerceMediaFaultChecks } from './commerce-media-fault-checks.js';
 import { runCatalogHttpChecks } from './catalog-http-checks.js';
 import { runContentHttpChecks } from './content-http-checks.js';
+import { runInquiryHttpChecks } from './inquiry-http-checks.js';
 
 /** Real HTTP + real temporary PostgreSQL, through Stocky's authentication middleware. */
 export async function runCommerceHttpChecks({ db, sql, check, request }) {
@@ -232,6 +233,7 @@ export async function runCommerceHttpChecks({ db, sql, check, request }) {
   const catalogChecks = await runCatalogHttpChecks({ sql, check, request, req, product: photoProduct, sku: storySku, owner, other, member });
   photoProduct = catalogChecks.product;
   const contentChecks = await runContentHttpChecks({ sql, check, request, req, product: photoProduct, sku: storySku, owner, other, prepare: prepareStory });
+  const inquiryChecks = await runInquiryHttpChecks({ sql, check, request, req, product: photoProduct, sku: storySku, owner });
   await run('gallery revision, focus, logical retirement and deleted content boundaries', async () => {
     const galleryBody = { operationId: randomUUID(), expectedRevision: photoProduct.revision, imageIds: [imageId], coverImageId: imageId };
     const gallery = await req(`/products/${photoProduct.id}/gallery`, { method: 'PUT', body: galleryBody });
@@ -249,5 +251,5 @@ export async function runCommerceHttpChecks({ db, sql, check, request }) {
     assert.equal((await upload(imageId, imageBytes)).status, 404);
   });
   await runCommerceMediaFaultChecks({ db, sql, check, owner });
-  return count + 4 + catalogChecks.count + contentChecks;
+  return count + 4 + catalogChecks.count + contentChecks + inquiryChecks;
 }

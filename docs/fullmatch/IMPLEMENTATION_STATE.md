@@ -1,12 +1,12 @@
 # FullMatch Studio — implementation checkpoint
 
 - Status: `IN_PROGRESS`
-- Stage: 3 — local content automation, library and promotions.
-- Milestone: Stage 3 accepted: 379 PostgreSQL checks, 26 pure/image/supervisor tests, 14 real browser flows and both production builds pass. Captures reviewed; compatible tooling updates verified.
+- Stage: 4 — local inquiry cart and final authorized-scope audit.
+- Milestone: Stage 4 accepted: 383 PostgreSQL checks, 165 inventory tests, 26 commerce/domain/supervisor tests, 17 browser flows and both app builds pass. Final local commit/checkpoint remains.
 - Last completed task: real browser PNG/JPG export, mobile layout and lost-response recovery; PostgreSQL media COMMIT-acknowledgement and interrupted-upload fault checks.
-- Last validated local implementation commit: `2da4c0c`. Baseline: `4dc5d9b`.
+- Last validated local implementation commit: `1d63a74`. Baseline: `4dc5d9b`.
 - Files changed: see `git status`; prior audit and plan were untracked user-requested documents and are preserved.
-- Next concrete action: implement bounded sequential ZIP batches with persisted operation IDs, private content history/export events, additional templates and exact promotional prices. See STAGE_3_CONTRACT.md. Meta remains documentation/preparation only.
+- Next concrete action: verify the Stage-4 read-only inquiry/cart contract and anonymous browser flow, then final audit/regressions/builds/local commit. See STAGE_4_CONTRACT.md. No payment, productive order/reservation or external publication is authorized.
 
 ## Verification
 
@@ -23,6 +23,7 @@
 - Stage-3 final browser: 14/14 passed after Vite 6.4.4/Playwright-compatible tool updates; actual promotion PNG, unpacked ZIP JPGs, exact snapshot/operation resume IDs, changed-stock download refusal and mobile library/batch layout verified.
 - Stage-3 final PostgreSQL: 379 checks passed; pure/image/promotion/supervisor suite: 26/26. Both `npm run build:studio` and legacy `npm run build` passed.
 - Runtime dependency audit: zero. Full audit after compatible updates: eight development-only advisories (one moderate/seven high, no critical), associated with legacy Tailwind/glob/watch/parser chains. No forced major Tailwind migration was applied; these do not enter the deployed Node runtime dependency set.
+- Stage-4 final acceptance: 383 PostgreSQL checks, 165 inventory unit tests and 17 real browser flows passed; cart totals and late price/stock changes verified, WhatsApp handoff intercepted locally, no orders/payments/reservations/receipts created. Final builds for Studio and Stocky pass. See FINAL_ACCEPTANCE.md for complete boundaries and external gates.
 - PowerShell wrapper `-Status`, JS syntax and `git diff --check` passed.
 
 ## External enablement blockers (do not block fixture development)
