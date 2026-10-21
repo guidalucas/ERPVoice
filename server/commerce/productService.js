@@ -129,6 +129,8 @@ export function createCommerceProductService(runtime) {
         if (row.status === 'archived' && command.status !== 'draft') fail('INVALID_TRANSITION', 'Restaurá a borrador primero.', 409);
         const detail = await readProductDetail(client, context.businessId, id);
         if (command.status === 'ready' && !detail.readiness.canPrepare) fail('PRODUCT_NOT_READY', 'Completá los datos antes de preparar la ficha.', 422, { blockers: detail.readiness.blockers });
+        if (command.status === 'ready' && (!detail.identityKey || !detail.teamName || !detail.teamKind) && !(await client.query('SELECT 1 FROM commerce_schema_migrations WHERE version=5')).rowCount)
+          fail('UNIVERSAL_SCHEMA_NOT_READY', 'El servicio comercial necesita la actualización multirrubro para preparar esta ficha.', 503);
         await client.query(`UPDATE commercial_products SET status=$3,archived_at=CASE WHEN $3='archived' THEN NOW() ELSE NULL END,
           revision=revision+1,updated_by=$4,updated_at=NOW() WHERE owner_phone=$1 AND id=$2`, [context.businessId, id, command.status, context.actorId]);
         return readProductDetail(client, context.businessId, id);
@@ -181,7 +183,7 @@ export function createCommerceProductService(runtime) {
       return { items: rows.slice(0, limit).map(row => {
         const product = inventoryRowToProduct(row); let money = null;
         try { money = inventoryPriceToMoney(product.price, product.priceCurrency, policy); } catch { /* explicit unconfirmed money */ }
-        return { skuId: product.id, name: product.name, size: product.size, productType: product.productType, productModel: product.productModel,
+        return { skuId: product.id, name: product.name, size: product.size, label: product.size || product.name, unit: product.unit, productType: product.productType, productModel: product.productModel,
           revision: product.revision, identityFingerprint: inventoryProductFingerprint(product), stockAvailable: product.stockAvailable,
           stockReserved: product.stockReserved, price: money };
       }), nextCursor: rows.length > limit ? rows[limit - 1].id : null };
@@ -200,11 +202,11 @@ export function createCommerceProductService(runtime) {
       if (command.salesWhatsapp !== null && !/^\d{8,15}$/.test(command.salesWhatsapp)) fail('INVALID_COMMAND', 'WhatsApp comercial inválido.', 400);
       if (Object.hasOwn(data, 'appearance')) command.appearance = normalizeAppearance(data.appearance);
       return mutate(context, { operationId: command.operationId, type: 'profile.update', command, permission: 'commerce:settings' }, async client => {
-        const row = (await client.query('SELECT revision FROM commerce_profiles WHERE owner_phone=$1 FOR UPDATE', [context.businessId])).rows[0];
+        const row = (await client.query('SELECT * FROM commerce_profiles WHERE owner_phone=$1 FOR UPDATE', [context.businessId])).rows[0];
         requireRevision(row, command.expectedRevision);
         if (command.appearance) {
           await requireAppearanceSchema(client); await validateAppearanceAssets(client, context.businessId, command.appearance);
-          await client.query('UPDATE commerce_profiles SET appearance=$2::jsonb WHERE owner_phone=$1', [context.businessId, JSON.stringify(command.appearance)]);
+          await client.query('UPDATE commerce_profiles SET appearance=$2::jsonb WHERE owner_phone=$1', [context.businessId, JSON.stringify({ ...row.appearance, ...command.appearance })]);
         }
         const profile = (await client.query(`UPDATE commerce_profiles SET brand_name=$2,sales_whatsapp=$3,revision=revision+1,updated_at=NOW()
           WHERE owner_phone=$1 RETURNING *`, [context.businessId, command.brandName, command.salesWhatsapp])).rows[0];

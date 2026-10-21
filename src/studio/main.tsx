@@ -7,4 +7,5 @@ import './stories.css';
 import './refinements.css';
 import './automation.css';
 import './onboarding.css';
+import './universal.css';
 ReactDOM.createRoot(document.getElementById('studio-root')!).render(<React.StrictMode><AuthProvider><Studio/></AuthProvider></React.StrictMode>);

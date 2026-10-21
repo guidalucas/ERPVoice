@@ -36,3 +36,18 @@
 ## Recovery
 
 Read IMPLEMENTATION_BRIEF.md, this file, TASKS.md, DECISIONS.md and checkpoint.json. The authorized local scope is complete and TASKS.md has no unchecked implementation tasks. Do not start more inference or deployment solely because a supervisor is invoked. For a newly authorized task, verify the current code/checkpoint and update scope explicitly. Never use production credentials for tests.
+
+## Rebranding multirrubro — 2026-10-21
+
+Implementación posterior al hito histórico anterior, preparada para revisión en la rama `codex/studio-multirubro-presets`. El último commit validado del checkpoint corresponde al hito histórico; la validación de este cambio se registra debajo.
+
+- Personalización existente reutilizada: selector opcional en appearance; marca, fotos y textos preservados; ningún segundo alta de tienda ni sistema de atributos paralelo.
+- Studio con identidad propia; catálogo, editor, pendientes, consultas e historias adaptados a presentaciones y unidades reales.
+- Migración 5 explícita: libera la restricción de identidad deportiva universal sin cambiar datos comerciales, índices ni inventario. Bundle SQL regenerado; no se aplicó a producción.
+- npm run build y build:studio: aprobados.
+- Inventario: 165 pruebas de dominio aprobadas. PostgreSQL: 383 controles aprobados; log ignorado .fullmatch-runtime/rebranding-postgres.log.
+- Presentación universal: 5 pruebas aprobadas; dominio/imágenes/promociones: 12 aprobadas.
+- Navegador existente: 17 flujos aprobados; onboarding: 8 aprobados; SQL: 12 controles aprobados.
+- Branding y cinco plantillas: aprobados. Tres rubros aislados: catálogo, detalle y Studio a 1440/390 px, PNG real por rubro, persistencia desde Configuración y clientes anteriores, snapshots v4/v5 e inventario intacto. Capturas revisadas en .fullmatch-runtime/multirubro/.
+- Una sola instancia escritora; supervisor inactivo. Rama y PR solicitados por el usuario; sin despliegue ni cambios productivos.
+- Relevamiento, decisiones, actualización mínima y límites: docs/STUDIO_MULTIRRUBRO.md.

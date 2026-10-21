@@ -79,6 +79,7 @@ try {
   await check('complete new product flow links a pending SKU, uploads a photo and exports without retyping prices', async () => {
     await page.getByRole('heading', { name: 'Ficha recuperada navegador', exact: true }).click();
     await page.getByLabel('Título comercial', { exact: true }).fill('Boca Juniors titular 2025');
+    await page.locator('.specific-fields > summary').click();
     await page.getByLabel('Equipo', { exact: true }).fill('Boca Juniors');
     await page.getByLabel('Identificador del equipo', { exact: true }).fill('boca-juniors');
     await page.getByLabel('Tipo de equipo', { exact: true }).selectOption('club');
@@ -88,7 +89,7 @@ try {
     await page.getByLabel('Manga', { exact: true }).selectOption('short');
     await page.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
     await page.getByText('Ficha guardada.', { exact: true }).waitFor();
-    await page.getByRole('button', { name: '02 Talles vinculados', exact: true }).click();
+    await page.getByRole('button', { name: '02 SKU vinculados', exact: true }).click();
     await page.locator('.variant-row').filter({ hasText: 'Boca Juniors' }).locator('input').check();
     await page.getByRole('button', { name: 'Guardar vínculos', exact: true }).click();
     await page.getByText('Vínculos revisados y guardados.', { exact: true }).waitFor();
@@ -118,7 +119,7 @@ try {
     assert.equal(await publicPage.locator('.catalog-card').count(), 3);
     await publicPage.waitForFunction(() => [...document.querySelectorAll('.catalog-card-photo img')].every(image => image.complete && image.naturalWidth > 0));
     await publicPage.screenshot({ path: path.join(output, 'catalog-desktop.png'), fullPage: true });
-    await publicPage.getByRole('searchbox', { name: 'Buscar camiseta', exact: true }).fill('Argentina');
+    await publicPage.getByRole('searchbox', { name: 'Buscar productos', exact: true }).fill('Argentina');
     await Promise.all([publicPage.waitForURL(/q=Argentina/), publicPage.getByRole('button', { name: 'Buscar', exact: true }).click()]);
     assert.equal(await publicPage.locator('.catalog-card').count(), 1);
     await publicPage.getByRole('heading', { name: 'Argentina titular 2025', exact: true }).click();
@@ -274,14 +275,14 @@ try {
       await publicPage.evaluate(() => localStorage.setItem('fullmatch.inquiry.other-demo', JSON.stringify([{ productSlug: 'other-product', size: 'XL', quantity: 7 }])));
       await sql.query('UPDATE products SET stock_available=0 WHERE owner_phone=$1 AND id=$2', [fixture.owner, skuId]);
       await publicPage.getByRole('button', { name: 'Actualizar precios y disponibilidad', exact: true }).click();
-      await publicPage.getByText('Revisá el talle o la cantidad disponible.', { exact: true }).waitFor();
+      await publicPage.getByText('Revisá la presentación o la cantidad disponible.', { exact: true }).waitFor();
       assert.equal(await publicPage.getByRole('button', { name: 'Consultar por WhatsApp ↗', exact: true }).isEnabled(), false);
       assert.equal(await publicPage.locator('[data-cart-count]').textContent(), '1');
       await publicPage.setViewportSize({ width: 390, height: 844 });
       assert.equal(await publicPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       await publicPage.screenshot({ path: path.join(output, 'inquiry-mobile.png'), fullPage: true });
       await publicPage.getByRole('button', { name: 'Retirar', exact: true }).click();
-      await publicPage.getByRole('heading', { name: 'Tu consulta está esperando una camiseta.', exact: true }).waitFor();
+      await publicPage.getByRole('heading', { name: 'Tu consulta está esperando un producto.', exact: true }).waitFor();
       assert.equal(await publicPage.locator('[data-cart-count]').textContent(), '0');
       assert.equal(await publicPage.evaluate(() => JSON.parse(localStorage.getItem('fullmatch.inquiry.other-demo'))[0].quantity), 7);
     } finally { await sql.query('UPDATE products SET stock_available=1 WHERE owner_phone=$1 AND id=$2', [fixture.owner, skuId]); await sql.end(); }

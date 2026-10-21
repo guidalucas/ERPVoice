@@ -33,7 +33,7 @@ export function createPublicCatalogRouters(runtime) {
   });
   pages.use('/c', headers, (_req, res, next) => { res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"); res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin'); next(); });
   pages.get('/c/:shop', async (req, res, next) => { try {
-    const filters = Object.fromEntries(Object.entries(req.query).filter(([key]) => ['q', 'team', 'season', 'version', 'sleeve', 'kit', 'cursor', 'limit'].includes(key)));
+    const filters = Object.fromEntries(Object.entries(req.query).filter(([key]) => ['q', 'category', 'variant', 'team', 'season', 'version', 'sleeve', 'kit', 'cursor', 'limit'].includes(key)));
     res.type('html').send(renderCatalogList(await catalog.list(req.params.shop, filters), filters, origin));
   } catch (error) { next(error); } });
   pages.get('/c/:shop/consulta', async (req, res, next) => { try { res.type('html').send(renderInquiryPage(await catalog.brand(req.params.shop), origin)); } catch (error) { next(error); } });

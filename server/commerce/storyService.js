@@ -23,7 +23,7 @@ const settingsOf = input => {
 };
 
 /** Explicit semantic projection: revisions alone neither prove nor disprove freshness. */
-async function storyContent(client, context, productId, settings, { checkImageRevision = false, includeAppearance = true } = {}) {
+async function storyContent(client, context, productId, settings, { checkImageRevision = false, includeAppearance = true, universal = true } = {}) {
   const detail = await readProductDetail(client, context.businessId, productId);
   if (!detail.readiness.canGenerateStory) fail('STORY_PRODUCT_NOT_READY', 'Revisá la ficha, las fotos y el stock antes de generar la historia.', 422, { blockers: detail.readiness.blockers });
   const photo = detail.images.find(image => image.id === settings.imageId && image.status === 'ready');
@@ -37,8 +37,8 @@ async function storyContent(client, context, productId, settings, { checkImageRe
   let assertion = 'available', heading = storyTemplates[settings.templateId].heading;
   if (settings.templateId === 'last_unit') {
     if (detail.availableQuantity === 1 && total === 1) assertion = 'last_total';
-    else if (selected.length === 1 && selected[0].stockAvailable === 1) { assertion = 'last_size'; heading = `ÚLTIMA UNIDAD · TALLE ${selected[0].size}`; }
-    else fail('LAST_UNIT_NOT_TRUE', 'Elegí un talle con una unidad o usá Stock disponible.', 422);
+    else if (selected.length === 1 && selected[0].stockAvailable === 1) { assertion = 'last_size'; heading = universal ? `ÚLTIMA UNIDAD · ${selected[0].label}` : `ÚLTIMA UNIDAD · TALLE ${selected[0].size}`; }
+    else fail('LAST_UNIT_NOT_TRUE', 'Elegí una presentación con una unidad o usá Stock disponible.', 422);
   }
   const profile = await readProfile(client, context.businessId);
   const image = (await client.query('SELECT master_sha256 FROM commercial_product_images WHERE owner_phone=$1 AND commercial_product_id=$2 AND id=$3', [context.businessId, productId, settings.imageId])).rows[0];
@@ -58,9 +58,10 @@ async function storyContent(client, context, productId, settings, { checkImageRe
     ...(includeAppearance ? { appearance: { logoId: appearanceOf(profile).logoId, primaryColor: appearanceOf(profile).primaryColor,
       accentColor: appearanceOf(profile).accentColor, tagline: appearanceOf(profile).tagline } } : {}),
     imageId: settings.imageId, imageSha256: image.master_sha256, imageAlt: photo.altText,
+    ...(universal ? { variantLabel: detail.teamKey && selected.every(variant => variant.size?.trim()) ? 'TALLES DISPONIBLES' : 'PRESENTACIONES DISPONIBLES' } : {}),
     heading, assertion, promotion, availableQuantity: total, totalProductQuantity: detail.availableQuantity,
     variants: selected.map(variant => ({ skuId: variant.skuId, size: variant.size, stockAvailable: variant.stockAvailable,
-      price: variant.price, identityFingerprint: variant.identityFingerprint })),
+      ...(universal ? { label: variant.label, unit: variant.unit } : {}), price: variant.price, identityFingerprint: variant.identityFingerprint })),
     price: { currency: selected[0].price.currency, fractionDigits: selected[0].price.fractionDigits,
       minAmountMinor: amounts[0].toString(), maxAmountMinor: amounts.at(-1).toString() }, moneyPolicyRevision: detail.moneyPolicyRevision,
     settings: { ...settings, expectedImageRevision: undefined } };
@@ -86,7 +87,7 @@ export function createCommerceStoryService(runtime) {
         if (detail.revision !== command.expectedProductRevision) fail('REVISION_CONFLICT', 'La ficha cambió. Actualizá la previsualización.', 409);
         const content = await storyContent(client, context, productId, command.settings, { checkImageRevision: true });
         const now = Date.now();
-        return { snapshotId: data.operationId, schemaVersion: 1, rendererVersion: 4, width: 1080, height: 1920,
+        return { snapshotId: data.operationId, schemaVersion: 1, rendererVersion: 5, width: 1080, height: 1920,
           createdAt: new Date(now).toISOString(), expiresAt: new Date(Math.min(now + 86_400_000, content.promotion ? Date.parse(content.promotion.endsAt) : Infinity)).toISOString(),
           content, contentFingerprint: operationRequestDigest(content) };
       });
@@ -96,7 +97,7 @@ export function createCommerceStoryService(runtime) {
       const snapshot = await readSnapshot(client, context, id), checkedAt = new Date().toISOString();
       if (Date.parse(snapshot.expiresAt) <= Date.now()) return { valid: false, reasons: ['SNAPSHOT_EXPIRED'], checkedAt };
       try {
-        const current = await storyContent(client, context, snapshot.content.productId, { ...snapshot.content.settings, expectedImageRevision: 1 }, { includeAppearance: snapshot.rendererVersion >= 3 });
+        const current = await storyContent(client, context, snapshot.content.productId, { ...snapshot.content.settings, expectedImageRevision: 1 }, { includeAppearance: snapshot.rendererVersion >= 3, universal: snapshot.rendererVersion >= 5 });
         const valid = operationRequestDigest(current) === snapshot.contentFingerprint;
         return { valid, reasons: valid ? [] : ['COMMERCIAL_CONTENT_CHANGED'], checkedAt };
       } catch (error) {

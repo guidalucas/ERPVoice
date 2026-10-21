@@ -67,7 +67,11 @@
     "test:universal-chat-ui": "npm run build && node scripts/test-universal-chat-ui.mjs",
     "test:studio:branding": "node scripts/test-studio-branding.mjs",
     "commerce:appearance:schema:check": "node scripts/migrate-commerce-appearance.js",
-    "commerce:appearance:schema:apply": "node scripts/migrate-commerce-appearance.js --apply"
+    "commerce:appearance:schema:apply": "node scripts/migrate-commerce-appearance.js --apply",
+    "test:commerce:presentation": "node --test scripts/test-commerce-presentation.js",
+    "test:studio:multirubro": "node scripts/test-studio-multirubro.mjs",
+    "commerce:universal:schema:check": "node scripts/migrate-commerce-universal.js",
+    "commerce:universal:schema:apply": "node scripts/migrate-commerce-universal.js --apply"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.3.0",

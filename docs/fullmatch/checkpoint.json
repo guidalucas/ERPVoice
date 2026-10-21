@@ -1,9 +1,9 @@
 {
   "version": 1,
   "status": "COMPLETED",
-  "revision": 12,
+  "revision": 14,
   "stage": 4,
-  "milestone": "authorized-local-stages-0-through-4-complete",
-  "nextAction": "No authorized independent implementation tasks remain. Keep production/payment/Meta gates disabled and supervisor inactive. Future production enablement requires the real facts and separate authorization recorded in FINAL_ACCEPTANCE.md; do not resume deployment or inference automatically.",
+  "milestone": "universal-studio-optional-presets-validated-locally",
+  "nextAction": "Local rebranding complete and validated in the working tree. Production remains unchanged. Deployment and migration 5 on real databases require separate authorization; keep supervisor inactive. See docs/STUDIO_MULTIRRUBRO.md.",
   "lastValidatedCommit": "e05a2f3"
 }

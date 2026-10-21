@@ -12,7 +12,7 @@ export type StorySettings = { templateId: string; templateVersion: number; image
   skuIds: string[]; showPrice: boolean; fit: 'contain' | 'cover'; zoom: number; focalX: number; focalY: number; caption: string; cta: string; promotion?: Promotion | null };
 export type StorySnapshot = { snapshotId: string; schemaVersion: number; rendererVersion: number; width: number; height: number; createdAt: string; expiresAt: string;
   content: { productId: string; title: string; teamName: string; season: string; versionKey: string; brandName: string; appearance?: Pick<Appearance, 'logoId' | 'primaryColor' | 'accentColor' | 'tagline'>;
-    heading: string; assertion: string; availableQuantity: number; imageId: string; variants: { skuId: string; size: string; stockAvailable: number; price: Money }[];
+    variantLabel?: string; heading: string; assertion: string; availableQuantity: number; imageId: string; variants: { skuId: string; size: string; label?: string; unit?: string; stockAvailable: number; price: Money }[];
     price: { currency: string; fractionDigits: number; minAmountMinor: string; maxAmountMinor: string };
     promotion?: (Promotion & { minAmountMinor: string; maxAmountMinor: string }) | null; settings: StorySettings } };
 
@@ -32,7 +32,7 @@ function fitText(element: HTMLElement, minSize: number, maxHeight = Infinity) {
 /** HTML/CSS en un nodo fuera de pantalla → imagen 1080×1920. La foto usa los píxeles reales y el mismo encuadre (fit, zoom, focal) que antes. */
 export async function renderStory(canvas: HTMLCanvasElement, snapshot: StorySnapshot, photo: Blob, format: 'png' | 'jpeg') {
   if ([1, 2, 3].includes(snapshot.rendererVersion)) return renderLegacyStory(canvas, snapshot, photo, format);
-  if (snapshot.rendererVersion !== 4 || snapshot.width !== 1080 || snapshot.height !== 1920) throw new Error('Actualizá Studio para usar esta versión de historia.');
+  if (![4, 5].includes(snapshot.rendererVersion) || snapshot.width !== 1080 || snapshot.height !== 1920) throw new Error('Actualizá Studio para usar esta versión de historia.');
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Este navegador no permite renderizar la historia.');
   const content = snapshot.content, settings = content.settings, promo = content.promotion, appearance = content.appearance;
@@ -47,24 +47,24 @@ export async function renderStory(canvas: HTMLCanvasElement, snapshot: StorySnap
     const money = (amountMinor: string) => moneyLabel({ amountMinor, currency: content.price.currency, fractionDigits: content.price.fractionDigits });
     const range = promo ?? content.price, from = range.minAmountMinor !== range.maxAmountMinor;
     const until = promo ? new Intl.DateTimeFormat('es', { timeZone: promo.timeZone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date(promo.endsAt)) : '';
-    const initials = appearance ? brandInitials(content.brandName) : 'FM';
+    const initials = appearance || snapshot.rendererVersion >= 5 ? brandInitials(content.brandName) : 'FM';
     node.className = `st st-${esc(settings.templateId)}`;
     ([['--primary', primary], ['--accent', accent], ['--ink', ink], ['--accent-ink', accentInk]] as const).forEach(([key, value]) => node.style.setProperty(key, value));
     node.innerHTML = `
       <div class="st-stage"><img class="st-shot" alt="" src="${url(photo)}" style="width:${width}px;height:${height}px;left:${left}px;top:${top}px">
         <header class="st-head"><div class="st-logo">${logo ? `<img src="${logo}">` : esc(initials)}</div><span class="st-brand">${esc(content.brandName)}</span></header>
         <span class="st-badge">${esc(content.heading)}</span>
-        ${settings.templateId === 'last_unit' ? `<div class="st-ribbon">${content.assertion === 'last_total' ? 'SOLO QUEDA 1' : 'ÚLTIMA EN ESTE TALLE'}</div>` : ''}
+        ${settings.templateId === 'last_unit' ? `<div class="st-ribbon">${content.assertion === 'last_total' ? 'SOLO QUEDA 1' : snapshot.rendererVersion >= 5 ? 'ÚLTIMA EN ESTA PRESENTACIÓN' : 'ÚLTIMA EN ESTE TALLE'}</div>` : ''}
         ${promo ? `<div class="st-burst"><b>${promo.percentage}%</b><span>OFF</span></div>` : ''}</div>
       <div class="st-panel">
         <h1 class="st-title">${esc(content.title)}</h1>
-        <p class="st-meta">${esc(content.season)} · ${content.versionKey === 'player' ? 'VERSIÓN JUGADOR' : 'VERSIÓN HINCHA'}</p>
+        <p class="st-meta">${esc([content.season, content.versionKey === 'player' ? 'VERSIÓN JUGADOR' : content.versionKey === 'fan' ? 'VERSIÓN HINCHA' : null].filter(Boolean).join(' · '))}</p>
         <div class="st-info"><div class="st-price">${settings.showPrice ? `${promo ? `<small>Antes ${content.price.minAmountMinor !== content.price.maxAmountMinor ? 'desde ' : ''}${esc(money(content.price.minAmountMinor))}</small>` : ''}<b>${from ? '<i>Desde</i> ' : ''}${esc(money(range.minAmountMinor))}</b>` : ''}</div>
-          <div class="st-sizes"><p>TALLES DISPONIBLES</p><div class="st-chips">${content.variants.map(variant => `<span class="st-chip">${esc(variant.size)}</span>`).join('')}</div></div></div>
+          <div class="st-sizes"><p>${esc(content.variantLabel ?? 'TALLES DISPONIBLES')}</p><div class="st-chips">${content.variants.map(variant => `<span class="st-chip">${esc(variant.label ?? variant.size)}${variant.unit && variant.unit !== 'unit' ? ' · ' + esc(variant.unit) : ''}</span>`).join('')}</div></div></div>
         ${settings.caption ? `<p class="st-note">${esc(settings.caption)}</p>` : ''}
         ${promo ? `<p class="st-note st-until">Promoción vigente hasta ${esc(until)}</p>` : ''}
         <div class="st-cta">${esc(settings.cta || 'CONSULTANOS POR WHATSAPP')}</div>
-        <footer class="st-foot">${esc(appearance?.tagline ?? 'CASACAS CON HISTORIA. PASIÓN POR EL FÚTBOL.')}</footer></div>`;
+        <footer class="st-foot">${esc(appearance?.tagline ?? (snapshot.rendererVersion >= 5 ? '' : 'CASACAS CON HISTORIA. PASIÓN POR EL FÚTBOL.'))}</footer></div>`;
     holder.style.cssText = 'position:fixed;left:-10000px;top:0;pointer-events:none';
     holder.setAttribute('aria-hidden', 'true'); holder.inert = true;
     holder.append(node); document.body.append(holder);

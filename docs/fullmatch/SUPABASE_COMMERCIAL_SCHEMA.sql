@@ -218,6 +218,30 @@ BEGIN
     INSERT INTO public.commerce_schema_migrations(version, checksum) VALUES (4, 'fcfa343f83cca625feeb2066feaf46f24a176068a31e1f5b69b1f0fae9fbaac8');
   END IF;
 
+
+  -- Migration 5; checksum matches the canonical repository source.
+  SELECT checksum INTO previous_checksum FROM public.commerce_schema_migrations WHERE version = 5;
+  IF FOUND THEN
+    IF NOT (previous_checksum = ANY(ARRAY['219ccabb12b6f5eed55c11d7382a94c9fa970f089bd05c669d1851fe2fc21860', '16fd1ddae651ee45d0937103ab7f9d608fcadb94ffe7f7744e08efb9a7cce2ba'])) THEN
+      RAISE EXCEPTION 'MIGRATION_CHECKSUM_MISMATCH: version 5';
+    END IF;
+  ELSE
+    -- Preserve all existing rows and sports identity fields/indexes. Only remove
+    -- the legacy requirement that every ready product have a football identity.
+    DO $$ DECLARE legacy_name TEXT; BEGIN
+      SELECT conname INTO STRICT legacy_name FROM pg_constraint
+        WHERE conrelid='public.commercial_products'::regclass AND contype='c'
+          AND pg_get_constraintdef(oid) LIKE '%ready%'
+          AND pg_get_constraintdef(oid) LIKE '%identity_key%'
+          AND pg_get_constraintdef(oid) LIKE '%team_kind%';
+      EXECUTE format('ALTER TABLE public.commercial_products DROP CONSTRAINT %I', legacy_name);
+    END $$;
+    ALTER TABLE commercial_products ADD CONSTRAINT commercial_products_ready_title
+      CHECK(status<>'ready' OR length(btrim(title))>0);
+
+    INSERT INTO public.commerce_schema_migrations(version, checksum) VALUES (5, '219ccabb12b6f5eed55c11d7382a94c9fa970f089bd05c669d1851fe2fc21860');
+  END IF;
+
   FOREACH table_name IN ARRAY ARRAY['inventory_money_policies', 'commerce_profiles', 'commercial_products', 'commercial_product_skus', 'commercial_product_images', 'commercial_operations', 'commerce_catalogs', 'commercial_publications', 'commerce_schema_migrations', 'commerce_brand_assets'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', table_name);

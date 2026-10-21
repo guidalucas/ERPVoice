@@ -31,7 +31,8 @@ export async function runCatalogHttpChecks({ sql, check, request, req, product, 
     const response = await req(`/products/${current.id}/publication`, { method: 'PUT', body: publishBody }); assert.equal(response.status, 200, response.text); publication = response.json.result;
     const result = await get(`${base}/products/${current.slug}`); assert.equal(result.status, 200, result.text);
     const publicProduct = result.json.product;
-    assert.deepEqual(Object.keys(publicProduct).sort(), ['slug', 'title', 'description', 'teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey', 'priceRange', 'available', 'sizes', 'photos', 'path'].sort());
+    assert.deepEqual(Object.keys(publicProduct).sort(), ['slug', 'title', 'description', 'teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey', 'priceRange', 'available', 'category', 'variantLabel', 'sizes', 'photos', 'path'].sort());
+    assert.deepEqual(Object.keys(publicProduct.sizes[0]).sort(), ['size', 'unit', 'specifications', 'available', 'price'].sort());
     assert.equal(publicProduct.available, true); assert.equal(publicProduct.priceRange.minAmountMinor, '3100000'); assert.equal(publicProduct.sizes[0].size, 'S');
     for (const field of ['owner_phone', 'ownerPhone', 'stockAvailable', 'stockReserved', 'skuId', 'identityFingerprint', 'revision', 'master_key', 'clients', 'transactions', 'pedidos']) assert.ok(!result.text.includes(`"${field}"`), field);
     assert.ok(!result.text.includes(owner)); assert.ok(!result.text.includes(sku.id));

@@ -27,6 +27,6 @@ export function commercialIdentityKey(product) {
   return createHash('sha256').update(JSON.stringify(identityFields.map(field => product[field]))).digest('hex');
 }
 export function commercialSlug(title, id) {
-  const base = title.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 90) || 'camiseta';
+  const base = title.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 90) || 'producto';
   return `${base}-${id.replaceAll('-', '').slice(0, 10)}`;
 }
