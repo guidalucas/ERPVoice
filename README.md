@@ -1,12 +1,14 @@
 # VoiceERP
 
-## Stocky y FullMatch Studio en producción
+## Stocky y Stocky Studio en producción
 
 `npm run build` genera `dist/index.html` (Stocky) y `dist/studio.html` (Studio), con sus assets, en una sola ejecución. `vercel.json` fija ese comando y la carpeta `dist`; no hace falta copiar `dist-studio` ni usar dos builds en Vercel.
 
-El propietario tiene acceso a **FullMatch Studio** desde la barra lateral de Stocky y desde **Más** en móvil. El enlace abre `/studio.html` en el mismo dominio y reutiliza la sesión existente. El backend sigue exigiendo propietario y perfil comercial habilitado.
+El propietario tiene acceso a **Stocky Studio** desde la barra lateral de Stocky y desde **Más** en móvil. El enlace abre `/studio.html` en el mismo dominio y reutiliza la sesión existente. El backend sigue exigiendo propietario y perfil comercial habilitado.
 
 Variables, migraciones previas y prueba después del deploy: [Guía de despliegue de Studio](docs/fullmatch/DEPLOYMENT.md).
+
+Personalización de marca y funcionamiento de las plantillas: [Guía de Stocky Studio](docs/STUDIO_CUSTOMIZATION.md). La personalización requiere la migración comercial 4, incluida en el bundle SQL.
 
 La transición a arquitectura C se sigue en [STOCKY_REENGINEERING_PLAN.md](STOCKY_REENGINEERING_PLAN.md).
 El panel confirma contra el backend y solo hidrata snapshots persistidos; se retiró el

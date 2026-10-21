@@ -75,7 +75,7 @@ export function BatchStudio({ onBack }: { onBack: () => void }) {
       for (const file of files.current) await validate(file.snapshot.snapshotId);
       for (const file of files.current) await reportExport(file.snapshot, file.blob, file.filename, 'download_requested');
       for (const file of files.current) await validate(file.snapshot.snapshotId);
-      const url = URL.createObjectURL(zip), anchor = document.createElement('a'); anchor.href = url; anchor.download = `fullmatch-historias-${new Date().toISOString().slice(0, 10)}-${job.batchId.slice(0, 8)}.zip`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 20_000);
+      const url = URL.createObjectURL(zip), anchor = document.createElement('a'); anchor.href = url; anchor.download = `stocky-historias-${new Date().toISOString().slice(0, 10)}-${job.batchId.slice(0, 8)}.zip`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 20_000);
       persist({ ...job, lastDownloadRequestedAt: new Date().toISOString() });
     } catch (cause) { setError(errorText(cause)); setZip(null); }
     finally { if (mounted.current) setBusy(false); }

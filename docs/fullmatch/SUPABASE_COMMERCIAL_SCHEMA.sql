@@ -187,7 +187,38 @@ BEGIN
     INSERT INTO public.commerce_schema_migrations(version, checksum) VALUES (3, '14924046890a5c7e76abc06debcf64cfe044a529faa9d8dac2dd79a6ac9c68cd');
   END IF;
 
-  FOREACH table_name IN ARRAY ARRAY['inventory_money_policies', 'commerce_profiles', 'commercial_products', 'commercial_product_skus', 'commercial_product_images', 'commercial_operations', 'commerce_catalogs', 'commercial_publications', 'commerce_schema_migrations'] LOOP
+
+  -- Migration 4; checksum matches the canonical repository source.
+  SELECT checksum INTO previous_checksum FROM public.commerce_schema_migrations WHERE version = 4;
+  IF FOUND THEN
+    IF NOT (previous_checksum = ANY(ARRAY['fcfa343f83cca625feeb2066feaf46f24a176068a31e1f5b69b1f0fae9fbaac8', '50df79e5cab3a2ad21d6d34aa050d1326bfeb81b40bda39c5ef5846ec91cf5b8'])) THEN
+      RAISE EXCEPTION 'MIGRATION_CHECKSUM_MISMATCH: version 4';
+    END IF;
+  ELSE
+    ALTER TABLE commerce_profiles ADD COLUMN appearance JSONB NOT NULL DEFAULT '{}'::jsonb
+      CHECK (jsonb_typeof(appearance) = 'object');
+
+    CREATE TABLE commerce_brand_assets (
+      owner_phone TEXT NOT NULL REFERENCES commerce_profiles(owner_phone),
+      id UUID NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('logo', 'cover')),
+      mime_type TEXT NOT NULL CHECK (mime_type IN ('image/png', 'image/jpeg')),
+      content BYTEA NOT NULL CHECK (octet_length(content) BETWEEN 1 AND 1048576),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (owner_phone, id)
+    );
+    ALTER TABLE commerce_brand_assets ENABLE ROW LEVEL SECURITY;
+    REVOKE ALL ON commerce_brand_assets FROM PUBLIC;
+    DO $$ DECLARE role_name TEXT; BEGIN
+      FOR role_name IN SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated') LOOP
+        EXECUTE format('REVOKE ALL ON commerce_brand_assets FROM %I', role_name);
+      END LOOP;
+    END $$;
+
+    INSERT INTO public.commerce_schema_migrations(version, checksum) VALUES (4, 'fcfa343f83cca625feeb2066feaf46f24a176068a31e1f5b69b1f0fae9fbaac8');
+  END IF;
+
+  FOREACH table_name IN ARRAY ARRAY['inventory_money_policies', 'commerce_profiles', 'commercial_products', 'commercial_product_skus', 'commercial_product_images', 'commercial_operations', 'commerce_catalogs', 'commercial_publications', 'commerce_schema_migrations', 'commerce_brand_assets'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', table_name);
     FOR role_name IN SELECT rolname FROM pg_roles WHERE rolname IN ('anon', 'authenticated') LOOP
@@ -216,7 +247,7 @@ BEGIN
   END LOOP;
   IF EXISTS (
     SELECT 1 FROM pg_roles r CROSS JOIN pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public' AND c.relname = ANY(ARRAY['inventory_money_policies', 'commerce_profiles', 'commercial_products', 'commercial_product_skus', 'commercial_product_images', 'commercial_operations', 'commerce_catalogs', 'commercial_publications', 'commerce_schema_migrations'])
+    WHERE n.nspname = 'public' AND c.relname = ANY(ARRAY['inventory_money_policies', 'commerce_profiles', 'commercial_products', 'commercial_product_skus', 'commercial_product_images', 'commercial_operations', 'commerce_catalogs', 'commercial_publications', 'commerce_schema_migrations', 'commerce_brand_assets'])
       AND r.rolname IN ('anon', 'authenticated')
       AND (has_table_privilege(r.oid, c.oid, 'SELECT') OR has_table_privilege(r.oid, c.oid, 'INSERT')
         OR has_table_privilege(r.oid, c.oid, 'UPDATE') OR has_table_privilege(r.oid, c.oid, 'DELETE')
@@ -247,6 +278,6 @@ END
 $fullmatch_schema$;
 COMMIT;
 
--- Success: versions 1, 2 and 3. Business/profile enablement is a separate step.
+-- Success: versions 1, 2, 3 and 4. Business/profile enablement is a separate step.
 SELECT version, applied_at FROM public.commerce_schema_migrations
-WHERE version IN (1, 2, 3) ORDER BY version;
+WHERE version IN (1, 2, 3, 4) ORDER BY version;

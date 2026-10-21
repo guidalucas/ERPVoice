@@ -8,6 +8,7 @@ import { createMediaStorage } from './mediaStorage.js';
 import { sha256 } from './imageProcessor.js';
 import { operationRequestDigest } from '../operationHash.js';
 import { formatMoneyAmount } from './moneyPresentation.js';
+import { appearanceOf, requireAppearanceSchema } from './appearance.js';
 
 const catalogDTO = row => row ? { slug: row.slug, publicEnabled: row.public_enabled, revision: Number(row.revision), path: `/c/${row.slug}` } : null;
 const publicationDTO = row => ({ status: row?.status ?? 'hidden', revision: Number(row?.revision ?? 0), publishedAt: row?.published_at?.toISOString() ?? null });
@@ -42,7 +43,7 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
   };
   const requireCatalog = async (client, shop) => {
     slug(shop);
-    const row = (await client.query(`SELECT c.owner_phone,c.slug,p.brand_name,p.brand_preset,p.sales_whatsapp
+    const row = (await client.query(`SELECT c.owner_phone,c.slug,p.brand_name,p.brand_preset,p.sales_whatsapp,to_jsonb(p)->'appearance' AS appearance
       FROM commerce_catalogs c JOIN commerce_profiles p ON p.owner_phone=c.owner_phone
       WHERE c.slug=$1 AND c.public_enabled=true AND p.enabled=true AND p.sales_whatsapp IS NOT NULL`, [shop])).rows[0];
     if (!row) notFound(); return row;
@@ -55,8 +56,16 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
     if (!row) notFound(); const detail = await readProductDetail(client, catalog.owner_phone, row.id);
     if (!detail.readiness.canPrepare) notFound(); return detail;
   };
-  const publicBrand = row => ({ slug: row.slug, brandName: row.brand_name, brandPreset: row.brand_preset, salesWhatsapp: row.sales_whatsapp, path: `/c/${row.slug}` });
+  const publicBrand = row => ({ slug: row.slug, brandName: row.brand_name, brandPreset: row.brand_preset, salesWhatsapp: row.sales_whatsapp,
+    appearance: appearanceOf(row), path: `/c/${row.slug}` });
   return {
+    brandAsset: (shop, id) => publicRead(shop, async (client, row) => {
+      uuid(id); const appearance = appearanceOf(row);
+      if (![appearance.logoId, appearance.coverId].includes(id)) notFound();
+      await requireAppearanceSchema(client);
+      const asset = (await client.query('SELECT mime_type,content FROM commerce_brand_assets WHERE owner_phone=$1 AND id=$2', [row.owner_phone, id])).rows[0];
+      if (!asset) notFound(); return asset;
+    }),
     configuration: context => privateRead(context, async client => catalogDTO((await client.query('SELECT * FROM commerce_catalogs WHERE owner_phone=$1', [context.businessId])).rows[0])),
     configure: (context, input) => {
       const data = record(input, ['operationId', 'expectedRevision', 'slug', 'publicEnabled']);

@@ -34,7 +34,7 @@ type DashboardNavProps = {
 function StudioLink() {
   return <a href="/studio.html" className="dashboard-nav-item w-full text-[color:var(--muted)] hover:bg-[color:var(--card-hover)] hover:text-[color:var(--text)]">
     <Images {...iconProps} aria-hidden="true" />
-    <span className="font-semibold">FullMatch Studio</span>
+    <span className="font-semibold">Stocky Studio</span>
   </a>;
 }
 

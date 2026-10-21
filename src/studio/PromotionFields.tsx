@@ -1,6 +1,6 @@
 import type { Promotion } from './storyRenderer';
 export const defaultPromotion = (): Promotion => ({ percentage: 15, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 86_400_000).toISOString(),
-  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', label: 'PROMO FULLMATCH' });
+  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', label: 'PROMOCIÓN' });
 const localValue = (value: string) => { const date = new Date(value); if (!Number.isFinite(date.getTime())) return ''; const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`; };
 const instant = (value: string) => { const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toISOString() : ''; };
