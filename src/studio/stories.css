@@ -1,3 +1,44 @@
 .story-layout{display:grid;grid-template-columns:minmax(250px,360px) minmax(0,1fr);gap:50px;align-items:start}.story-controls{margin:0}.story-controls fieldset{border:0;padding:0;margin:0;min-width:0}.story-controls .field{margin-bottom:18px}.control-help{font-size:10px!important;color:#8b98ad;line-height:1.7}.checkbox-field{display:flex;align-items:center;gap:8px;font-size:11px;margin:22px 0}.checkbox-field input,.story-sizes input{accent-color:#ff6a00}.story-sizes{margin:20px 0}.story-sizes>span{font-size:11px;font-weight:600;color:#65758f}.story-sizes label{display:flex;align-items:center;gap:5px;padding:7px 10px;border:1px solid #e3e7ee;border-radius:5px;font-size:11px}.story-preview{max-width:390px;width:100%;margin:auto}.canvas-frame{width:100%;aspect-ratio:9/16;background:#001a4d;border-radius:9px;overflow:hidden;position:relative;box-shadow:0 15px 40px #001a4d20}.canvas-frame canvas{width:100%;height:100%;display:block;opacity:0}.canvas-frame.ready canvas{opacity:1}.canvas-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:25px;color:#9cb0d3}.canvas-placeholder p{font-size:14px;margin:20px 0 10px}.canvas-placeholder small{font-size:9px;line-height:1.6}.mini-brand{font-size:64px;font-style:italic;font-weight:900;letter-spacing:-7px;color:white}.mini-brand span{color:#ff6a00}.export-actions{display:flex;gap:8px;margin:22px 0 14px}.export-actions button{flex:1;font-size:11px}.story-preview>small{font-size:9px;color:#7b8ca5}.story-launch{background:#001a4d!important;color:white!important;margin-top:15px}.story-controls .primary{width:100%}.story-controls input[type=range]{padding:6px 0;accent-color:#ff6a00}.story-editor .section-heading{margin-top:20px}
 @media(max-width:1150px){.story-layout{gap:25px;grid-template-columns:minmax(230px,1fr) minmax(230px,1fr)}.story-controls{padding:20px}}
 @media(max-width:780px){.story-layout{grid-template-columns:1fr}.story-controls{order:1}.story-preview{order:0;max-width:300px}.story-controls fieldset{display:grid;grid-template-columns:1fr 1fr;gap:0 18px}.story-controls h2,.story-controls .control-help,.story-controls .story-sizes,.story-controls .primary{grid-column:1/-1}.story-editor h1{font-size:28px}}
+
+/* Export templates: fixed image dimensions, independent of the responsive editor. */
+.st{--primary:#001A4D;--accent:#FF6A00;--ink:#fff;--accent-ink:#fff;--alert:#ff2d55;--stage:#f1f3f7;width:1080px;height:1920px;display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;background:var(--primary);color:var(--ink);font-family:"Barlow Condensed","Arial Narrow",Impact,sans-serif;text-align:left;letter-spacing:normal;line-height:normal;color-scheme:light}
+.st *{box-sizing:border-box}
+.st-stage{position:relative;flex:none;height:1300px;overflow:hidden;background:radial-gradient(ellipse at 50% 42%,#fff 0%,var(--stage) 55%,#dfe3ec 100%)}
+.st-stage::after{content:"";position:absolute;left:0;right:0;bottom:0;height:260px;background:linear-gradient(to bottom,transparent,var(--primary) 96%)}
+.st-shot{position:absolute;max-width:none}
+.st-head{position:absolute;z-index:3;top:56px;left:56px;display:flex;align-items:center;gap:22px;max-width:440px;padding:12px 34px 12px 12px;border-radius:999px;background:var(--primary);box-shadow:0 12px 30px rgba(0,0,0,.25)}
+.st-logo{flex:none;width:84px;height:84px;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center;overflow:hidden;font:800 38px/1 "Barlow Condensed",sans-serif;font-style:italic;color:var(--ink)}
+.st-logo img{width:100%;height:100%;object-fit:contain;padding:10px}
+.st-brand{min-width:0;font:700 28px "Barlow Condensed",sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--ink);white-space:nowrap}
+.st-badge{position:absolute;z-index:3;top:62px;right:56px;width:max-content;max-width:500px;padding:16px 36px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font:800 38px "Barlow Condensed",sans-serif;letter-spacing:.14em;text-transform:uppercase;text-align:center;box-shadow:0 12px 30px rgba(0,0,0,.25);overflow-wrap:anywhere}
+.st-panel{position:relative;z-index:2;flex:1;min-height:0;overflow:hidden;margin-top:-90px;padding:0 64px 48px}
+.st .st-title{margin:0;font:800 74px/1 "Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:normal;overflow-wrap:anywhere}
+.st .st-meta{margin:12px 0 0;font:700 26px Barlow,sans-serif;letter-spacing:.2em;text-transform:uppercase;opacity:.7;overflow-wrap:anywhere}
+.st-info{display:flex;justify-content:space-between;align-items:flex-end;gap:30px;margin-top:26px}
+.st-price{min-width:0;flex:1}
+.st-price small{display:block;font:700 28px Barlow,sans-serif;opacity:.6;text-decoration:line-through;white-space:nowrap}
+.st-price b{display:block;font:800 104px/.95 "Barlow Condensed",sans-serif;white-space:nowrap}
+.st-price i{font:700 .35em Barlow,sans-serif;font-style:normal;opacity:.75}
+.st-sizes{flex:none;max-width:400px;text-align:right}
+.st .st-sizes p{margin:0 0 10px;font:700 20px Barlow,sans-serif;letter-spacing:.2em;opacity:.7}
+.st-chips{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;max-width:400px}
+.st-chip{min-width:72px;max-width:400px;padding:6px 18px;text-align:center;border:3px solid currentColor;border-color:color-mix(in srgb,var(--ink) 45%,transparent);border-radius:16px;font:800 42px "Barlow Condensed",sans-serif;overflow-wrap:anywhere}
+.st .st-note{margin:16px 0 0;font:500 26px Barlow,sans-serif;opacity:.8;overflow-wrap:anywhere}
+.st .st-until{margin-top:6px;font-size:22px;opacity:.65}
+.st-cta{margin-top:26px;height:104px;border-radius:28px;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;padding:0 40px;font:800 46px "Barlow Condensed",sans-serif;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;overflow:hidden;box-shadow:0 18px 44px color-mix(in srgb,var(--accent) 45%,transparent)}
+.st .st-foot{display:block;border:0;margin:26px 0 0;padding:0;text-align:center;font:700 22px Barlow,sans-serif;letter-spacing:.24em;text-transform:uppercase;color:inherit;opacity:.55;overflow-wrap:anywhere}
+/* Nuevo ingreso */
+.st-arrival .st-badge{background:var(--primary);color:var(--ink);border:4px solid var(--accent)}
+.st-arrival .st-badge::before{content:"✦ ";color:var(--accent)}
+/* Última unidad */
+.st-last_unit .st-stage{box-shadow:inset 0 0 0 12px var(--alert)}
+.st-ribbon{position:absolute;z-index:3;right:-110px;top:250px;width:520px;padding:14px 0;text-align:center;transform:rotate(38deg);background:var(--alert);color:#fff;font:800 40px "Barlow Condensed",sans-serif;letter-spacing:.12em;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+/* Día de fútbol */
+.st-matchday .st-stage{background:repeating-linear-gradient(115deg,#fff 0 80px,#eef1f6 80px 160px)}
+.st-matchday .st-badge{border-radius:10px;transform:skewX(-12deg);padding:16px 44px}
+/* Promoción */
+.st-burst{position:absolute;z-index:3;top:210px;right:56px;width:220px;height:220px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-content:center;text-align:center;transform:rotate(-10deg);box-shadow:0 18px 40px rgba(0,0,0,.35);outline:6px dashed rgba(255,255,255,.6);outline-offset:-16px}
+.st-burst b{font:800 90px/.9 "Barlow Condensed",sans-serif}
+.st-burst span{font:800 38px "Barlow Condensed",sans-serif;letter-spacing:.1em}
