@@ -27,6 +27,7 @@ import { runInventoryDeactivationMetaChecks } from './inventory-deactivation-met
 import { runInventoryMetaSelectionChecks } from './inventory-meta-selection-postgres-checks.js';
 import { runInventoryCreateChecks } from './inventory-create-postgres-checks.js';
 import { runInventoryHttpChecks } from './inventory-http-checks.js';
+import { runCommerceFoundationChecks } from './commerce-postgres-checks.js';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
@@ -84,6 +85,7 @@ try {
   await db.closeDatabase();
   await db.migrateDatabase();
   sql = new Client({ connectionString: connection }); await sql.connect();
+  await runCommerceFoundationChecks({ db, sql, check });
   await runUniversalSchemaMigrationChecks({ db, sql, check });
   await runOperationRecoveryChecks({ db, sql, check });
   await runLegacyMetaRetirementChecks({ db, sql, check });

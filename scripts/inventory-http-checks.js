@@ -7,7 +7,8 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { getJwtSecret, issueJwt } from '../server/auth.js';
+import { issueJwt } from '../server/auth.js';
+import { runCommerceHttpChecks } from './commerce-http-checks.js';
 
 /** Exercise the real HTTP boundary against the harness's disposable local PostgreSQL. */
 export async function runInventoryHttpChecks({ db, sql, check }) {
@@ -23,17 +24,20 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
   await new Promise((resolve, reject) => { socket.once('error', reject); socket.listen(0, '127.0.0.1', resolve); });
   const port = socket.address().port;
   await new Promise((resolve, reject) => socket.close((error) => error ? reject(error) : resolve()));
-  const secret = getJwtSecret();
+  const previousJwtSecret = process.env.AUTH_JWT_SECRET;
+  const secret = crypto.randomBytes(32).toString('hex');
   const appSecret = crypto.randomBytes(32).toString('hex');
   const verifyToken = 'inventory-http-verification';
   const deployment = '0123456789abcdef0123456789abcdef01234567';
   const env = { ...process.env, PORT: String(port), META_WEBHOOK_PORT: String(port), AUTH_JWT_SECRET: secret,
     META_APP_SECRET: appSecret, META_VERIFY_TOKEN: verifyToken, RENDER_GIT_COMMIT: deployment,
-    POSTGRES_SSL: 'false', AUTH_DEV_BYPASS: 'false', NODE_ENV: 'test',
+    POSTGRES_SSL: 'false', AUTH_DEV_BYPASS: 'false', NODE_ENV: 'test', COMMERCE_STUDIO_ORIGIN: 'https://studio.fixture.invalid',
+    COMMERCE_CATALOG_ORIGIN: `http://127.0.0.1:${port}`,
     GEMINI_API_KEY: '', GROQ_API_KEY: '', VITE_VOICE_MODEL_API_KEY: '', VOICE_TRANSCRIPTION_API_KEY: '', META_ACCESS_TOKEN: '' };
   for (const key of aliases) env[key] = connection;
   const temporaryRoot = await fs.realpath(os.tmpdir());
   const childCwd = await fs.mkdtemp(path.join(temporaryRoot, 'erpvoice-http-checks-'));
+  env.COMMERCE_MEDIA_ADAPTER = 'local'; env.COMMERCE_MEDIA_DIRECTORY = path.join(childCwd, 'private-media');
   const child = spawn(process.execPath, [fileURLToPath(new URL('../server/index.js', import.meta.url))], {
     cwd: childCwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -44,6 +48,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
   const owner = '59899000505';
   let fixtureCreateSequence = 0;
   const createHttpFixtureProduct = (input, businessId) => db.createProductRecord(input, businessId, { operationId: `http-fixture-create-${++fixtureCreateSequence}` });
+  process.env.AUTH_JWT_SECRET = secret;
   const token = issueJwt({ phoneNumber: owner });
   let completed = 0;
   const run = async (label, fn) => { await check(`inventory HTTP: ${label}`, fn); completed++; };
@@ -53,14 +58,14 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
     const req = http.request({ hostname: '127.0.0.1', port, path: route, method, signal: AbortSignal.timeout(4000),
       headers: { ...(auth ? { Authorization: `Bearer ${token}` } : {}), ...(data === undefined ? {} : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }), ...headers },
     }, (res) => {
-      let text = '';
-      res.setEncoding('utf8');
-      res.on('data', (chunk) => { text += chunk; });
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
       res.on('error', reject);
       res.on('end', () => {
+        const buffer = Buffer.concat(chunks), text = buffer.toString('utf8');
         let json;
         try { json = JSON.parse(text); } catch { /* challenge and status responses are plain text */ }
-        resolve({ status: res.statusCode, text, json });
+        resolve({ status: res.statusCode, text, json, headers: res.headers, buffer });
       });
     });
     req.on('error', reject);
@@ -1166,6 +1171,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const recovered=await request('/api/state',{method:'GET'});assert.equal(recovered.status,200);
       assert.equal(recovered.json.products.find((p)=>p.id===product.id).stockAvailable,7);
     });
+    completed += await runCommerceHttpChecks({ db, sql, check, request });
     return completed;
   } catch (error) {
     let safeLogs = logs;
@@ -1173,6 +1179,8 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
     safeLogs = safeLogs.replace(/postgres(?:ql)?:\/\/[^\s]+/gi, '[redacted database URL]');
     throw new Error(`${error.message}\nHTTP child output (bounded):\n${safeLogs}`, { cause: error });
   } finally {
+    if (previousJwtSecret === undefined) delete process.env.AUTH_JWT_SECRET;
+    else process.env.AUTH_JWT_SECRET = previousJwtSecret;
     if (child.exitCode === null && child.signalCode === null) {
       const exited = new Promise((resolve) => child.once('exit', resolve));
       child.kill('SIGTERM');

@@ -5,6 +5,8 @@ import { InventoryOperationError } from './inventoryOperations.js';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { transcribeAudio, MAX_AUDIO_BYTES, TranscriptionError } from './audioTranscription.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
+import { createCommerceRouter } from './commerce/router.js';
+import { createPublicCatalogRouters } from './catalog/router.js';
 import {
   createProductRecord,
   createProductModelRecords,
@@ -67,6 +69,7 @@ import {
   leaveBusinessTeam,
   removeBusinessMember,
   getBusinessTeam,
+  stockyDatabaseRuntime,
 } from './postgresDatabase.js';
 import { extractBearerToken, getJwtSecret, issueJwt, normalizePhone, verifyJwt } from './auth.js';
 import {
@@ -88,9 +91,17 @@ const port = Number(process.env.PORT || process.env.META_WEBHOOK_PORT || 8080);
 const allowedOrigins = new Set([
   'https://erp-voice.vercel.app',
   'http://localhost:5173',
+  'http://localhost:5175',
   'http://localhost:4173',
   'http://localhost:3000',
 ]);
+if (process.env.COMMERCE_STUDIO_ORIGIN) {
+  const studioOrigin = new URL(process.env.COMMERCE_STUDIO_ORIGIN);
+  if (!['https:', 'http:'].includes(studioOrigin.protocol) || studioOrigin.origin !== process.env.COMMERCE_STUDIO_ORIGIN) {
+    throw new Error('COMMERCE_STUDIO_ORIGIN must be one exact HTTP(S) origin without a trailing slash.');
+  }
+  allowedOrigins.add(studioOrigin.origin);
+}
 const metaVerifyToken = process.env.META_VERIFY_TOKEN || 'erpvoice_token_secreto';
 const authEnabled = true;
 const DEV_LOGIN_PHONE = normalizePhone(process.env.AUTH_DEV_PHONE || '5491100000000') || '5491100000000';
@@ -272,7 +283,7 @@ app.use((req, res, next) => {
     res.setHeader('Vary', 'Origin');
   }
 
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
@@ -299,6 +310,13 @@ app.use((error, req, res, next) => {
 });
 
 const recentEvents = [];
+
+app.use('/api/commerce/v1', authenticateRequest, createCommerceRouter({ runtime: stockyDatabaseRuntime,
+  contextOf: req => ({ businessId: tenantPhoneOf(req), actorId: authPhoneOf(req),
+    role: tenantPhoneOf(req) === authPhoneOf(req) ? 'owner' : 'member' }) }));
+const publicCatalog = createPublicCatalogRouters(stockyDatabaseRuntime);
+app.use('/api/catalog/v1', publicCatalog.api);
+app.use(publicCatalog.pages);
 
 app.get('/', (_req, res) => {
   res.status(200).json({ ok: true, service: 'meta-webhook', port });
@@ -1190,7 +1208,7 @@ setInterval(() => {
   }).catch((error) => console.warn('[MetaWebhook] inbound recovery failed:', error.message));
 }, 30_000).unref();
 
-app.listen(port, '0.0.0.0', () => {
+app.listen(port, process.env.API_BIND_HOST || '0.0.0.0', () => {
   console.log(`[MetaWebhook] listening on port ${port}`);
   console.log('[MetaWebhook] GET /api/meta-webhook for verification');
   console.log('[MetaWebhook] POST /api/meta-webhook for WhatsApp Cloud API messages');

@@ -1,0 +1,15 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { startCommerceFixture } from './fullmatch/fixtureRuntime.js';
+const root = path.resolve('.fullmatch-runtime');
+await fs.mkdir(root, { recursive: true });
+const fixture = await startCommerceFixture();
+await fs.writeFile(path.join(root, 'fixture-session.json'), JSON.stringify({ owner: fixture.owner, token: fixture.token, url: fixture.url, products: fixture.products }), { mode: 0o600 });
+console.log(`FullMatch fixture: ${fixture.url}`);
+console.log(`Catálogo DEMO: ${fixture.apiUrl}/c/fullmatch-demo`);
+console.log('Datos y fotos de demostración descartables. Sesión local en .fullmatch-runtime/fixture-session.json; no es un acceso de producción.');
+console.log('Para detener y limpiar: crear .fullmatch-runtime/FIXTURE_STOP o Ctrl+C.');
+let stopped = false;
+const stop = async () => { if (stopped) return; stopped = true; clearInterval(timer); await fixture.stop(); await fs.rm(path.join(root, 'fixture-session.json'), { force: true }); };
+const timer = setInterval(async () => { try { await fs.access(path.join(root, 'FIXTURE_STOP')); await stop(); } catch { /* No stop requested. */ } }, 1000);
+process.once('SIGINT', stop); process.once('SIGTERM', stop);
