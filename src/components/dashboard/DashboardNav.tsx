@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { ChartBar, ClipboardText, House, List, Package, Users, Warehouse, Waveform } from '@phosphor-icons/react';
+import { ChartBar, ClipboardText, House, Images, List, Package, Users, Warehouse, Waveform } from '@phosphor-icons/react';
 import type { DashboardSection } from './dashboardTypes';
 
 type NavItem = {
@@ -28,7 +28,15 @@ type DashboardNavProps = {
   onSectionChange: (section: DashboardSection) => void;
   variant: 'sidebar' | 'bottom';
   onLogout?: () => void;
+  showStudio?: boolean;
 };
+
+function StudioLink() {
+  return <a href="/studio.html" className="dashboard-nav-item w-full text-[color:var(--muted)] hover:bg-[color:var(--card-hover)] hover:text-[color:var(--text)]">
+    <Images {...iconProps} aria-hidden="true" />
+    <span className="font-semibold">FullMatch Studio</span>
+  </a>;
+}
 
 function NavButton({
   item,
@@ -66,7 +74,7 @@ function NavButton({
   );
 }
 
-export function DashboardNav({ activeSection, onSectionChange, variant, onLogout }: DashboardNavProps) {
+export function DashboardNav({ activeSection, onSectionChange, variant, onLogout, showStudio = false }: DashboardNavProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const itemsById = Object.fromEntries(navItems.map((item) => [item.id, item])) as Record<DashboardSection, NavItem>;
 
@@ -82,6 +90,7 @@ export function DashboardNav({ activeSection, onSectionChange, variant, onLogout
             variant="sidebar"
           />
         ))}
+        {showStudio && <StudioLink />}
       </nav>
     );
   }
@@ -111,6 +120,7 @@ export function DashboardNav({ activeSection, onSectionChange, variant, onLogout
                 variant="sheet"
               />
             ))}
+            {showStudio && <StudioLink />}
             {onLogout && (
               <button
                 type="button"
