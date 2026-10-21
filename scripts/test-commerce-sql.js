@@ -10,6 +10,10 @@ import { inspectContentSchema, migrateContent } from '../server/commerce/content
 import { migrateCommerce } from '../server/commerce/migration.js';
 import { readCommerceMigration } from '../server/commerce/migrationSource.js';
 import { buildBusinessEnableSql } from './generate-commerce-business-sql.js';
+import { buildCurrencyCorrectionSql } from './generate-commerce-currency-sql.js';
+import { inventoryProductFingerprint } from '../server/inventoryOperations.js';
+import { inventoryRowToProduct } from '../server/inventoryPostgres.js';
+import { createCommerceProductService } from '../server/commerce/productService.js';
 
 const bundle = await buildCommerceSqlBundle();
 assert.equal((await fs.readFile(new URL('../docs/fullmatch/SUPABASE_COMMERCIAL_SCHEMA.sql', import.meta.url), 'utf8')).replace(/\r\n/g, '\n'), bundle);
@@ -128,6 +132,45 @@ try {
     await assert.rejects(admin.query(buildBusinessEnableSql({ ...options, currency: 'USD' })), /MONEY_POLICY_CONFLICT/);
     await admin.query('ROLLBACK');
     assert.equal((await admin.query('SELECT currency FROM inventory_money_policies WHERE owner_phone=$1', [fixture.owner])).rows[0].currency, 'ARS');
+  });
+  await check('confirmed XXX correction is scoped, audited, repeatable and preserves linked SKU identity', async () => {
+    const skuId = fixture.products[0].skuIds[0];
+    await admin.query("UPDATE products SET price_currency='XXX' WHERE owner_phone=$1 AND id=$2", [fixture.owner, skuId]);
+    await admin.query(`INSERT INTO products(id,owner_phone,name,price,price_currency,stock_available,stock_reserved)
+      SELECT 'currency-xxx-' || n, $1, 'Currency correction fixture ' || n, 65000, 'XXX', 4, 1 FROM generate_series(1,49) n`, [fixture.owner]);
+    await admin.query("INSERT INTO products(id,owner_phone,name,price,price_currency) VALUES('currency-other','59899000886','Other business',65000,'XXX')");
+    const before = await snapshot(admin);
+    const oldSku = (await admin.query('SELECT * FROM products WHERE id=$1', [skuId])).rows[0];
+    const runtime = { withClient: callback => callback(admin), transaction: callback => callback(admin) };
+    const service = createCommerceProductService(runtime), context = { businessId: fixture.owner, actorId: fixture.owner, role: 'owner' };
+    assert.ok((await service.detail(context, fixture.products[0].id)).readiness.blockers.includes('MONEY_UNCONFIRMED'));
+    const sql = buildCurrencyCorrectionSql({ owner: fixture.owner, currency: 'ARS', expectedUnknownCount: 50, confirmedMajorInteger: true });
+    await admin.query(sql);
+    const after = await snapshot(admin);
+    for (const oldRow of before) {
+      const newRow = after.find(row => row.id === oldRow.id);
+      if (oldRow.owner_phone === fixture.owner && oldRow.price_currency === 'XXX') {
+        assert.deepEqual(newRow, { ...oldRow, price_currency: 'ARS', inventory_revision: oldRow.inventory_revision + 1 });
+      } else assert.deepEqual(newRow, oldRow);
+    }
+    const newSku = (await admin.query('SELECT * FROM products WHERE id=$1', [skuId])).rows[0];
+    assert.equal(inventoryProductFingerprint(inventoryRowToProduct(newSku)), inventoryProductFingerprint(inventoryRowToProduct(oldSku)));
+    const detail = await service.detail(context, fixture.products[0].id);
+    assert.equal(detail.readiness.canPrepare, true);
+    assert.equal(detail.readiness.blockers.includes('SKU_IDENTITY_CHANGED'), false);
+    const receipts = (await admin.query("SELECT * FROM commercial_operations WHERE operation_type='maintenance.currency_confirmed'")).rows;
+    assert.equal(receipts.length, 1); assert.equal(receipts[0].result_json.result.changed, 50);
+    await admin.query(sql);
+    assert.deepEqual(await snapshot(admin), after);
+    assert.deepEqual((await admin.query("SELECT * FROM commercial_operations WHERE operation_type='maintenance.currency_confirmed'")).rows, receipts);
+  });
+  await check('currency correction refuses changed counts and unconfirmed scale without updating rows', async () => {
+    const options = { owner: fixture.owner, currency: 'ARS', expectedUnknownCount: 50, confirmedMajorInteger: true };
+    const before = await snapshot(admin);
+    await assert.rejects(admin.query(buildCurrencyCorrectionSql(options)), /UNKNOWN_CURRENCY_COUNT_CHANGED/);
+    await admin.query('ROLLBACK');
+    assert.deepEqual(await snapshot(admin), before);
+    assert.throws(() => buildCurrencyCorrectionSql({ ...options, confirmedMajorInteger: false }), /CONFIRMED_MONEY_POLICY_REQUIRED/);
   });
   console.log(`${checks} SQL Editor checks passed; no production database used.`);
 } finally {

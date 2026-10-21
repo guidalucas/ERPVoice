@@ -63,7 +63,7 @@ El archivo [SUPABASE_COMMERCIAL_SCHEMA.sql](SUPABASE_COMMERCIAL_SCHEMA.sql) cont
 
 El script usa una sola transacción, comprueba las huellas del inventario antes/después, limita tiempos de espera, registra los mismos checksums que las herramientas CLI, activa RLS y retira acceso directo de los roles API sobre las tablas comerciales. Una excepción cancela toda la instalación; si el editor conserva una transacción fallida, ejecutar `ROLLBACK;` antes de reintentar. Los checksums anteriores con saltos de línea de Windows también se reconocen; un checksum desconocido se rechaza. No elimina tablas ni incorpora perfiles, políticas monetarias o publicaciones.
 
-Las diez pruebas de `npm run test:commerce:sql` usan PostgreSQL descartable: instalación inicial, repetición/compatibilidad con CLI, preservación de datos existentes, instalación parcial, compatibilidad CRLF, rollback por fuente desconocida, permisos de roles API, base incorrecta, relaciones dañadas y habilitación explícita de negocio con moneda/escala confirmadas. Son evidencia local; el archivo no fue ejecutado en producción desde este chat.
+Las doce pruebas de `npm run test:commerce:sql` usan PostgreSQL descartable: instalación inicial, repetición/compatibilidad con CLI, preservación de datos existentes, instalación parcial, compatibilidad CRLF, rollback por fuente desconocida, permisos de roles API, base incorrecta, relaciones dañadas, habilitación explícita de negocio y corrección administrativa de moneda con aislamiento/recibo/repetición. Son evidencia local; el archivo no fue ejecutado en producción desde este chat.
 
 Después de estas migraciones todavía se necesita confirmar el propietario, habilitar su perfil y registrar la moneda/escala reales. Un error de acceso 403 después de completar el esquema corresponde a ese paso, no se resuelve repitiendo las migraciones. No usar el seed local de demostración.
 
@@ -74,6 +74,16 @@ node scripts/generate-commerce-business-sql.js --owner <numero-confirmado> --cur
 ```
 
 La bandera de escala solo se utiliza si se confirmó que, por ejemplo, $65.000 está almacenado como `65000`. El archivo `.fullmatch-runtime/ENABLE_FULLMATCH_BUSINESS.sql` es privado, queda fuera de Git y se ejecuta completo en otra consulta del mismo SQL Editor después del esquema. Verifica que el propietario exista en Stocky y que no pertenezca como miembro a otro negocio; habilita únicamente su perfil, conserva nombre/contacto existentes y rechaza políticas monetarias incompatibles. No convierte precios ni modifica `price_currency`: al final muestra las monedas actuales de sus SKU, para detectar registros `XXX` que necesitan revisión explícita. También es repetible sin incrementar revisiones si ya estaba habilitado.
+
+Si el propietario confirmó expresamente que esos importes `XXX` corresponden a la moneda y escala indicadas, el generador de corrección administrativa prepara un tercer archivo privado:
+
+```sh
+node scripts/generate-commerce-currency-sql.js --owner <numero-confirmado> --currency <ARS-UYU-USD> --expected-unknown-count <conteo-revisado> --confirm-major-integer
+```
+
+El resultado es `.fullmatch-runtime/CORRECT_FULLMATCH_CURRENCY.sql`. El operador verifica proyecto/respaldo y lo ejecuta completo desde SQL Editor. Solo cambia `price_currency='XXX'` de ese propietario al código confirmado, incrementa `inventory_revision` y registra un recibo administrativo `maintenance.currency_confirmed` en `commercial_operations`. Rechaza perfiles/políticas no habilitados, importes incompatibles y conteos distintos de los revisados. El mismo archivo reutiliza su UUID y recibo al repetirse; no debe regenerarse para repetir el mismo intento. Los importes, saldos, identidades, fotos y SKU de otros negocios/monedas se conservan; ante una diferencia inesperada se revierte la transacción. Es una herramienta de mantenimiento explícita, no se ejecuta desde HTTP, arranque ni deploy.
+
+La moneda no forma parte de la huella de identidad del SKU, por lo que esta corrección conserva los vínculos comerciales revisados. Las revisiones de inventario se incrementan para rechazar propuestas de edición antiguas. La prueba local verifica que desaparece `MONEY_UNCONFIRMED` sin introducir `SKU_IDENTITY_CHANGED`, además del recibo, repetición, aislamiento y preservación de cada campo ajeno a moneda/revisión.
 
 Referencia: [SQL Editor en Supabase](https://supabase.com/docs/guides/database/overview).
 
