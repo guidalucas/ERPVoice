@@ -48,3 +48,5 @@ Los archivos finales de historias se generan en cliente; la biblioteca guarda sn
 No hubo push, despliegue, migración productiva, conexión de cuentas ni publicación real. El supervisor está preparado y simulado, **no ejecutándose**; su recuperación de cuota real no se afirma verificada. El código local completo queda en la rama `codex/fullmatch-studio`, con hitos versionados y checkpoint persistente.
 
 Operación: STUDIO_OPERATIONS.md. Continuidad externa: CONTINUITY.md. Especificaciones incrementales: STAGE_2_CONTRACT.md, STAGE_3_CONTRACT.md y STAGE_4_CONTRACT.md.
+
+Último hito de código validado: `e05a2f3`. Hitos anteriores: `e92484b` (fundaciones), `ad3ac88` (Studio privado), `2da4c0c` (catálogo) y `1d63a74` (automatización local). El checkpoint queda `COMPLETED` para este alcance local, con todos los controles externos anteriores pendientes de habilitación real.

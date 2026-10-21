@@ -46,5 +46,5 @@ Completion means executed evidence, not merely files written. Production enablem
 ## Stage 4 and delivery
 - [x] Evaluate commerce provider versus scoped local flow; record decision.
 - [x] Implement useful local cart/inquiry prototype without payment/reservation/shipping.
-- [ ] Final authorized-scope acceptance audit, operation docs and validated local commits.
+- [x] Final authorized-scope acceptance audit, operation docs and validated local commits.
 - [x] Record remaining external production gates without falsely marking them implemented.

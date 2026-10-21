@@ -1,12 +1,12 @@
 # FullMatch Studio — implementation checkpoint
 
-- Status: `IN_PROGRESS`
+- Status: `COMPLETED`
 - Stage: 4 — local inquiry cart and final authorized-scope audit.
-- Milestone: Stage 4 accepted: 383 PostgreSQL checks, 165 inventory tests, 26 commerce/domain/supervisor tests, 17 browser flows and both app builds pass. Final local commit/checkpoint remains.
-- Last completed task: real browser PNG/JPG export, mobile layout and lost-response recovery; PostgreSQL media COMMIT-acknowledgement and interrupted-upload fault checks.
-- Last validated local implementation commit: `1d63a74`. Baseline: `4dc5d9b`.
-- Files changed: see `git status`; prior audit and plan were untracked user-requested documents and are preserved.
-- Next concrete action: verify the Stage-4 read-only inquiry/cart contract and anonymous browser flow, then final audit/regressions/builds/local commit. See STAGE_4_CONTRACT.md. No payment, productive order/reservation or external publication is authorized.
+- Milestone: authorized local stages 0–4 complete: 383 PostgreSQL checks, 165 inventory tests, 26 commerce/domain/supervisor tests, 17 browser flows and both app builds pass.
+- Last completed task: final acceptance audit, isolated read-only inquiry/cart and intercepted WhatsApp browser flow; validated local milestone commit and operation documentation.
+- Last validated local implementation commit: `e05a2f3`. Baseline: `4dc5d9b`. Earlier milestones: `e92484b`, `ad3ac88`, `2da4c0c`, `1d63a74`.
+- Files changed: implementation is preserved in local commits on `codex/fullmatch-studio`; audit and approved design/plan references were retained. No push/deployment.
+- Next concrete action: none within the completed authorized local scope. Production enablement requires confirming real resources/currency/contact/storage and separate authorization; see FINAL_ACCEPTANCE.md. Supervisor is inactive; no automatic deployment/inference should start.
 
 ## Verification
 
@@ -35,4 +35,4 @@
 
 ## Recovery
 
-Read IMPLEMENTATION_BRIEF.md, this file, TASKS.md, DECISIONS.md and checkpoint.json. Verify code/tests before updating completion. Continue the earliest incomplete implementable task. Do not rerun the historical audit or use production credentials for tests. Keep this file and checkpoint.json synchronized at validated milestones.
+Read IMPLEMENTATION_BRIEF.md, this file, TASKS.md, DECISIONS.md and checkpoint.json. The authorized local scope is complete and TASKS.md has no unchecked implementation tasks. Do not start more inference or deployment solely because a supervisor is invoked. For a newly authorized task, verify the current code/checkpoint and update scope explicitly. Never use production credentials for tests.
