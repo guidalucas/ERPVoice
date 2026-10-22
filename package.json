@@ -71,6 +71,7 @@
     "test:commerce:presentation": "node --test scripts/test-commerce-presentation.js",
     "test:studio:multirubro": "node scripts/test-studio-multirubro.mjs",
     "test:studio:visual": "node scripts/test-visual-redesign.mjs",
+    "test:studio:banner": "node scripts/test-catalog-banner.mjs",
     "test:studio:theme": "node scripts/test-studio-theme.mjs",
     "commerce:universal:schema:check": "node scripts/migrate-commerce-universal.js",
     "commerce:universal:schema:apply": "node scripts/migrate-commerce-universal.js --apply"
