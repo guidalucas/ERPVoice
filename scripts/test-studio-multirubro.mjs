@@ -83,9 +83,18 @@ try {
       if (shop.category) { assert.equal(await page.locator('select[name=team]').count(), 0); assert.equal(await page.locator('select[name=version]').count(), 0); }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       await page.screenshot({ path: path.join(output, `${shop.preset}-${viewport.width}-catalog.png`), fullPage: true });
-      await page.locator('.catalog-card a').first().click(); await page.locator('.public-product-info h1').waitFor();
+      await page.locator('.catalog-card a').first().click(); await page.locator('.public-product-heading h1').waitFor();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       await page.screenshot({ path: path.join(output, `${shop.preset}-${viewport.width}-product.png`), fullPage: true });
+      if (shop.category) {
+        const plain = await (await fetch(`${fixture.apiUrl}/api/catalog/v1/${shop.slug}/products/${shop.products[1].slug}`)).json();
+        await page.goto(fixture.apiUrl + plain.product.path);
+        await page.locator('.no-product-photo').waitFor();
+        assert.ok((await page.locator('.main-photo').boundingBox()).height <= 180);
+        assert.equal(await page.locator('[data-add-inquiry] select').count(), 1);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.screenshot({ path: path.join(output, `${shop.preset}-${viewport.width}-without-photo.png`), fullPage: true });
+      }
       await page.goto(fixture.url); await page.getByRole('heading', { name: 'Productos comerciales' }).waitFor();
       if (shop.category) assert.equal(await page.getByLabel('Filtrar equipo').count(), 0);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

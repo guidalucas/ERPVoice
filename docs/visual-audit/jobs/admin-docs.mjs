@@ -1,0 +1,5 @@
+export default async function({page,capture,evidence}){
+ for(const [name,url,pattern]of [['tiendanube','https://ayuda.tiendanube.com/diseno/guia-personalizar-el-diseno-de-tu-tiendanube','Personalizar el diseño'],['woo','https://woocommerce.com/document/managing-products/','Product data'],['wix','https://support.wix.com/en/article/wix-stores-adding-product-options','Adding product options']]){
+ await page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});await page.waitForTimeout(1200);const heading=page.getByRole('heading',{name:new RegExp(pattern,'i')}).first();if(await heading.count())await heading.scrollIntoViewIfNeeded();await page.screenshot({path:new URL(`../screenshots/ref-${name}-documentation-detail-1440x900.png`,import.meta.url).pathname.replace(/^\/(\w:)/,'$1')});evidence.push({name:'ref-'+name+'-documentation-detail-1440x900',url:page.url(),text:(await page.locator('body').innerText()).slice(0,9000),kind:'public documentation; not a private admin session'});
+ console.log(name,'documentation captured');}
+}

@@ -1,0 +1,98 @@
+[
+  {
+    "surface": "studio",
+    "width": 375,
+    "viewport": 375,
+    "scrollWidth": 375,
+    "top": 555.640625,
+    "overflow": []
+  },
+  {
+    "surface": "studio",
+    "width": 390,
+    "viewport": 390,
+    "scrollWidth": 390,
+    "top": 555.640625,
+    "overflow": []
+  },
+  {
+    "surface": "studio",
+    "width": 430,
+    "viewport": 430,
+    "scrollWidth": 430,
+    "top": 555.640625,
+    "overflow": []
+  },
+  {
+    "surface": "studio",
+    "width": 768,
+    "viewport": 768,
+    "scrollWidth": 768,
+    "top": 450.28125,
+    "overflow": []
+  },
+  {
+    "surface": "studio",
+    "width": 1440,
+    "viewport": 1440,
+    "scrollWidth": 1440,
+    "top": 386.78125,
+    "overflow": []
+  },
+  {
+    "surface": "studio",
+    "width": 1920,
+    "viewport": 1920,
+    "scrollWidth": 1920,
+    "top": 386.78125,
+    "overflow": []
+  },
+  {
+    "surface": "catalog",
+    "width": 375,
+    "viewport": 375,
+    "scrollWidth": 375,
+    "top": 613.765625,
+    "overflow": []
+  },
+  {
+    "surface": "catalog",
+    "width": 390,
+    "viewport": 390,
+    "scrollWidth": 390,
+    "top": 613.765625,
+    "overflow": []
+  },
+  {
+    "surface": "catalog",
+    "width": 430,
+    "viewport": 430,
+    "scrollWidth": 430,
+    "top": 603.765625,
+    "overflow": []
+  },
+  {
+    "surface": "catalog",
+    "width": 768,
+    "viewport": 768,
+    "scrollWidth": 768,
+    "top": 491.75,
+    "overflow": []
+  },
+  {
+    "surface": "catalog",
+    "width": 1440,
+    "viewport": 1440,
+    "scrollWidth": 1440,
+    "top": 506.15625,
+    "overflow": []
+  },
+  {
+    "surface": "catalog",
+    "width": 1920,
+    "viewport": 1920,
+    "scrollWidth": 1920,
+    "top": 506.15625,
+    "overflow": []
+  }
+]

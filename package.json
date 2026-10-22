@@ -70,6 +70,7 @@
     "commerce:appearance:schema:apply": "node scripts/migrate-commerce-appearance.js --apply",
     "test:commerce:presentation": "node --test scripts/test-commerce-presentation.js",
     "test:studio:multirubro": "node scripts/test-studio-multirubro.mjs",
+    "test:studio:visual": "node scripts/test-visual-redesign.mjs",
     "commerce:universal:schema:check": "node scripts/migrate-commerce-universal.js",
     "commerce:universal:schema:apply": "node scripts/migrate-commerce-universal.js --apply"
   },

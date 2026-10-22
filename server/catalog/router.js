@@ -38,6 +38,6 @@ export function createPublicCatalogRouters(runtime) {
   } catch (error) { next(error); } });
   pages.get('/c/:shop/consulta', async (req, res, next) => { try { res.type('html').send(renderInquiryPage(await catalog.brand(req.params.shop), origin)); } catch (error) { next(error); } });
   pages.get('/c/:shop/p/:slug', async (req, res, next) => { try { res.type('html').send(renderCatalogProduct(await catalog.detail(req.params.shop, req.params.slug), origin)); } catch (error) { next(error); } });
-  pages.use((error, req, res, next) => { if (!req.path.startsWith('/c/')) return next(error); const status = error instanceof CommerceError ? error.status : 503; res.status(status).type('html').send(renderCatalogError(status)); });
+  pages.use((error, req, res, next) => { if (!req.path.startsWith('/c/')) return next(error); const status = error instanceof CommerceError ? error.status : 503; const shop = req.path.split('/')[2]; res.status(status).type('html').send(renderCatalogError(status, shop ? `/c/${encodeURIComponent(shop)}` : '/')); });
   return { api, pages };
 }

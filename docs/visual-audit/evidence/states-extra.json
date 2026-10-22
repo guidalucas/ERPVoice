@@ -1,0 +1,313 @@
+[
+  {
+    "name": "local-public-gallery-two-images-1440x900",
+    "url": "http://127.0.0.1:63146/c/fullmatch-demo/p/barcelona-titular-2025-19c213c075",
+    "text": "FC\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n← Volver a la colección\n\nBarcelona ／ 2025\n\nBarcelona titular 2025\n\nTitular · Versión Jugador · Manga corta\n\nARS $ 65.000\n● Disponible para consultar\nTalle\nM\nL\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar por WhatsApp ↗\nTalle para tu consulta\nElegir presentación\nM\nL\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nIlustración y datos descartables de demostración. No es una foto comercial.\n\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad\nFULLMATCH CASACAS · DEMO\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1310,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 800.25,
+        "y": 218.1875,
+        "width": 519.75,
+        "height": 48.71875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "42px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 110.9375,
+          "height": 16.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "public-thumbnail-interaction",
+    "result": "new tab with raw image",
+    "url": "http://127.0.0.1:63146/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-19c213c075/images/a0bd52a8-58b9-4951-a050-44544a693cd2"
+  },
+  {
+    "name": "local-studio-gallery-two-images-1440x900",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nFULLMATCH CASACAS · DEMO ／ Studio\nFC\nFULLMATCH CASACAS · DEMO\n← Volver a productos\n\nFICHA COMERCIAL\n\nBarcelona titular 2025\nPreparada\nActualizar ficha\nAbrir en Stocky ↗\n01 Información\n02 SKU vinculados\n03 Fotografías\nFotografías del producto\n\nHasta 8 fotos JPG, PNG o WebP. Máximo 12 MB y 24 megapíxeles por foto.\n\n＋\nElegir una fotografía\nTu primera foto será la portada\nPortada\nIlustración de prueba Barcelona\nPortada\n←\nRetirar\nDescripción y enfoque\nSegunda imagen de prueba aislada\nPortada\n←\nRetirar\nDescripción y enfoque\n\nVISTA COMERCIAL\n\nBarcelona titular 2025\nARS $ 65.000\n\n3 unidades disponibles\n\nM\nL\nLista para preparar\nFicha preparada ✓Archivar ficha\nEn el catálogo público\n\nPublicada\n\nVer ficha pública ↗Ocultar del catálogo\nGenerar historia ↗\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1327,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 265,
+        "y": 195.5,
+        "width": 284.796875,
+        "height": 33,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "30px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "← Volver a productos",
+          "width": 106.125,
+          "height": 15
+        },
+        {
+          "text": "Actualizar ficha",
+          "width": 124.265625,
+          "height": 41
+        },
+        {
+          "text": "Abrir en Stocky ↗",
+          "width": 92.171875,
+          "height": 16
+        },
+        {
+          "text": "Subir fotografía",
+          "width": 26,
+          "height": 26
+        },
+        {
+          "text": "Portada",
+          "width": 48,
+          "height": 28
+        },
+        {
+          "text": "←",
+          "width": 23.765625,
+          "height": 28
+        },
+        {
+          "text": "Retirar",
+          "width": 43.125,
+          "height": 28
+        },
+        {
+          "text": "",
+          "width": 394,
+          "height": 35
+        },
+        {
+          "text": "",
+          "width": 394,
+          "height": 18
+        },
+        {
+          "text": "",
+          "width": 394,
+          "height": 18
+        },
+        {
+          "text": "",
+          "width": 145.53125,
+          "height": 28
+        },
+        {
+          "text": "Portada",
+          "width": 48,
+          "height": 28
+        },
+        {
+          "text": "←",
+          "width": 23.765625,
+          "height": 28
+        },
+        {
+          "text": "Retirar",
+          "width": 43.125,
+          "height": 28
+        },
+        {
+          "text": "",
+          "width": 394,
+          "height": 35
+        },
+        {
+          "text": "",
+          "width": 394,
+          "height": 18
+        },
+        {
+          "text": "",
+          "width": 394,
+          "height": 18
+        },
+        {
+          "text": "",
+          "width": 145.53125,
+          "height": 28
+        },
+        {
+          "text": "Ficha preparada ✓",
+          "width": 211,
+          "height": 39
+        },
+        {
+          "text": "Archivar ficha",
+          "width": 211,
+          "height": 37
+        },
+        {
+          "text": "Ver ficha pública ↗",
+          "width": 82.71875,
+          "height": 38
+        },
+        {
+          "text": "Ocultar del catálogo",
+          "width": 211,
+          "height": 38
+        },
+        {
+          "text": "Generar historia ↗",
+          "width": 211,
+          "height": 39
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-studio-pending-selected-1440x900",
+    "url": "http://127.0.0.1:63146/studio.html#/products",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nFULLMATCH CASACAS · DEMO ／ Studio\nFC\nFULLMATCH CASACAS · DEMO\n\nDEL STOCK A TU CATÁLOGO\n\nPendientes de catalogar\n\nSeleccioná los SKU que pertenecen a un mismo producto. Revisá su identidad, presentación y unidad antes de crear o vincular la ficha.\n\nBuscar\nActualizar pendientes\n1 variantes seleccionadas (máximo 100)\nCrear ficha y vincular\nVincular a una ficha existente\nXL\nDemo Boca Juniors pendiente\nARS $ 63.000\n2 disponibles\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 265,
+        "y": 157.296875,
+        "width": 1132,
+        "height": 35.1875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "32px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "Buscar variantes pendientes",
+          "width": 210,
+          "height": 43
+        },
+        {
+          "text": "Buscar",
+          "width": 72.765625,
+          "height": 41
+        },
+        {
+          "text": "Actualizar pendientes",
+          "width": 161.09375,
+          "height": 41
+        },
+        {
+          "text": "Crear ficha y vincular",
+          "width": 128.78125,
+          "height": 38
+        },
+        {
+          "text": "Vincular a una ficha existente",
+          "width": 166.65625,
+          "height": 38
+        },
+        {
+          "text": "Seleccionar Demo Boca Juniors pendiente XL",
+          "width": 13,
+          "height": 13
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-studio-loading-1440x900",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "text": "Consultando la configuración del negocio…",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": null,
+      "preview": null,
+      "controls": null,
+      "smallTargets": [],
+      "brokenImages": []
+    }
+  }
+]
