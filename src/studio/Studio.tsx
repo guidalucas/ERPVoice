@@ -12,6 +12,8 @@ import { BusinessOnboarding, type SetupStatus } from './BusinessOnboarding';
 import { MoneyReview } from './MoneyReview';
 import { PendingInventory } from './PendingInventory';
 import { AppearanceFields, BrandImage } from './Branding';
+import { StockyLogo } from '../components/brand/StockyLogo';
+import { ThemeToggle } from '../components/dashboard/ThemeToggle';
 
 const message = (error: unknown) => error instanceof Error ? error.message : 'No pude completar la operación.';
 const statusLabel = { draft: 'Borrador', ready: 'Preparada', archived: 'Archivada' };
@@ -24,7 +26,8 @@ const fieldKeys = Object.keys(emptyFields) as (keyof CommercialFields)[];
 const identityLabels: Record<string, string> = { teamKey: 'identificador del equipo', teamName: 'equipo', teamKind: 'tipo de equipo', season: 'temporada', kitKey: 'equipación', versionKey: 'versión', sleeveKey: 'manga' };
 const productFields = (product: Product) => Object.fromEntries(fieldKeys.map(key => [key, product[key]])) as CommercialFields;
 const linkOf = (item: Candidate | Product['variants'][number]) => ({ skuId: item.skuId, expectedRevision: item.revision, expectedFingerprint: item.identityFingerprint });
-function Brand() { return <div className="brand"><span className="brand-mark">S<span>／</span></span><div>STOCKY<small>STUDIO</small></div></div>; }
+function Brand() { return <a className="studio-brand" href="/" aria-label="Stocky · ir al inventario"><StockyLogo size="md" className="studio-brand-logo"/><span className="studio-brand-copy"><strong>Stocky</strong><span>Studio</span></span></a>; }
+function AccessFrame({ children }: { children: ReactNode }) { return <div className="studio-access"><header className="studio-access-header"><Brand/><ThemeToggle/></header>{children}</div>; }
 function Notice({ children, action }: { children: ReactNode; action?: ReactNode }) { return <div role="status" className="notice">{children}{action}</div>; }
 function PreparationBlockers({ product, onTab }: { product: Product; onTab: (tab: 'details' | 'variants' | 'photos') => void }) {
   return <ul className="checklist">{product.readiness.blockers.map(code => <li key={code}>{code === 'IDENTITY_INCOMPLETE' ? <button onClick={() => onTab('details')}>Completá: {(product.readiness.missingFields ?? []).map(key => identityLabels[key] ?? key).join(', ') || 'nombre del producto'}</button>
@@ -60,7 +63,7 @@ function Login() {
     return () => { active = false; clearInterval(timer); };
   }, [challenge, completeWhatsAppLogin]);
   const start = async () => { setBusy(true); setError(''); try { setChallenge(await createWhatsAppLogin()); } catch (cause) { setError(message(cause)); } finally { setBusy(false); } };
-  return <div className="login"><section className="login-brand"><Brand/><p className="eyebrow">TU NEGOCIO, BIEN PRESENTADO</p><h1>Tu catálogo.<br/>Tu marca.<br/><em>Tu próximo paso.</em></h1><p>Fichas, fotos y contenido para tu negocio.</p><span className="pitch-line"/></section>
+  return <div className="login"><div className="studio-login-tools"><ThemeToggle/></div><section className="login-brand"><Brand/><p className="eyebrow">TU NEGOCIO, BIEN PRESENTADO</p><h1>Tu catálogo.<br/>Tu marca.<br/><em>Tu próximo paso.</em></h1><p>Fichas, fotos y contenido para tu negocio, conectados a Stocky.</p><span className="pitch-line"/></section>
     <section className="login-form"><div><span className="eyebrow">ESPACIO PRIVADO</span><h2>Entrá a Studio</h2><p>Usá el mismo acceso de Stocky para gestionar tu catálogo comercial.</p>
       {error && <Notice>{error}</Notice>}{challenge ? <><a className="button primary" href={challenge.whatsappUrl} target="_blank" rel="noreferrer">Continuar en WhatsApp ↗</a><p>Enviá el mensaje de acceso. Esta pantalla continuará cuando quede validado.</p><button onClick={() => setChallenge(null)}>Generar otro enlace</button></> : <button className="primary" disabled={busy} onClick={start}>{busy ? 'Preparando acceso…' : 'Ingresar con WhatsApp ↗'}</button>}
       <small>Acceso para el propietario del negocio habilitado.</small></div></section></div>;
@@ -86,12 +89,12 @@ export function Studio() {
     const sync = () => { const match = location.hash.match(/^#\/products\/([a-f0-9-]{36})$/); setSelectedId(match?.[1] ?? null); setBatchOpen(location.hash === '#/batch'); if (location.hash === '#/settings') { setCreating(false); setView('settings'); } };
     sync(); addEventListener('hashchange', sync); return () => removeEventListener('hashchange', sync);
   }, []);
-  if (isBootstrapping) return <div className="loading"><Brand/><p>Preparando tu espacio…</p></div>;
+  if (isBootstrapping) return <AccessFrame><div className="loading"><p>Preparando tu espacio…</p></div></AccessFrame>;
   if (!session) return <Login/>;
-  if (session.role !== 'owner' || session.pendingInvite) return <main className="onboarding panel"><h1>Acceso del propietario</h1><p>La configuración comercial está disponible para el propietario. Gestioná tu acceso o invitación desde Stocky.</p><a href="/">Abrir Stocky</a><button onClick={logout}>Cerrar sesión</button></main>;
-  if (setupLoading) return <div className="loading"><p>Consultando la configuración del negocio…</p></div>;
-  if (!setup || !setup.enabled && setup.profile) return <main className="onboarding panel"><h1>No pude abrir Studio</h1><Notice action={<button onClick={() => setSetupVersion(value => value + 1)}>Reintentar</button>}>{error || 'El acceso comercial está deshabilitado. Contactá al administrador.'}</Notice><a href="/">Volver a Stocky</a><button onClick={logout}>Cerrar sesión</button></main>;
-  if (setup.needsSetup || session.needsOnboarding) return <BusinessOnboarding key={session.phoneNumber + setupVersion} status={setup} onDone={() => setSetupVersion(value => value + 1)} onRefresh={() => setSetupVersion(value => value + 1)}/>;
+  if (session.role !== 'owner' || session.pendingInvite) return <AccessFrame><main className="onboarding panel"><h1>Acceso del propietario</h1><p>La configuración comercial está disponible para el propietario. Gestioná tu acceso o invitación desde Stocky.</p><a href="/">Abrir Stocky</a><button onClick={logout}>Cerrar sesión</button></main></AccessFrame>;
+  if (setupLoading) return <AccessFrame><div className="loading"><p>Consultando la configuración del negocio…</p></div></AccessFrame>;
+  if (!setup || !setup.enabled && setup.profile) return <AccessFrame><main className="onboarding panel"><h1>No pude abrir Studio</h1><Notice action={<button onClick={() => setSetupVersion(value => value + 1)}>Reintentar</button>}>{error || 'El acceso comercial está deshabilitado. Contactá al administrador.'}</Notice><a href="/">Volver a Stocky</a><button onClick={logout}>Cerrar sesión</button></main></AccessFrame>;
+  if (setup.needsSetup || session.needsOnboarding) return <AccessFrame><BusinessOnboarding key={session.phoneNumber + setupVersion} status={setup} onDone={() => setSetupVersion(value => value + 1)} onRefresh={() => setSetupVersion(value => value + 1)}/></AccessFrame>;
   const open = (id: string) => { setCreating(false); setView('products'); location.hash = `/products/${id}`; setSelectedId(id); };
   const close = () => { location.hash = '/products'; setSelectedId(null); setCreating(false); setInitialCandidates([]); setBatchOpen(false); setVersion(value => value + 1); };
   const navigate = (next: View) => { close(); setView(next); };
@@ -103,7 +106,7 @@ export function Studio() {
   return <div className="studio-shell"><aside className="sidebar"><Brand/><p className="nav-caption">TU ESPACIO COMERCIAL</p><nav aria-label="Navegación de Studio">
     {([['products', '01', 'Productos'], ['pending', '02', 'Pendientes'], ['library', '03', 'Biblioteca'], ['settings', '04', 'Configuración']] as const).map(([id, number, label]) => <button key={id} className={view === id ? 'active' : ''} onClick={() => navigate(id)}><span>{number}</span>{label}<b>↗</b></button>)}
     </nav><div className="sidebar-bottom"><span className="connection-dot"/> Conectado con Stocky<p>El stock y los precios se mantienen en tu inventario.</p><button onClick={() => navigate('recovery')}>Recuperar intentos</button><a href="/?section=productos">Abrir Stocky ↗</a><button onClick={logout}>Cerrar sesión</button></div></aside>
-    <main className="workspace"><header className="topbar"><span className="workspace-label">Stocky Studio</span><span className="account"><span className="avatar">{profile?.appearance?.logoId ? <BrandImage id={profile.appearance.logoId} alt={profile.brandName}/> : brandInitials(profile?.brandName ?? 'Stocky')}</span>{profile?.brandName ?? 'Tu negocio'}</span></header><details className="mobile-session"><summary>Cuenta</summary><div><button onClick={() => navigate('recovery')}>Recuperar intentos</button><button onClick={logout}>Cerrar sesión</button></div></details>
+    <main className="workspace"><header className="topbar"><span className="workspace-label"><a href="/">Stocky</a><span aria-hidden="true"> / </span>Studio</span><span className="account"><span className="avatar">{profile?.appearance?.logoId ? <BrandImage id={profile.appearance.logoId} alt={profile.brandName}/> : brandInitials(profile?.brandName ?? 'Stocky')}</span><span className="account-name">{profile?.brandName ?? 'Tu negocio'}</span></span><div className="studio-tools"><ThemeToggle/><details className="mobile-session"><summary>Cuenta</summary><div><button onClick={() => navigate('recovery')}>Recuperar intentos</button><button onClick={logout}>Cerrar sesión</button></div></details></div></header>
       {error && <Notice action={<button onClick={() => { setError(''); setVersion(value => value + 1); }}>Reintentar</button>}>{error}</Notice>}
       {batchOpen ? <BatchStudio onBack={close}/> : selectedId || creating ? <ProductEditor key={selectedId ?? 'new'} id={selectedId} initialCandidates={initialCandidates} onClose={close} onCreated={id => { setInitialCandidates([]); open(id); }}/>
         : view === 'products' ? <ProductList profile={profile} key={version} onOpen={open} onCreate={() => { setInitialCandidates([]); setCreating(true); }} onBatch={startBatch}/>

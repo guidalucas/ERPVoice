@@ -1,0 +1,109 @@
+/* Stocky and Studio share the palette, preference and logo; these aliases serve Studio's controls. */
+:root {
+  --page: var(--background, #eef4f7);
+  --navy: var(--text);
+  --subtle: var(--muted);
+  --link: #5546d7; --focus: #5546d7;
+  --selected-ink: #493ac0; --media-bg: #edf0f4; --field-border: #bbc5d1;
+  --disabled-bg: #edf0f4; --disabled-ink: #596579;
+  --notice-bg: #fff5eb; --notice-ink: #713d16; --notice-border: #dec5a7;
+  --success-bg: #e4f5ed; --success-ink: #22634b;
+}
+html.dark {
+  --selected: #24203d; --selected-ink: #d7cfff;
+  --link: #c2b7ff; --focus: #b9aaff;
+  --media-bg: #181822; --field-border: #55556b;
+  --disabled-bg: #20202c; --disabled-ink: #a8a8bb;
+  --notice-bg: #302719; --notice-ink: #f4c98e; --notice-border: #806130;
+  --success-bg: #13352b; --success-ink: #80d6ae;
+}
+body, #studio-root { color: var(--text); background: var(--page); }
+#studio-root button { background: var(--surface-elevated); color: var(--text); border-color: var(--border); }
+#studio-root button:hover:not(:disabled) { background: var(--card-hover); }
+#studio-root a { color: var(--link); }
+#studio-root .field>span, #studio-root .eyebrow { color: var(--subtle); }
+#studio-root :is(input, select, textarea):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]) {
+  background: var(--surface); color: var(--text); border-color: var(--field-border);
+}
+#studio-root input::placeholder, #studio-root textarea::placeholder { color: var(--subtle); opacity: 1; }
+#studio-root :is(a,button,input,select,textarea,summary):focus-visible { outline-color: var(--focus); }
+#studio-root button:disabled { background: var(--disabled-bg); color: var(--disabled-ink); border-color: var(--border); }
+#studio-root button.primary:disabled { background: var(--disabled-bg) !important; color: var(--disabled-ink) !important; border-color: var(--border) !important; }
+#studio-root :is(.panel,.product-card,.variant-row,.empty-state,.search,.editor-main,.editor-summary,.library-card,.batch-progress,.recovery-row) {
+  background: var(--surface); color: var(--text); border-color: var(--border);
+}
+#studio-root .product-card:hover:not(:disabled) { background: var(--surface-elevated); }
+#studio-root :is(.card-photo,.gallery-photo,.summary-photo,.photo-empty,.library-image) { background: var(--media-bg); border-color: var(--border); }
+#studio-root :is(.photo-empty,.photo-empty .shirt,.library-fm) { color: var(--subtle); }
+#studio-root :is(.count,.avatar,.size-tag,.sizes>span) { background: var(--surface-elevated); color: var(--subtle); border-color: var(--border); }
+#studio-root :is(.sizes>.empty,.status.archived) { background: var(--surface-elevated); color: var(--subtle); }
+#studio-root .status.ready { background: var(--success-bg); color: var(--success-ink); }
+#studio-root .status.draft { background: var(--notice-bg); color: var(--notice-ink); }
+#studio-root .notice { background: var(--notice-bg); color: var(--notice-ink); border-color: var(--notice-border); }
+#studio-root .notice button { background: transparent; color: inherit; border-color: var(--notice-border); }
+#studio-root :is(.promotion-fields,.banner-options) { background: var(--surface-elevated); border-color: var(--border); }
+#studio-root :is(.promotion-fields>p,.promotion-fields>small,.field-hint) { color: var(--notice-ink); }
+#studio-root .sidebar nav button { background: transparent; color: var(--subtle); }
+#studio-root .sidebar nav button:is(.active,:hover) { background: var(--selected); color: var(--selected-ink); }
+#studio-root .sidebar-bottom button { background: transparent; color: var(--subtle); }
+#studio-root .sidebar-bottom button:hover { color: var(--text); }
+#studio-root :is(.inline-action,.text-button,.export-actions button) { color: var(--link); }
+#studio-root .back { background: transparent; color: var(--subtle); }
+#studio-root .tabs > button { background: transparent; color: var(--subtle); }
+#studio-root .tabs > button.active { color: var(--link); border-color: var(--focus); }
+#studio-root :is(.catalog-design-option,.catalog-design-caption,.catalog-preview-shell,.brand-file-button) { background: var(--surface); border-color: var(--border); }
+#studio-root .catalog-design-option:has(input:checked) { border-color: var(--focus); }
+#studio-root .catalog-preview-devices button[aria-pressed=true] { background: var(--selected); color: var(--selected-ink); border-color: var(--focus); }
+#studio-root :is(.catalog-preview-note,.banner-options>p,.draft-note,.catalog-preview,.catalog-settings>p) { color: var(--subtle); }
+#studio-root :is(.variant-row small,.gallery-item>small,.photo-details,.card-body small span,.page-section>p:not(.eyebrow)) { color: var(--subtle); }
+#studio-root .batch-progress progress { accent-color: var(--focus); }
+#studio-root .batch-count { background: var(--surface); color: var(--subtle); border-color: var(--border); }
+#studio-root .batch-item { border-color: var(--border); }
+#studio-root .batch-item.generated>b { color: var(--success-ink); }
+#studio-root .batch-item.failed>b, #studio-root .batch-item.failed small { color: var(--notice-ink) !important; }
+#studio-root .batch-download small { color: var(--subtle); }
+#studio-root .brand-file-control:focus-within .brand-file-button { outline-color: var(--focus); }
+.studio-brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; text-decoration: none; color: var(--text); }
+.studio-brand-logo { display: block; flex: none; width: 40px; height: 40px; object-fit: cover; border-radius: 12px; }
+.studio-brand-copy { display: grid; gap: 1px; line-height: 1.2; }
+.studio-brand-copy strong { font-size: 22px; font-weight: 800; letter-spacing: -.6px; background: var(--brand-gradient); background-clip: text; -webkit-background-clip: text; color: transparent; }
+.studio-brand-copy>span { font-size: 12px; font-weight: 600; letter-spacing: .8px; color: var(--subtle); }
+.studio-tools { display: flex; align-items: center; gap: 8px; flex: none; }
+#studio-root .theme-toggle { display: inline-flex; align-items: center; justify-content: center; width: 44px; min-width: 44px; height: 44px; padding: 0; border-radius: 10px; }
+#studio-root .theme-toggle svg { flex: none; }
+.topbar .account { margin-left: auto; min-width: 0; }
+.account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-label { white-space: nowrap; }
+.workspace-label a { color: var(--subtle); text-decoration: none; }
+.workspace-label a:hover { text-decoration: underline; }
+.studio-tools .mobile-session { position: relative; top: auto; right: auto; margin: 0; }
+.studio-tools .mobile-session>div { background: var(--surface); border-color: var(--border); }
+.studio-tools .mobile-session button { background: transparent; color: var(--text); }
+.studio-access-header { max-width: 1180px; margin: auto; padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.studio-access .loading { min-height: 50vh; }
+#studio-root .loading { background: var(--page); color: var(--text); }
+#studio-root .upload-box { background: var(--surface-elevated); color: var(--subtle); border-color: var(--field-border); }
+#studio-root .upload-box:focus-within { outline-color: var(--focus); }
+.story-stocky-logo { width: 56px; height: 56px; object-fit: cover; border-radius: 14px; }
+.login { position: relative; }
+.studio-login-tools { position: absolute; top: 20px; right: 24px; z-index: 2; }
+#studio-root .login-brand { background: var(--surface); color: var(--text); border-color: var(--border); }
+#studio-root .login-brand :is(.eyebrow,p:not(.eyebrow)) { color: var(--subtle); }
+#studio-root .login-brand em { color: var(--link); }
+.login-form { background: var(--page); }
+#studio-root .login-form :is(.eyebrow,p,small) { color: var(--subtle); }
+.pitch-line { border-color: var(--border); }
+@media(max-width:780px) {
+  .topbar { padding-right: 0; gap: 10px; }
+  .studio-tools .mobile-session { display: block; }
+  .studio-tools .mobile-session summary { padding: 10px 6px; }
+  .account { flex: 1; }
+  .studio-brand-copy strong { font-size: 20px; }
+}
+@media(max-width:600px) {
+  .studio-brand-logo { width: 36px; height: 36px; border-radius: 10px; }
+  .studio-brand-copy { display: flex; align-items: baseline; gap: 7px; }
+  .studio-brand-copy>span { font-size: 12px; letter-spacing: .2px; }
+  .studio-access-header { padding: 16px; }
+  .studio-login-tools { top: 16px; right: 16px; }
+}

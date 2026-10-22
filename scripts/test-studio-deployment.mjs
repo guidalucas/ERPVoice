@@ -20,6 +20,7 @@ try {
     await context.addInitScript(({ token, owner }) => {
       localStorage.setItem('erpvoice.auth.token', token);
       localStorage.setItem('erpvoice.auth.phoneNumber', owner);
+      if (!localStorage.getItem('stocky-theme')) localStorage.setItem('stocky-theme', 'light');
     }, { token, owner });
     await context.route('**/*', async route => {
       const request = route.request(), url = new URL(request.url()), path = url.pathname;
@@ -42,12 +43,14 @@ try {
       if (!file.startsWith(`${root}${sep}`)) return route.abort();
       try {
         await route.fulfill({ status: 200, body: await readFile(file),
-          contentType: path.endsWith('.js') ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : 'text/html' });
+          contentType: path.endsWith('.js') ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : path.endsWith('.png') ? 'image/png' : 'text/html' });
       } catch { await route.fulfill({ status: 404, body: 'Missing deployment asset' }); }
     });
     const response = await page.goto(origin);
     assert.equal(response.status(), 200);
     await page.getByRole('button', { name: 'Inventario', exact: true }).first().waitFor();
+    await page.getByRole('button', { name: 'Cambiar a modo oscuro', exact: true }).first().click();
+    await page.locator('html.dark').waitFor();
     if (scenario.mobile) await page.getByRole('button', { name: 'Más', exact: true }).click();
     const link = page.getByRole('link', { name: 'Stocky Studio', exact: true });
     if (scenario.role === 'owner') {
@@ -57,6 +60,9 @@ try {
       await visibleLink.click();
       assert.equal((await navigation).status(), 200);
       await page.getByRole('heading', { name: 'Productos comerciales' }).waitFor();
+      await page.locator('html.dark').waitFor();
+      await page.locator('.studio-brand-logo').evaluate(image => image.decode());
+      assert.equal(await page.locator('.studio-brand-logo').getAttribute('src'), '/stocky-logo.png');
       assert.equal(page.url(), `${origin}/studio.html`);
       assert.equal(await page.getByRole('button', { name: 'Ingresar con WhatsApp ↗' }).count(), 0);
       assert.ok(commerceRequests.includes('/api/commerce/v1/setup'));
@@ -64,6 +70,11 @@ try {
       await page.reload();
       await page.getByRole('heading', { name: 'Productos comerciales' }).waitFor();
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await page.getByRole('button', { name: 'Cambiar a modo claro', exact: true }).click();
+      await page.locator('html.light').waitFor();
+      await page.getByRole('link', { name: 'Stocky · ir al inventario', exact: true }).click();
+      await page.getByRole('button', { name: 'Inventario', exact: true }).first().waitFor();
+      await page.locator('html.light').waitFor();
     } else {
       assert.equal(await link.count(), 0);
       assert.equal(commerceRequests.length, 0);

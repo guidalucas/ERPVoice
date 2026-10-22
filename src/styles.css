@@ -1,63 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
+@import "./theme.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --radius-panel: 1.25rem;
-  --radius-row: 0.875rem;
-  --touch: 2.75rem;
-}
-
-html.light {
-  color-scheme: light;
-  --background: #eef4f7;
-  --surface: #ffffff;
-  --surface-elevated: #f3f8fa;
-  --border: #c5d4dc;
-  --text: #10141a;
-  --muted: #4a5563;
-  --accent: #0e7490;
-  --accent-2: #6d28d9;
-  --accent-hover: #155e75;
-  --accent-soft: rgba(14, 116, 144, 0.1);
-  --accent-border: rgba(109, 40, 217, 0.28);
-  --brand-gradient: linear-gradient(135deg, #06b6d4 0%, #3b82f6 48%, #7c3aed 100%);
-  --warning: #b45309;
-  --warning-soft: rgba(180, 83, 9, 0.1);
-  --destructive: #e11d48;
-  --whatsapp: #25d366;
-  --card-hover: rgba(16, 20, 26, 0.045);
-  --overlay-soft: rgba(14, 116, 144, 0.05);
-  --shadow-color: rgba(16, 20, 26, 0.07);
-  --theme-meta: #eef4f7;
-}
-
-html.dark {
-  color-scheme: dark;
-  --background: #07070b;
-  --surface: #101018;
-  --surface-elevated: #181822;
-  --border: #2a2a38;
-  --text: #f4f4f8;
-  --muted: #b0b0c0;
-  --accent: #2dd4e8;
-  --accent-2: #8b5cf6;
-  --accent-hover: #67e8f9;
-  --accent-soft: rgba(45, 212, 232, 0.12);
-  --accent-border: rgba(139, 92, 246, 0.42);
-  --brand-gradient: linear-gradient(135deg, #2dd4e8 0%, #3b82f6 48%, #8b5cf6 100%);
-  --warning: #f5b94f;
-  --warning-soft: rgba(245, 185, 79, 0.12);
-  --destructive: #fb7185;
-  --whatsapp: #25d366;
-  --card-hover: rgba(244, 244, 248, 0.06);
-  --overlay-soft: rgba(244, 244, 248, 0.04);
-  --shadow-color: rgba(0, 0, 0, 0.4);
-  --theme-meta: #07070b;
-}
 
 html,
 body,
