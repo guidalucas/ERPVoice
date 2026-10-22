@@ -249,3 +249,65 @@ body[data-preset] .catalog-hero.text-on-image.has-cover:not(.image-only) .catalo
   body[data-preset] .catalog-hero.text-on-image.has-cover:not(.image-only){display:flex;align-items:center;min-height:380px}
   body[data-preset] .catalog-hero.text-on-image.has-cover:not(.image-only) .hero-copy{position:relative;flex:1;min-width:0;max-width:100%}
 }
+
+/* Keep each composition while bringing products and legible controls forward. */
+body[data-preset] .catalog-hero:not(.custom-layout):not(.image-only){min-height:220px;padding:24px}
+body[data-preset] .catalog-hero:not(.custom-layout):not(.image-only) .hero-copy{padding:0;max-width:720px}
+body[data-preset] .catalog-hero h1{font-size:clamp(28px,3vw,40px)}
+body[data-preset] .catalog-hero .eyebrow{font-size:12px}
+body[data-preset] .catalog-hero p:not(.eyebrow){font-size:15px;line-height:1.6}
+body[data-preset] .catalog-hero.has-cover:not(.custom-layout):not(.image-only){display:grid;grid-template-columns:1fr 1fr;padding:0}
+body[data-preset] .catalog-hero.has-cover:not(.custom-layout):not(.image-only) .hero-copy{padding:24px;grid-column:1;grid-row:1;z-index:1}
+body[data-preset] .catalog-hero.has-cover:not(.custom-layout):not(.image-only) .catalog-cover{position:static;grid-column:2;grid-row:1;width:100%;height:100%;min-height:0;max-height:260px;object-fit:contain}
+body[data-preset=editorial] .catalog-hero:not(.custom-layout):not(.image-only){justify-content:center}
+body[data-preset=editorial] .catalog-hero .hero-copy{margin:auto;text-align:center}
+body[data-preset=editorial] .shop-header{min-height:112px;padding:18px 32px;gap:8px}
+body[data-preset=editorial] .collection{padding:26px 32px 24px}
+body[data-preset=editorial] .collection-heading{margin-bottom:18px}
+body[data-preset=editorial] .collection-heading h2{font-size:28px}
+body[data-preset=editorial] .catalog-card-photo{height:300px}
+body[data-preset=editorial] .catalog-card-body{align-items:center}
+body[data-preset=editorial] .catalog-filters{margin-bottom:20px}
+body[data-preset] .catalog-card .team{font-size:12px}
+body[data-preset] .catalog-sizes>span,body[data-preset] .availability{font-size:12px}
+body[data-preset] .catalog-card strong{font-size:18px}
+body[data-preset=classic] .catalog-card-photo{height:230px}
+body[data-preset=technical] .catalog-filter-options{display:block;width:100%}
+body[data-preset=technical] .catalog-filter-fields{grid-template-columns:1fr;padding:12px}
+body[data-preset=technical] .catalog-filters input,body[data-preset=technical] .catalog-filters select{font-size:16px}
+body[data-preset=technical] .catalog-filters button{font-size:14px}
+body[data-preset] .catalog-grid.small-collection{grid-template-columns:repeat(2,minmax(0,1fr))}
+body[data-preset=local] .category-tiles{margin:16px 0}
+body[data-preset=local] .catalog-card:hover{transform:none}
+body[data-preset] .catalog-hero.image-only{max-height:320px}
+body[data-preset] .catalog-hero.image-only .catalog-cover{object-fit:contain}
+body[data-preset] .catalog-hero.filtered-hero:not(.custom-layout):not(.image-only){min-height:0;padding:18px 24px;display:block}
+body[data-preset] .catalog-hero.filtered-hero .catalog-cover,body[data-preset] .filtered-hero .hero-copy>p,body[data-preset] .filtered-hero .primary{display:none}
+body[data-preset] .catalog-hero.filtered-hero .hero-copy{padding:0!important;margin:0;text-align:left}
+/* Removing the text panel remains available for every preset. */
+body[data-preset] .catalog-hero.text-on-image.has-cover:not(.image-only) .catalog-cover{position:absolute;inset:0;grid-area:auto;width:100%;height:100%;max-height:none;object-fit:cover}
+body[data-preset] .catalog-hero.text-on-image.has-cover:not(.image-only){display:flex}
+body[data-preset] .catalog-hero.text-on-image:not(.image-only) .hero-copy{background:transparent}
+@media(max-width:780px){
+  body[data-preset] .catalog-hero:not(.custom-layout):not(.image-only){min-height:0;padding:20px}
+  body[data-preset] .catalog-hero.has-cover:not(.custom-layout):not(.image-only){grid-template-columns:1fr}
+  body[data-preset] .catalog-hero.has-cover:not(.custom-layout):not(.image-only) .catalog-cover{grid-column:1;grid-row:2;height:160px}
+  body[data-preset] .catalog-hero.has-cover:not(.custom-layout):not(.image-only) .hero-copy{padding:20px}
+  body[data-preset] .catalog-hero h1{font-size:28px}
+  body[data-preset] .catalog-filters{grid-template-columns:minmax(0,1fr) auto}
+  body[data-preset] .catalog-filters>.search{grid-column:1/-1}
+  body[data-preset] .catalog-filters>button{grid-column:1;grid-row:2}
+  body[data-preset=technical] .catalog-filter-options{display:contents}
+  body[data-preset=technical] .catalog-filter-fields{grid-template-columns:1fr}
+  body[data-preset=technical] .catalog-controls{padding:12px;margin-bottom:16px}
+  body[data-preset=technical] .catalog-controls-title{display:none}
+  body[data-preset=editorial] .collection{padding:24px 16px}
+  body[data-preset=editorial] .collection-heading small{display:none}
+  body[data-preset] .catalog-card-photo{height:190px}
+  body[data-preset=technical] .catalog-card-photo{height:145px}
+  body[data-preset] .catalog-card h2{font-size:16px}
+  body[data-preset] .catalog-card strong{font-size:17px}
+  body[data-preset=local] .catalog-grid.small-collection{grid-template-columns:1fr}
+  body[data-preset] .catalog-hero.text-on-image.has-cover:not(.image-only){min-height:240px}
+  body[data-preset] .catalog-hero.custom-layout [data-hero-block]{position:relative}
+}

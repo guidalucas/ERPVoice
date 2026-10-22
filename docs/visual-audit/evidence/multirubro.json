@@ -1,0 +1,2377 @@
+[
+  {
+    "name": "local-indumentaria-editorial-catalog-390x844",
+    "url": "http://127.0.0.1:61841/c/fullmatch-demo",
+    "text": "FC\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad\nMi consulta 0\n\nTu colección, con identidad\n\nEncontrá tu próxima camiseta\n\nExplorá nuestra colección y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFULLMATCH CASACAS · DEMO\n\nLa colección\nStock y precios actualizados\nTodo el catálogo\nCamiseta\nBuscar productos\nTodas las categorías\nTodas las categorías\nCamiseta\nTodos los equipos\nTodos los equipos\nArgentina\nBarcelona\nReal Madrid\nTodas las versiones\nTodas las versiones\nJugador\nTodas las presentaciones\nTodas las presentaciones\nL\nM\nBuscar\nDisponible\n\nArgentina\n↗\n\nArgentina titular 2025\n\n2025 · Jugador\n\nARS $ 70.000\nM\nVer producto ↗\nDisponible\n\nBarcelona\n↗\n\nBarcelona titular 2025\n\n2025 · Jugador\n\nARS $ 65.000\nM\nL\nVer producto ↗\nDisponible\n\nReal Madrid\n↗\n\nReal Madrid titular 2025\n\n2025 · Jugador\n\nARS $ 62.000\nM\nL\nVer producto ↗\nFULLMATCH CASACAS · DEMO\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 1936,
+      "hero": {
+        "x": 16,
+        "y": 80,
+        "width": 358,
+        "height": 340,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 16,
+        "y": 843.5,
+        "width": 358,
+        "height": 909.375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 16,
+        "y": 843.5,
+        "width": 173,
+        "height": 448.6875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "h1": {
+        "x": 46,
+        "y": 164.703125,
+        "width": 298,
+        "height": 69.09375,
+        "font": "Georgia, serif",
+        "size": "32px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "FC\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad",
+          "width": 223.921875,
+          "height": 40.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Camiseta",
+          "width": 86.34375,
+          "height": 39.5
+        },
+        {
+          "text": "Buscar",
+          "width": 68.328125,
+          "height": 41.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-indumentaria-editorial-product-390x844",
+    "url": "http://127.0.0.1:61841/c/fullmatch-demo/p/argentina-titular-2025-b1355ab6da",
+    "text": "FC\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad\nMi consulta 0\n← Volver a la colección\n\nArgentina ／ 2025\n\nArgentina titular 2025\n\nTitular · Versión Jugador · Manga corta\n\nARS $ 70.000\n● Disponible para consultar\nTalle\nM\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar por WhatsApp ↗\nTalle para tu consulta\nElegir presentación\nM\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nIlustración y datos descartables de demostración. No es una foto comercial.\n\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad\nFULLMATCH CASACAS · DEMO\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 1744,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 16,
+        "y": 667.6875,
+        "width": 358,
+        "height": 32.46875,
+        "font": "Georgia, serif",
+        "size": "28px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "FC\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad",
+          "width": 223.921875,
+          "height": 40.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 100.859375,
+          "height": 15
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-indumentaria-editorial-catalog-1440x900",
+    "url": "http://127.0.0.1:61841/c/fullmatch-demo",
+    "text": "FC\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nTu colección, con identidad\n\nEncontrá tu próxima camiseta\n\nExplorá nuestra colección y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFULLMATCH CASACAS · DEMO\n\nLa colección\nStock y precios actualizados\nTodo el catálogo\nCamiseta\nBuscar productos\nTodas las categorías\nTodas las categorías\nCamiseta\nTodos los equipos\nTodos los equipos\nArgentina\nBarcelona\nReal Madrid\nTodas las versiones\nTodas las versiones\nJugador\nTodas las presentaciones\nTodas las presentaciones\nL\nM\nBuscar\nDisponible\n\nArgentina\n↗\n\nArgentina titular 2025\n\n2025 · Jugador\n\nARS $ 70.000\nM\nVer producto ↗\nDisponible\n\nBarcelona\n↗\n\nBarcelona titular 2025\n\n2025 · Jugador\n\nARS $ 65.000\nM\nL\nVer producto ↗\nDisponible\n\nReal Madrid\n↗\n\nReal Madrid titular 2025\n\n2025 · Jugador\n\nARS $ 62.000\nM\nL\nVer producto ↗\nFULLMATCH CASACAS · DEMO\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 2323,
+      "hero": {
+        "x": 120,
+        "y": 100,
+        "width": 1200,
+        "height": 359.6875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 120,
+        "y": 747.1875,
+        "width": 1200,
+        "height": 1383.75,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 120,
+        "y": 747.1875,
+        "width": 584,
+        "height": 675.875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "h1": {
+        "x": 160,
+        "y": 178.6875,
+        "width": 700,
+        "height": 125.25,
+        "font": "Georgia, serif",
+        "size": "58px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Camiseta",
+          "width": 86.34375,
+          "height": 39.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-indumentaria-editorial-product-1440x900",
+    "url": "http://127.0.0.1:61841/c/fullmatch-demo/p/argentina-titular-2025-b1355ab6da",
+    "text": "FC\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n← Volver a la colección\n\nArgentina ／ 2025\n\nArgentina titular 2025\n\nTitular · Versión Jugador · Manga corta\n\nARS $ 70.000\n● Disponible para consultar\nTalle\nM\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar por WhatsApp ↗\nTalle para tu consulta\nElegir presentación\nM\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nIlustración y datos descartables de demostración. No es una foto comercial.\n\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad\nFULLMATCH CASACAS · DEMO\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1310,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 800.25,
+        "y": 218.1875,
+        "width": 519.75,
+        "height": 48.71875,
+        "font": "Georgia, serif",
+        "size": "42px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 110.9375,
+          "height": 16.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-indumentaria-studio-1440x900",
+    "url": "http://127.0.0.1:61842/studio.html",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nFULLMATCH CASACAS · DEMO ／ Studio\nFC\nFULLMATCH CASACAS · DEMO\n\nESPACIO COMERCIAL · FULLMATCH CASACAS · DEMO\n\nTu catálogo, al día.\n\nOrganizá productos, prepará su presentación y compartí tu marca.\n\n＋ Nueva ficha comercial\n\nGESTIONÁ TU COLECCIÓN\n\nProductos comerciales 3\nDatos de stock en vivo\n\n3 fichas · 3 preparadas · 0 sin fotos · 1 variantes pendientes\n\n⌕\nTodos los estados\nBorradores\nPreparadas\nArchivadas\nTodas las versiones\nJugador\nHincha\nTodas las mangas\nCorta\nLarga\nSin mangas\nCon o sin fotos\nSin fotos listas\nCon fotos listas\nToda publicación\nPublicadas\nOcultas\nBuscar\nActualizar colección\nSeleccioná fichas preparadas para generar historias por lote\nGenerar historias por lote (0) ↗\nSeleccionar producto\nPreparada\nReal Madrid\n↗\nReal Madrid titular 2025\n\n2025 · Jugador\n\nARS $ 62.000\n3 disponibles\nM\nL\nSeleccionar producto\nPreparada\nArgentina\n↗\nArgentina titular 2025\n\n2025 · Jugador\n\nARS $ 70.000\n1 disponibles\nM\nSeleccionar producto\nPreparada\nBarcelona\n↗\nBarcelona titular 2025\n\n2025 · Jugador\n\nARS $ 65.000\n3 disponibles\nM\nL\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1142,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 296,
+        "y": 175.5,
+        "width": 408.375,
+        "height": 36.796875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "32px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "＋ Nueva ficha comercial",
+          "width": 161.859375,
+          "height": 41
+        },
+        {
+          "text": "Buscar productos",
+          "width": 161.734375,
+          "height": 39
+        },
+        {
+          "text": "Todos los estados\nBorradores\nPreparadas\nArchivadas",
+          "width": 172,
+          "height": 43
+        },
+        {
+          "text": "Filtrar equipo",
+          "width": 183,
+          "height": 43
+        },
+        {
+          "text": "Filtrar temporada",
+          "width": 183,
+          "height": 43
+        },
+        {
+          "text": "Todas las versiones\nJugador\nHincha",
+          "width": 172,
+          "height": 43
+        },
+        {
+          "text": "Todas las mangas\nCorta\nLarga\nSin mangas",
+          "width": 172,
+          "height": 43
+        },
+        {
+          "text": "Con o sin fotos\nSin fotos listas\nCon fotos listas",
+          "width": 172,
+          "height": 43
+        },
+        {
+          "text": "Toda publicación\nPublicadas\nOcultas",
+          "width": 172,
+          "height": 43
+        },
+        {
+          "text": "Buscar",
+          "width": 72.765625,
+          "height": 41
+        },
+        {
+          "text": "Actualizar colección",
+          "width": 151.0625,
+          "height": 41
+        },
+        {
+          "text": "Generar historias por lote (0) ↗",
+          "width": 174.59375,
+          "height": 38
+        },
+        {
+          "text": "Seleccionar Real Madrid titular 2025",
+          "width": 19,
+          "height": 19
+        },
+        {
+          "text": "Seleccionar Argentina titular 2025",
+          "width": 19,
+          "height": 19
+        },
+        {
+          "text": "Seleccionar Barcelona titular 2025",
+          "width": 19,
+          "height": 19
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-indumentaria-editor-1440x900",
+    "url": "http://127.0.0.1:61842/studio.html#/products/601bffab-f4c0-4b0a-8fe9-faaf50414765",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nFULLMATCH CASACAS · DEMO ／ Studio\nFC\nFULLMATCH CASACAS · DEMO\n← Volver a productos\n\nFICHA COMERCIAL\n\nBarcelona titular 2025\nPreparada\nActualizar ficha\nAbrir en Stocky ↗\n01 Información\n02 SKU vinculados\n03 Fotografías\nInformación del producto\n\nAgregá el nombre y la descripción comercial. Las presentaciones, unidades, atributos, saldos y precios provienen de Stocky.\n\nTítulo comercial\nDetalles de indumentaria deportiva · opcionales\nEquipo\nIdentificador del equipo\nTipo de equipo\nSeleccionar\nClub\nSelección\nTemporada\nEquipación\nSeleccionar\nTitular\nSuplente\nTercera\nArquero\nEspecial\nVersión\nSeleccionar\nHincha\nJugador\nManga\nSeleccionar\nCorta\nLarga\nSin mangas\nDescripción\n\nGuardar cambios\n\nVISTA COMERCIAL\n\nBarcelona titular 2025\nARS $ 65.000\n\n3 unidades disponibles\n\nM\nL\nLista para preparar\nFicha preparada ✓Archivar ficha\nEn el catálogo público\n\nPublicada\n\nVer ficha pública ↗Ocultar del catálogo\nGenerar historia ↗\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1378,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 265,
+        "y": 195.5,
+        "width": 284.796875,
+        "height": 33,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "30px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "← Volver a productos",
+          "width": 106.125,
+          "height": 15
+        },
+        {
+          "text": "Actualizar ficha",
+          "width": 124.265625,
+          "height": 41
+        },
+        {
+          "text": "Abrir en Stocky ↗",
+          "width": 92.171875,
+          "height": 16
+        },
+        {
+          "text": "Guardar cambios",
+          "width": 134.15625,
+          "height": 41
+        },
+        {
+          "text": "Ficha preparada ✓",
+          "width": 211,
+          "height": 39
+        },
+        {
+          "text": "Archivar ficha",
+          "width": 211,
+          "height": 37
+        },
+        {
+          "text": "Ver ficha pública ↗",
+          "width": 82.71875,
+          "height": 38
+        },
+        {
+          "text": "Ocultar del catálogo",
+          "width": 211,
+          "height": 38
+        },
+        {
+          "text": "Generar historia ↗",
+          "width": 211,
+          "height": 39
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-ferreteria-technical-catalog-390x844",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nMi consulta 0\n\nProductos con identidad\n\nConocé nuestros productos\n\nExplorá el catálogo y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFerretería · PRUEBA\n\nNuestro catálogo\nStock y precios actualizados\nTodo el catálogo\nHerramientas\nBuscar productos\nTodas las categorías\nTodas las categorías\nHerramientas\nTodas las presentaciones\nTodas las presentaciones\nBroca de acero 8 mm\nLlave agotada\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nTornillo sin fotografía\nBuscar\nDisponible\n\nHerramientas\n↗\n\nBroca de acero 8 mm\nUYU $ 150\nBroca de acero 8 mm\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nSin stock\n\nHerramientas\n↗\n\nLlave agotada\nUYU $ 150\nLlave agotada\n\npotencia: 650 w\n\nVer producto ↗\nDisponible\n\nHerramientas\n↗\n\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nUYU $ 123.456.789\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nDisponible\n\nHerramientas\n↗\n\nTornillo sin fotografía\nUYU $ 150\nTornillo sin fotografía\n\npotencia: 650 w\n\nVer producto ↗\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 1810,
+      "hero": {
+        "x": 16,
+        "y": 80,
+        "width": 358,
+        "height": 278.75,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 16,
+        "y": 751.25,
+        "width": 358,
+        "height": 875.78125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 16,
+        "y": 751.25,
+        "width": 171,
+        "height": 370.890625,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "h1": {
+        "x": 41,
+        "y": 142,
+        "width": 308,
+        "height": 77.75,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "36px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "F·\nFerretería · PRUEBA\nProductos con identidad",
+          "width": 148.453125,
+          "height": 40.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Herramientas",
+          "width": 110.71875,
+          "height": 39.5
+        },
+        {
+          "text": "Buscar",
+          "width": 68.328125,
+          "height": 41.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-ferreteria-technical-product-390x844",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture/p/broca-de-acero-8-mm-ff32a4aaa9",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nMi consulta 0\n← Volver a la colección\n\nHerramientas\n\nBroca de acero 8 mm\n\nUYU $ 150\n● Disponible para consultar\nPresentación\nBroca de acero 8 mm\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar por WhatsApp ↗\nPresentación para tu consulta\nElegir presentación\nBroca de acero 8 mm\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nProducto y datos ficticios en base temporal aislada para auditoría visual.\n\npotencia · Broca de acero 8 mm\n650 w\nFerretería · PRUEBA\nProductos con identidad\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 1759,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 16,
+        "y": 667.6875,
+        "width": 358,
+        "height": 32.46875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "28px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "F·\nFerretería · PRUEBA\nProductos con identidad",
+          "width": 148.453125,
+          "height": 40.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 100.859375,
+          "height": 15
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-ferreteria-technical-catalog-1440x900",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nProductos con identidad\n\nConocé nuestros productos\n\nExplorá el catálogo y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFerretería · PRUEBA\n\nNuestro catálogo\nStock y precios actualizados\nTodo el catálogo\nHerramientas\nBuscar productos\nTodas las categorías\nTodas las categorías\nHerramientas\nTodas las presentaciones\nTodas las presentaciones\nBroca de acero 8 mm\nLlave agotada\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nTornillo sin fotografía\nBuscar\nDisponible\n\nHerramientas\n↗\n\nBroca de acero 8 mm\nUYU $ 150\nBroca de acero 8 mm\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nSin stock\n\nHerramientas\n↗\n\nLlave agotada\nUYU $ 150\nLlave agotada\n\npotencia: 650 w\n\nVer producto ↗\nDisponible\n\nHerramientas\n↗\n\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nUYU $ 123.456.789\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nDisponible\n\nHerramientas\n↗\n\nTornillo sin fotografía\nUYU $ 150\nTornillo sin fotografía\n\npotencia: 650 w\n\nVer producto ↗\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1817,
+      "hero": {
+        "x": 120,
+        "y": 100,
+        "width": 1200,
+        "height": 249.3125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 120,
+        "y": 674.8125,
+        "width": 1200,
+        "height": 950.71875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 120,
+        "y": 674.8125,
+        "width": 389.328125,
+        "height": 496.046875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "h1": {
+        "x": 152,
+        "y": 166.6875,
+        "width": 700,
+        "height": 38.875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "36px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Herramientas",
+          "width": 110.71875,
+          "height": 39.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-ferreteria-technical-product-1440x900",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture/p/broca-de-acero-8-mm-ff32a4aaa9",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n← Volver a la colección\n\nHerramientas\n\nBroca de acero 8 mm\n\nUYU $ 150\n● Disponible para consultar\nPresentación\nBroca de acero 8 mm\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar por WhatsApp ↗\nPresentación para tu consulta\nElegir presentación\nBroca de acero 8 mm\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nProducto y datos ficticios en base temporal aislada para auditoría visual.\n\npotencia · Broca de acero 8 mm\n650 w\nFerretería · PRUEBA\nProductos con identidad\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1323,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 800.25,
+        "y": 218.1875,
+        "width": 519.75,
+        "height": 48.71875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "42px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 110.9375,
+          "height": 16.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-ferreteria-no-photo-product-1440x900",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture/p/tornillo-sin-fotografia-48bfcc473b",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n← Volver a la colección\nSin fotografía\n\nHerramientas\n\nTornillo sin fotografía\n\nUYU $ 150\n● Disponible para consultar\nPresentación\nTornillo sin fotografía\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar por WhatsApp ↗\nPresentación para tu consulta\nElegir presentación\nTornillo sin fotografía\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nProducto y datos ficticios en base temporal aislada para auditoría visual.\n\npotencia · Tornillo sin fotografía\n650 w\nFerretería · PRUEBA\nProductos con identidad\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1323,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 800.25,
+        "y": 218.1875,
+        "width": 519.75,
+        "height": 48.71875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "42px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 110.9375,
+          "height": 16.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-ferreteria-soldout-product-1440x900",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture/p/llave-agotada-d74c2f73a9",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n← Volver a la colección\nSin fotografía\n\nHerramientas\n\nLlave agotada\n\nUYU $ 150\nSin stock por el momento\nPresentación\nLlave agotada\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar próximas reposiciones ↗\nPresentación para tu consulta\nElegir presentación\nLlave agotada · Agotado\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nProducto y datos ficticios en base temporal aislada para auditoría visual.\n\npotencia · Llave agotada\n650 w\nFerretería · PRUEBA\nProductos con identidad\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1323,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 800.25,
+        "y": 218.1875,
+        "width": 519.75,
+        "height": 48.71875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "42px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 110.9375,
+          "height": 16.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-ferreteria-studio-1440x900",
+    "url": "http://127.0.0.1:61842/studio.html",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nFerretería · PRUEBA ／ Studio\nF·\nFerretería · PRUEBA\n\nESPACIO COMERCIAL · Ferretería · PRUEBA\n\nTu catálogo, al día.\n\nOrganizá productos, prepará su presentación y compartí tu marca.\n\n＋ Nueva ficha comercial\n\nGESTIONÁ TU COLECCIÓN\n\nProductos comerciales 4\nDatos de stock en vivo\n\n4 fichas · 4 preparadas · 2 sin fotos · 0 variantes pendientes\n\n⌕\nTodos los estados\nBorradores\nPreparadas\nArchivadas\nCon o sin fotos\nSin fotos listas\nCon fotos listas\nToda publicación\nPublicadas\nOcultas\nBuscar\nActualizar colección\nSeleccioná fichas preparadas para generar historias por lote\nGenerar historias por lote (0) ↗\nSeleccionar producto\n◇\nFotografía pendiente\nPreparada\nPRODUCTO COMERCIAL\n↗\nLlave agotada\n\nPresentación comercial\n\nUYU $ 150\n0 disponibles\nLlave agotada\nSeleccionar producto\n◇\nFotografía pendiente\nPreparada\nPRODUCTO COMERCIAL\n↗\nTornillo sin fotografía\n\nPresentación comercial\n\nUYU $ 150\n3 disponibles\nTornillo sin fotografía\nSeleccionar producto\nPreparada\nPRODUCTO COMERCIAL\n↗\nBroca de acero 8 mm\n\nPresentación comercial\n\nUYU $ 150\n3 disponibles\nBroca de acero 8 mm\nSeleccionar producto\nPreparada\nPRODUCTO COMERCIAL\n↗\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\n\nPresentación comercial\n\nUYU $ 123.456.789\n3 disponibles\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1535,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 296,
+        "y": 175.5,
+        "width": 408.375,
+        "height": 36.796875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "32px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "＋ Nueva ficha comercial",
+          "width": 161.859375,
+          "height": 41
+        },
+        {
+          "text": "Buscar productos",
+          "width": 303.90625,
+          "height": 39
+        },
+        {
+          "text": "Todos los estados\nBorradores\nPreparadas\nArchivadas",
+          "width": 172,
+          "height": 43
+        },
+        {
+          "text": "Con o sin fotos\nSin fotos listas\nCon fotos listas",
+          "width": 172,
+          "height": 43
+        },
+        {
+          "text": "Toda publicación\nPublicadas\nOcultas",
+          "width": 172,
+          "height": 43
+        },
+        {
+          "text": "Buscar",
+          "width": 72.765625,
+          "height": 41
+        },
+        {
+          "text": "Actualizar colección",
+          "width": 151.0625,
+          "height": 41
+        },
+        {
+          "text": "Generar historias por lote (0) ↗",
+          "width": 174.59375,
+          "height": 38
+        },
+        {
+          "text": "Seleccionar Llave agotada",
+          "width": 19,
+          "height": 19
+        },
+        {
+          "text": "Seleccionar Tornillo sin fotografía",
+          "width": 19,
+          "height": 19
+        },
+        {
+          "text": "Seleccionar Broca de acero 8 mm",
+          "width": 19,
+          "height": 19
+        },
+        {
+          "text": "Seleccionar Taladro percutor profesional de 650 W con maletín, accesorios y sele",
+          "width": 19,
+          "height": 19
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-ferreteria-editor-1440x900",
+    "url": "http://127.0.0.1:61842/studio.html#/products/3b2aa809-a7d5-40a8-b074-d4d6fbcd876e",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nFerretería · PRUEBA ／ Studio\nF·\nFerretería · PRUEBA\n← Volver a productos\n\nFICHA COMERCIAL\n\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nPreparada\nActualizar ficha\nAbrir en Stocky ↗\n01 Información\n02 SKU vinculados\n03 Fotografías\nInformación del producto\n\nAgregá el nombre y la descripción comercial. Las presentaciones, unidades, atributos, saldos y precios provienen de Stocky.\n\nTítulo comercial\nDetalles de indumentaria deportiva · opcionales\nDescripción\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad · atributos de Stocky\n\nGuardar cambios\n\nVISTA COMERCIAL\n\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nUYU $ 123.456.789\n\n3 unidades disponibles\n\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nLista para preparar\nFicha preparada ✓Archivar ficha\nEn el catálogo público\n\nPublicada\n\nVer ficha pública ↗Ocultar del catálogo\nGenerar historia ↗\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1466,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 265,
+        "y": 195.5,
+        "width": 1047.671875,
+        "height": 66,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "30px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "← Volver a productos",
+          "width": 106.125,
+          "height": 15
+        },
+        {
+          "text": "Actualizar ficha",
+          "width": 124.265625,
+          "height": 41
+        },
+        {
+          "text": "Abrir en Stocky ↗",
+          "width": 92.171875,
+          "height": 16
+        },
+        {
+          "text": "",
+          "width": 104.546875,
+          "height": 17
+        },
+        {
+          "text": "Guardar cambios",
+          "width": 134.15625,
+          "height": 41
+        },
+        {
+          "text": "Ficha preparada ✓",
+          "width": 211,
+          "height": 39
+        },
+        {
+          "text": "Archivar ficha",
+          "width": 211,
+          "height": 37
+        },
+        {
+          "text": "Ver ficha pública ↗",
+          "width": 82.71875,
+          "height": 38
+        },
+        {
+          "text": "Ocultar del catálogo",
+          "width": 211,
+          "height": 38
+        },
+        {
+          "text": "Generar historia ↗",
+          "width": 211,
+          "height": 39
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-ferreteria-story-1440x900",
+    "url": "http://127.0.0.1:61842/studio.html#/products/3b2aa809-a7d5-40a8-b074-d4d6fbcd876e",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nFerretería · PRUEBA ／ Studio\nF·\nFerretería · PRUEBA\n← Volver a la ficha\n\nTU PRODUCTO, LISTO PARA COMPARTIR\n\nGenerar historia\n1080 × 1920\nElegí tu presentación\n\nSugerencia: Stock disponible, según el inventario actual. Usar sugerencia\n\nPlantilla\nNuevo ingreso\nStock disponible\nÚltima unidad\nPromoción\n\nDiseños de Stocky Studio con el logo y los colores de tu configuración. «Nuevo ingreso» es una selección editorial. «Última unidad» se valida contra el stock actual.\n\nFotografía\nFoto 1 · Portada\nPresentaciones que querés mostrar\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nMostrar precio\nEncuadre\nFoto completa\nLlenar el espacio\nAcercamiento\nPosición horizontal\nPosición vertical\nMensaje secundario\nLlamada a la acción\nFormato de descarga\nPNG · máxima calidad\nJPG · archivo más liviano\nGenerar previsualización\nDescargar PNG ↓\nCompartir ↗\nDatos revisados a las 12:23:53 p. m..\n\nLa imagen descargada es estática. Una venta posterior puede cambiar la disponibilidad. La historia no reserva unidades.\n\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1636,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 265,
+        "y": 195.5,
+        "width": 252.78125,
+        "height": 39.59375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "36px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": {
+        "x": 841,
+        "y": 466.96875,
+        "width": 390,
+        "height": 693.328125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "controls": {
+        "x": 265,
+        "y": 295.09375,
+        "width": 360,
+        "height": 1177.09375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "← Volver a la ficha",
+          "width": 91.140625,
+          "height": 15
+        },
+        {
+          "text": "",
+          "width": 8.1875,
+          "height": 13
+        },
+        {
+          "text": "",
+          "width": 13,
+          "height": 13
+        },
+        {
+          "text": "",
+          "width": 304,
+          "height": 30
+        },
+        {
+          "text": "",
+          "width": 304,
+          "height": 30
+        },
+        {
+          "text": "",
+          "width": 304,
+          "height": 30
+        },
+        {
+          "text": "Generar previsualización",
+          "width": 304,
+          "height": 41
+        },
+        {
+          "text": "Descargar PNG ↓",
+          "width": 191,
+          "height": 39
+        },
+        {
+          "text": "Compartir ↗",
+          "width": 191,
+          "height": 39
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-kiosco-local-catalog-390x844",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture",
+    "text": "K·\nKiosco · PRUEBA\nProductos con identidad\nMi consulta 0\n\nProductos con identidad\n\nConocé nuestros productos\n\nExplorá el catálogo y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nKiosco · PRUEBA\n\nNuestro catálogo\nStock y precios actualizados\nTodo el catálogo\nBebidas\nBuscar productos\nTodas las categorías\nTodas las categorías\nBebidas\nTodas las presentaciones\nTodas las presentaciones\nAgua mineral 500 ml\nAgua pack de seis botellas\nBebida sin stock\nGalletitas sin fotografía\nBuscar\nDisponible\n\nBebidas\n↗\n\nAgua mineral 500 ml\nUYU $ 123.456.789\nAgua mineral 500 ml · pack\n\npresentacion: 6 × 500 ml\n\nVer producto ↗\nDisponible\n\nBebidas\n↗\n\nAgua pack de seis botellas\nUYU $ 150\nAgua pack de seis botellas · pack\n\npresentacion: 6 × 500 ml\n\nVer producto ↗\nSin fotografía\nSin stock\n\nBebidas\n↗\n\nBebida sin stock\nUYU $ 150\nBebida sin stock · pack\n\npresentacion: 6 × 500 ml\n\nVer producto ↗\nSin fotografía\nDisponible\n\nBebidas\n↗\n\nGalletitas sin fotografía\nUYU $ 150\nGalletitas sin fotografía · pack\n\npresentacion: 6 × 500 ml\n\nVer producto ↗\nKiosco · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 1700,
+      "hero": {
+        "x": 16,
+        "y": 80,
+        "width": 358,
+        "height": 260.09375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 16,
+        "y": 715.59375,
+        "width": 358,
+        "height": 801.34375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 16,
+        "y": 715.59375,
+        "width": 172,
+        "height": 395.671875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "h1": {
+        "x": 41,
+        "y": 142,
+        "width": 308,
+        "height": 69.09375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "32px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "K·\nKiosco · PRUEBA\nProductos con identidad",
+          "width": 151.671875,
+          "height": 40.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Bebidas",
+          "width": 78.828125,
+          "height": 39.5
+        },
+        {
+          "text": "Buscar",
+          "width": 68.328125,
+          "height": 41.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-kiosco-local-product-390x844",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture/p/agua-mineral-500-ml-27407782c6",
+    "text": "K·\nKiosco · PRUEBA\nProductos con identidad\nMi consulta 0\n← Volver a la colección\n\nBebidas\n\nAgua mineral 500 ml\n\nUYU $ 123.456.789\n● Disponible para consultar\nPresentación\nAgua mineral 500 ml\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar por WhatsApp ↗\nPresentación para tu consulta\nElegir presentación\nAgua mineral 500 ml\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nProducto y datos ficticios en base temporal aislada para auditoría visual.\n\npresentacion · Agua mineral 500 ml\n6 × 500 ml\nKiosco · PRUEBA\nProductos con identidad\nKiosco · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 1759,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 16,
+        "y": 667.6875,
+        "width": 358,
+        "height": 32.46875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "28px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "K·\nKiosco · PRUEBA\nProductos con identidad",
+          "width": 151.671875,
+          "height": 40.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 100.859375,
+          "height": 15
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-kiosco-local-catalog-1440x900",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture",
+    "text": "K·\nKiosco · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nProductos con identidad\n\nConocé nuestros productos\n\nExplorá el catálogo y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nKiosco · PRUEBA\n\nNuestro catálogo\nStock y precios actualizados\nTodo el catálogo\nBebidas\nBuscar productos\nTodas las categorías\nTodas las categorías\nBebidas\nTodas las presentaciones\nTodas las presentaciones\nAgua mineral 500 ml\nAgua pack de seis botellas\nBebida sin stock\nGalletitas sin fotografía\nBuscar\nDisponible\n\nBebidas\n↗\n\nAgua mineral 500 ml\nUYU $ 123.456.789\nAgua mineral 500 ml · pack\n\npresentacion: 6 × 500 ml\n\nVer producto ↗\nDisponible\n\nBebidas\n↗\n\nAgua pack de seis botellas\nUYU $ 150\nAgua pack de seis botellas · pack\n\npresentacion: 6 × 500 ml\n\nVer producto ↗\nSin fotografía\nSin stock\n\nBebidas\n↗\n\nBebida sin stock\nUYU $ 150\nBebida sin stock · pack\n\npresentacion: 6 × 500 ml\n\nVer producto ↗\nSin fotografía\nDisponible\n\nBebidas\n↗\n\nGalletitas sin fotografía\nUYU $ 150\nGalletitas sin fotografía · pack\n\npresentacion: 6 × 500 ml\n\nVer producto ↗\nKiosco · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1217,
+      "hero": {
+        "x": 120,
+        "y": 100,
+        "width": 1200,
+        "height": 228.984375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 120,
+        "y": 625.484375,
+        "width": 1200,
+        "height": 399.875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 120,
+        "y": 625.484375,
+        "width": 289.5,
+        "height": 399.875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "h1": {
+        "x": 150,
+        "y": 163.6875,
+        "width": 700,
+        "height": 34.546875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "32px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Bebidas",
+          "width": 78.828125,
+          "height": 39.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-kiosco-local-product-1440x900",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture/p/agua-mineral-500-ml-27407782c6",
+    "text": "K·\nKiosco · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n← Volver a la colección\n\nBebidas\n\nAgua mineral 500 ml\n\nUYU $ 123.456.789\n● Disponible para consultar\nPresentación\nAgua mineral 500 ml\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar por WhatsApp ↗\nPresentación para tu consulta\nElegir presentación\nAgua mineral 500 ml\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nProducto y datos ficticios en base temporal aislada para auditoría visual.\n\npresentacion · Agua mineral 500 ml\n6 × 500 ml\nKiosco · PRUEBA\nProductos con identidad\nKiosco · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1323,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 800.25,
+        "y": 218.1875,
+        "width": 519.75,
+        "height": 48.71875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "42px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 110.9375,
+          "height": 16.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-kiosco-no-photo-product-1440x900",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture/p/galletitas-sin-fotografia-93b891b1b3",
+    "text": "K·\nKiosco · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n← Volver a la colección\nSin fotografía\n\nBebidas\n\nGalletitas sin fotografía\n\nUYU $ 150\n● Disponible para consultar\nPresentación\nGalletitas sin fotografía\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar por WhatsApp ↗\nPresentación para tu consulta\nElegir presentación\nGalletitas sin fotografía\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nProducto y datos ficticios en base temporal aislada para auditoría visual.\n\npresentacion · Galletitas sin fotografía\n6 × 500 ml\nKiosco · PRUEBA\nProductos con identidad\nKiosco · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1323,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 800.25,
+        "y": 218.1875,
+        "width": 519.75,
+        "height": 48.71875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "42px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 110.9375,
+          "height": 16.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-kiosco-soldout-product-1440x900",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture/p/bebida-sin-stock-d10a52f1ef",
+    "text": "K·\nKiosco · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n← Volver a la colección\nSin fotografía\n\nBebidas\n\nBebida sin stock\n\nUYU $ 150\nSin stock por el momento\nPresentación\nBebida sin stock\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar próximas reposiciones ↗\nPresentación para tu consulta\nElegir presentación\nBebida sin stock · Agotado\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nProducto y datos ficticios en base temporal aislada para auditoría visual.\n\npresentacion · Bebida sin stock\n6 × 500 ml\nKiosco · PRUEBA\nProductos con identidad\nKiosco · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1323,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 800.25,
+        "y": 218.1875,
+        "width": 519.75,
+        "height": 48.71875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "42px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 110.9375,
+          "height": 16.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-kiosco-studio-1440x900",
+    "url": "http://127.0.0.1:61842/studio.html",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nKiosco · PRUEBA ／ Studio\nK·\nKiosco · PRUEBA\n\nESPACIO COMERCIAL · Kiosco · PRUEBA\n\nTu catálogo, al día.\n\nOrganizá productos, prepará su presentación y compartí tu marca.\n\n＋ Nueva ficha comercial\n\nGESTIONÁ TU COLECCIÓN\n\nProductos comerciales 4\nDatos de stock en vivo\n\n4 fichas · 4 preparadas · 2 sin fotos · 0 variantes pendientes\n\n⌕\nTodos los estados\nBorradores\nPreparadas\nArchivadas\nCon o sin fotos\nSin fotos listas\nCon fotos listas\nToda publicación\nPublicadas\nOcultas\nBuscar\nActualizar colección\nSeleccioná fichas preparadas para generar historias por lote\nGenerar historias por lote (0) ↗\nSeleccionar producto\n◇\nFotografía pendiente\nPreparada\nPRODUCTO COMERCIAL\n↗\nBebida sin stock\n\nPresentación comercial\n\nUYU $ 150\n0 disponibles\nBebida sin stock\nSeleccionar producto\n◇\nFotografía pendiente\nPreparada\nPRODUCTO COMERCIAL\n↗\nGalletitas sin fotografía\n\nPresentación comercial\n\nUYU $ 150\n3 disponibles\nGalletitas sin fotografía\nSeleccionar producto\nPreparada\nPRODUCTO COMERCIAL\n↗\nAgua pack de seis botellas\n\nPresentación comercial\n\nUYU $ 150\n3 disponibles\nAgua pack de seis botellas\nSeleccionar producto\nPreparada\nPRODUCTO COMERCIAL\n↗\nAgua mineral 500 ml\n\nPresentación comercial\n\nUYU $ 123.456.789\n3 disponibles\nAgua mineral 500 ml\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1496,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 296,
+        "y": 175.5,
+        "width": 408.375,
+        "height": 36.796875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "32px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "＋ Nueva ficha comercial",
+          "width": 161.859375,
+          "height": 41
+        },
+        {
+          "text": "Buscar productos",
+          "width": 303.90625,
+          "height": 39
+        },
+        {
+          "text": "Todos los estados\nBorradores\nPreparadas\nArchivadas",
+          "width": 172,
+          "height": 43
+        },
+        {
+          "text": "Con o sin fotos\nSin fotos listas\nCon fotos listas",
+          "width": 172,
+          "height": 43
+        },
+        {
+          "text": "Toda publicación\nPublicadas\nOcultas",
+          "width": 172,
+          "height": 43
+        },
+        {
+          "text": "Buscar",
+          "width": 72.765625,
+          "height": 41
+        },
+        {
+          "text": "Actualizar colección",
+          "width": 151.0625,
+          "height": 41
+        },
+        {
+          "text": "Generar historias por lote (0) ↗",
+          "width": 174.59375,
+          "height": 38
+        },
+        {
+          "text": "Seleccionar Bebida sin stock",
+          "width": 19,
+          "height": 19
+        },
+        {
+          "text": "Seleccionar Galletitas sin fotografía",
+          "width": 19,
+          "height": 19
+        },
+        {
+          "text": "Seleccionar Agua pack de seis botellas",
+          "width": 19,
+          "height": 19
+        },
+        {
+          "text": "Seleccionar Agua mineral 500 ml",
+          "width": 19,
+          "height": 19
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-kiosco-editor-1440x900",
+    "url": "http://127.0.0.1:61842/studio.html#/products/27407782-c6e5-4195-bc9a-715169f44640",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nKiosco · PRUEBA ／ Studio\nK·\nKiosco · PRUEBA\n← Volver a productos\n\nFICHA COMERCIAL\n\nAgua mineral 500 ml\nPreparada\nActualizar ficha\nAbrir en Stocky ↗\n01 Información\n02 SKU vinculados\n03 Fotografías\nInformación del producto\n\nAgregá el nombre y la descripción comercial. Las presentaciones, unidades, atributos, saldos y precios provienen de Stocky.\n\nTítulo comercial\nDetalles de indumentaria deportiva · opcionales\nDescripción\nAgua mineral 500 ml · atributos de Stocky\n\nGuardar cambios\n\nVISTA COMERCIAL\n\nAgua mineral 500 ml\nUYU $ 123.456.789\n\n3 unidades disponibles\n\nAgua mineral 500 ml\nLista para preparar\nFicha preparada ✓Archivar ficha\nEn el catálogo público\n\nPublicada\n\nVer ficha pública ↗Ocultar del catálogo\nGenerar historia ↗\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1327,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 265,
+        "y": 195.5,
+        "width": 270.765625,
+        "height": 33,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "30px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "← Volver a productos",
+          "width": 106.125,
+          "height": 15
+        },
+        {
+          "text": "Actualizar ficha",
+          "width": 124.265625,
+          "height": 41
+        },
+        {
+          "text": "Abrir en Stocky ↗",
+          "width": 92.171875,
+          "height": 16
+        },
+        {
+          "text": "",
+          "width": 104.546875,
+          "height": 17
+        },
+        {
+          "text": "Guardar cambios",
+          "width": 134.15625,
+          "height": 41
+        },
+        {
+          "text": "Ficha preparada ✓",
+          "width": 211,
+          "height": 39
+        },
+        {
+          "text": "Archivar ficha",
+          "width": 211,
+          "height": 37
+        },
+        {
+          "text": "Ver ficha pública ↗",
+          "width": 82.71875,
+          "height": 38
+        },
+        {
+          "text": "Ocultar del catálogo",
+          "width": 211,
+          "height": 38
+        },
+        {
+          "text": "Generar historia ↗",
+          "width": 211,
+          "height": 39
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-kiosco-story-1440x900",
+    "url": "http://127.0.0.1:61842/studio.html#/products/27407782-c6e5-4195-bc9a-715169f44640",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nKiosco · PRUEBA ／ Studio\nK·\nKiosco · PRUEBA\n← Volver a la ficha\n\nTU PRODUCTO, LISTO PARA COMPARTIR\n\nGenerar historia\n1080 × 1920\nElegí tu presentación\n\nSugerencia: Stock disponible, según el inventario actual. Usar sugerencia\n\nPlantilla\nNuevo ingreso\nStock disponible\nÚltima unidad\nPromoción\n\nDiseños de Stocky Studio con el logo y los colores de tu configuración. «Nuevo ingreso» es una selección editorial. «Última unidad» se valida contra el stock actual.\n\nFotografía\nFoto 1 · Portada\nPresentaciones que querés mostrar\nAgua mineral 500 ml\nMostrar precio\nEncuadre\nFoto completa\nLlenar el espacio\nAcercamiento\nPosición horizontal\nPosición vertical\nMensaje secundario\nLlamada a la acción\nFormato de descarga\nPNG · máxima calidad\nJPG · archivo más liviano\nGenerar previsualización\nDescargar PNG ↓\nCompartir ↗\nDatos revisados a las 12:24:01 p. m..\n\nLa imagen descargada es estática. Una venta posterior puede cambiar la disponibilidad. La historia no reserva unidades.\n\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1625,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 265,
+        "y": 195.5,
+        "width": 252.78125,
+        "height": 39.59375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "36px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": {
+        "x": 841,
+        "y": 461.46875,
+        "width": 390,
+        "height": 693.328125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "controls": {
+        "x": 265,
+        "y": 295.09375,
+        "width": 360,
+        "height": 1166.09375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "← Volver a la ficha",
+          "width": 91.140625,
+          "height": 15
+        },
+        {
+          "text": "",
+          "width": 13,
+          "height": 13
+        },
+        {
+          "text": "",
+          "width": 13,
+          "height": 13
+        },
+        {
+          "text": "",
+          "width": 304,
+          "height": 30
+        },
+        {
+          "text": "",
+          "width": 304,
+          "height": 30
+        },
+        {
+          "text": "",
+          "width": 304,
+          "height": 30
+        },
+        {
+          "text": "Generar previsualización",
+          "width": 304,
+          "height": 41
+        },
+        {
+          "text": "Descargar PNG ↓",
+          "width": 191,
+          "height": 39
+        },
+        {
+          "text": "Compartir ↗",
+          "width": 191,
+          "height": 39
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-same-content-preset-classic-1440x900",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nProductos con identidad\n\nConocé nuestros productos\n\nExplorá el catálogo y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFerretería · PRUEBA\n\nNuestro catálogo\nStock y precios actualizados\nTodo el catálogo\nHerramientas\nBuscar productos\nTodas las categorías\nTodas las categorías\nHerramientas\nTodas las presentaciones\nTodas las presentaciones\nBroca de acero 8 mm\nLlave agotada\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nTornillo sin fotografía\nBuscar\nDisponible\n\nHerramientas\n↗\n\nBroca de acero 8 mm\nUYU $ 150\nBroca de acero 8 mm\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nSin stock\n\nHerramientas\n↗\n\nLlave agotada\nUYU $ 150\nLlave agotada\n\npotencia: 650 w\n\nVer producto ↗\nDisponible\n\nHerramientas\n↗\n\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nUYU $ 123.456.789\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nDisponible\n\nHerramientas\n↗\n\nTornillo sin fotografía\nUYU $ 150\nTornillo sin fotografía\n\npotencia: 650 w\n\nVer producto ↗\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 2082,
+      "hero": {
+        "x": 120,
+        "y": 100,
+        "width": 1200,
+        "height": 297.0625,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 120,
+        "y": 684.5625,
+        "width": 1200,
+        "height": 1205.71875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 120,
+        "y": 684.5625,
+        "width": 384.65625,
+        "height": 620.046875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "h1": {
+        "x": 160,
+        "y": 178.6875,
+        "width": 700,
+        "height": 62.625,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "58px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Herramientas",
+          "width": 110.71875,
+          "height": 39.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-same-content-preset-editorial-1440x900",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nProductos con identidad\n\nConocé nuestros productos\n\nExplorá el catálogo y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFerretería · PRUEBA\n\nNuestro catálogo\nStock y precios actualizados\nTodo el catálogo\nHerramientas\nBuscar productos\nTodas las categorías\nTodas las categorías\nHerramientas\nTodas las presentaciones\nTodas las presentaciones\nBroca de acero 8 mm\nLlave agotada\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nTornillo sin fotografía\nBuscar\nDisponible\n\nHerramientas\n↗\n\nBroca de acero 8 mm\nUYU $ 150\nBroca de acero 8 mm\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nSin stock\n\nHerramientas\n↗\n\nLlave agotada\nUYU $ 150\nLlave agotada\n\npotencia: 650 w\n\nVer producto ↗\nDisponible\n\nHerramientas\n↗\n\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nUYU $ 123.456.789\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nDisponible\n\nHerramientas\n↗\n\nTornillo sin fotografía\nUYU $ 150\nTornillo sin fotografía\n\npotencia: 650 w\n\nVer producto ↗\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 2314,
+      "hero": {
+        "x": 120,
+        "y": 100,
+        "width": 1200,
+        "height": 340,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 120,
+        "y": 727.5,
+        "width": 1200,
+        "height": 1394.53125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 120,
+        "y": 727.5,
+        "width": 584,
+        "height": 668.671875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "h1": {
+        "x": 160,
+        "y": 200.15625,
+        "width": 700,
+        "height": 62.625,
+        "font": "Georgia, serif",
+        "size": "58px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Herramientas",
+          "width": 110.71875,
+          "height": 39.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-same-content-preset-technical-1440x900",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nProductos con identidad\n\nConocé nuestros productos\n\nExplorá el catálogo y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFerretería · PRUEBA\n\nNuestro catálogo\nStock y precios actualizados\nTodo el catálogo\nHerramientas\nBuscar productos\nTodas las categorías\nTodas las categorías\nHerramientas\nTodas las presentaciones\nTodas las presentaciones\nBroca de acero 8 mm\nLlave agotada\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nTornillo sin fotografía\nBuscar\nDisponible\n\nHerramientas\n↗\n\nBroca de acero 8 mm\nUYU $ 150\nBroca de acero 8 mm\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nSin stock\n\nHerramientas\n↗\n\nLlave agotada\nUYU $ 150\nLlave agotada\n\npotencia: 650 w\n\nVer producto ↗\nDisponible\n\nHerramientas\n↗\n\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nUYU $ 123.456.789\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nDisponible\n\nHerramientas\n↗\n\nTornillo sin fotografía\nUYU $ 150\nTornillo sin fotografía\n\npotencia: 650 w\n\nVer producto ↗\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1817,
+      "hero": {
+        "x": 120,
+        "y": 100,
+        "width": 1200,
+        "height": 249.3125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 120,
+        "y": 674.8125,
+        "width": 1200,
+        "height": 950.71875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 120,
+        "y": 674.8125,
+        "width": 389.328125,
+        "height": 496.046875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "h1": {
+        "x": 152,
+        "y": 166.6875,
+        "width": 700,
+        "height": 38.875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "36px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Herramientas",
+          "width": 110.71875,
+          "height": 39.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-same-content-preset-local-1440x900",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nProductos con identidad\n\nConocé nuestros productos\n\nExplorá el catálogo y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFerretería · PRUEBA\n\nNuestro catálogo\nStock y precios actualizados\nTodo el catálogo\nHerramientas\nBuscar productos\nTodas las categorías\nTodas las categorías\nHerramientas\nTodas las presentaciones\nTodas las presentaciones\nBroca de acero 8 mm\nLlave agotada\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nTornillo sin fotografía\nBuscar\nDisponible\n\nHerramientas\n↗\n\nBroca de acero 8 mm\nUYU $ 150\nBroca de acero 8 mm\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nSin stock\n\nHerramientas\n↗\n\nLlave agotada\nUYU $ 150\nLlave agotada\n\npotencia: 650 w\n\nVer producto ↗\nDisponible\n\nHerramientas\n↗\n\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nUYU $ 123.456.789\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nDisponible\n\nHerramientas\n↗\n\nTornillo sin fotografía\nUYU $ 150\nTornillo sin fotografía\n\npotencia: 650 w\n\nVer producto ↗\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1269,
+      "hero": {
+        "x": 120,
+        "y": 100,
+        "width": 1200,
+        "height": 228.984375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 120,
+        "y": 625.484375,
+        "width": 1200,
+        "height": 451.65625,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 120,
+        "y": 625.484375,
+        "width": 289.5,
+        "height": 451.65625,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "h1": {
+        "x": 150,
+        "y": 163.6875,
+        "width": 700,
+        "height": 34.546875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "32px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Herramientas",
+          "width": 110.71875,
+          "height": 39.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-custom-colors-light-1440x900",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nProductos con identidad\n\nConocé nuestros productos\n\nExplorá el catálogo y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFerretería · PRUEBA\n\nNuestro catálogo\nStock y precios actualizados\nTodo el catálogo\nHerramientas\nBuscar productos\nTodas las categorías\nTodas las categorías\nHerramientas\nTodas las presentaciones\nTodas las presentaciones\nBroca de acero 8 mm\nLlave agotada\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nTornillo sin fotografía\nBuscar\nDisponible\n\nHerramientas\n↗\n\nBroca de acero 8 mm\nUYU $ 150\nBroca de acero 8 mm\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nSin stock\n\nHerramientas\n↗\n\nLlave agotada\nUYU $ 150\nLlave agotada\n\npotencia: 650 w\n\nVer producto ↗\nDisponible\n\nHerramientas\n↗\n\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nUYU $ 123.456.789\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nDisponible\n\nHerramientas\n↗\n\nTornillo sin fotografía\nUYU $ 150\nTornillo sin fotografía\n\npotencia: 650 w\n\nVer producto ↗\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1269,
+      "hero": {
+        "x": 120,
+        "y": 100,
+        "width": 1200,
+        "height": 228.984375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(0, 0, 0)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "grid": {
+        "x": 120,
+        "y": 625.484375,
+        "width": 1200,
+        "height": 451.65625,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 120,
+        "y": 625.484375,
+        "width": 289.5,
+        "height": 451.65625,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "h1": {
+        "x": 150,
+        "y": 163.6875,
+        "width": 700,
+        "height": 34.546875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "32px",
+        "color": "rgb(0, 0, 0)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Herramientas",
+          "width": 110.71875,
+          "height": 39.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-custom-colors-dark-1440x900",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "text": "F·\nFerretería · PRUEBA\nProductos con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nProductos con identidad\n\nConocé nuestros productos\n\nExplorá el catálogo y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFerretería · PRUEBA\n\nNuestro catálogo\nStock y precios actualizados\nTodo el catálogo\nHerramientas\nBuscar productos\nTodas las categorías\nTodas las categorías\nHerramientas\nTodas las presentaciones\nTodas las presentaciones\nBroca de acero 8 mm\nLlave agotada\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nTornillo sin fotografía\nBuscar\nDisponible\n\nHerramientas\n↗\n\nBroca de acero 8 mm\nUYU $ 150\nBroca de acero 8 mm\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nSin stock\n\nHerramientas\n↗\n\nLlave agotada\nUYU $ 150\nLlave agotada\n\npotencia: 650 w\n\nVer producto ↗\nDisponible\n\nHerramientas\n↗\n\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\nUYU $ 123.456.789\nTaladro percutor profesional de 650 W con maletín, accesorios y selector de velocidad\n\npotencia: 650 w\n\nVer producto ↗\nSin fotografía\nDisponible\n\nHerramientas\n↗\n\nTornillo sin fotografía\nUYU $ 150\nTornillo sin fotografía\n\npotencia: 650 w\n\nVer producto ↗\nFerretería · PRUEBA\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1269,
+      "hero": {
+        "x": 120,
+        "y": 100,
+        "width": 1200,
+        "height": 228.984375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(17, 17, 17)"
+      },
+      "grid": {
+        "x": 120,
+        "y": 625.484375,
+        "width": 1200,
+        "height": 451.65625,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 120,
+        "y": 625.484375,
+        "width": 289.5,
+        "height": 451.65625,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "h1": {
+        "x": 150,
+        "y": 163.6875,
+        "width": 700,
+        "height": 34.546875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "32px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Herramientas",
+          "width": 110.71875,
+          "height": 39.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  }
+]

@@ -1,0 +1,145 @@
+[
+  {
+    "file": "review-01.jpg",
+    "source": [
+      "local-ferreteria-editor-1440x900.png",
+      "local-ferreteria-no-photo-product-1440x900.png",
+      "local-ferreteria-soldout-product-1440x900.png",
+      "local-ferreteria-story-1440x900.png",
+      "local-ferreteria-studio-1440x900.png",
+      "local-ferreteria-technical-catalog-1440x900.png"
+    ]
+  },
+  {
+    "file": "review-02.jpg",
+    "source": [
+      "local-ferreteria-technical-catalog-390x844.png",
+      "local-ferreteria-technical-product-1440x900.png",
+      "local-ferreteria-technical-product-390x844.png",
+      "local-indumentaria-editor-1440x900.png",
+      "local-indumentaria-editorial-catalog-1440x900.png",
+      "local-indumentaria-editorial-catalog-390x844.png"
+    ]
+  },
+  {
+    "file": "review-03.jpg",
+    "source": [
+      "local-indumentaria-editorial-product-1440x900.png",
+      "local-indumentaria-editorial-product-390x844.png",
+      "local-indumentaria-studio-1440x900.png",
+      "local-kiosco-editor-1440x900.png",
+      "local-kiosco-local-catalog-1440x900.png",
+      "local-kiosco-local-catalog-390x844.png"
+    ]
+  },
+  {
+    "file": "review-04.jpg",
+    "source": [
+      "local-kiosco-local-product-1440x900.png",
+      "local-kiosco-local-product-390x844.png",
+      "local-kiosco-no-photo-product-1440x900.png",
+      "local-kiosco-soldout-product-1440x900.png",
+      "local-kiosco-story-1440x900.png",
+      "local-kiosco-studio-1440x900.png"
+    ]
+  },
+  {
+    "file": "review-05.jpg",
+    "source": [
+      "local-preset-preview-editorial-unsaved-1440x900.png",
+      "local-public-gallery-two-images-1440x900.png",
+      "local-story-action-hover-1440x900.png",
+      "local-story-edited-invalidated-390x844.png",
+      "local-story-initial-viewport-1440x900.png",
+      "local-story-initial-viewport-390x844.png"
+    ]
+  },
+  {
+    "file": "review-06.jpg",
+    "source": [
+      "local-studio-batch-empty-1440x900.png",
+      "local-studio-editor-details-1440x900.png",
+      "local-studio-editor-new-1440x900.png",
+      "local-studio-editor-photos-1440x900.png",
+      "local-studio-editor-photos-390x844.png",
+      "local-studio-editor-skus-1440x900.png"
+    ]
+  },
+  {
+    "file": "review-07.jpg",
+    "source": [
+      "local-studio-error-simulated-1440x900.png",
+      "local-studio-gallery-two-images-1440x900.png",
+      "local-studio-library-1440x900.png",
+      "local-studio-loading-1440x900.png",
+      "local-studio-login-1440x900.png",
+      "local-studio-login-390x844.png"
+    ]
+  },
+  {
+    "file": "review-08.jpg",
+    "source": [
+      "local-studio-navigation-hover-1440x900.png",
+      "local-studio-pending-1440x900.png",
+      "local-studio-pending-390x844.png",
+      "local-studio-pending-selected-1440x900.png",
+      "local-studio-photo-details-1440x900.png",
+      "local-studio-products-1440x900.png"
+    ]
+  },
+  {
+    "file": "review-09.jpg",
+    "source": [
+      "local-studio-products-1920x1080.png",
+      "local-studio-products-390x844.png",
+      "local-studio-products-768x1024.png",
+      "local-studio-recovery-empty-1440x900.png",
+      "local-studio-search-empty-1440x900.png",
+      "local-studio-search-focus-390x844.png"
+    ]
+  },
+  {
+    "file": "review-10.jpg",
+    "source": [
+      "local-studio-settings-1440x900.png",
+      "local-studio-settings-390x844.png",
+      "local-studio-story-before-1440x900.png",
+      "local-studio-story-ready-1440x900.png",
+      "local-studio-story-ready-390x844.png",
+      "prod-fullmatch-home-1440x900.png"
+    ]
+  },
+  {
+    "file": "review-11.jpg",
+    "source": [
+      "prod-fullmatch-home-1920x1080.png",
+      "prod-fullmatch-home-375x812.png",
+      "prod-fullmatch-home-390x844.png",
+      "prod-fullmatch-home-430x932.png",
+      "prod-fullmatch-home-768x1024.png",
+      "prod-fullmatch-inquiry-empty-1440x900.png"
+    ]
+  },
+  {
+    "file": "review-12.jpg",
+    "source": [
+      "prod-fullmatch-product-1440x900.png",
+      "prod-fullmatch-product-390x844.png",
+      "prod-fullmatch-search-empty-390x844.png",
+      "prod-public-card-hover-1440x900.png",
+      "prod-public-error404-1440x900.png",
+      "prod-public-filter-active-390x844.png"
+    ]
+  },
+  {
+    "file": "review-13.jpg",
+    "source": [
+      "prod-public-inquiry-filled-390x844.png",
+      "prod-public-product-added-390x844.png",
+      "prod-public-product-error404-390x844.png",
+      "prod-public-search-focus-390x844.png",
+      "prod-studio-access-390x844.png",
+      "prod-studio-route-access-390x844.png"
+    ]
+  }
+]

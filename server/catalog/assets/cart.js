@@ -66,6 +66,41 @@
     finally { if (attempt === generation) { busy = false; controls(); } }
   }
   updateCount();
+  // A single native variant control drives price, direct contact and the inquiry.
+  for (const form of document.querySelectorAll('[data-add-inquiry]')) {
+    const select = form.elements.namedItem('size'), quantity = form.elements.namedItem('quantity');
+    const price = document.querySelector('.public-price'), contact = document.querySelector('[data-direct-inquiry]');
+    const originalContact = contact?.getAttribute('href');
+    const update = () => {
+      const selected = select.selectedOptions[0];
+      if (price) price.textContent = selected?.dataset.price || price.dataset.defaultPrice;
+      if (contact && originalContact) {
+        const url = new URL(originalContact);
+        if (select.value) url.searchParams.set('text', `${url.searchParams.get('text')} Presentación: ${select.value}. Cantidad: ${quantity.value}.`);
+        contact.href = url.href;
+      }
+      const status = form.querySelector('[data-inquiry-status]'); if (status) status.textContent = '';
+    };
+    select.addEventListener('change', update); quantity.addEventListener('input', update); update();
+  }
+  const mainImage = document.querySelector('[data-gallery-main]'), zoom = document.querySelector('[data-gallery-zoom]');
+  const thumbnails = [...document.querySelectorAll('[data-gallery-image]')], dialog = document.querySelector('.photo-dialog');
+  function showImage(link) {
+    if (!mainImage) return;
+    mainImage.src = link.href; mainImage.alt = link.dataset.imageAlt;
+    if (zoom) zoom.href = link.href;
+    if (dialog) { dialog.querySelector('img').src = link.href; dialog.querySelector('img').alt = mainImage.alt; }
+    for (const item of thumbnails) { if (item === link) item.setAttribute('aria-current', 'true'); else item.removeAttribute('aria-current'); }
+    const status = document.querySelector('[data-gallery-status]'); if (status) status.textContent = `Foto ${thumbnails.indexOf(link) + 1} de ${thumbnails.length}`;
+  }
+  thumbnails.forEach((link, index) => {
+    link.addEventListener('click', event => { event.preventDefault(); showImage(link); });
+    link.addEventListener('keydown', event => {
+      const next = event.key === 'ArrowRight' ? (index + 1) % thumbnails.length : event.key === 'ArrowLeft' ? (index + thumbnails.length - 1) % thumbnails.length : event.key === 'Home' ? 0 : event.key === 'End' ? thumbnails.length - 1 : null;
+      if (next !== null) { event.preventDefault(); showImage(thumbnails[next]); thumbnails[next].focus(); }
+    });
+  });
+  if (zoom && typeof dialog?.showModal === 'function') zoom.addEventListener('click', event => { event.preventDefault(); dialog.showModal(); });
   addEventListener('storage', event => { if (event.key === key) { cart = read(); quote = null; updateCount(); if (isInquiry) void refresh(false); } });
   for (const form of document.querySelectorAll('[data-add-inquiry]')) form.addEventListener('submit', event => {
     event.preventDefault(); const status = form.querySelector('[data-inquiry-status]');

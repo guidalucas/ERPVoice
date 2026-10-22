@@ -1,0 +1,678 @@
+[
+  {
+    "name": "prod-fullmatch-home-375x812",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "text": "FullMatch Casacas\nTu colección, con identidad\nMi consulta 0\n\nFullMatch Casacas\n\nLa colección\nStock y precios actualizados\nTodo el catálogo\nCamiseta\nBuscar productos\nTodas las categorías\nTodas las categorías\nCamiseta\nTodos los equipos\nTodos los equipos\nArgentina\nInter\nTodas las versiones\nTodas las versiones\nJugador\nTodas las presentaciones\nTodas las presentaciones\nM\nBuscar\nDisponible\n\nArgentina\n↗\n\nCamiseta Argentina suplente 2026 versión jugador\n\n2026 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nDisponible\n\nInter\n↗\n\nInter titular 2025 versión jugador\n\n2025 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nFullMatch Casacas\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 375,
+      "height": 812,
+      "scrollWidth": 375,
+      "scrollHeight": 1362,
+      "hero": {
+        "x": 16,
+        "y": 100,
+        "width": 343,
+        "height": 192.9375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(0, 0, 0)",
+        "background": "rgb(247, 135, 43)"
+      },
+      "grid": {
+        "x": 16,
+        "y": 717.9375,
+        "width": 343,
+        "height": 461.46875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 16,
+        "y": 717.9375,
+        "width": 163.5,
+        "height": 461.46875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "h1": null,
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 95.1875,
+          "height": 36.5
+        },
+        {
+          "text": "Camiseta",
+          "width": 52.34375,
+          "height": 36.5
+        },
+        {
+          "text": "Buscar",
+          "width": 68.328125,
+          "height": 41.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "prod-fullmatch-home-390x844",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "text": "FullMatch Casacas\nTu colección, con identidad\nMi consulta 0\n\nFullMatch Casacas\n\nLa colección\nStock y precios actualizados\nTodo el catálogo\nCamiseta\nBuscar productos\nTodas las categorías\nTodas las categorías\nCamiseta\nTodos los equipos\nTodos los equipos\nArgentina\nInter\nTodas las versiones\nTodas las versiones\nJugador\nTodas las presentaciones\nTodas las presentaciones\nM\nBuscar\nDisponible\n\nArgentina\n↗\n\nCamiseta Argentina suplente 2026 versión jugador\n\n2026 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nDisponible\n\nInter\n↗\n\nInter titular 2025 versión jugador\n\n2025 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nFullMatch Casacas\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 1371,
+      "hero": {
+        "x": 16,
+        "y": 100,
+        "width": 358,
+        "height": 201.375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(0, 0, 0)",
+        "background": "rgb(247, 135, 43)"
+      },
+      "grid": {
+        "x": 16,
+        "y": 726.375,
+        "width": 358,
+        "height": 461.46875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 16,
+        "y": 726.375,
+        "width": 171,
+        "height": 461.46875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "h1": null,
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 95.1875,
+          "height": 36.5
+        },
+        {
+          "text": "Camiseta",
+          "width": 52.34375,
+          "height": 36.5
+        },
+        {
+          "text": "Buscar",
+          "width": 68.328125,
+          "height": 41.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "prod-fullmatch-home-430x932",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "text": "FullMatch Casacas\nTu colección, con identidad\nMi consulta 0\n\nFullMatch Casacas\n\nLa colección\nStock y precios actualizados\nTodo el catálogo\nCamiseta\nBuscar productos\nTodas las categorías\nTodas las categorías\nCamiseta\nTodos los equipos\nTodos los equipos\nArgentina\nInter\nTodas las versiones\nTodas las versiones\nJugador\nTodas las presentaciones\nTodas las presentaciones\nM\nBuscar\nDisponible\n\nArgentina\n↗\n\nCamiseta Argentina suplente 2026 versión jugador\n\n2026 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nDisponible\n\nInter\n↗\n\nInter titular 2025 versión jugador\n\n2025 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nFullMatch Casacas\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 430,
+      "height": 932,
+      "scrollWidth": 430,
+      "scrollHeight": 1303,
+      "hero": {
+        "x": 16,
+        "y": 100,
+        "width": 398,
+        "height": 223.875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(0, 0, 0)",
+        "background": "rgb(247, 135, 43)"
+      },
+      "grid": {
+        "x": 16,
+        "y": 697.375,
+        "width": 398,
+        "height": 441.875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 16,
+        "y": 697.375,
+        "width": 191,
+        "height": 441.875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "h1": null,
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 95.1875,
+          "height": 36.5
+        },
+        {
+          "text": "Camiseta",
+          "width": 52.34375,
+          "height": 36.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "prod-fullmatch-home-768x1024",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "text": "FullMatch Casacas\nTu colección, con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nFullMatch Casacas\n\nLa colección\nStock y precios actualizados\nTodo el catálogo\nCamiseta\nBuscar productos\nTodas las categorías\nTodas las categorías\nCamiseta\nTodos los equipos\nTodos los equipos\nArgentina\nInter\nTodas las versiones\nTodas las versiones\nJugador\nTodas las presentaciones\nTodas las presentaciones\nM\nBuscar\nDisponible\n\nArgentina\n↗\n\nCamiseta Argentina suplente 2026 versión jugador\n\n2026 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nDisponible\n\nInter\n↗\n\nInter titular 2025 versión jugador\n\n2025 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nFullMatch Casacas\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 768,
+      "height": 1024,
+      "scrollWidth": 768,
+      "scrollHeight": 1515,
+      "hero": {
+        "x": 30,
+        "y": 101,
+        "width": 708,
+        "height": 398.25,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(0, 0, 0)",
+        "background": "rgb(247, 135, 43)"
+      },
+      "grid": {
+        "x": 30,
+        "y": 829.75,
+        "width": 708,
+        "height": 507.96875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 30,
+        "y": 829.75,
+        "width": 346,
+        "height": 507.96875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "h1": null,
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 49.015625,
+          "height": 18
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 89.546875,
+          "height": 20.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 86.796875,
+          "height": 40
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 95.1875,
+          "height": 36.5
+        },
+        {
+          "text": "Camiseta",
+          "width": 52.34375,
+          "height": 36.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "prod-fullmatch-home-1440x900",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "text": "FullMatch Casacas\nTu colección, con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nFullMatch Casacas\n\nLa colección\nStock y precios actualizados\nTodo el catálogo\nCamiseta\nBuscar productos\nTodas las categorías\nTodas las categorías\nCamiseta\nTodos los equipos\nTodos los equipos\nArgentina\nInter\nTodas las versiones\nTodas las versiones\nJugador\nTodas las presentaciones\nTodas las presentaciones\nM\nBuscar\nDisponible\n\nArgentina\n↗\n\nCamiseta Argentina suplente 2026 versión jugador\n\n2026 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nDisponible\n\nInter\n↗\n\nInter titular 2025 versión jugador\n\n2025 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nFullMatch Casacas\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1802,
+      "hero": {
+        "x": 120,
+        "y": 118,
+        "width": 1200,
+        "height": 675,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(0, 0, 0)",
+        "background": "rgb(247, 135, 43)"
+      },
+      "grid": {
+        "x": 120,
+        "y": 1074.5,
+        "width": 1200,
+        "height": 535.578125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 120,
+        "y": 1074.5,
+        "width": 380,
+        "height": 535.578125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "h1": null,
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 49.015625,
+          "height": 18
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 89.546875,
+          "height": 20.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 98.796875,
+          "height": 42
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 95.1875,
+          "height": 36.5
+        },
+        {
+          "text": "Camiseta",
+          "width": 52.34375,
+          "height": 36.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "prod-fullmatch-home-1920x1080",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "text": "FullMatch Casacas\nTu colección, con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nFullMatch Casacas\n\nLa colección\nStock y precios actualizados\nTodo el catálogo\nCamiseta\nBuscar productos\nTodas las categorías\nTodas las categorías\nCamiseta\nTodos los equipos\nTodos los equipos\nArgentina\nInter\nTodas las versiones\nTodas las versiones\nJugador\nTodas las presentaciones\nTodas las presentaciones\nM\nBuscar\nDisponible\n\nArgentina\n↗\n\nCamiseta Argentina suplente 2026 versión jugador\n\n2026 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nDisponible\n\nInter\n↗\n\nInter titular 2025 versión jugador\n\n2025 · Jugador\n\nARS $ 65.000\nM\nVer producto ↗\nFullMatch Casacas\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1920,
+      "height": 1080,
+      "scrollWidth": 1920,
+      "scrollHeight": 1802,
+      "hero": {
+        "x": 360,
+        "y": 118,
+        "width": 1200,
+        "height": 675,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(0, 0, 0)",
+        "background": "rgb(247, 135, 43)"
+      },
+      "grid": {
+        "x": 360,
+        "y": 1074.5,
+        "width": 1200,
+        "height": 535.578125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 360,
+        "y": 1074.5,
+        "width": 380,
+        "height": 535.578125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "h1": null,
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 49.015625,
+          "height": 18
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 89.546875,
+          "height": 20.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 98.796875,
+          "height": 42
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 95.1875,
+          "height": 36.5
+        },
+        {
+          "text": "Camiseta",
+          "width": 52.34375,
+          "height": 36.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "prod-fullmatch-product-390x844",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas/p/camiseta-argentina-suplente-2026-version-jugador-8ef0912d6c",
+    "text": "FullMatch Casacas\nTu colección, con identidad\nMi consulta 0\n← Volver a la colección\n\nArgentina ／ 2026\n\nCamiseta Argentina suplente 2026 versión jugador\n\nSuplente · Versión Jugador · Manga corta\n\nARS $ 65.000\n● Disponible para consultar\nTalle\nM\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar por WhatsApp ↗\nTalle para tu consulta\nElegir presentación\nM\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nda\n\nFullMatch Casacas\nTu colección, con identidad\nFullMatch Casacas\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 1772,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 16,
+        "y": 687.6875,
+        "width": 358,
+        "height": 64.9375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "28px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 100.859375,
+          "height": 15
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "prod-fullmatch-product-1440x900",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas/p/camiseta-argentina-suplente-2026-version-jugador-8ef0912d6c",
+    "text": "FullMatch Casacas\nTu colección, con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n← Volver a la colección\n\nArgentina ／ 2026\n\nCamiseta Argentina suplente 2026 versión jugador\n\nSuplente · Versión Jugador · Manga corta\n\nARS $ 65.000\n● Disponible para consultar\nTalle\nM\n\nConfirmamos presentación y disponibilidad al responderte.\n\nConsultar por WhatsApp ↗\nTalle para tu consulta\nElegir presentación\nM\nCantidad\nAgregar a mi consulta ＋\nSobre este producto\n\nda\n\nFullMatch Casacas\nTu colección, con identidad\nFullMatch Casacas\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1425,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 800.25,
+        "y": 236.1875,
+        "width": 519.75,
+        "height": 146.15625,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "42px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 49.015625,
+          "height": 18
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 89.546875,
+          "height": 20.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 98.796875,
+          "height": 42
+        },
+        {
+          "text": "← Volver a la colección",
+          "width": 110.9375,
+          "height": 16.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "prod-fullmatch-inquiry-empty-1440x900",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas/consulta",
+    "text": "FullMatch Casacas\nTu colección, con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n← Seguir explorando\n\nTU SELECCIÓN\n\nMi consulta\n\nRevisá tu selección. Confirmamos disponibilidad y condiciones al responderte.\n\nTu consulta está esperando un producto.\n\nExplorá la colección y elegí los productos que te interesan.\n\nVer colección ↗\nResumen orientativo\nTotal de productos\n—\n\nNo incluye envío. No se realiza ningún cobro desde esta pantalla.\n\nActualizar precios y disponibilidad\nConsultar por WhatsApp ↗\nEsta consulta no crea un pedido ni reserva unidades. El comercio confirma la compra por WhatsApp.\nFullMatch Casacas\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 951,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 120,
+        "y": 234.5,
+        "width": 1200,
+        "height": 55.5,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "37px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 49.015625,
+          "height": 18
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 89.546875,
+          "height": 20.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 98.796875,
+          "height": 42
+        },
+        {
+          "text": "← Seguir explorando",
+          "width": 101.265625,
+          "height": 16.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "prod-fullmatch-search-empty-390x844",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas?q=auditoria-sin-resultados",
+    "text": "FullMatch Casacas\nTu colección, con identidad\nMi consulta 0\n\nFullMatch Casacas\n\nLa colección\nStock y precios actualizados\nTodo el catálogo\nCamiseta\nBuscar productos\nTodas las categorías\nTodas las categorías\nCamiseta\nTodos los equipos\nTodos los equipos\nArgentina\nInter\nTodas las versiones\nTodas las versiones\nJugador\nTodas las presentaciones\nTodas las presentaciones\nM\nBuscar\nNo encontramos productos para esta búsqueda.\n\nProbá otra búsqueda o explorá el catálogo completo.\n\nFullMatch Casacas\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 1046,
+      "hero": {
+        "x": 16,
+        "y": 100,
+        "width": 358,
+        "height": 201.375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(0, 0, 0)",
+        "background": "rgb(247, 135, 43)"
+      },
+      "grid": {
+        "x": 16,
+        "y": 726.375,
+        "width": 358,
+        "height": 136.390625,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": null,
+      "h1": null,
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 95.1875,
+          "height": 36.5
+        },
+        {
+          "text": "Camiseta",
+          "width": 52.34375,
+          "height": 36.5
+        },
+        {
+          "text": "Buscar",
+          "width": 68.328125,
+          "height": 41.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "prod-studio-access-390x844",
+    "url": "https://erpvoice.onrender.com/studio.html",
+    "text": "Cannot GET /studio.html",
+    "metrics": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 844,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": null,
+      "preview": null,
+      "controls": null,
+      "smallTargets": [],
+      "brokenImages": []
+    }
+  }
+]

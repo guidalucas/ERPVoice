@@ -37,14 +37,14 @@ export function AppearanceFields({ value, onChange, brandName, disabled, onUploa
   const position = layout[selectedBlock];
   const updateLayout = (heroLayout: HeroLayout) => { if (!disabled) patch({ heroLayout }); };
   const blockLabels: Record<HeroBlock, string> = { tagline: 'Frase de marca', title: 'Título', description: 'Descripción', button: 'Botón' };
-  return <><h2>Identidad visual</h2><p>El logo y los colores se usan en tu catálogo y en las nuevas historias. La portada y los textos personalizan tu página pública.</p>
+  return <div className="appearance-layout"><div className="appearance-controls"><h2>Identidad visual</h2><p>El logo y los colores se usan en tu catálogo y en las nuevas historias. La portada y los textos personalizan tu página pública.</p>
     <fieldset className="catalog-design-picker" disabled={disabled}><legend>Diseño del catálogo · opcional</legend><div className="catalog-design-options">
       {catalogDesigns.map(design => <label className="catalog-design-option" key={design.id}>
         <input type="radio" name="catalog-design" aria-label={design.name} value={design.id} checked={(value.preset ?? 'classic') === design.id} onChange={() => patch({ preset: design.id })}/>
         <CatalogDesignPreview value={{ ...value, preset: design.id }} brandName={brandName} assets={assets} miniature/>
         <span className="catalog-design-caption"><strong>{design.name}</strong><small>{design.description}</small></span>
       </label>)}
-    </div></fieldset><p className="catalog-preview-note">Elegí la tienda que más te guste. Las vistas previas usan tu identidad y productos de ejemplo. Los cambios se aplican al guardar configuración.</p>
+    </div></fieldset><p className="catalog-preview-note">Elegí la tienda que más te guste. Las miniaturas usan tu identidad y productos de ejemplo; la vista grande muestra fichas de tu catálogo. Los cambios se aplican al guardar configuración.</p>
     <div className="brand-uploads">{(['logo', 'cover'] as const).map(kind => <div key={kind}>
       <label className={`field brand-file-control ${disabled ? 'disabled' : ''}`}><span>{kind === 'logo' ? 'Logo del negocio' : 'Portada del catálogo'}</span>
         <input aria-label={kind === 'logo' ? 'Logo del negocio' : 'Portada del catálogo'} type="file" disabled={disabled} accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void upload(kind, file); }}/>
@@ -71,7 +71,7 @@ export function AppearanceFields({ value, onChange, brandName, disabled, onUploa
       </>}
       {value.heroContentVisible === false && <p>{value.coverId ? 'Se mostrará la portada completa, sin textos ni botón. Los textos quedan guardados para volver a usarlos.' : 'Elegí una portada para mostrarla sola. Mientras tanto, se verá el color de fondo.'}</p>}
     </div>
-    <div className="catalog-preview-toolbar"><h3>Vista previa de tu tienda</h3><div className="catalog-preview-devices" role="group" aria-label="Dispositivo de vista previa"><button type="button" aria-pressed={!mobile} onClick={() => setMobile(false)}>Escritorio</button><button type="button" aria-pressed={mobile} onClick={() => setMobile(true)}>Celular</button></div></div>
+    </div><aside className="appearance-preview-panel"><div className="catalog-preview-toolbar"><h3>Vista previa de tu tienda</h3><div className="catalog-preview-devices" role="group" aria-label="Dispositivo de vista previa"><button type="button" aria-pressed={!mobile} onClick={() => setMobile(false)}>Escritorio</button><button type="button" aria-pressed={mobile} onClick={() => setMobile(true)}>Celular</button></div></div>
     <div className={`catalog-preview-shell ${mobile ? 'is-mobile' : ''}`}><CatalogDesignPreview value={value} brandName={brandName} assets={assets} mobile={mobile} editing={editing} disabled={disabled} selectedBlock={selectedBlock} onSelectBlock={setSelectedBlock} onLayoutChange={updateLayout}/></div>
-    <p className="catalog-preview-note">Vista previa con productos de ejemplo · Guardá la configuración para aplicar el diseño a tu tienda.</p></>;
+    <p className="catalog-preview-note">Vista previa con fichas de tu catálogo · Guardá la configuración para aplicar el diseño a tu tienda.</p></aside></div>;
 }

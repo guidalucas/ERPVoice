@@ -108,7 +108,7 @@ try {
     assert.equal(await preview.locator('.category-tiles').count(), preset === 'local' ? 1 : 0);
     const browserColumns = await preview.locator('.catalog-browser').evaluate(element => getComputedStyle(element).gridTemplateColumns);
     assert.equal(browserColumns.split(' ').length, preset === 'technical' ? 2 : 1);
-    assert.equal(await preview.locator('.catalog-card>a').first().evaluate(element => getComputedStyle(element).display), preset === 'local' ? 'grid' : 'block');
+    assert.equal(await preview.locator('.catalog-card>a').first().evaluate(element => getComputedStyle(element).display), preset === 'local' ? 'grid' : 'flex');
     await page.locator(`.catalog-design-option:has(input[value="${preset}"])`).screenshot({ path: path.join(output, `template-${preset}.png`) });
     await page.getByLabel('Mostrar recuadro detrás del texto', { exact: true }).uncheck();
     await preview.locator('.catalog-hero.text-on-image').waitFor();
@@ -160,6 +160,7 @@ try {
   await page.waitForFunction(() => document.querySelector('input[aria-label="Posición horizontal"]').value === '89');
   await preview.locator('[data-hero-block="title"]').press('ArrowLeft');
   await page.waitForFunction(() => document.querySelector('input[aria-label="Posición horizontal"]').value === '88');
+  assert.equal(await preview.locator('[data-hero-block="title"]').evaluate(element => getComputedStyle(element).zIndex), '4');
   const beforeDrag = await preview.locator('[data-hero-block="title"]').boundingBox();
   await page.mouse.move(beforeDrag.x + 25, beforeDrag.y + 15); await page.mouse.down();
   await page.mouse.move(beforeDrag.x - 45, beforeDrag.y - 20, { steps: 6 }); await page.mouse.up();

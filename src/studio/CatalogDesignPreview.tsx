@@ -3,7 +3,8 @@ import { renderCatalogList } from '../../server/catalog/render.js';
 import catalogCss from '../../server/catalog/assets/catalog.css?raw';
 import templateCss from '../../server/catalog/assets/templates.css?raw';
 import { catalogDesigns, catalogThemeCss, defaultHeroLayout, type Appearance, type HeroBlock, type HeroLayout } from '../shared/catalogAppearance.js';
-import { studioFetch } from './api';
+import { studioFetch, query, imageBlob } from './api';
+import type { Product } from './types';
 import './catalogDesign.css';
 
 export { catalogDesigns } from '../shared/catalogAppearance.js';
@@ -39,6 +40,27 @@ export function CatalogDesignPreview({ value, brandName, assets, miniature = fal
 }) {
   const container = useRef<HTMLDivElement>(null), frame = useRef<HTMLIFrameElement>(null);
   const [width, setWidth] = useState(0);
+  const [products, setProducts] = useState<Product[]>([]), [photos, setPhotos] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (miniature) return;
+    let active = true;
+    const urls: string[] = [];
+    void query<{ items: Product[] }>('/products').then(async result => {
+      const items = result.items.slice(0, 4);
+      if (!active) return;
+      setProducts(items);
+      await Promise.all(items.map(async product => {
+        if (!product.coverImageId) return;
+        try {
+          const blob = await imageBlob(product.id, product.coverImageId, true);
+          if (!active) return;
+          const url = URL.createObjectURL(blob); urls.push(url);
+          setPhotos(current => ({ ...current, [product.id]: url }));
+        } catch { /* Missing photos retain the public no-photo treatment. */ }
+      }));
+    }).catch(() => {});
+    return () => { active = false; urls.forEach(url => URL.revokeObjectURL(url)); };
+  }, [miniature]);
   const viewport = mobile ? 390 : 1200, height = miniature ? 1350 : mobile ? 950 : 1100;
   const callbacks = useRef({ onSelectBlock, onLayoutChange, value, disabled, selectedBlock });
   const restoreKeyboardFocus = useRef<HeroBlock | null>(null);
@@ -49,14 +71,21 @@ export function CatalogDesignPreview({ value, brandName, assets, miniature = fal
     return () => observer.disconnect();
   }, []);
   const document = useMemo(() => {
-    // The preview uses the public renderer and stylesheet, with example products.
+    // Both previews use the public renderer; only the small design samples use example products.
     const appearance = { ...value, logoId: value.logoId && assets[value.logoId] ? value.logoId : null, coverId: value.coverId && assets[value.coverId] ? value.coverId : null };
-    let html = renderCatalogList({ catalog: { slug: 'preview', brandName: brandName || 'Tu negocio', path: '#', appearance }, items: sampleItems, facets: { categories: ['Novedades', 'Accesorios'] } }, {});
+    const items = miniature ? sampleItems : products.map(product => ({
+      ...product, path: '#', available: (product.availableQuantity ?? 0) > 0,
+      category: product.variants.find(variant => variant.productType)?.productType ?? undefined,
+      photos: photos[product.id] ? [{ url: photos[product.id], thumbnailUrl: photos[product.id], alt: product.title }] : [],
+      sizes: product.variants.filter(variant => variant.active).map(variant => ({ size: variant.label || variant.size || variant.name, available: (variant.stockAvailable ?? 0) > 0, unit: variant.unit, specifications: variant.specifications })),
+    }));
+    const categories = [...new Set(items.map(item => item.category).filter((value): value is string => Boolean(value)))];
+    let html = renderCatalogList({ catalog: { slug: 'preview', brandName: brandName || 'Tu negocio', path: '#', appearance }, items, facets: { categories } }, {});
     html = html.replace(/<link rel="stylesheet"[^>]+>/g, '').replace(/<script[\s\S]*?<\/script>/g, '');
     for (const [id, url] of Object.entries(assets)) html = html.split(`/api/catalog/v1/preview/brand-assets/${id}`).join(url);
     const editorCss = editing && !mobile ? '.catalog-hero [data-hero-block]{cursor:grab;touch-action:none;outline:1px dashed currentColor;outline-offset:5px}.catalog-hero [data-hero-block]:focus{outline:3px solid currentColor}.catalog-hero [data-hero-block]:active{cursor:grabbing}' : '';
     return html.replace('</head>', `<style>${catalogCss}\n${templateCss}\n${catalogThemeCss(value)}\n${editorCss}</style></head>`);
-  }, [value, brandName, assets, editing, mobile]);
+  }, [value, brandName, assets, editing, mobile, miniature, products, photos]);
 
   const connectEditor = () => {
     const doc = frame.current?.contentDocument;
@@ -70,6 +99,7 @@ export function CatalogDesignPreview({ value, brandName, assets, miniature = fal
     doc.querySelectorAll<HTMLElement>('[data-hero-block]').forEach(element => {
       const key = element.dataset.heroBlock as HeroBlock;
       element.style.outlineWidth = key === callbacks.current.selectedBlock ? '3px' : '';
+      element.style.zIndex = key === callbacks.current.selectedBlock ? '4' : '';
       element.tabIndex = 0;
       element.setAttribute('role', 'button');
       element.setAttribute('aria-label', `Mover bloque: ${{ tagline: 'frase de marca', title: 'título', description: 'descripción', button: 'botón' }[key]}`);
@@ -109,8 +139,9 @@ export function CatalogDesignPreview({ value, brandName, assets, miniature = fal
   useEffect(() => {
     frame.current?.contentDocument?.querySelectorAll<HTMLElement>('[data-hero-block]').forEach(element => {
       element.style.outlineWidth = element.dataset.heroBlock === selectedBlock ? '3px' : '';
+      element.style.zIndex = editing && !mobile && element.dataset.heroBlock === selectedBlock ? '4' : '';
     });
-  }, [selectedBlock, document]);
+  }, [selectedBlock, document, editing, mobile]);
   const scale = width / viewport;
   return <div ref={container} className={`catalog-design-preview ${miniature ? 'miniature' : ''}`} style={{ height: width ? height * scale : 180 }}>
     <iframe ref={frame} title={miniature ? `Vista previa: ${catalogDesigns.find(design => design.id === value.preset)?.name ?? 'Esencial'}` : 'Vista previa de tu tienda'}

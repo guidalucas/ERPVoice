@@ -1,0 +1,1763 @@
+[
+  {
+    "file": "local-branding-cover-preview-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/settings",
+    "width": 1440,
+    "height": 3027,
+    "capturedAtUtc": "2026-10-22T14:58:28.488Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "branding.json",
+    "sha256": "410f8a2a4731317466009f548798f7a68bd960fce4516a1d1496c891ce9861d1"
+  },
+  {
+    "file": "local-branding-cover-public-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/c/fullmatch-demo",
+    "width": 1440,
+    "height": 1336,
+    "capturedAtUtc": "2026-10-22T14:58:29.385Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "branding.json",
+    "sha256": "301fa00e440f33e59a51c3dbb01968020ea4d9ab4f9b7713e942a60516385906"
+  },
+  {
+    "file": "local-branding-cover-public-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/c/fullmatch-demo",
+    "width": 390,
+    "height": 2053,
+    "capturedAtUtc": "2026-10-22T14:58:29.513Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "branding.json",
+    "sha256": "83296ed1fa6bfad56023b343e0a70e3b5f420936c9e52b5ddcddc91683424e95"
+  },
+  {
+    "file": "local-custom-colors-dark-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "width": 1440,
+    "height": 1269,
+    "capturedAtUtc": "2026-10-22T15:24:06.857Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "a661562faaaf5a250fded56f993be55a282978357894849ef671d0fde3ce8497"
+  },
+  {
+    "file": "local-custom-colors-light-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "width": 1440,
+    "height": 1269,
+    "capturedAtUtc": "2026-10-22T15:24:06.087Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "59986c785c8445f80d908456c3049b628eb41aec3ed2f5a3bdb7dab49ad5f9f9"
+  },
+  {
+    "file": "local-ferreteria-editor-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61842/studio.html#/products/3b2aa809-a7d5-40a8-b074-d4d6fbcd876e",
+    "width": 1440,
+    "height": 1466,
+    "capturedAtUtc": "2026-10-22T15:23:52.984Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "86dcba2ce2654dd75b542d616bf6a764b2232e179fd62592e547a41efe373f5d"
+  },
+  {
+    "file": "local-ferreteria-no-photo-product-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture/p/tornillo-sin-fotografia-48bfcc473b",
+    "width": 1440,
+    "height": 1323,
+    "capturedAtUtc": "2026-10-22T15:23:50.413Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "b4ae70a0c72db8905755b9ebc23cc421ddd665308f709aaf1229321f5024cf0d"
+  },
+  {
+    "file": "local-ferreteria-soldout-product-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture/p/llave-agotada-d74c2f73a9",
+    "width": 1440,
+    "height": 1323,
+    "capturedAtUtc": "2026-10-22T15:23:51.720Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "628ff0bb08cf7d263c3cab8960f650f23f76a566b70e41ef80c353689151f169"
+  },
+  {
+    "file": "local-ferreteria-story-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61842/studio.html#/products/3b2aa809-a7d5-40a8-b074-d4d6fbcd876e",
+    "width": 1440,
+    "height": 1636,
+    "capturedAtUtc": "2026-10-22T15:23:54.056Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "f29f6ca05412d36a9a4098586749be2d9e6d9915f3a137e9d10605ac215c4f6c"
+  },
+  {
+    "file": "local-ferreteria-studio-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61842/studio.html",
+    "width": 1440,
+    "height": 1535,
+    "capturedAtUtc": "2026-10-22T15:23:52.753Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "5610b0ad8cf402eea991832ce96da764eccd9487745b6fa78aefd13b09749c92"
+  },
+  {
+    "file": "local-ferreteria-technical-catalog-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "width": 1440,
+    "height": 1817,
+    "capturedAtUtc": "2026-10-22T15:23:48.333Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "fcdc8499f26daf6c3e477e08dc05d86d3a96a360336ad3b54b9516f27b29ebd5"
+  },
+  {
+    "file": "local-ferreteria-technical-catalog-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "width": 390,
+    "height": 1810,
+    "capturedAtUtc": "2026-10-22T15:23:46.900Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "multirubro.json",
+    "sha256": "bc7f2808edfce137d2bed363788e950623fceebec5a820c23863425577befc43"
+  },
+  {
+    "file": "local-ferreteria-technical-product-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture/p/broca-de-acero-8-mm-ff32a4aaa9",
+    "width": 1440,
+    "height": 1323,
+    "capturedAtUtc": "2026-10-22T15:23:49.062Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "0f1e9b417bdaba073f362e8cd1426913a2250022c4fd384af796c783d88affc2"
+  },
+  {
+    "file": "local-ferreteria-technical-product-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture/p/broca-de-acero-8-mm-ff32a4aaa9",
+    "width": 390,
+    "height": 1759,
+    "capturedAtUtc": "2026-10-22T15:23:47.601Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "multirubro.json",
+    "sha256": "9a5880d30dae39e9c74a882045e6226c5a86523a9082718d4bfaa3bd8acbc8e8"
+  },
+  {
+    "file": "local-indumentaria-editor-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61842/studio.html#/products/601bffab-f4c0-4b0a-8fe9-faaf50414765",
+    "width": 1440,
+    "height": 1378,
+    "capturedAtUtc": "2026-10-22T15:23:45.606Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "bc7ba3f1cfe121ded1bb63dbf10508b8db20850e7e6924894ba258e872036dc0"
+  },
+  {
+    "file": "local-indumentaria-editorial-catalog-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/fullmatch-demo",
+    "width": 1440,
+    "height": 2323,
+    "capturedAtUtc": "2026-10-22T15:23:43.178Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "35eadcc0b01a25c9cdc1d558f22c7f64bdd76124333ae17093f2254c7a8817c4"
+  },
+  {
+    "file": "local-indumentaria-editorial-catalog-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/fullmatch-demo",
+    "width": 390,
+    "height": 1936,
+    "capturedAtUtc": "2026-10-22T15:23:41.527Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "multirubro.json",
+    "sha256": "b975a2cbb8789e98d469b038d0c73cd185329c4c43ec018bea33411368340af1"
+  },
+  {
+    "file": "local-indumentaria-editorial-product-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/fullmatch-demo/p/argentina-titular-2025-b1355ab6da",
+    "width": 1440,
+    "height": 1310,
+    "capturedAtUtc": "2026-10-22T15:23:43.912Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "3d3d6b2cd43bdd859e3dc0ccab960775e33ed1d5292168c7a8e242fc9105de76"
+  },
+  {
+    "file": "local-indumentaria-editorial-product-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/fullmatch-demo/p/argentina-titular-2025-b1355ab6da",
+    "width": 390,
+    "height": 1744,
+    "capturedAtUtc": "2026-10-22T15:23:42.330Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "multirubro.json",
+    "sha256": "0f727a83044d15a018a725236b75398d992abe10246a2a0048892c59bbf548fe"
+  },
+  {
+    "file": "local-indumentaria-studio-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61842/studio.html",
+    "width": 1440,
+    "height": 1142,
+    "capturedAtUtc": "2026-10-22T15:23:45.379Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "b3d4f1a668bffb9837cc143fc0a395c84678dec33fe728a3a858f14136f6093d"
+  },
+  {
+    "file": "local-kiosco-editor-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61842/studio.html#/products/27407782-c6e5-4195-bc9a-715169f44640",
+    "width": 1440,
+    "height": 1327,
+    "capturedAtUtc": "2026-10-22T15:24:01.269Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "1a38bf608a1cc308bda31be99b353b56a068324a48337d580f9244f36b7d619c"
+  },
+  {
+    "file": "local-kiosco-local-catalog-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture",
+    "width": 1440,
+    "height": 1217,
+    "capturedAtUtc": "2026-10-22T15:23:56.646Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "a37d7c4b1e1fcf28f5d07a6f814927bfb986adf1a34a2775863c15e690e23ba0"
+  },
+  {
+    "file": "local-kiosco-local-catalog-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture",
+    "width": 390,
+    "height": 1700,
+    "capturedAtUtc": "2026-10-22T15:23:55.256Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "multirubro.json",
+    "sha256": "2940870de38f5bc8869e2769fad0db1b8c7d0a8a59cbbf2df617bf3af0f72d1f"
+  },
+  {
+    "file": "local-kiosco-local-product-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture/p/agua-mineral-500-ml-27407782c6",
+    "width": 1440,
+    "height": 1323,
+    "capturedAtUtc": "2026-10-22T15:23:57.376Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "56a582ed5b066f80c8285fda9a51cd3dfc265c82ae278bc5f0256d804a70d56f"
+  },
+  {
+    "file": "local-kiosco-local-product-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture/p/agua-mineral-500-ml-27407782c6",
+    "width": 390,
+    "height": 1759,
+    "capturedAtUtc": "2026-10-22T15:23:55.922Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "multirubro.json",
+    "sha256": "69525283b69b4798ede48193b1d424a9cf036ac33bf009f5da3169028b400f49"
+  },
+  {
+    "file": "local-kiosco-no-photo-product-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture/p/galletitas-sin-fotografia-93b891b1b3",
+    "width": 1440,
+    "height": 1323,
+    "capturedAtUtc": "2026-10-22T15:23:58.686Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "1579d1120ec7366132f532db1a6f96ae5b2de0c70237c2ccc7e20d28a409fa0c"
+  },
+  {
+    "file": "local-kiosco-soldout-product-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/kiosco-fixture/p/bebida-sin-stock-d10a52f1ef",
+    "width": 1440,
+    "height": 1323,
+    "capturedAtUtc": "2026-10-22T15:24:00.035Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "a9b6eacf58b4935e0f8fc1f8fd04b0911946b6958b9f8c076e758c696414cd84"
+  },
+  {
+    "file": "local-kiosco-story-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61842/studio.html#/products/27407782-c6e5-4195-bc9a-715169f44640",
+    "width": 1440,
+    "height": 1625,
+    "capturedAtUtc": "2026-10-22T15:24:02.242Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "face3b6947235ebde2b9fa6d09473d5a1e16f019d98c62b19bf6d63e8fdadc20"
+  },
+  {
+    "file": "local-kiosco-studio-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61842/studio.html",
+    "width": 1440,
+    "height": 1496,
+    "capturedAtUtc": "2026-10-22T15:24:01.009Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "519d4d7ee0bc39f1c4fb5e1ef1e0c4a24826905cf9e87fe5b551f6bd98c98c1e"
+  },
+  {
+    "file": "local-preset-preview-editorial-unsaved-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/settings",
+    "width": 1440,
+    "height": 3045,
+    "capturedAtUtc": "2026-10-22T14:54:29.378Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "measurements.json",
+    "sha256": "c13ac39d6454e8f661962c566712465d0834dd229c7d36b0fd1c31d23eb9dd25"
+  },
+  {
+    "file": "local-public-gallery-two-images-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/c/fullmatch-demo/p/barcelona-titular-2025-19c213c075",
+    "width": 1440,
+    "height": 1310,
+    "capturedAtUtc": "2026-10-22T14:59:34.668Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states-extra.json",
+    "sha256": "54cf43bdabc2a88565e1665c858a63863804714931009f5b71d2ea15dcb1fc9e"
+  },
+  {
+    "file": "local-same-content-preset-classic-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "width": 1440,
+    "height": 2082,
+    "capturedAtUtc": "2026-10-22T15:24:02.980Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "cc9cd3eb49cc4f453818fc8df7172c1801bce6932a3058dfb053348f4d614ca2"
+  },
+  {
+    "file": "local-same-content-preset-editorial-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "width": 1440,
+    "height": 2314,
+    "capturedAtUtc": "2026-10-22T15:24:03.718Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "7f6743dfc52672462c74438c7e958746f6164c43654d6d89166098781e07a564"
+  },
+  {
+    "file": "local-same-content-preset-local-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "width": 1440,
+    "height": 1269,
+    "capturedAtUtc": "2026-10-22T15:24:05.288Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "7a8306cbb59a338d08a3e9fa83037c5b0138725a1e5df2d04bb2e6c4004a94c6"
+  },
+  {
+    "file": "local-same-content-preset-technical-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:61841/c/ferreteria-fixture",
+    "width": 1440,
+    "height": 1817,
+    "capturedAtUtc": "2026-10-22T15:24:04.493Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "multirubro.json",
+    "sha256": "fcdc8499f26daf6c3e477e08dc05d86d3a96a360336ad3b54b9516f27b29ebd5"
+  },
+  {
+    "file": "local-story-action-hover-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 1625,
+    "capturedAtUtc": "2026-10-22T14:58:30.875Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "branding.json",
+    "sha256": "4edbd992237d3a61a5b00d3f8a033dca9c3a1ef86d31350658fddfd7007fac67"
+  },
+  {
+    "file": "local-story-edited-invalidated-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 390,
+    "height": 2101,
+    "capturedAtUtc": "2026-10-22T14:54:29.115Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "measurements.json",
+    "sha256": "8620fa97d92a61175fe6f6eeb073e5e84d93860694b734df860b6a4c272f6b6b"
+  },
+  {
+    "file": "local-story-initial-viewport-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:54:28.928Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "measurements.json",
+    "sha256": "e92ecc4c8b8486ae567971af9e3ac82340d8c7727bdc447c30ba973672b608de"
+  },
+  {
+    "file": "local-story-initial-viewport-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 390,
+    "height": 844,
+    "capturedAtUtc": "2026-10-22T14:54:29.029Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "measurements.json",
+    "sha256": "f66b807ad5716e20e9a2e9695b83cc022657277e0a9c714d92761f3e2ea9a53a"
+  },
+  {
+    "file": "local-studio-batch-empty-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/batch",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:55:37.245Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states.json",
+    "sha256": "9e1e24f89d53855ee573625ee65a31608acdbbf7743292463f2d66db6106856e"
+  },
+  {
+    "file": "local-studio-editor-details-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 1012,
+    "capturedAtUtc": "2026-10-22T14:48:52.433Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "0cfff02dd40f7cf341df3614669965caa3ce4b393904d04ab19a07e6cdbe0cbc"
+  },
+  {
+    "file": "local-studio-editor-new-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "width": 1440,
+    "height": 987,
+    "capturedAtUtc": "2026-10-22T14:48:55.966Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "108dbf73db85112f93c09bb6dc835783ac8a18149bbf92e89f15f5454221e4f5"
+  },
+  {
+    "file": "local-studio-editor-photos-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 1327,
+    "capturedAtUtc": "2026-10-22T14:55:35.749Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states.json",
+    "sha256": "c8264b815912fcf878ee1f2daad7bde62a7352440128c591882570640266cc3d"
+  },
+  {
+    "file": "local-studio-editor-photos-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 390,
+    "height": 2243,
+    "capturedAtUtc": "2026-10-22T14:55:36.004Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "states.json",
+    "sha256": "567b1f2ffa636664da0a07eb49cc8e1da402466730d71b0d95d7009295ab5917"
+  },
+  {
+    "file": "local-studio-editor-skus-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 1327,
+    "capturedAtUtc": "2026-10-22T14:55:35.579Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states.json",
+    "sha256": "feb52e423217e44d66e84f523cfe2553c48871a0f904acf320078f93d97d3658"
+  },
+  {
+    "file": "local-studio-editor-unsaved-long-title-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "width": 1440,
+    "height": 987,
+    "capturedAtUtc": "2026-10-22T14:48:56.135Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "4b2f462e9dd129196ad56bdddbb31a3d65b2c3b34ba086108e495627c9e62801"
+  },
+  {
+    "file": "local-studio-error-simulated-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "width": 1440,
+    "height": 1024,
+    "capturedAtUtc": "2026-10-22T14:48:58.305Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "6fcacd6b1e5148d6912d8b66cfbcc90b398d8851a3073692926c7891be481741"
+  },
+  {
+    "file": "local-studio-gallery-two-images-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 1327,
+    "capturedAtUtc": "2026-10-22T14:59:35.970Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states-extra.json",
+    "sha256": "27259ee7ff5e8e595352c1c7047be9010f971448726f7ffdc8255f8b00d20b2d"
+  },
+  {
+    "file": "local-studio-library-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:48:51.920Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "7d360ed47626e7aab856f74c6037bb44b23188741f17b50d83e80aaf2d563942"
+  },
+  {
+    "file": "local-studio-loading-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T15:00:07.459Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states-extra.json",
+    "sha256": "8456d154e9362d85eaaaa55ea31b451f83201626d2639efd077f634a4b995c7e"
+  },
+  {
+    "file": "local-studio-login-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:55:38.211Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states.json",
+    "sha256": "84f4d3ecc570f2f3ef3023c7cd5a180749c4227cd6de3a3355eb876696c4d3d9"
+  },
+  {
+    "file": "local-studio-login-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products",
+    "width": 390,
+    "height": 844,
+    "capturedAtUtc": "2026-10-22T14:55:38.267Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "states.json",
+    "sha256": "3603fb699b8ffbfcf01a59b5cbe5e762cbc74401684183dbe1c752f835f123ed"
+  },
+  {
+    "file": "local-studio-navigation-hover-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:54:30.364Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "measurements.json",
+    "sha256": "d5357b3f45048b9f8790814058e64f7b7ff2090ce312f585d1d8542d34d45d12"
+  },
+  {
+    "file": "local-studio-pending-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:48:51.481Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "73595967e245bdf6710cf5bf4b59831cdac7be87a9b8e605d8ed15c730bb7410"
+  },
+  {
+    "file": "local-studio-pending-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products",
+    "width": 390,
+    "height": 881,
+    "capturedAtUtc": "2026-10-22T14:55:37.170Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "states.json",
+    "sha256": "0fac7e6c5a9c98c79bfc5fafcc18c96f666f087f17a769c5384e3b45ce21aa8b"
+  },
+  {
+    "file": "local-studio-pending-selected-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T15:00:06.983Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states-extra.json",
+    "sha256": "68ef687b6a62afa6d219717f9426d21b7afa7f622b5e633ff816bc88f5871c9e"
+  },
+  {
+    "file": "local-studio-photo-details-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 1327,
+    "capturedAtUtc": "2026-10-22T14:55:35.869Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states.json",
+    "sha256": "1dc6aa7464b3accb7e080908b1d96fdc5d0f4578eee69f367a150a5bec56fd58"
+  },
+  {
+    "file": "local-studio-products-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "width": 1440,
+    "height": 1142,
+    "capturedAtUtc": "2026-10-22T14:48:50.083Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "91c48970438fa404909d8e4bfb1ce149bae03d540b4207a3f3b00e873577a3ce"
+  },
+  {
+    "file": "local-studio-products-1920x1080.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "width": 1920,
+    "height": 1140,
+    "capturedAtUtc": "2026-10-22T14:48:50.996Z",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "evidence": "studio.json",
+    "sha256": "401de42fa6e7064a030596af7331493139aa116d9af56b7b49f3fdaac46e4b36"
+  },
+  {
+    "file": "local-studio-products-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "width": 390,
+    "height": 1863,
+    "capturedAtUtc": "2026-10-22T14:48:48.229Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "studio.json",
+    "sha256": "ff7d85d8e00555b0ccaa57a0bab60570d46d2b33135bae60ef076d84b6db931d"
+  },
+  {
+    "file": "local-studio-products-768x1024.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "width": 768,
+    "height": 1734,
+    "capturedAtUtc": "2026-10-22T14:48:49.150Z",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "evidence": "studio.json",
+    "sha256": "7ba3c163aba5427ba19e9e4a10dce2b57434d0044437bb425d4abf7df4e1b64f"
+  },
+  {
+    "file": "local-studio-recovery-empty-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:55:38.117Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states.json",
+    "sha256": "e7951edec30fbcd47b6ac7268bb49107d35e46f2b21196225d30a45ecd183d11"
+  },
+  {
+    "file": "local-studio-search-empty-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "width": 1440,
+    "height": 937,
+    "capturedAtUtc": "2026-10-22T14:48:57.385Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "eb6eaf57e1825ccc499f20daf92e5dbdb9944c9bad9a2ab4d3995941a69dc402"
+  },
+  {
+    "file": "local-studio-search-focus-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html",
+    "width": 390,
+    "height": 844,
+    "capturedAtUtc": "2026-10-22T14:54:31.368Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "measurements.json",
+    "sha256": "0d82564e35cc2ee5ca5dd146f96bd957972bb5d1f08e0035a91dc1987c618fe1"
+  },
+  {
+    "file": "local-studio-settings-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/settings",
+    "width": 1440,
+    "height": 3017,
+    "capturedAtUtc": "2026-10-22T14:48:52.190Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "3c78b24db98cc617a1796c9b31aab8eaff2f02e495954fac72d05cbc00efde83"
+  },
+  {
+    "file": "local-studio-settings-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/settings",
+    "width": 390,
+    "height": 3505,
+    "capturedAtUtc": "2026-10-22T14:48:52.283Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "studio.json",
+    "sha256": "05154eb20a8e6538c281f9fd32d12e64c848630eff0277deb7d4b572db391c02"
+  },
+  {
+    "file": "local-studio-story-before-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 1625,
+    "capturedAtUtc": "2026-10-22T14:48:52.632Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "9d9e0d152922530f320e35ff2a9e98be7aa30d8a72232dbe1c318cdd66ccc1ac"
+  },
+  {
+    "file": "local-studio-story-ready-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 1625,
+    "capturedAtUtc": "2026-10-22T14:48:54.612Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "63337f3b582ce93a20df4175211e09c247d85c4590cae3bf8335146b9916658b"
+  },
+  {
+    "file": "local-studio-story-ready-390x844.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 390,
+    "height": 2122,
+    "capturedAtUtc": "2026-10-22T14:48:54.706Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "studio.json",
+    "sha256": "ff111e6293f89d0b10dd5fddd824e675997e2d5baaa36435c5f1b5e302a545d3"
+  },
+  {
+    "file": "local-studio-story-template-arrival-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 1625,
+    "capturedAtUtc": "2026-10-22T14:48:54.827Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "eccbbdd1f9eedef03d660a79b71de68fa7e60f708e31b81bfb4367d376421401"
+  },
+  {
+    "file": "local-studio-story-template-last_unit-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 1625,
+    "capturedAtUtc": "2026-10-22T14:48:54.923Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "6ae5825ed825c3dcecbbf993afd8b4baf849239770ae137bd5e82d31f9b8f580"
+  },
+  {
+    "file": "local-studio-story-template-promo-1440x900.png",
+    "kind": "Fixture local",
+    "status": "Renderizado",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "width": 1440,
+    "height": 2107,
+    "capturedAtUtc": "2026-10-22T14:48:55.047Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "studio.json",
+    "sha256": "7bf915261c2f991896a80615405c465718d05af92f2a411e5faac0866d30b738"
+  },
+  {
+    "file": "prod-fullmatch-home-1440x900.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "width": 1440,
+    "height": 1802,
+    "capturedAtUtc": "2026-10-22T14:48:44.285Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "production.json",
+    "sha256": "c31fa6d98be47e39580c3f23c5eb445aef972df025044619d799893f33397b47"
+  },
+  {
+    "file": "prod-fullmatch-home-1920x1080.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "width": 1920,
+    "height": 1802,
+    "capturedAtUtc": "2026-10-22T14:48:47.881Z",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "evidence": "production.json",
+    "sha256": "4f0e2fe7e8f7e5fab4a1e941603acaffc0e6fb5bacaddc45d8c5c8dfbcfa2c04"
+  },
+  {
+    "file": "prod-fullmatch-home-375x812.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "width": 375,
+    "height": 1362,
+    "capturedAtUtc": "2026-10-22T14:48:30.404Z",
+    "viewport": {
+      "width": 375,
+      "height": 812
+    },
+    "evidence": "production.json",
+    "sha256": "6916efb72d129bd73a30708346a1f44b7e212ba9f503e24cc42a97bbc935243e"
+  },
+  {
+    "file": "prod-fullmatch-home-390x844.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "width": 390,
+    "height": 1371,
+    "capturedAtUtc": "2026-10-22T14:48:33.729Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "production.json",
+    "sha256": "7760bf9dd61faea1e7a8338e71219fc1142ce3d9498ee131d7635165052d5cab"
+  },
+  {
+    "file": "prod-fullmatch-home-430x932.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "width": 430,
+    "height": 1303,
+    "capturedAtUtc": "2026-10-22T14:48:36.969Z",
+    "viewport": {
+      "width": 430,
+      "height": 932
+    },
+    "evidence": "production.json",
+    "sha256": "fd7ad91095b2534e1664648ed734a5fb0a8244dc75aa048a9648361d4d5be8bd"
+  },
+  {
+    "file": "prod-fullmatch-home-768x1024.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "width": 768,
+    "height": 1515,
+    "capturedAtUtc": "2026-10-22T14:48:40.729Z",
+    "viewport": {
+      "width": 768,
+      "height": 1024
+    },
+    "evidence": "production.json",
+    "sha256": "3079d91dd637ea93c0372bd54a00ddd6e2f068f6114e7606a74f79173d9f3533"
+  },
+  {
+    "file": "prod-fullmatch-inquiry-empty-1440x900.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas/consulta",
+    "width": 1440,
+    "height": 951,
+    "capturedAtUtc": "2026-10-22T14:48:57.143Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "production.json",
+    "sha256": "d1831560b6c2e93c48d6e904bf4813d08f2787ee181c6cf9d2a7167bf7e80e5a"
+  },
+  {
+    "file": "prod-fullmatch-product-1440x900.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas/p/camiseta-argentina-suplente-2026-version-jugador-8ef0912d6c",
+    "width": 1440,
+    "height": 1425,
+    "capturedAtUtc": "2026-10-22T14:48:54.629Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "production.json",
+    "sha256": "f432f7e6f89de0d1ccfd621880f19c297d88afb64666109bef14d5627ab5b162"
+  },
+  {
+    "file": "prod-fullmatch-product-390x844.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas/p/camiseta-argentina-suplente-2026-version-jugador-8ef0912d6c",
+    "width": 390,
+    "height": 1772,
+    "capturedAtUtc": "2026-10-22T14:48:51.305Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "production.json",
+    "sha256": "b591c8f258c6d376c591c76b523ed827d78737a1f55910238d8350d5bae06d6a"
+  },
+  {
+    "file": "prod-fullmatch-search-empty-390x844.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas?q=auditoria-sin-resultados",
+    "width": 390,
+    "height": 1046,
+    "capturedAtUtc": "2026-10-22T14:49:00.158Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "production.json",
+    "sha256": "b16f8bb218d79439075e0c3eeeb2edd96c640499a9f37e9af25ea5c33aa422b5"
+  },
+  {
+    "file": "prod-public-card-hover-1440x900.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "width": 1440,
+    "height": 1802,
+    "capturedAtUtc": "2026-10-22T14:55:55.320Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states.json",
+    "sha256": "672ae55734d3ff77bfe9a513420692ef1eedae55e630cb60a46da50093c30735"
+  },
+  {
+    "file": "prod-public-error404-1440x900.png",
+    "kind": "Producción pública",
+    "status": "Ruta no disponible",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas/producto-auditoria-inexistente",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:55:56.143Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "states.json",
+    "sha256": "8ea94f3b1dd1d21144a003c7f0b86a69e67c3399d21781c3747c4b3753774cb9"
+  },
+  {
+    "file": "prod-public-filter-active-390x844.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas?q=&category=&team=argentina&version=&variant=",
+    "width": 390,
+    "height": 1371,
+    "capturedAtUtc": "2026-10-22T14:55:46.234Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "states.json",
+    "sha256": "09f3e721e7ab1b3936e7e20b9eacf07d718994b4fd30c7e9e3251a7ad01750c9"
+  },
+  {
+    "file": "prod-public-inquiry-filled-390x844.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas/consulta",
+    "width": 390,
+    "height": 1324,
+    "capturedAtUtc": "2026-10-22T14:55:51.370Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "states.json",
+    "sha256": "04836a9ef5ae6feceaaa612c9bfb9a83241c7c6280e4ea7eb9582a9f368458eb"
+  },
+  {
+    "file": "prod-public-product-added-390x844.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas/p/camiseta-argentina-suplente-2026-version-jugador-8ef0912d6c",
+    "width": 390,
+    "height": 1801,
+    "capturedAtUtc": "2026-10-22T14:55:49.075Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "states.json",
+    "sha256": "4a32f5e15d7b37a084e4539c965caa894fd1a25175aa812323fcefe552c8997d"
+  },
+  {
+    "file": "prod-public-product-error404-390x844.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas/p/auditoria-inexistente",
+    "width": 390,
+    "height": 844,
+    "capturedAtUtc": "2026-10-22T14:54:32.900Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "measurements.json",
+    "sha256": "84ae575420b4dd12a741a138213bdc932be263c1532e23adc55bf9c92919845b"
+  },
+  {
+    "file": "prod-public-search-focus-390x844.png",
+    "kind": "Producción pública",
+    "status": "Renderizado",
+    "url": "https://erpvoice.onrender.com/c/fullmatch-casacas",
+    "width": 390,
+    "height": 1371,
+    "capturedAtUtc": "2026-10-22T14:55:43.111Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "states.json",
+    "sha256": "d7fed2ac7fc053ad4968314cf11b0e63ebe2699faf0d87a76fa375ca964918bb"
+  },
+  {
+    "file": "prod-studio-access-390x844.png",
+    "kind": "Producción pública",
+    "status": "Ruta no disponible",
+    "url": "https://erpvoice.onrender.com/studio.html",
+    "width": 390,
+    "height": 844,
+    "capturedAtUtc": "2026-10-22T14:49:00.999Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "production.json",
+    "sha256": "0c83b81d31822ee18532e23f0ab77fb211dbd30addec3dfe1e87073da0af2f78"
+  },
+  {
+    "file": "prod-studio-route-access-390x844.png",
+    "kind": "Producción pública",
+    "status": "Ruta no disponible",
+    "url": "https://erpvoice.onrender.com/studio/",
+    "width": 390,
+    "height": 844,
+    "capturedAtUtc": "2026-10-22T14:54:33.726Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "measurements.json",
+    "sha256": "b4d6addca5413ab4cdf78be0199b9020400695ff19a016203b8e19b391d03817"
+  },
+  {
+    "file": "ref-adidas-home-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://www.adidas.es/",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:50:26.788Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark.json",
+    "sha256": "a74177699fc90868f8ff25e286bda03595e32281157c7e23f79e1e3f5dd1d1ae"
+  },
+  {
+    "file": "ref-asket-list-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Aviso de cookies; vista parcial",
+    "url": "https://www.asket.com/en-gb/mens",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:56:10.776Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "references-extra.json",
+    "sha256": "a5731c8472f329fd74410d553d27210e2fdd88b3e1bd129a05ddf4a5c5a6643d"
+  },
+  {
+    "file": "ref-bauhaus-list-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://www.bauhaus.es/taladros/c/10000161",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:54:17.217Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark-deep.json",
+    "sha256": "6c776ea377233009447c3adee20fcd628b13f6c1d07a9b1e92e1caf2ef40fe5c"
+  },
+  {
+    "file": "ref-bauhaus-list-products-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://www.bauhaus.es/taladros/c/10000161",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:54:17.294Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark-deep.json",
+    "sha256": "fd36bd53c824bc5b75761d743c5801e8185bfcf827f090dc22e5df6b66307c62"
+  },
+  {
+    "file": "ref-carrefour-home-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://www.carrefour.com.ar/",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:50:34.468Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark.json",
+    "sha256": "6584115e32a68924bcaaae0d6086790a6bf563d6201c258a75a6ea0d3f45c682"
+  },
+  {
+    "file": "ref-carrefour-home-390x844.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://www.carrefour.com.ar/",
+    "width": 390,
+    "height": 844,
+    "capturedAtUtc": "2026-10-22T14:50:34.783Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "benchmark.json",
+    "sha256": "2f811a11f8184c479057e8d91db965075b24531c71b40a1798315cf7e504a8ae"
+  },
+  {
+    "file": "ref-carrefour-list-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://www.carrefour.com.ar/bebidas",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:54:23.564Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark-deep.json",
+    "sha256": "8bc0f185c6da45ef166747e6f83a1bd071603433280e281098ed854851719a16"
+  },
+  {
+    "file": "ref-homedepot-home-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://www.homedepot.com/",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:50:31.317Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark.json",
+    "sha256": "1fbf020010afb8b1f4b52817e6e1603330700022cbce399928001e4bf72ce0ea"
+  },
+  {
+    "file": "ref-leroy-home-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://www.leroymerlin.es/",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:50:29.223Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark.json",
+    "sha256": "1aa72ba3f8fdb6f8e9e15e9609ff53cf21e1eaf884a9c890403ae13d160c7ac0"
+  },
+  {
+    "file": "ref-leroy-home-390x844.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://www.leroymerlin.es/",
+    "width": 390,
+    "height": 844,
+    "capturedAtUtc": "2026-10-22T14:50:29.286Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "benchmark.json",
+    "sha256": "b3d1fb79d37416016c147149b256556dc7684d1f6e90a71b364d490446fe2163"
+  },
+  {
+    "file": "ref-leroy-list-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://www.leroymerlin.es/productos/herramientas/herramientas-electricas-portatiles/herramientas-electricas-para-taladrar-atornillar/taladros/",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:54:26.444Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark-deep.json",
+    "sha256": "0dea13cf787d4d5dfae60fb5de513dac74d6db7d96762168bd36df14eded2a7f"
+  },
+  {
+    "file": "ref-linear-home-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://linear.app/",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:50:53.114Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark.json",
+    "sha256": "1eb52f5289e5ea1a86f3b4a85114d24a86908c7fb3fbb818be789344bee6456a"
+  },
+  {
+    "file": "ref-nike-list-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://www.nike.com/es/w/zapatillas-6xge1za99xszy7ok",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:50:18.717Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark.json",
+    "sha256": "962e523ac97c79f00614f937e881cbe4226e9ade4925eeadcf8dd67880a1a474"
+  },
+  {
+    "file": "ref-nike-list-390x844.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://www.nike.com/es/w/zapatillas-6xge1za99xszy7ok",
+    "width": 390,
+    "height": 844,
+    "capturedAtUtc": "2026-10-22T14:50:21.641Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "benchmark.json",
+    "sha256": "78b2c41910a7bc4b2997839401b43654e3295728372208c70158e4999782d1df"
+  },
+  {
+    "file": "ref-nike-product-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://www.nike.com/es/t/hybrid-rn-zapatillas-de-entrenamiento-hombre-S0DIEknC/IV5066-101",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:56:18.644Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "references-extra.json",
+    "sha256": "30c9799cde37a3a7381e8f8d061994138ccc08d59ddc7d248821021c9809b22d"
+  },
+  {
+    "file": "ref-nike-product-390x844.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://www.nike.com/es/t/hybrid-rn-zapatillas-de-entrenamiento-hombre-S0DIEknC/IV5066-101",
+    "width": 390,
+    "height": 844,
+    "capturedAtUtc": "2026-10-22T14:56:19.523Z",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "evidence": "references-extra.json",
+    "sha256": "c8dbed89aa0d09d55cced79eb9a0449c0b160176f222b839d90a71e76249924a"
+  },
+  {
+    "file": "ref-rs-list-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://es.rs-online.com/web/c/herramientas-manuales/herramientas-especiales/taladros-manuales/",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:56:01.839Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "references-extra.json",
+    "sha256": "c09ff2e05d036fdaf9d400f40e4a74847c527e991dcc5fc357456eb1068a3539"
+  },
+  {
+    "file": "ref-screwfix-list-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://www.screwfix.com/c/tools/drills/cat830704",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:56:04.921Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "references-extra.json",
+    "sha256": "9582e16f55b28ef39a67931ac7e07d2f5b1ae7996c5f5a5d372b5ce334b1d1fd"
+  },
+  {
+    "file": "ref-shopify-media-doc-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://help.shopify.com/en/manual/products/product-media/add-media",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:50:37.172Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark.json",
+    "sha256": "0e65a99a5fa3fa8bbc2163a4b574dbf1ff23a0aab26bead42fab65a8169c3408"
+  },
+  {
+    "file": "ref-tiendanube-design-doc-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://ayuda.tiendanube.com/es_ES/diseno/guia-personalizar-el-diseno-de-tu-tiendanube",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:50:42.941Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark.json",
+    "sha256": "2b3b710f88ec3b96d37cc882f6d64c824652c4cd586c1a8a979f483bcc235536"
+  },
+  {
+    "file": "ref-tiendanube-documentation-detail-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://ayuda.tiendanube.com/es_ES/diseno/guia-personalizar-el-diseno-de-tu-tiendanube",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:57:22.861Z",
+    "viewport": null,
+    "evidence": "admin-docs.json",
+    "sha256": "e088a35154761e556155fcde6391fdf92387d16d88944282a9189887a676603b"
+  },
+  {
+    "file": "ref-uniqlo-list-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://www.uniqlo.com/es/es/men/tops/t-shirts?categoryIds=85071",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:54:19.777Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark-deep.json",
+    "sha256": "fda3bfa70f35e19e469bc61c96194c42acc8a0dd152b41d044ca5529ec8a8260"
+  },
+  {
+    "file": "ref-wix-documentation-detail-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://support.wix.com/en/article/wix-stores-adding-product-options",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:57:27.755Z",
+    "viewport": null,
+    "evidence": "admin-docs.json",
+    "sha256": "5a20a007d6f2e401d0e81f180ebcfaf20c9b0e53eef70b6bd464281d50221b37"
+  },
+  {
+    "file": "ref-wix-options-doc-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://support.wix.com/en/article/wix-stores-adding-product-options",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:50:49.841Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark.json",
+    "sha256": "5a20a007d6f2e401d0e81f180ebcfaf20c9b0e53eef70b6bd464281d50221b37"
+  },
+  {
+    "file": "ref-woo-documentation-detail-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://woocommerce.com/document/managing-products/",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:57:25.090Z",
+    "viewport": null,
+    "evidence": "admin-docs.json",
+    "sha256": "5d4fe2ae8a75449891609cfec75efefbc996a17c1646287d865bfaba541aebaa"
+  },
+  {
+    "file": "ref-woocommerce-products-doc-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Renderizado",
+    "url": "https://woocommerce.com/document/managing-products/",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:50:46.593Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark.json",
+    "sha256": "5d4fe2ae8a75449891609cfec75efefbc996a17c1646287d865bfaba541aebaa"
+  },
+  {
+    "file": "ref-zara-home-1440x900.png",
+    "kind": "Referencia pública",
+    "status": "Barrera de acceso",
+    "url": "https://www.zara.com/es/",
+    "width": 1440,
+    "height": 900,
+    "capturedAtUtc": "2026-10-22T14:50:24.433Z",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "evidence": "benchmark.json",
+    "sha256": "73fefcee0f3dd46f4d2c61fc757c831763d50ab5e17b4e7046a473f8ce7083bd"
+  }
+]

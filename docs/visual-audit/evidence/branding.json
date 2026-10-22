@@ -1,0 +1,403 @@
+[
+  {
+    "name": "local-branding-cover-preview-1440x900",
+    "url": "http://127.0.0.1:63146/studio.html#/settings",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nFULLMATCH CASACAS · DEMO ／ Studio\nFC\nFULLMATCH CASACAS · DEMO\n\nLA IDENTIDAD DE TU NEGOCIO\n\nConfiguración\nInformación comercial\nNombre de marca\nWhatsApp de ventas · código de país y número\nIdentidad visual\n\nEl logo y los colores se usan en tu catálogo y en las nuevas historias. La portada y los textos personalizan tu página pública.\n\nDiseño del catálogo · opcional\nActual · conservar composición\nEditorial · fotografías protagonistas\nCatálogo técnico · información clara\nComercio de proximidad · navegación rápida\n\nElegí un diseño sin volver a configurar tu tienda. Conservamos el logo, los colores, las imágenes y los textos. Podés volver al diseño actual cuando quieras.\n\nLogo del negocio\nElegir logo\nTodavía no elegiste una imagen.\nRecomendado: cuadrado, PNG con transparencia. JPG, PNG o WebP, hasta 12 MB. Adaptamos el tamaño automáticamente.\nPortada del catálogo\nElegir portada\nImagen cargada.\nRecomendado: horizontal, 1600 × 900. JPG, PNG o WebP, hasta 12 MB. Adaptamos el tamaño automáticamente.\nQuitar portada\nColor de fondo\nColor de acento\nTu página\nFrase de marca\nTítulo de portada\nDescripción de portada\nTítulo de la colección\nFC\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad\nEncontrá tu próxima camiseta\n\nExplorá nuestra colección y consultanos por WhatsApp.\n\nExplorar colección ↓\nLa colección\nVista previa · Los cambios se aplican al guardar configuración.\nGuardar configuración\nMoneda y precios\n\nARS · Importes de Stocky en unidades enteras\n\nLa moneda fue confirmada al configurar tu negocio. Revisá las variantes históricas debajo; los cambios de precio se realizan en Stocky.\nCatálogo público\n\nEl catálogo y cada ficha se publican de forma independiente. Preparar una ficha todavía la mantiene privada.\n\nIdentificador público · enlace estable\nHabilitar acceso público al catálogo\nGuardar catálogoAbrir catálogo ↗\nRevisar moneda del inventario anterior\n\nElegí solamente variantes cuyos importes ya estén cargados en ARS. Confirmar la moneda conserva el precio numérico y el stock. No realiza una conversión.\n\nMotivo de la confirmación\n\nNo hay variantes con otra moneda.\n\nRevisar selección (0)\nIniciar una nueva revisión\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 3027,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 265,
+        "y": 157.296875,
+        "width": 900,
+        "height": 35.1875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "32px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "Logo del negocio",
+          "width": 26,
+          "height": 26
+        },
+        {
+          "text": "Portada del catálogo",
+          "width": 26,
+          "height": 26
+        },
+        {
+          "text": "Quitar portada",
+          "width": 121.578125,
+          "height": 41
+        },
+        {
+          "text": "Guardar configuración",
+          "width": 166.359375,
+          "height": 41
+        },
+        {
+          "text": "",
+          "width": 13,
+          "height": 13
+        },
+        {
+          "text": "Guardar catálogo",
+          "width": 136.28125,
+          "height": 41
+        },
+        {
+          "text": "Abrir catálogo ↗",
+          "width": 72.734375,
+          "height": 38
+        },
+        {
+          "text": "Revisar selección (0)",
+          "width": 98.140625,
+          "height": 28
+        },
+        {
+          "text": "Iniciar una nueva revisión",
+          "width": 119.671875,
+          "height": 28
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "local-branding-cover-public-1440x900",
+    "url": "http://127.0.0.1:63146/c/fullmatch-demo",
+    "text": "FC\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad\nCatálogo\nMi consulta 0\nConsultas ↗\n\nTu colección, con identidad\n\nEncontrá tu próxima camiseta\n\nExplorá nuestra colección y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFULLMATCH CASACAS · DEMO\n\nLa colección\nStock y precios actualizados\nTodo el catálogo\nCamiseta\nBuscar productos\nTodas las categorías\nTodas las categorías\nCamiseta\nTodos los equipos\nTodos los equipos\nArgentina\nBarcelona\nReal Madrid\nTodas las versiones\nTodas las versiones\nJugador\nTodas las presentaciones\nTodas las presentaciones\nL\nM\nBuscar\nDisponible\n\nArgentina\n↗\n\nArgentina titular 2025\n\n2025 · Jugador\n\nARS $ 70.000\nM\nVer producto ↗\nDisponible\n\nBarcelona\n↗\n\nBarcelona titular 2025\n\n2025 · Jugador\n\nARS $ 65.000\nM\nL\nVer producto ↗\nDisponible\n\nReal Madrid\n↗\n\nReal Madrid titular 2025\n\n2025 · Jugador\n\nARS $ 62.000\nM\nL\nVer producto ↗\nFULLMATCH CASACAS · DEMO\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1336,
+      "hero": {
+        "x": 120,
+        "y": 100,
+        "width": 1200,
+        "height": 273.3125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 120,
+        "y": 698.8125,
+        "width": 1200,
+        "height": 445.875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 120,
+        "y": 698.8125,
+        "width": 389.328125,
+        "height": 445.875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "h1": {
+        "x": 160,
+        "y": 178.6875,
+        "width": 520,
+        "height": 38.875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "36px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "Catálogo",
+          "width": 53.109375,
+          "height": 19.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 95.09375,
+          "height": 21.5
+        },
+        {
+          "text": "Consultas ↗",
+          "width": 104.1875,
+          "height": 43.5
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Camiseta",
+          "width": 86.34375,
+          "height": 39.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 149.1875,
+          "height": 18
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "preview-public-accent-colors",
+    "preview": {
+      "color": "rgb(0, 0, 0)",
+      "background": "rgb(255, 255, 0)"
+    },
+    "public": {
+      "color": "rgb(0, 0, 0)",
+      "background": "rgb(255, 255, 0)"
+    }
+  },
+  {
+    "name": "local-branding-cover-public-390x844",
+    "url": "http://127.0.0.1:63146/c/fullmatch-demo",
+    "text": "FC\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad\nMi consulta 0\n\nTu colección, con identidad\n\nEncontrá tu próxima camiseta\n\nExplorá nuestra colección y consultanos por WhatsApp.\n\nExplorar catálogo ↓\n\nFULLMATCH CASACAS · DEMO\n\nLa colección\nStock y precios actualizados\nTodo el catálogo\nCamiseta\nBuscar productos\nTodas las categorías\nTodas las categorías\nCamiseta\nTodos los equipos\nTodos los equipos\nArgentina\nBarcelona\nReal Madrid\nTodas las versiones\nTodas las versiones\nJugador\nTodas las presentaciones\nTodas las presentaciones\nL\nM\nBuscar\nDisponible\n\nArgentina\n↗\n\nArgentina titular 2025\n\n2025 · Jugador\n\nARS $ 70.000\nM\nVer producto ↗\nDisponible\n\nBarcelona\n↗\n\nBarcelona titular 2025\n\n2025 · Jugador\n\nARS $ 65.000\nM\nL\nVer producto ↗\nDisponible\n\nReal Madrid\n↗\n\nReal Madrid titular 2025\n\n2025 · Jugador\n\nARS $ 62.000\nM\nL\nVer producto ↗\nFULLMATCH CASACAS · DEMO\n\nDisponibilidad actualizada desde nuestro inventario. Consultá antes de comprar.\n\nHablemos por WhatsApp ↗",
+    "metrics": {
+      "width": 390,
+      "height": 844,
+      "scrollWidth": 390,
+      "scrollHeight": 2053,
+      "hero": {
+        "x": 16,
+        "y": 80,
+        "width": 358,
+        "height": 533.25,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "grid": {
+        "x": 16,
+        "y": 1062.75,
+        "width": 358,
+        "height": 807.375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "card": {
+        "x": 16,
+        "y": 1062.75,
+        "width": 171,
+        "height": 395.6875,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(23, 37, 54)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "h1": {
+        "x": 46,
+        "y": 147,
+        "width": 298,
+        "height": 77.75,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "36px",
+        "color": "rgb(255, 255, 255)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": null,
+      "controls": null,
+      "smallTargets": [
+        {
+          "text": "FC\nFULLMATCH CASACAS · DEMO\nTu colección, con identidad",
+          "width": 223.921875,
+          "height": 40.5
+        },
+        {
+          "text": "Mi consulta 0",
+          "width": 78.46875,
+          "height": 19
+        },
+        {
+          "text": "Todo el catálogo",
+          "width": 129.1875,
+          "height": 39.5
+        },
+        {
+          "text": "Camiseta",
+          "width": 86.34375,
+          "height": 39.5
+        },
+        {
+          "text": "Buscar",
+          "width": 68.328125,
+          "height": 41.5
+        },
+        {
+          "text": "Hablemos por WhatsApp ↗",
+          "width": 136.75,
+          "height": 16.5
+        }
+      ],
+      "brokenImages": []
+    }
+  },
+  {
+    "name": "studio-help-and-action-colors",
+    "help": {
+      "color": "rgb(139, 152, 173)",
+      "background": "rgba(0, 0, 0, 0)",
+      "font": "10px"
+    },
+    "normal": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(85, 70, 215)",
+      "font": "13px"
+    },
+    "hover": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(230, 94, 0)"
+    }
+  },
+  {
+    "name": "local-story-action-hover-1440x900",
+    "url": "http://127.0.0.1:63146/studio.html#/products/19c213c0-7569-4de3-8e0a-d2b41f510934",
+    "text": "S／\nSTOCKY\nSTUDIO\n\nTU ESPACIO COMERCIAL\n\n01\nProductos\n↗\n02\nPendientes\n↗\n03\nBiblioteca\n↗\n04\nConfiguración\n↗\n Conectado con Stocky\n\nEl stock y los precios se mantienen en tu inventario.\n\nRecuperar intentos\nAbrir Stocky ↗\nCerrar sesión\nFULLMATCH CASACAS · DEMO ／ Studio\nFC\nFULLMATCH CASACAS · DEMO\n← Volver a la ficha\n\nTU PRODUCTO, LISTO PARA COMPARTIR\n\nGenerar historia\n1080 × 1920\nElegí tu presentación\n\nSugerencia: Stock disponible, según el inventario actual. Usar sugerencia\n\nPlantilla\nNuevo ingreso\nStock disponible\nÚltima unidad\nDeportiva · Día de fútbol\nPromoción\n\nDiseños de Stocky Studio con el logo y los colores de tu configuración. «Nuevo ingreso» es una selección editorial. «Última unidad» se valida contra el stock actual.\n\nFotografía\nFoto 1 · Portada\nPresentaciones que querés mostrar\nM\nL\nMostrar precio\nEncuadre\nFoto completa\nLlenar el espacio\nAcercamiento\nPosición horizontal\nPosición vertical\nMensaje secundario\nLlamada a la acción\nFormato de descarga\nPNG · máxima calidad\nJPG · archivo más liviano\nGenerar previsualización\nS／\n\nTu próxima historia, acá.\n\nElegí el diseño y generá la previsualización.\nDescargar PNG ↓\nCompartir ↗\n\nLa imagen descargada es estática. Una venta posterior puede cambiar la disponibilidad. La historia no reserva unidades.\n\nSTOCKY STUDIO\nUna ficha. Todas tus posibilidades.",
+    "metrics": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 1625,
+      "hero": null,
+      "grid": null,
+      "card": null,
+      "h1": {
+        "x": 265,
+        "y": 195.5,
+        "width": 252.78125,
+        "height": 39.59375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "36px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "preview": {
+        "x": 841,
+        "y": 471.96875,
+        "width": 390,
+        "height": 693.328125,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgb(0, 26, 77)"
+      },
+      "controls": {
+        "x": 265,
+        "y": 295.09375,
+        "width": 360,
+        "height": 1166.09375,
+        "font": "Inter, system-ui, -apple-system, \"Segoe UI\", sans-serif",
+        "size": "16px",
+        "color": "rgb(37, 43, 59)",
+        "background": "rgb(255, 255, 255)"
+      },
+      "smallTargets": [
+        {
+          "text": "Recuperar intentos",
+          "width": 82.9375,
+          "height": 26
+        },
+        {
+          "text": "Abrir Stocky ↗",
+          "width": 175,
+          "height": 16
+        },
+        {
+          "text": "Cerrar sesión",
+          "width": 57.34375,
+          "height": 26
+        },
+        {
+          "text": "← Volver a la ficha",
+          "width": 91.140625,
+          "height": 15
+        },
+        {
+          "text": "",
+          "width": 13,
+          "height": 13
+        },
+        {
+          "text": "",
+          "width": 13,
+          "height": 13
+        },
+        {
+          "text": "",
+          "width": 13,
+          "height": 13
+        },
+        {
+          "text": "",
+          "width": 304,
+          "height": 30
+        },
+        {
+          "text": "",
+          "width": 304,
+          "height": 30
+        },
+        {
+          "text": "",
+          "width": 304,
+          "height": 30
+        },
+        {
+          "text": "Generar previsualización",
+          "width": 304,
+          "height": 41
+        },
+        {
+          "text": "Descargar PNG ↓",
+          "width": 191,
+          "height": 39
+        },
+        {
+          "text": "Compartir ↗",
+          "width": 191,
+          "height": 39
+        }
+      ],
+      "brokenImages": []
+    }
+  }
+]
