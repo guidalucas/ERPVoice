@@ -24,9 +24,11 @@
 ## Tercera tanda: consistencia
 
 - Se centralizaron en `universal.css` los colores, escala de texto, espaciado e interacciones de Studio. La tienda tiene sus propios tokens y conserva los dos colores comerciales con foreground calculado.
-- La personalización presenta controles junto a un preview con productos, precios y fotografías reales del catálogo. Permite comparar ancho de escritorio/celular y refleja la densidad y tipografía de Actual, Editorial, Técnico y Proximidad. El preview es orientativo y comunica que el diseño se aplica al guardar.
+- La personalización presenta controles junto a un preview con productos, precios y fotografías reales del catálogo. Permite comparar ancho de escritorio/celular y refleja la composición de los cuatro presets. Se conserva el selector visual de `main`: Esencial (`classic`, antes Actual), Editorial, Megatienda (`technical`) y Boutique (`local`). Las miniaturas están rotuladas como ejemplos y el preview grande usa fichas reales mediante el mismo renderizador y CSS públicos.
 - Se conservaron logo, banner, fotos, textos y la opción Actual; no hay una configuración de marca paralela. Los presets evolucionan su composición sobre los contratos existentes.
 - Hover, foco, selección, deshabilitado y reduced motion tienen reglas coherentes. Se corrigió un desbordamiento de 6 px en la búsqueda móvil, el solapamiento de fotos en el preview y una regla de selección que ocultaba acciones de Pendientes, detectados durante las pruebas.
+
+La rama del MR integra `main` hasta `3cf339b`. Conserva los cambios de portada editable, textos opcionales, modo solo imagen, recuadro opcional y color sobre imagen, posiciones por arrastre/teclado, buscador técnico, filtros laterales y categorías visuales. Las portadas automáticas se compactan; la composición manual elegida por el comercio mantiene su lienzo de edición. Se repitieron build, presentación, branding, regresión visual, multirrubro y aceptación comercial sobre esta integración.
 
 ## Evidencia revisada
 
@@ -38,13 +40,13 @@
 - [Galería de producto](implementation/product-gallery-desktop.png) y [producto móvil](implementation/product-gallery-mobile.png).
 - [Ferretería sin foto en celular](implementation/technical-390-without-photo.png) y [kiosco sin foto en escritorio](implementation/local-1440-without-photo.png).
 
-Las [mediciones](implementation/measurements.json) registran el primer producto en Studio a y≈556 px en móvil, 450 px en tablet y 387 px en escritorio. En el catálogo del fixture aparece a y≈604–614 px en móvil y 506 px en escritorio. No hubo overflow horizontal en los seis tamaños. Los filtros secundarios abiertos tienen al menos 160 px de ancho en la prueba. Estas posiciones corresponden a ese contenido local sin portada; no se extrapolan al banner o a los datos de producción.
+Las [mediciones](implementation/measurements.json) registran el primer producto en Studio a y≈556 px en móvil, 450 px en tablet y 387 px en escritorio. En el catálogo del fixture aparece a y≈613–647 px en móvil y 542 px en escritorio. No hubo overflow horizontal en los seis tamaños. Los filtros secundarios abiertos tienen al menos 160 px de ancho en la prueba. Estas posiciones corresponden a ese contenido local sin portada; no se extrapolan al banner o a los datos de producción.
 
 ## Validación ejecutada
 
 - `npm run build:studio`: TypeScript y build de producción correctos.
 - `npm run test:commerce`: 26 pruebas aprobadas. El primer intento dentro del sandbox falló al escribir archivos temporales del supervisor; el mismo comando pasó al ejecutarse con los permisos locales necesarios. No se modificó el supervisor.
-- `npm run test:commerce:presentation`: 5 pruebas aprobadas, incluyendo productos genéricos sin foto y escape de contenido.
+- `npm run test:commerce:presentation`: 8 pruebas aprobadas, incluyendo productos genéricos sin foto, escape de contenido y los nuevos controles de banner de `main`.
 - `npm run test:commerce:browser`: 17 checks de aceptación aprobados con PostgreSQL temporal y HTTP/UI reales: PNG/JPG, promociones, publicación, recuperación de respuesta perdida, biblioteca, lotes ZIP reanudables y consultas con cambios de precio/stock.
 - `npm run test:commerce:onboarding`: 8 checks aprobados: alta móvil, monedas, vinculación desde Pendientes, preparación, PNG y refresco sin sobrescribir borradores.
 - `npm run test:studio:branding`: persistencia, reintento de assets, logo/banner/colores/textos públicos y revalidación de marca aprobados.

@@ -6,6 +6,7 @@ import { normalizeAppearance, defaultAppearance, textOnColor } from '../server/c
 import { commercialSpecifications } from '../server/commerce/presentation.js';
 import { publicProductProjection } from '../server/commerce/catalogService.js';
 import { renderCatalogList, renderCatalogProduct } from '../server/catalog/render.js';
+import { catalogThemeCss, defaultHeroLayout } from '../src/shared/catalogAppearance.js';
 
 const policy = { currency: 'UYU', storageUnit: 'major_integer', fractionDigits: 2, revision: 1 };
 const sku = patch => { const item = { id: 'fixture', name: 'Producto', size: null, unit: 'unit', status: 'active', revision: 1, attributes: {}, price: 150, priceCurrency: 'UYU', stockAvailable: 2, stockReserved: 0, ...patch }; return { ...item, linkFingerprint: inventoryProductFingerprint(item) }; };
@@ -14,6 +15,42 @@ test('optional presets preserve all existing brand fields and reject unsafe toke
   assert.deepEqual(normalizeAppearance(defaultAppearance), defaultAppearance);
   assert.throws(() => normalizeAppearance({ ...defaultAppearance, preset: 'red;body{}' }));
   for (const color of ['#ffffff', '#000000', '#ffff00', '#123456']) assert.ok(['#000000', '#FFFFFF'].includes(textOnColor(color)));
+});
+test('banner copy is optional and layout positions are validated before saving', () => {
+  const appearance = { ...defaultAppearance, tagline: '', heroTitle: '', heroDescription: '', heroContentVisible: false, heroButtonVisible: false, heroLayout: structuredClone(defaultHeroLayout) };
+  assert.deepEqual(normalizeAppearance(appearance), appearance);
+  assert.equal(normalizeAppearance({ ...defaultAppearance, heroLayout: null }).heroLayout, null);
+  assert.throws(() => normalizeAppearance({ ...defaultAppearance, collectionTitle: '' }));
+  for (const field of ['heroContentVisible', 'heroButtonVisible', 'heroTextBackground']) for (const bad of [null, 0, 'false']) assert.throws(() => normalizeAppearance({ ...appearance, [field]: bad }));
+  for (const bad of [null, {}, { x: -1, y: 50, width: 50 }, { x: 101, y: 50, width: 50 }, { x: 1.5, y: 0, width: 50 }, { x: 50, y: 50, width: 19 }, { x: 50, y: '0; color:red', width: 50 }])
+    assert.throws(() => normalizeAppearance({ ...appearance, heroLayout: { ...defaultHeroLayout, title: bad } }));
+  assert.throws(() => normalizeAppearance({ ...appearance, heroLayout: { ...defaultHeroLayout, other: {} } }));
+  assert.match(catalogThemeCss(appearance), /data-hero-block="title"\]\{left:8%;top:30%;width:65%/);
+  assert.doesNotMatch(catalogThemeCss({ ...appearance, heroLayout: { title: { x: 'red;body{}' } } }), /red;body/);
+});
+test('banner text backgrounds and image text tones are optional and validated', () => {
+  for (const heroTextBackground of [true, false]) for (const heroTextTone of ['light', 'dark']) {
+    const appearance = { ...defaultAppearance, heroTextBackground, heroTextTone };
+    assert.deepEqual(normalizeAppearance(appearance), appearance);
+  }
+  for (const heroTextTone of [null, '', '#ffffff', 'light;body{}']) assert.throws(() => normalizeAppearance({ ...defaultAppearance, heroTextTone }));
+  const appearance = { ...defaultAppearance, coverId: 'cover', heroTextBackground: false };
+  assert.match(catalogThemeCss(appearance), /--banner-text-ink:#FFFFFF/);
+  assert.match(catalogThemeCss({ ...appearance, heroTextTone: 'dark' }), /--banner-text-ink:#172536/);
+  assert.match(catalogThemeCss({ ...appearance, coverId: null, primaryColor: '#FFFFFF' }), /--banner-text-ink:#000000/);
+  const html = renderCatalogList({ catalog: { slug: 'tienda', path: '/c/tienda', brandName: 'Tienda', appearance }, items: [] }, {}, '');
+  assert.match(html, /has-cover[^"\n]*text-on-image/);
+  assert.match(html, /data-hero-block="title"/); assert.match(html, /data-hero-block="button"/);
+});
+test('public banners can show only an image, omit empty copy, and keep movable text escaped', () => {
+  const catalog = { slug: 'tienda', path: '/c/tienda', brandName: 'Tienda', appearance: { ...defaultAppearance, coverId: 'cover', heroContentVisible: false } };
+  const hero = appearance => renderCatalogList({ catalog: { ...catalog, appearance }, items: [] }, {}, '').match(/<section aria-label="Portada del catálogo"[\s\S]*?<\/section>/)[0];
+  const imageOnly = hero(catalog.appearance);
+  assert.match(imageOnly, /image-only/); assert.match(imageOnly, /catalog-cover/); assert.doesNotMatch(imageOnly, /hero-copy|<h1|Explorar catálogo/);
+  const blank = hero({ ...defaultAppearance, tagline: '', heroTitle: '', heroDescription: '', heroButtonVisible: false });
+  assert.match(blank, /image-only/); assert.doesNotMatch(blank, /<h1|<p|<a /);
+  const custom = hero({ ...defaultAppearance, heroTitle: '<script>alert(1)</script>', heroLayout: defaultHeroLayout, heroButtonVisible: false });
+  assert.match(custom, /custom-layout/); assert.match(custom, /data-hero-block="title"/); assert.match(custom, /&lt;script&gt;/); assert.doesNotMatch(custom, /<script>|data-hero-block="button"/);
 });
 test('universal readiness permits no size, non-unit sales and no photo; stories still need a photo', () => {
   for (const unit of ['unit', 'kg', 'm', 'pack']) {

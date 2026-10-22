@@ -98,17 +98,19 @@ try {
   assert.equal(metadata.width, 1080); assert.equal(metadata.height, 1920); assert.equal(metadata.format, 'png');
   for (const [width, height] of widths) { await page.setViewportSize({ width, height }); assert.equal((await geometry(page, '.canvas-frame')).scrollWidth, width); if (width === 390) await screenshot(page, 'story-ready-mobile'); }
 
-  await page.goto(fixture.url + '#/settings'); await page.locator('.brand-preview-product img').first().waitFor(); await page.waitForLoadState('networkidle');
-  await page.getByLabel('Diseño del catálogo · opcional').selectOption('editorial');
-  assert.equal(await page.locator('.brand-preview').getAttribute('data-preset'), 'editorial');
-  const previewBounds = await page.locator('.brand-preview-product').evaluateAll(cards => cards.map(card => {
-    const image = card.querySelector('img')?.getBoundingClientRect(), media = card.querySelector('div').getBoundingClientRect(), title = card.querySelector('h4').getBoundingClientRect();
+  await page.goto(fixture.url + '#/settings');
+  const preview = page.frameLocator('.catalog-preview-shell iframe');
+  await preview.locator('.catalog-card img').first().waitFor(); await page.waitForLoadState('networkidle');
+  await page.locator('input[name="catalog-design"][value="editorial"]').check();
+  await preview.locator('body[data-preset="editorial"]').waitFor();
+  const previewBounds = await preview.locator('.catalog-card').evaluateAll(cards => cards.map(card => {
+    const image = card.querySelector('img')?.getBoundingClientRect(), media = card.querySelector('.catalog-card-photo').getBoundingClientRect(), title = card.querySelector('h2').getBoundingClientRect();
     return { imageBottom: image?.bottom ?? media.bottom, mediaBottom: media.bottom, titleTop: title.top };
   }));
   assert.ok(previewBounds.every(item => item.imageBottom <= item.mediaBottom + 1 && item.titleTop >= item.mediaBottom), JSON.stringify(previewBounds));
   await screenshot(page, 'settings-preview-desktop'); await page.getByRole('button', { name: 'Celular', exact: true }).click();
-  assert.ok((await page.locator('.brand-preview').boundingBox()).width <= 390);
-  await page.setViewportSize({ width: 390, height: 844 }); assert.equal((await geometry(page, '.brand-preview')).scrollWidth, 390);
+  assert.ok((await page.locator('.catalog-preview-shell .catalog-design-preview').boundingBox()).width <= 390);
+  await page.setViewportSize({ width: 390, height: 844 }); assert.equal((await geometry(page, '.catalog-preview-shell')).scrollWidth, 390);
   await screenshot(page, 'settings-preview-mobile');
 
   const publicPage = await browser.newPage({ viewport: { width: 1440, height: 900 } }); publicPage.on('pageerror', error => errors.push(error.message));

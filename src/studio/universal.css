@@ -14,7 +14,7 @@ button.primary, a.primary, .button.primary { background: var(--action) !importan
 button:disabled { opacity: 1; color: #596579; background: #edf0f4; border-color: var(--border); }
 button.primary:disabled { background: #edf0f4 !important; border-color: var(--border) !important; color: #596579 !important; }
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid var(--action); outline-offset: 3px; }
-.studio-shell input:not([type=checkbox]):not([type=range]):not([type=color]), .studio-shell select, .studio-shell textarea { font-size: 16px; min-height: 44px; color: var(--text); border-color: #bbc5d1; box-shadow: none; }
+.studio-shell input:not([type=checkbox]):not([type=range]):not([type=color]):not([type=radio]), .studio-shell select, .studio-shell textarea { font-size: 16px; min-height: 44px; color: var(--text); border-color: #bbc5d1; box-shadow: none; }
 .studio-shell input[type=checkbox], .studio-shell input[type=range] { accent-color: var(--action); }
 .studio-shell summary { cursor: pointer; min-height: 44px; padding: 10px 0; }
 .studio-shell h1 { font-size: 30px; line-height: 1.2; letter-spacing: -.7px; }
@@ -168,44 +168,6 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .appearance-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.1fr); gap: 28px; align-items: start; margin: 28px 0; padding-top: 24px; border-top: 1px solid var(--border); }
 .appearance-controls { min-width: 0; }
 .appearance-preview-panel { position: sticky; top: 20px; min-width: 0; }
-.preview-heading h2 { font-size: 18px; margin: 0 0 12px; }
-.preview-heading > div { display: flex; gap: 8px; }
-.preview-heading button { font-size: 13px; }
-.preview-heading button[aria-pressed=true] { background: var(--selected); color: #493ac0; border-color: var(--action); }
-.brand-preview { width: 100%; margin: 16px auto; background: #fafbfc; color: var(--text); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-.brand-preview[data-viewport=mobile] { max-width: 390px; }
-.brand-preview-header { padding: 12px; gap: 8px; font-size: 13px; }
-.brand-preview-header img { width: 30px; height: 30px; }
-.brand-preview-hero { padding: 0; min-height: 0 !important; display: grid; grid-template-columns: 1fr; background: var(--brand-primary); color: var(--brand-ink); border-radius: 0; }
-.brand-preview-hero > div { position: static; padding: 18px; max-width: none; background: transparent; border-radius: 0; min-width: 0; }
-.brand-preview-hero:has(.brand-preview-cover) { grid-template-columns: 1fr 1fr; }
-.brand-preview-cover { position: static; inset: auto; grid-column: 2; grid-row: 1; width: 100%; height: 100%; max-height: 180px; object-fit: contain; opacity: 1; }
-.brand-preview-hero > div { grid-column: 1; grid-row: 1; }
-.brand-preview .brand-preview-hero h3 { font-size: 22px; margin: 8px 0; line-height: 1.2; color: var(--brand-ink); }
-.brand-preview .brand-preview-hero p, .brand-preview .brand-preview-hero small { color: var(--brand-ink); font-size: 12px; line-height: 1.5; margin-bottom: 10px; }
-.preview-cta { color: var(--brand-accent-ink); background: var(--brand-accent); font-size: 12px; padding: 8px 12px; border-radius: 6px; }
-.brand-preview-collection { padding: 16px; }
-.brand-preview-collection > h3 { font-size: 18px; margin-bottom: 12px; }
-.preview-search { border: 1px solid var(--border); background: white; border-radius: 6px; padding: 8px 10px; color: var(--subtle); font-size: 12px; margin-bottom: 14px; }
-.brand-preview-products { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
-.brand-preview-product { min-width: 0; }
-.brand-preview-product > div { position: relative; height: 100px; background: #edf0f4; display: grid; place-items: center; overflow: hidden; }
-.brand-preview-product img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.brand-preview-product span { padding: 6px; text-align: center; color: var(--subtle); font-size: 12px; }
-.brand-preview-product h4 { font-size: 12px; line-height: 1.4; margin: 8px 0 4px; overflow-wrap: anywhere; }
-.brand-preview-product strong { display: block; font-size: 12px; overflow-wrap: anywhere; }
-.brand-preview > small { font-size: 12px; padding: 0 16px 16px; }
-.brand-preview[data-preset=editorial] { background: #faf9f6; border-radius: 4px; }
-.brand-preview[data-preset=editorial] .brand-preview-hero h3, .brand-preview[data-preset=editorial] .brand-preview-collection > h3 { font-family: Georgia, serif; }
-.brand-preview[data-preset=editorial] .brand-preview-products { grid-template-columns: repeat(2,minmax(0,1fr)); }
-.brand-preview[data-preset=editorial] .brand-preview-product > div { height: 160px; }
-.brand-preview[data-preset=technical] .brand-preview-product > div { height: 80px; }
-.brand-preview[data-preset=local] .brand-preview-products { grid-template-columns: repeat(4,minmax(0,1fr)); }
-.brand-preview[data-preset=local] .brand-preview-product > div { height: 70px; }
-.brand-preview[data-preset=technical] .brand-preview-hero .preview-cta, .brand-preview[data-preset=local] .brand-preview-hero .preview-cta { padding: 6px 10px; }
-.brand-preview[data-viewport=mobile] .brand-preview-products { grid-template-columns: repeat(2,minmax(0,1fr)); }
-.brand-preview[data-viewport=mobile] .brand-preview-hero { grid-template-columns: 1fr; }
-.brand-preview[data-viewport=mobile] .brand-preview-cover { grid-column: 1; grid-row: 2; max-height: 140px; }
 @media (max-width: 1150px) { .appearance-layout { grid-template-columns: 1fr; } .appearance-preview-panel { position: static; } }
 .library-card-body small, .library-card-body p, .library-note, .batch-options > small, .batch-item small { font-size: 13px !important; color: var(--subtle) !important; }
 .library-card-body h2, .batch-item strong { font-size: 16px; }
@@ -297,3 +259,5 @@ footer, footer span { font-size: 12px; color: var(--subtle); letter-spacing: 0; 
   .gallery-actions button { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
+.catalog-preview-devices button[aria-pressed=true] { background: var(--selected); color: #493ac0; border-color: var(--action); }
+.catalog-design-caption small, .banner-options > p { font-size: 13px; }
