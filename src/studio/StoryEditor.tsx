@@ -4,6 +4,7 @@ import { renderStory, type StorySettings, type StorySnapshot } from './storyRend
 import { textOnColor, type Product, type Profile } from './types';
 import { reportExport } from './exportEvents';
 import { PromotionFields, defaultPromotion } from './PromotionFields';
+import { StockyLogo } from '../components/brand/StockyLogo';
 
 export function StoryEditor({ product, onBack }: { product: Product; onBack: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null), selectedImage = product.images.find(image => image.id === product.coverImageId)!;
@@ -97,4 +98,4 @@ export function StoryEditor({ product, onBack }: { product: Product; onBack: () 
   </section>;
 }
 
-function BrandMini() { return <strong className="mini-brand">S<span>／</span></strong>; }
+function BrandMini() { return <StockyLogo size="lg" className="story-stocky-logo"/>; }

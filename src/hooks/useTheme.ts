@@ -37,6 +37,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(STORAGE_KEY, theme);
   }, [theme]);
 
+  useEffect(() => {
+    const sync = (event: StorageEvent) => {
+      if (event.storageArea === window.localStorage && (event.key === STORAGE_KEY || event.key === null)) {
+        setThemeState(getStoredTheme());
+      }
+    };
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, []);
+
   const setTheme = useCallback((next: Theme) => {
     setThemeState(next);
   }, []);

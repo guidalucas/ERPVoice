@@ -1,11 +1,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthProvider } from '../store/AuthStore';
+import { ThemeProvider, applyThemeClass, getStoredTheme } from '../hooks/useTheme';
 import { Studio } from './Studio';
+import '../theme.css';
 import './studio.css';
 import './stories.css';
 import './refinements.css';
 import './automation.css';
 import './onboarding.css';
 import './universal.css';
-ReactDOM.createRoot(document.getElementById('studio-root')!).render(<React.StrictMode><AuthProvider><Studio/></AuthProvider></React.StrictMode>);
+import './theme.css';
+applyThemeClass(getStoredTheme());
+ReactDOM.createRoot(document.getElementById('studio-root')!).render(<React.StrictMode><ThemeProvider><AuthProvider><Studio/></AuthProvider></ThemeProvider></React.StrictMode>);
