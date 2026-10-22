@@ -232,8 +232,9 @@ footer a { min-height: 44px; display: inline-flex; align-items: center; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
 
 /* Optional image-only cover and independently positioned banner blocks. */
-.catalog-hero.image-only,.catalog-hero.has-cover.image-only{display:block;padding:0;min-height:0;aspect-ratio:16/9;max-height:320px}
-.catalog-hero.image-only .catalog-cover{display:block;width:100%;height:100%;max-height:none;min-height:0;position:absolute;inset:0;object-fit:contain}
+.catalog-hero.image-only,.catalog-hero.has-cover.image-only{display:block;width:100%;height:auto;padding:0;min-height:0;aspect-ratio:auto;max-height:none}
+.catalog-hero.image-only .catalog-cover{display:block;width:100%;height:auto;max-height:none;min-height:0;position:static;inset:auto;object-fit:contain}
+.catalog-hero.image-only:not(.has-cover){min-height:120px}
 .catalog-hero.image-only .hero-copy{display:none}
 @media(min-width:781px){
   .catalog-hero.custom-layout:not(.image-only),.catalog-hero.has-cover.custom-layout:not(.image-only){display:block;height:460px;min-height:460px;padding:0}
