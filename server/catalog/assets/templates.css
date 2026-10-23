@@ -50,6 +50,7 @@ body[data-preset=editorial] .primary{border-radius:0;padding:15px 26px;font-size
 body[data-preset=editorial] .collection{max-width:1280px;margin:auto;padding:64px 48px 24px}
 body[data-preset=editorial] .collection-heading{display:block;text-align:center;margin-bottom:32px}
 body[data-preset=editorial] .collection-heading h2{font-family:Georgia,serif;font-size:38px;font-weight:400}
+body[data-preset=editorial] .collection-heading .shopping-help{margin-inline:auto}
 body[data-preset=editorial] .collection-heading small{display:block;margin-top:12px;max-width:none}
 body[data-preset=editorial] .category-nav{justify-content:center;flex-wrap:wrap;padding-bottom:22px}
 body[data-preset=editorial] .category-nav a{background:transparent;border:0;border-bottom:1px solid transparent;border-radius:0;padding:8px 0;margin:0 14px}
