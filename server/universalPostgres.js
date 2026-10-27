@@ -24,14 +24,35 @@ export async function executeUniversalPlanInTransaction(client, input, context, 
     return prior.result_json;
   }
   const childContext = {...context,internalUniversalOperation:true};
-  const blocks = domain === 'mixed' ? segments : [{domain,plan}], receipts = [];
+  const blocks = domain === 'mixed' ? segments : [{domain,plan}], receipts = [], createdEntities = new Map();
   // Child IDs are reserved for this root/ordinal, so domain callers cannot claim
   // the same child ID and introduce a reverse lock dependency.
   for (const [index,block] of blocks.entries()) {
-    const child = {...block.plan,operationId:`universal-child:${operationRequestDigest(domain === 'mixed' ? [block.domain,...scope,index] : [domain,...scope])}`};
+    const child = {...block.plan,operationId:`universal-child:${operationRequestDigest(domain === 'mixed' ? [block.domain,...scope,index] : [domain,...scope])}`,
+      actions: block.plan.actions.map(action => {
+        const resolve=ref=>{
+          const entity=createdEntities.get(ref.itemId);
+          if(!entity) throw new InventoryOperationError('INVALID_OPERATION_REFERENCE','No se obtuvo el alta referenciada para esta operación.');
+          return entity;
+        };
+        if (block.domain==='accounts' && action.target.kind==='created') {
+          const entity=resolve(action.target);
+          return {...action,target:{kind:'existing',clientId:entity.id,expectedRevision:entity.accountRevision}};
+        }
+        if (block.domain!=='orders' || !['clientRef','supplierRef','productRef'].some(key=>action[key])) return action;
+        const bound={...action},field=action.type==='order.create'?'order':'changes';bound[field]={...action[field]};
+        for(const [key,idField] of [['clientRef','clienteId'],['supplierRef','proveedorId'],['productRef','productId']]) if(action[key]) {
+          bound[field][idField]=resolve(action[key]).id;delete bound[key];
+        }
+        return bound;
+      })};
     const execute = {inventory:executeInventoryPlanInTransaction,accounts:executeAccountPlanInTransaction,parties:executePartyPlanInTransaction,orders:executeUniversalOrderPlanInTransaction}[block.domain];
     const receipt = await execute(client,child,childContext,persistInventoryTransactions);
     if (block.domain === 'inventory') await persistInventoryTransactions(client,child,receipt);
+    if (block.domain === 'parties') for (const item of receipt.items)
+      if (['client.create','supplier.create'].includes(item.type)) createdEntities.set(item.itemId,item.party);
+    if (block.domain === 'inventory') for (const item of receipt.items)
+      if (item.created) createdEntities.set(item.itemId,{id:item.skuId});
     receipts.push(receipt);
   }
   const result = {contractVersion:1,operationId:plan.operationId,businessId:context.businessId,status:'applied',domain,

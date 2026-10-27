@@ -6,18 +6,21 @@ import { fileURLToPath } from 'node:url';
 import { hasAnyLlmApiKey } from '../server/llmChatClient.js';
 import { interpretUniversalIntent } from '../server/universalIntentInterpreter.js';
 import { universalEvaluationDefaults, universalIntentCorpus } from './fixtures/universal-intent-corpus.js';
+import { clarificationErrors } from './clarification-expectations.js';
 
-const semanticAction = (action) => {
+const semanticAction = (action,index,actions) => {
   const target = action.target?.kind === 'new'
     ? { kind: 'new', sku: action.target.sku }
     : action.target?.kind === 'existing'
       ? Object.fromEntries(['kind', 'skuId', 'clientId', 'partyId', 'pedidoId'].filter((key) => Object.hasOwn(action.target, key)).map((key) => [key, action.target[key]]))
-      : null;
+      : action.target?.kind==='created' ? {kind:'created',actionIndex:actions.findIndex(row=>row.itemId===action.target.itemId)} : null;
   const projected = { type: action.type };
   if (target) projected.target = target;
-  for (const key of ['quantity', 'price', 'salePrice', 'amount', 'reason', 'changes', 'order', 'initialStock']) {
+  for (const key of ['name','notas','quantity', 'price', 'salePrice', 'amount', 'reason', 'changes', 'order', 'initialStock']) {
     if (Object.hasOwn(action, key)) projected[key] = action[key];
   }
+  for(const key of ['clientRef','supplierRef','productRef']) if(action[key]) projected[key]=actions.findIndex(row=>row.itemId===action[key].itemId);
+  if(projected.order?.producto) projected.order={...projected.order,producto:projected.order.producto.normalize('NFKC').trim().toLocaleLowerCase('es')};
   if (action.destination) projected.destination = Object.fromEntries(['clientId', 'partyId'].filter((key) => Object.hasOwn(action.destination, key)).map((key) => [key, action.destination[key]]));
   if (action.reconciliation) {
     const { expectedProductRevision, expectedFingerprint, ...reconciliation } = action.reconciliation;
@@ -33,9 +36,11 @@ const expectedAction = (expected) => {
   if (Object.hasOwn(expected, 'partyId')) projected.target = { kind: 'existing', partyId: expected.partyId };
   if (Object.hasOwn(expected, 'pedidoId')) projected.target = { kind: 'existing', pedidoId: expected.pedidoId };
   if (Object.hasOwn(expected, 'newSku')) projected.target = { kind: 'new', sku: expected.newSku };
-  for (const key of ['quantity', 'price', 'salePrice', 'amount', 'reason', 'changes', 'order', 'initialStock']) {
+  if (Object.hasOwn(expected, 'createdItem')) projected.target = {kind:'created',actionIndex:expected.createdItem};
+  for (const key of ['name','notas','clientRef','supplierRef','productRef','quantity', 'price', 'salePrice', 'amount', 'reason', 'changes', 'order', 'initialStock']) {
     if (Object.hasOwn(expected, key)) projected[key] = expected[key];
   }
+  if(projected.order?.producto) projected.order={...projected.order,producto:projected.order.producto.normalize('NFKC').trim().toLocaleLowerCase('es')};
   return projected;
 };
 
@@ -47,7 +52,8 @@ export function compareUniversalGold(fixture, result) {
       : [`Se esperaba cierre sin plan (aclaración o rechazo); se recibió ${result.kind}.`];
   }
   if (result.kind !== expected.kind) return [`kind: esperado ${expected.kind}, recibido ${result.kind}`];
-  if (expected.kind === 'clarification') return [];
+  if(expected.kind==='cancelled') return result.plan ? ['Una cancelación no puede conservar un plan ejecutable.'] : [];
+  if (expected.kind === 'clarification') return clarificationErrors(expected,result);
   if (expected.kind === 'answer') {
     if (result.plan) return ['Una consulta no puede incluir un plan de mutación.'];
     if (!Array.isArray(result.queries)) return ['Falta la lista de consultas autorizadas.'];
@@ -87,8 +93,9 @@ export function compareUniversalGold(fixture, result) {
 }
 
 const fakeModelJson = (fixture) => {
+  if(fixture.modelResponse) return structuredClone(fixture.modelResponse);
   if (fixture.expected.kind === 'clarification' || fixture.expected.kind === 'no_ready_plan') {
-    return { contractVersion: 1, kind: 'clarification', question: '¿Podés precisar la referencia?' };
+    return { contractVersion: 1, kind: 'clarification', question: fixture.expected.questionExample ?? '¿Podés precisar la referencia?' };
   }
   if (fixture.expected.kind === 'answer') {
     const queries = fixture.expected.queries.map((query, index) => ({ itemId: `sim-query-${index + 1}`, ...structuredClone(query) }));
@@ -101,7 +108,9 @@ const fakeModelJson = (fixture) => {
     if (entry.clientId) action.target = { kind: 'existing', clientId: entry.clientId };
     if (entry.pedidoId) action.target = { kind: 'existing', pedidoId: entry.pedidoId };
     if (entry.newSku) action.target = { kind: 'new', sku: structuredClone(entry.newSku) };
-    for (const key of ['quantity', 'price', 'amount', 'reason', 'changes']) if (Object.hasOwn(entry, key)) action[key] = structuredClone(entry[key]);
+    if (Object.hasOwn(entry,'createdItem')) action.target={kind:'created',itemId:`sim-item-${entry.createdItem+1}`};
+    for(const key of ['clientRef','supplierRef','productRef']) if(Object.hasOwn(entry,key)) action[key]={itemId:`sim-item-${entry[key]+1}`};
+    for (const key of ['name','notas','order','initialStock','salePrice','quantity', 'price', 'amount', 'reason', 'changes']) if (Object.hasOwn(entry, key)) action[key] = structuredClone(entry[key]);
     if (entry.reasonAnyOf) action.reason = entry.reasonAnyOf[0];
     return action;
   });
@@ -110,12 +119,29 @@ const fakeModelJson = (fixture) => {
 };
 
 const evaluateFixture = async (fixture, { complete = undefined } = {}) => {
+  if(fixture.turns) {
+    const {turns,...initial}=fixture;
+    const reports=[await evaluateFixture(initial,{complete})];
+    let previous=reports[0]._result,text=fixture.sourceText,clarifications=fixture.clarifications??[];
+    for(const turn of turns) {
+      if(!reports.at(-1).passed) break;
+      if(previous.kind==='clarification') clarifications=[...clarifications,{question:previous.question,answer:turn.text}];
+      text+=`\n${turn.text}`;
+      const row=await evaluateFixture({...initial,...turn,sourceText:text,clarifications,
+        ...(previous.plan?{revision:{plan:previous.plan,evidence:previous.evidence,replyText:turn.text}}:{})},{complete});
+      reports.push(row);previous=row._result;
+    }
+    return {...reports.at(-1),passed:reports.length===turns.length+1&&reports.every(row=>row.passed),
+      errors:reports.flatMap(row=>row.errors),turns:reports.map(({_result,...row})=>row),elapsedMs:reports.reduce((sum,row)=>sum+row.elapsedMs,0)};
+  }
   let usage = null;
   let providerLatencyMs = null;
+  let modelOutput;
   const started = Date.now();
   const result = await interpretUniversalIntent({
     sourceText: fixture.sourceText,
     ...(fixture.clarifications ? {clarifications:fixture.clarifications} : {}),
+    ...(fixture.revision?{revision:fixture.revision}:{}),
     catalog: fixture.catalog,
     context: fixture.context,
     operationId: `${universalEvaluationDefaults.operationIdPrefix}-${fixture.id}`,
@@ -124,6 +150,7 @@ const evaluateFixture = async (fixture, { complete = undefined } = {}) => {
       const response = await (await import('../server/llmChatClient.js')).completeChatJson(options);
       usage = response?.usage ?? null;
       providerLatencyMs = Number.isFinite(response?.latencyMs) ? response.latencyMs : null;
+      modelOutput=response?.json;
       return response;
     }),
   });
@@ -135,6 +162,7 @@ const evaluateFixture = async (fixture, { complete = undefined } = {}) => {
     reason: result.reason ?? null,
     clarificationQuestion: result.kind==='clarification' ? result.question : null,
     semanticMismatch: compareUniversalGold(fixture, result),
+    ...(compareUniversalGold(fixture,result).length && modelOutput ? {modelOutput} : {}),
     elapsedMs: Date.now() - started,
     trace: {
       provider: result.trace?.provider ?? null,
@@ -150,7 +178,10 @@ const evaluateFixture = async (fixture, { complete = undefined } = {}) => {
 const runSelfTest = async () => {
   const rows = [];
   for (const fixture of universalIntentCorpus) {
-    const row = await evaluateFixture(fixture, { complete: async () => ({ ok: true, json: fakeModelJson(fixture), provider: 'simulated', model: 'gold-contract-stub', usage: null, latencyMs: 0 }) });
+    const row = await evaluateFixture(fixture, { complete: async options => {
+      const supplied=JSON.parse(options.messages[1].content),turn=fixture.turns?.find(turn=>supplied.replyText===turn.text);
+      return { ok: true, json: fakeModelJson(turn?{...fixture,...turn}:fixture), provider: 'simulated', model: 'gold-contract-stub', usage: null, latencyMs: 0 };
+    } });
     assert.equal(row.passed, true, `fixture fake response should match gold: ${fixture.id}: ${row.errors.join('; ')}`);
     rows.push({ ...row, _result: undefined });
   }
@@ -293,11 +324,14 @@ const runCli = async () => {
   }
   const out = option('--out') ?? 'scripts/test-results-universal-live.json';
   const results = [];
-  for (const fixture of universalIntentCorpus) {
+  const filter=option('--cases');
+  const selected=universalIntentCorpus.filter(fixture=>!filter||filter.split(',').includes(fixture.id));
+  if(!selected.length || (filter&&filter.split(',').some(id=>!selected.some(fixture=>fixture.id===id)))) throw new Error('El filtro incluye casos desconocidos; no se ejecutó la evaluación.');
+  for (const fixture of selected) {
     const row = await evaluateFixture(fixture);
     const { _result, ...safeRow } = row;
     results.push(safeRow);
-    console.log(`${safeRow.passed ? 'PASS' : 'FAIL'} ${safeRow.id}: ${safeRow.errors.join(' ') || safeRow.kind}`);
+    console.log(`${safeRow.passed ? 'PASS' : 'FAIL'} ${safeRow.id}: ${safeRow.errors.join(' ') || safeRow.kind}${safeRow.reason?` (${safeRow.reason})`:''}${safeRow.clarificationQuestion?` ${safeRow.clarificationQuestion}`:''}`);
   }
   const clarificationCases = results.filter((row) => universalIntentCorpus.find((fixture) => fixture.id === row.id).expected.kind === 'clarification');
   const semanticCases = results.filter((row) => universalIntentCorpus.find((fixture) => fixture.id === row.id).expected.kind === 'ready');

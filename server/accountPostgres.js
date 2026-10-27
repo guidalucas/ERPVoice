@@ -16,6 +16,7 @@ export const ACCOUNT_SCHEMA_SQL = `
 `;
 export async function executeAccountPlanInTransaction(client, input, context) {
     const plan = validateAccountPlan(input, context), requestHash = accountPlanDigest(plan), scope = [context.businessId, plan.operationId];
+    if (plan.actions.some(action=>action.target.kind==='created')) throw new InventoryOperationError('INVALID_OPERATION_REFERENCE','El alta del cliente debe resolverse dentro de la operación completa.');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify(['account', ...scope])]);
     const replay = await client.query('SELECT request_hash,result_json FROM account_operations WHERE owner_phone=$1 AND operation_id=$2', scope);
     if (replay.rowCount) {

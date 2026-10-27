@@ -22,6 +22,21 @@ const domains = new Map([
 const validators = {inventory:validateOperationPlan,accounts:validateAccountPlan,parties:validatePartyPlan,orders:validateUniversalOrderPlan};
 const digests = {inventory:operationDigest,accounts:accountPlanDigest,parties:partyPlanDigest,orders:universalOrderPlanDigest};
 
+const validateCreatedReferences = plan => {
+  const created = new Map();
+  for (const action of plan.actions) {
+    for(const [key,type] of [['clientRef','client'],['supplierRef','supplier'],['productRef','product']])
+      if(action[key] && created.get(action[key].itemId)!==type)
+        fail(key==='clientRef'?'INVALID_ORDER_CLIENT_REFERENCE':'INVALID_OPERATION_REFERENCE','La referencia debe corresponder a un alta anterior del mismo tipo y operación.');
+    if(action.type.startsWith('account.') && action.target.kind==='created' && created.get(action.target.itemId)!=='client')
+      fail('INVALID_OPERATION_REFERENCE','La cuenta debe referenciar un alta de cliente anterior de esta operación.');
+    if (action.type === 'client.create') created.set(action.itemId,'client');
+    if (action.type === 'supplier.create') created.set(action.itemId,'supplier');
+    if (['stock.receive','sku.create'].includes(action.type) && action.target.kind==='new') created.set(action.itemId,'product');
+  }
+  return plan;
+};
+
 /** One entry contract; each contiguous domain block uses its existing validator. */
 export function prepareUniversalOperation(input, context) {
   if (typeof context?.businessId !== 'string' || !context.businessId.trim() || context.businessId === '__default__'
@@ -66,7 +81,7 @@ export function prepareUniversalOperation(input, context) {
     return plan;
   };
   if (selected.size === 1) {
-    const domain = blocks[0].domain, plan = prepareBlock(domain,candidate);
+    const domain = blocks[0].domain, plan = validateCreatedReferences(prepareBlock(domain,candidate));
     return Object.freeze({domain,plan,requestHash:operationRequestDigest({domain,digest:digests[domain](plan)})});
   }
   const itemIds = new Set();
@@ -78,6 +93,7 @@ export function prepareUniversalOperation(input, context) {
   const segments = Object.freeze(blocks.map(({domain,actions}) => Object.freeze({domain,plan:prepareBlock(domain,{...candidate,actions})})));
   const plan = Object.freeze({...segments[0].plan,actions:Object.freeze(segments.flatMap(({plan}) => plan.actions))});
   if (new Set(plan.actions.map((action) => action.itemId)).size !== plan.actions.length) invalid();
+  validateCreatedReferences(plan);
   const requestHash = operationRequestDigest({segments:segments.map(({domain,plan}) => ({domain,digest:digests[domain](plan)}))});
   return Object.freeze({domain:'mixed',plan,segments,requestHash});
 }

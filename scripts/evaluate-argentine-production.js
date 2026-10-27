@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import assert from 'node:assert/strict';
+import { clarificationErrors } from './clarification-expectations.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -27,7 +28,7 @@ const domainTables=tables.filter(table=>!['universal_drafts','universal_draft_co
 
 export function checkInterpretation(expected,result,ids){
   assert.equal(result.kind,expected.kind,`Se esperaba ${expected.kind}; recibido ${result.kind}${result.reason?`: ${result.reason}`:''}${result.question?`: ${result.question}`:''}`);
-  if(expected.kind==='clarification') return;
+  if(expected.kind==='clarification') {assert.deepEqual(clarificationErrors(expected,result),[]);return;}
   if(expected.kind==='answer'){
     assert.equal(result.plan,undefined);assert.ok(result.answer?.items?.length);
     for(const type of expected.queryTypes) assert.ok(result.queries.some(query=>query.type===type),`Falta ${type}`);

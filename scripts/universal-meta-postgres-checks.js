@@ -47,6 +47,39 @@ export async function runUniversalMetaChecks({ db, sql, check }) {
     return result;
   };
 
+  await check('universal meta: new-client order resolves a bare size reply, reviews both actions and confirms them once',async()=>{
+    const ordinary=(request,complete=forbidden)=>db.processMetaUniversalMessage(request,{ordinary:true,complete});
+    const original='Me pidieron la camiseta blanca de boca, tercera equipación. Me lo pidió Emiliano.';
+    const questions=['¿A qué cliente corresponde Emiliano y qué talle tiene la camiseta blanca de boca?','¿Qué talle es la camiseta, L o XL?'];
+    const clarify=question=>provider({ok:true,json:{contractVersion:1,kind:'clarification',question}}).complete;
+    const before=await state();
+    const first=await ordinary(input(original),clarify(questions[0]));
+    const second=await ordinary(input('nuevo cliente. la camseta talle L o XL'),clarify(questions[1]));
+    assert.equal(second.draftId,first.draftId);assert.equal(second.version,2);
+    const items=[{itemId:'new-client',type:'client.create',name:'Emiliano'},
+      {itemId:'new-order',type:'order.create',clientRef:{itemId:'new-client'},order:{producto:'Camiseta blanca de Boca, tercera equipación',talle:'L',qty:1}}];
+    const reply=input('L');
+    const ready=await ordinary(reply,async options=>{
+      const supplied=JSON.parse(options.messages[1].content);
+      assert.deepEqual(supplied.latestClarification,{question:questions[1],answer:'L'});
+      assert.equal(supplied.sourceText,`${original}\nnuevo cliente. la camseta talle L o XL\nL`);
+      return {ok:true,json:{contractVersion:1,kind:'proposal',actions:items,evidence:[{itemId:'new-client',quote:'nuevo cliente'},{itemId:'new-order',quote:original}]}};
+    });
+    assert.equal(ready.status,'awaiting_confirmation');assert.equal(ready.version,3);assert.equal(ready.draftId,first.draftId);
+    assert.match(ready.replyText,/Alta de cliente.*Emiliano/);assert.match(ready.replyText,/Cliente nuevo: Emiliano/);
+    assert.match(ready.replyText,/Variante: L/);assert.deepEqual(await state(),before);
+    await persisted(reply,ready);assert.deepEqual(await ordinary(reply),ready);
+    const confirmation=input('confirmar'),applied=await ordinary(confirmation);
+    assert.equal(applied.status,'applied');assert.match(applied.replyText,/Cliente creado: Emiliano/);assert.match(applied.replyText,/Pedido creado/);
+    const after=await state(),customer=after.clients.find(row=>!before.clients.some(old=>old.id===row.id));
+    const order=after.pedidos.find(row=>!before.pedidos.some(old=>old.id===row.id));
+    assert.equal(after.clients.length,before.clients.length+1);assert.equal(after.pedidos.length,before.pedidos.length+1);
+    assert.equal(order.cliente_id,customer.id);assert.equal(order.talle,'L');assert.equal(order.estado,'pendiente');
+    assert.equal(after.inventory_movements.length,before.inventory_movements.length);
+    await persisted(confirmation,applied);assert.deepEqual(await ordinary(confirmation),applied);assert.deepEqual(await state(),after);
+    assert.equal((await ordinary(input('confirmar'))).errorCode,'DRAFT_NOT_FOUND');assert.deepEqual(await state(),after);
+  });
+
   await check('universal meta: explicit review persists shared draft and outbox without domain effects', async () => {
     const fixture = await seed(), request = input(`REVISAR OPERACION ${text}`), fake = provider(proposal(actions(fixture))), before = await state();
     const preview = await process(request, fake.complete);
