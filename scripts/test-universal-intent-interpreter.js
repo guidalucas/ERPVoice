@@ -50,6 +50,28 @@ test('read queries return backend snapshot facts without a mutation plan or mode
   assert.equal((await invoke(data,{...patch,context:{...context,permissions:['inventory:receive']}})).kind,'invalid');
 });
 
+test('order requests on WhatsApp and panel answer with business currency configured',async()=>{
+  const snapshot={products:[],clients:[{id:'client',name:'Emiliano',debt:0}],proveedores:[],
+    pedidos:[{id:'order',producto:'Camiseta de Boca',talle:'L',qty:1,estado:'pendiente',clienteId:'client',proveedorId:null,stockPosting:null}],
+    moneyPolicy:{currency:'ARS',storageUnit:'major_integer',fractionDigits:2,revision:1}};
+  const before=structuredClone(snapshot);
+  for(const channel of ['whatsapp','panel']) for(const text of ['Cuales son los pedidos que tengo','Decime mis pedidos']) {
+    let calls=0;
+    const data={contractVersion:1,kind:'query',queries:[{itemId:'q',type:'orders.query',selector:{kind:'all'}}],evidence:[{itemId:'q',quote:text}]};
+    const result=await invoke(data,{sourceText:text,catalog:snapshot,channel,context:{...context,permissions:['orders:read']},complete:async options=>{
+      calls++;assert.deepEqual(JSON.parse(options.messages[1].content).catalog.moneyPolicy,snapshot.moneyPolicy);
+      return {ok:true,json:data};
+    }});
+    assert.equal(result.kind,'answer',result.reason);assert.equal(calls,1);
+    assert.equal(result.plan,undefined);assert.equal(result.trace.ok,true);
+    assert.match(result.answer.text,/Camiseta de Boca \(L\): 1; pendiente; cliente Emiliano/);
+    assert.equal(result.answer.items[0].rows[0].id,'order');
+    assert.deepEqual(snapshot,before);
+    const denied=await invoke(data,{sourceText:text,catalog:snapshot,channel,context:{...context,permissions:['orders:create']}});
+    assert.equal(denied.kind,'invalid');assert.equal(denied.reason,'FORBIDDEN');
+  }
+});
+
 test('mixed ready proposal uses backend envelope and frozen catalog revisions without leaking authorization',async()=>{
   let calls=0;
   const original=proposal();

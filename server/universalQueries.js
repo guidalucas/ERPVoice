@@ -1,6 +1,7 @@
 import { InventoryOperationError } from './inventoryOperations.js';
 import { normalizeAttributes, normalizeUnit } from './inventoryDomain.js';
 import { normalizeFamilyReference } from './productFamilySchemas.js';
+import { validateMoneyPolicy } from './inventoryMoneyPolicy.js';
 
 // Pure snapshot reader. Neither selectors nor model output can supply facts,
 // authority, writes, fuzzy matching, or a second catalog lookup.
@@ -132,8 +133,11 @@ export function prepareUniversalQueries(input, catalog, context) {
   if (evidenceMap.size !== queries.length) fail('INVALID_EVIDENCE', 'Falta evidencia de una consulta.');
 
   // Permission checks above finish before touching any catalog data.
-  const snapshot = record(copyJson(catalog), ['products', 'pedidos', 'clients', 'proveedores', 'familySchemas']);
+  const snapshot = record(copyJson(catalog), ['products', 'pedidos', 'clients', 'proveedores', 'familySchemas', 'moneyPolicy']);
   if (JSON.stringify(snapshot).length > 200000) invalid('El catálogo es demasiado grande.');
+  // Backend configuration can accompany the snapshot; row facts remain the
+  // source of query amounts and currencies, without conversions or defaults.
+  if (own(snapshot, 'moneyPolicy')) validateMoneyPolicy(snapshot.moneyPolicy);
   const maps = {};
   let count = own(snapshot, 'familySchemas') ? array(snapshot.familySchemas).length : 0;
   for (const name of ['products', 'pedidos', 'clients', 'proveedores']) {

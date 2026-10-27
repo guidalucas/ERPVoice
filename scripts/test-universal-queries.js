@@ -44,6 +44,20 @@ test('accounts compute exact safe totals, including zero balance', () => {
   assert.match(result.answer.text, /Saldo total: 28/);
 });
 
+test('business money configuration preserves snapshot answers for every query type', () => {
+  for (const type of ['inventory.query', 'orders.query', 'accounts.query']) {
+    const data = catalog();
+    const expected = run(plan(type), data);
+    data.moneyPolicy = { currency: 'ARS', storageUnit: 'major_integer', fractionDigits: 2, revision: 1 };
+    const before = structuredClone(data);
+    assert.deepEqual(run(plan(type), data), expected);
+    assert.deepEqual(data, before);
+    rejects(() => run({ ...plan(type), moneyPolicy: data.moneyPolicy }, data));
+    rejects(() => run(plan(type), { ...data, unexpected: true }));
+    assert.throws(() => run(plan(type), { ...data, moneyPolicy: { ...data.moneyPolicy, currency: 'INVALID' } }), { code: 'MONEY_UNCONFIRMED' });
+  }
+});
+
 test('orders resolve actual names and variant, status is explicit and posting is snapshot only', () => {
   const result = run(plan('orders.query', { estado: 'conseguido' }));
   assert.equal(result.answer.items[0].rows.length, 1);
