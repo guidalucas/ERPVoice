@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { InventoryOperationError } from './inventoryOperations.js';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { transcribeAudio, MAX_AUDIO_BYTES, TranscriptionError } from './audioTranscription.js';
+import { operationErrorMessage } from './interpretationRecovery.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
 import { createCommerceRouter } from './commerce/router.js';
 import { createPublicCatalogRouters } from './catalog/router.js';
@@ -587,7 +588,7 @@ app.get('/api/state', authenticateRequest, async (req, res) => {
     const snapshot = await getStateSnapshot(clientPhone);
     res.json(snapshot);
   } catch (error) {
-    res.status(503).json({ error: 'No pude leer el estado guardado. Conservá tu vista y reintentá.', code:'STATE_UNAVAILABLE' });
+    res.status(503).json({ error: operationErrorMessage({code:'STATE_UNAVAILABLE'}), code:'STATE_UNAVAILABLE' });
   }
 });
 
@@ -597,7 +598,7 @@ app.post('/api/products/model', authenticateRequest, async (req, res) => {
     res.status(201).json(products);
   } catch (error) {
     const status = ['OPERATION_ID_REQUIRED', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400 : error.name === 'InventoryOperationError' ? 409 : 500;
-    res.status(status).json({ error: status === 500 ? 'No pude crear el modelo.' : error.message, code: error.code });
+    res.status(status).json({ error: operationErrorMessage(error), code: error.code });
   }
 });
 
@@ -608,14 +609,14 @@ app.post('/api/products', authenticateRequest, async (req, res) => {
     const product = await createProductRecord(req.body, clientPhone, { actorId: authPhoneOf(req) });
 
     if (!product) {
-      res.status(400).json({ error: 'No se pudo crear el producto' });
+      res.status(400).json({ error: operationErrorMessage({code:'INVALID_OPERATION_PLAN'}) });
       return;
     }
 
     res.status(201).json(product);
   } catch (error) {
     const status = ['OPERATION_ID_REQUIRED', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400 : error.name === 'InventoryOperationError' ? 409 : 500;
-    res.status(status).json({ error: status === 500 ? 'No pude crear el producto.' : error.message, code: error.code });
+    res.status(status).json({ error: operationErrorMessage(error), code: error.code });
   }
 });
 
@@ -626,7 +627,7 @@ app.put('/api/products/model', authenticateRequest, async (req, res) => {
   } catch (error) {
     const status = ['SELECTION_REQUIRED', 'INVALID_SELECTION', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400
       : error.name === 'InventoryOperationError' ? 409 : 500;
-    res.status(status).json({ error: status === 500 ? 'No pude guardar el modelo.' : error.message, code: error.code });
+    res.status(status).json({ error: operationErrorMessage(error), code: error.code });
   }
 });
 
@@ -649,7 +650,7 @@ app.put('/api/products/:id', authenticateRequest, async (req, res) => {
       expectedFingerprint: req.body?.expectedFingerprint, reason: req.body?.reason, actorId: authPhoneOf(req) });
 
     if (!product) {
-      res.status(404).json({ error: 'Producto no encontrado' });
+      res.status(404).json({ error: operationErrorMessage({code:'SKU_NOT_FOUND'}) });
       return;
     }
 
@@ -658,7 +659,7 @@ app.put('/api/products/:id', authenticateRequest, async (req, res) => {
     const status = error.code === 'SKU_NOT_FOUND' ? 404
       : ['OPERATION_ID_REQUIRED', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400
         : error.name === 'InventoryOperationError' ? 409 : 500;
-    res.status(status).json({ error: status === 500 ? 'No pude guardar la edición.' : error.message, code: error.code });
+    res.status(status).json({ error: operationErrorMessage(error), code: error.code });
   }
 });
 
@@ -667,7 +668,7 @@ app.delete('/api/products/batch', authenticateRequest, async (req, res) => {
     const result = await deleteProductRecords(req.body, tenantPhoneOf(req), { actorId: authPhoneOf(req), returnResult: true });
     res.json({ deleted: result.items.length, operationResult: result });
   } catch (error) {
-    res.status(error.name === 'InventoryOperationError' ? 409 : 500).json({ error: error.message, code: error.code });
+    res.status(error.name === 'InventoryOperationError' ? 409 : 500).json({ error: operationErrorMessage(error), code: error.code });
   }
 });
 
@@ -675,24 +676,24 @@ app.delete('/api/products/:id', authenticateRequest, async (req, res) => {
   try {
     const clientPhone = tenantPhoneOf(req);
     if (!req.body || Object.keys(req.body).some((key) => !['selectionId', 'digest'].includes(key))) {
-      res.status(409).json({ error: 'Revisá la selección antes de confirmar la baja.', code: 'SELECTION_REQUIRED' }); return;
+      res.status(409).json({ error: operationErrorMessage({code:'SELECTION_REQUIRED'}), code: 'SELECTION_REQUIRED' }); return;
     }
     const deleted = await deleteProductRecord(req.params.id, clientPhone, { ...req.body, actorId: authPhoneOf(req), returnResult: true });
 
     if (!deleted) {
-      res.status(404).json({ error: 'Producto no encontrado' });
+      res.status(404).json({ error: operationErrorMessage({code:'SKU_NOT_FOUND'}) });
       return;
     }
 
     res.json({ deleted: 1, operationResult: deleted });
   } catch (error) {
-    res.status(error.name === 'InventoryOperationError' ? 409 : 500).json({ error: error.message, code: error.code });
+    res.status(error.name === 'InventoryOperationError' ? 409 : 500).json({ error: operationErrorMessage(error), code: error.code });
   }
 });
 
 const accountHttpError = (res,error) => res.status(error.name === 'InventoryOperationError'
   ? error.code === 'INVALID_ACCOUNT_OPERATION' ? 400 : error.code === 'CLIENT_NOT_FOUND' ? 404 : 409 : 500)
-  .json({error:error.name === 'InventoryOperationError' ? error.message : 'No pude guardar la cuenta.',code:error.code});
+  .json({error:operationErrorMessage(error),code:error.code});
 
 app.post('/api/accounts/operations',authenticateRequest,async(req,res)=>{
   try {
@@ -705,7 +706,7 @@ const partyHttpError = (res, error) => {
   const known = error.name === 'InventoryOperationError';
   const status = !known ? 500 : ['OPERATION_ID_REQUIRED','INVALID_PARTY_OPERATION'].includes(error.code) ? 400
     : ['BUSINESS_SCOPE_REQUIRED','BUSINESS_SCOPE_MISMATCH','FORBIDDEN'].includes(error.code) ? 403 : error.code === 'PARTY_NOT_FOUND' ? 404 : 409;
-  return res.status(status).json({error:known ? error.message : 'No pude guardar el cliente/proveedor.',...(known ? {code:error.code} : {})});
+  return res.status(status).json({error:operationErrorMessage(error),...(known ? {code:error.code} : {})});
 };
 
 app.post('/api/clients', authenticateRequest, async (req, res) => {
@@ -777,7 +778,7 @@ const orderHttpError = (res, error) => {
   const status = ['OPERATION_ID_REQUIRED', 'INVALID_ORDER_OPERATION'].includes(error.code) ? 400
     : ['ORDER_NOT_FOUND', 'CLIENT_NOT_FOUND', 'SUPPLIER_NOT_FOUND'].includes(error.code) ? 404
     : error.name === 'InventoryOperationError' ? 409 : 500;
-  res.status(status).json({ error: status === 500 ? 'No pude guardar el pedido.' : error.message, code: error.code });
+  res.status(status).json({ error: operationErrorMessage(error), code: error.code });
 };
 app.post('/api/pedidos', authenticateRequest, async (req, res) => {
   try {
@@ -840,7 +841,7 @@ const universalHttpError = (res,error) => {
     : error.code==='INTERPRETATION_UNAVAILABLE' ? 503 : error.code==='INTERPRETATION_INVALID' ? 422
     : ['INVALID_OPERATION_PLAN','INVALID_ACCOUNT_OPERATION','INVALID_PARTY_OPERATION','INVALID_ORDER_OPERATION','INVALID_ORDER_CLIENT_REFERENCE','INVALID_OPERATION_REFERENCE','INVALID_DRAFT_REQUEST','INVALID_PRODUCT_SCHEMA','BUSINESS_SCOPE_REQUIRED','UNSUPPORTED_OPERATION','OPERATION_ID_REQUIRED','MIXED_OPERATION_PLAN_UNSUPPORTED','UNSUPPORTED_OPERATION_ORDER'].includes(error.code) ? 400
     : ['CLIENT_NOT_FOUND','PARTY_NOT_FOUND','SKU_NOT_FOUND','ORDER_NOT_FOUND','SUPPLIER_NOT_FOUND','DRAFT_NOT_FOUND','PRODUCT_SCHEMA_NOT_FOUND'].includes(error.code) ? 404 : 409;
-  res.status(status).json({error:known ? error.message : 'No pude guardar la operación.',code:known ? error.code : 'OPERATION_UNAVAILABLE'});
+  res.status(status).json({error:operationErrorMessage(known ? error : {code:'OPERATION_UNAVAILABLE'}),code:known ? error.code : 'OPERATION_UNAVAILABLE'});
 };
 app.post('/api/operation-drafts', authenticateRequest, async (req,res) => {
   try { res.json(await prepareUniversalDraft(req.body,universalRequestContext(req))); }
@@ -891,7 +892,7 @@ app.post('/api/inventory/operations', authenticateRequest, async (req, res) => {
     const status = ['FORBIDDEN', 'BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
       : ['INVALID_OPERATION_PLAN', 'BUSINESS_SCOPE_REQUIRED', 'UNSUPPORTED_OPERATION'].includes(error.code) ? 400
         : error.name === 'InventoryOperationError' ? 409 : 500;
-    res.status(status).json({ error: status === 500 ? 'No pude guardar la operación.' : error.message,
+    res.status(status).json({ error: operationErrorMessage(error),
       code: error.name === 'InventoryOperationError' ? error.code : 'INVENTORY_UNAVAILABLE' });
   }
 });
@@ -906,14 +907,14 @@ app.post('/api/inventory/selections', authenticateRequest, async (req, res) => {
     const status = ['FORBIDDEN', 'BUSINESS_SCOPE_MISMATCH'].includes(error.code) ? 403
       : ['INVALID_SELECTION', 'INVALID_OPERATION_PLAN', 'BUSINESS_SCOPE_REQUIRED', 'UNSUPPORTED_OPERATION'].includes(error.code) ? 400
         : error.name === 'InventoryOperationError' ? 409 : 500;
-    res.status(status).json({ error: status === 500 ? 'No pude preparar la selección.' : error.message, code: error.code });
+    res.status(status).json({ error: operationErrorMessage(error), code: error.code });
   }
 });
 
 app.post('/api/inventory/selections/:id/confirm', authenticateRequest, async (req, res) => {
   try {
     if (!req.body || Object.keys(req.body).some((key) => key !== 'digest')) {
-      res.status(400).json({ error: 'Confirmá únicamente la selección revisada.', code: 'INVALID_SELECTION' }); return;
+      res.status(400).json({ error: operationErrorMessage({code:'INVALID_SELECTION'}), code: 'INVALID_SELECTION' }); return;
     }
     const result = await confirmInventorySelection(req.params.id, req.body.digest, {
       businessId: tenantPhoneOf(req), actorId: authPhoneOf(req), permissions: ['inventory:update', 'inventory:deactivate','inventory:adjust'],
@@ -921,26 +922,26 @@ app.post('/api/inventory/selections/:id/confirm', authenticateRequest, async (re
     res.json(result);
   } catch (error) {
     const status = error.name === 'InventoryOperationError' ? 409 : 500;
-    res.status(status).json({ error: status === 500 ? 'No pude confirmar la selección.' : error.message, code: error.code });
+    res.status(status).json({ error: operationErrorMessage(error), code: error.code });
   }
 });
 
 app.post('/api/state/apply', authenticateRequest, async (req, res) => {
-  res.status(410).json({code:'LEGACY_WRITER_RETIRED',error:'La ejecución anterior fue retirada. Consultá el recibo o prepará una revisión universal.'});
+  res.status(410).json({code:'LEGACY_WRITER_RETIRED',error:operationErrorMessage({code:'LEGACY_WRITER_RETIRED'})});
 });
 
 app.post('/api/operations/recovery',authenticateRequest,async(req,res)=>{
   res.setHeader('Cache-Control','no-store');
   try {res.json(await recoverPanelOperation(req.body,universalRequestContext(req)));}
   catch(error) {
-    if(error.code==='INVALID_RECOVERY_REQUEST') return res.status(400).json({code:error.code,error:error.message});
+    if(error.code==='INVALID_RECOVERY_REQUEST') return res.status(400).json({code:error.code,error:operationErrorMessage(error)});
     universalHttpError(res,error);
   }
 });
 
 // Both historical execution and parsing are closed. Receipt recovery is read-only.
 app.post('/api/voice/parse', authenticateRequest, (_req,res) => {
-  res.status(410).json({code:'LEGACY_INTERPRETER_RETIRED',error:'Prepará la solicitud con la revisión universal de operaciones.'});
+  res.status(410).json({code:'LEGACY_INTERPRETER_RETIRED',error:operationErrorMessage({code:'LEGACY_INTERPRETER_RETIRED'})});
 });
 
 const readVoiceAudio=express.raw({type:()=>true,limit:MAX_AUDIO_BYTES});
@@ -948,7 +949,7 @@ app.post('/api/voice/transcribe', authenticateRequest, (req,res,next) => {
   res.setHeader('Cache-Control','no-store');
   readVoiceAudio(req,res,error=>{
     if (error) return res.status(error.type==='entity.too.large' ? 413 : 400)
-      .json({code:error.type==='entity.too.large' ? 'AUDIO_TOO_LARGE' : 'INVALID_AUDIO',error:'El audio no es válido o supera el límite permitido.'});
+      .json({code:error.type==='entity.too.large' ? 'AUDIO_TOO_LARGE' : 'INVALID_AUDIO',error:operationErrorMessage({code:error.type==='entity.too.large' ? 'AUDIO_TOO_LARGE' : 'INVALID_AUDIO'})});
     next();
   });
 }, async (req,res) => {
@@ -957,7 +958,7 @@ app.post('/api/voice/transcribe', authenticateRequest, (req,res,next) => {
   } catch(error) {
     const typed=error instanceof TranscriptionError;
     res.status(typed ? error.status : 503).json({code:typed ? error.code : 'TRANSCRIPTION_UNAVAILABLE',
-      error:typed ? error.message : 'No pude transcribir el audio. Intentá de nuevo.'});
+      error:operationErrorMessage(typed ? error : {code:'TRANSCRIPTION_UNAVAILABLE'})});
   }
 });
 

@@ -3,6 +3,121 @@ import assert from 'node:assert/strict';
 import { InventoryOperationError } from '../server/inventoryOperations.js';
 import { parseUniversalMetaCommand, universalMetaPreviewReply, universalMetaReceiptReply } from '../server/universalMetaOperations.js';
 import { processMetaWebhook } from '../server/metaWebhookProcessor.js';
+import { interpretationRecoveryMessage, interpretationRecoveryContext, operationErrorMessage } from '../server/interpretationRecovery.js';
+
+test('every operation rejection gives a cause and a concrete next action without leaking internal errors', () => {
+  const cases = [
+    ['INTERPRETATION_UNAVAILABLE', /servicio de interpretación/, /reenviá el mismo mensaje/],
+    ['FORBIDDEN', /no está habilitada/, /administra el negocio/],
+    ['DRAFT_EXPIRED', /venció el plazo/, /instrucción completa/],
+    ['DRAFT_NOT_FOUND', /no encontré una propuesta/, /nueva propuesta/],
+    ['DRAFT_NOT_READY', /aclaración pendiente/, /última pregunta/],
+    ['DRAFT_NOT_PENDING', /resultado definitivo/, /historial/],
+    ['DRAFT_VERSION_MISMATCH', /versión anterior/, /revisión vigente/],
+    ['REVISION_MISMATCH', /datos cambiaron/, /valores actuales/],
+    ['INSUFFICIENT_STOCK', /no hay suficientes unidades/, /stock actual/],
+    ['SKU_NOT_FOUND', /no existe o no pertenece/, /nombre exacto/],
+    ['SKU_INACTIVE', /dado de baja/, /producto activo/],
+    ['SKU_HAS_RESERVATIONS', /unidades reservadas/, /resolvelas/],
+    ['PAYMENT_EXCEEDS_DEBT', /supera la deuda/, /consultá su saldo/],
+    ['CLIENT_HAS_BALANCE', /tiene saldo/, /resolvé o transferí/],
+    ['CLIENT_HAS_ORDERS', /pedidos vinculados/, /resolvelos/],
+    ['PRICE_CONFLICT', /precio o la moneda/, /importe y moneda/],
+    ['INVALID_PRODUCT_SCHEMA', /atributos del producto/, /atributos requeridos/],
+    ['IDEMPOTENCY_CONFLICT', /asociado a otra instrucción/, /recuperá el resultado/],
+    ['PERSISTED_EFFECT_MISMATCH', /no pude verificar/, /antes de repetir/],
+    ['LEGACY_WRITER_RETIRED', /flujo anterior/, /REVISAR OPERACION/],
+    ['transcription_timeout', /tardó demasiado/, /por escrito/],
+    ['transcription_not_configured', /no está configurada/, /por escrito/],
+    ['audio_too_large', /tamaño máximo/, /audio más corto/],
+    ['STATE_UNAVAILABLE', /leer los datos guardados/, /conservá tu vista/],
+  ];
+  for (const [code, cause, action] of cases) {
+    const error = new InventoryOperationError(code, 'secret SQL token=private raw provider payload');
+    const message = operationErrorMessage(error, { channel: 'whatsapp', noChanges: true });
+    assert.match(message, /porque/); assert.match(message, /Probá: /);
+    assert.match(message, cause, code); assert.match(message, action, code);
+    assert.match(message, /No apliqué cambios/);
+    assert.doesNotMatch(message, /secret|SQL|token|payload/);
+    assert.ok(message.length < 3500);
+  }
+  const unknown = operationErrorMessage(new Error('raw SQL failure'));
+  assert.match(unknown, /causa exacta no pude determinar/);
+  assert.match(unknown, /Probá: .*antes de repetir/);
+  assert.doesNotMatch(unknown, /raw|SQL|No apliqué cambios/);
+  const tooLarge=operationErrorMessage(new InventoryOperationError('INTERPRETATION_UNAVAILABLE','internal',{reason:'CATALOG_TOO_LARGE'}));
+  assert.match(tooLarge,/supera el tamaño/);assert.match(tooLarge,/Probá: .*grupos más pequeños/);
+  assert.doesNotMatch(tooLarge,/servicio de interpretación/);
+});
+
+test('all interpretation failure reasons retain their own explanation and recovery action', () => {
+  const cases = [
+    ['INVALID_EVIDENCE', /respaldar todos los cambios/],
+    ['INVALID_MODEL_RESPONSE', /formato inválido/],
+    ['INVALID_OPERATION_PLAN', /no forman una operación válida/],
+    ['UNKNOWN_CATALOG_REFERENCE', /referencia del pedido/],
+    ['INVALID_INVENTORY_UNIT', /unidad solicitada/],
+    ['INVALID_REVISION_PATCH', /corrección no pudo vincularse/],
+    ['INVALID_CATALOG', /datos actuales del negocio/],
+    ['CATALOG_TOO_LARGE', /supera el tamaño/],
+    ['UNSUPPORTED_OPERATION_ORDER', /combinación de cambios/],
+    ['UNRECOGNIZED_NEW_REASON', /no pude identificar un motivo más específico/],
+  ];
+  for (const [reason, cause] of cases) {
+    const error = new InventoryOperationError('INTERPRETATION_INVALID', 'internal failure', { reason });
+    const message = operationErrorMessage(error);
+    assert.match(message, cause); assert.match(message, /Probá: /);
+    assert.doesNotMatch(message, /internal failure|UNRECOGNIZED_NEW_REASON/);
+  }
+  const recovery=interpretationRecoveryContext('Borra 2 unidades\nDe la camiseta del real Madrid talle m',true);
+  assert.deepEqual(recovery,{stockRemoval:true,reply:true});
+  const error=new InventoryOperationError('INTERPRETATION_INVALID','internal',{reason:'FORBIDDEN',recovery});
+  const message=operationErrorMessage(error,{channel:'whatsapp',sourceText:'De la camiseta del real Madrid talle m'});
+  assert.match(message,/retiro directo de unidades/);assert.match(message,/cantidad final/);assert.match(message,/«cancelar»/);
+});
+
+test('empty messages and unusable audio explain the problem and suggest a usable message', async () => {
+  for(const type of ['image','audio']) {
+    const body={object:'whatsapp_business_account',entry:[{changes:[{value:{messages:[{id:`recovery-${type}`,from:'59899000971',type,...(type==='audio'?{audio:{id:'cached'}}:{image:{id:'unused'}})}]}}]}]};
+    const [result]=await processMetaWebhook(body,{loadTranscript:async()=> 'unusable untranslated transcript words',processStockText:()=>assert.fail('unusable input must not prepare an operation')});
+    assert.match(result.replyText,/porque/);assert.match(result.replyText,/Probá: /);
+    assert.match(result.replyText,/por escrito|nota de voz/);assert.match(result.replyText,/No apliqué cambios/);
+  }
+});
+
+test('interpretation rejection gives actionable examples without exposing the internal contract', () => {
+  for (const reason of ['INVALID_EVIDENCE', 'INVALID_OPERATION_PLAN', 'UNKNOWN_FAILURE']) {
+    const message = interpretationRecoveryMessage({ reason, sourceText: 'Cambiá el precio', channel: 'whatsapp' });
+    assert.match(message, /No apliqué cambios/);
+    assert.match(message, /porque/); assert.match(message, /Probá: /);
+    assert.match(message, /instrucción completa/);
+    assert.match(message, /Ejemplo de formato/);
+    assert.match(message, /Reemplazá los datos entre corchetes/);
+    assert.doesNotMatch(message, /contrato|INVALID_|UNKNOWN_|SKU/);
+    assert.doesNotMatch(message, /borrador anterior|cancelar/);
+    assert.ok(message.length < 3500);
+  }
+  for (const [sourceText, expected] of [
+    ['Anotá un pedido', /pedido de \[nombre completo del cliente\]/],
+    ['Registrá un pago', /Registrá un pago\] de \[importe\]/],
+    ['Ingresaron camisetas', /Elegí una sola acción/],
+  ]) assert.match(interpretationRecoveryMessage({ sourceText }), expected);
+});
+
+test('forbidden stock removal explains the limitation and suggests an explicit final balance', () => {
+  const message = interpretationRecoveryMessage({ reason: 'FORBIDDEN', sourceText: 'Borra 2 unidades\nDe la camiseta del real Madrid talle m', channel: 'whatsapp', reply: true });
+  assert.match(message, /retiro directo de unidades no está habilitado/);
+  assert.match(message, /cantidad final/);
+  assert.match(message, /no la cantidad que querés quitar/);
+  assert.match(message, /dar de baja el producto completo/);
+  assert.match(message, /borrador anterior sigue pendiente/);
+  assert.match(message, /«cancelar»/);
+  assert.doesNotMatch(message, /FORBIDDEN|contrato|Retirá 2|a 1 unidades/);
+  const panel = interpretationRecoveryMessage({ reason: 'FORBIDDEN', reply: true });
+  assert.match(panel, /Reformular el mismo pedido no habilita/);
+  assert.match(panel, /cancelá el borrador/);
+  assert.doesNotMatch(panel, /este chat|«cancelar»/);
+});
 
 const digest = 'a1b2c3d4'.padEnd(64, '0');
 const plan = (ids = ['one', 'two']) => ({ actions: ids.map((itemId) => ({ itemId })) });

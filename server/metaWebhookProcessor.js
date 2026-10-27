@@ -14,6 +14,7 @@ import {
 import { completeChatJson, hasAnyLlmApiKey } from './llmChatClient.js';
 import { normalizeProductMetadata, productMatchKey } from './productIdentity.js';
 import { transcribeAudio, MAX_AUDIO_BYTES, TranscriptionError } from './audioTranscription.js';
+import { operationErrorMessage } from './interpretationRecovery.js';
 
 const DEFAULT_MODEL_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'openai/gpt-oss-20b';
@@ -2552,19 +2553,17 @@ const buildReplyText = ({ transcript, parsed, preset }) => {
   const resolvedPreset = preset ?? getBusinessCategoryPreset('general');
 
   if (parsed?.missingFields?.includes('scopeNotFound')) {
-    return '⚠️ No encontré productos que coincidan con el pedido en el inventario. No apliqué cambios.';
+    return operationErrorMessage({code:'SKU_NOT_FOUND'},{channel:'whatsapp',noChanges:true});
   }
 
   if (!parsed?.actions?.length) {
-    return transcript
-      ? `⚠️ *No pude interpretar el audio*\n\nEntendí: “${transcript}”.\nProbá de nuevo con más detalle.`
-      : '⚠️ *No pude interpretar el mensaje*\n\nProbá de nuevo con más detalle.';
+    return operationErrorMessage({code:'MESSAGE_NOT_UNDERSTOOD'},{channel:'whatsapp',noChanges:true});
   }
 
   if (hasProductMatchHold(parsed)) {
     const options = (parsed.suggestedPhrases || []).map((phrase) => `• ${phrase}`).join('\n');
     const audioNote = transcript ? `\n\n🎙️ Entendí: “${transcript}”` : '';
-    return `⚠️ *Necesito identificar el producto*\n\nHay más de una opción. No apliqué cambios.\n${options || 'Decime el nombre exacto.'}${audioNote}`;
+    return `No pude identificar el producto porque hay más de una opción que coincide. No apliqué cambios.\n\nProbá: ${options ? `elegí una de estas opciones y enviá la instrucción completa:\n${options}` : 'indicá el nombre exacto y la variante del producto en la instrucción completa.'}${audioNote}`;
   }
 
   const mutations = parsed.actions.filter((action) => action.type !== 'query_stock' && action.type !== 'query_pedidos');
@@ -2678,7 +2677,7 @@ const processMetaMessage = async (
     transcript: null,
     parsed: null,
     businessCategory: preset.id,
-    replyText: 'Recibí el mensaje, pero no encontré texto ni audio para procesar.',
+    replyText: operationErrorMessage({code:'EMPTY_MESSAGE'},{channel:'whatsapp',noChanges:true}),
   };
 };
 

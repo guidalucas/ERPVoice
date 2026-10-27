@@ -65,7 +65,13 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
         const buffer = Buffer.concat(chunks), text = buffer.toString('utf8');
         let json;
         try { json = JSON.parse(text); } catch { /* challenge and status responses are plain text */ }
-        resolve({ status: res.statusCode, text, json, headers: res.headers, buffer });
+        try {
+          if (auth && res.statusCode>=400 && json?.code && /^\/api\/(?:operation-drafts|operations|inventory|products|accounts|clients|proveedores|pedidos|state|voice)(?:\/|$|\?)/.test(route)) {
+            assert.match(json.error,/porque/,`${route}: failure must explain its cause`);
+            assert.match(json.error,/Probá: /,`${route}: failure must suggest a next action`);
+          }
+          resolve({ status: res.statusCode, text, json, headers: res.headers, buffer });
+        } catch(error) { reject(error); }
       });
     });
     req.on('error', reject);
@@ -512,6 +518,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
         ['http-meta-universal-unavailable','REVISAR OPERACION Vendí tres unidades.','INTERPRETATION_UNAVAILABLE'],
       ]) {
         const result=await universalWebhook(messageId,text);assert.equal(result.errorCode,errorCode);assert.deepEqual(result.actions,[]);
+        assert.match(result.replyText,/porque/);assert.match(result.replyText,/Probá: /);
         assert.equal((await sql.query('SELECT 1 FROM voice_stock_batches WHERE source_message_id=$1',[messageId])).rowCount,0);
         assert.deepEqual(await universalWebhook(messageId,text),result);
       }
@@ -895,7 +902,8 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       assert.equal(claim?.status, 'completed');
       const event = (await sql.query('SELECT error,actions_json,reply_text,processed FROM meta_events WHERE id=$1', [messageId])).rows[0];
       assert.equal(event.error, 'INSUFFICIENT_STOCK'); assert.deepEqual(event.actions_json, []); assert.equal(event.processed, true);
-      assert.match(event.reply_text, /insuficiente/);
+      assert.match(event.reply_text, /no hay suficientes unidades/);
+      assert.match(event.reply_text, /Probá: .*stock actual/);
       assert.equal((await sql.query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1', [messageId])).rows[0].reply_text, event.reply_text);
       assert.equal(Number((await stock(product.id))[0].stock_available), 2);
       for (const [table, rows] of Object.entries(inventoryBefore))

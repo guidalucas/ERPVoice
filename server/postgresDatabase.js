@@ -24,6 +24,7 @@ import { mergeClientsInTransaction } from './clientMergePostgres.js';
 import { UNIVERSAL_SCHEMA_SQL, executeUniversalPlanInTransaction } from './universalPostgres.js';
 import { prepareUniversalOperation } from './universalOperations.js';
 import { interpretUniversalIntent } from './universalIntentInterpreter.js';
+import { interpretationRecoveryMessage, interpretationRecoveryContext, operationErrorMessage } from './interpretationRecovery.js';
 import { buildUniversalOperationReview } from './universalOperationReview.js';
 import { authorizeUniversalQueries } from './universalQueries.js';
 import { parseUniversalMetaCommand } from './universalMetaOperations.js';
@@ -1456,8 +1457,10 @@ const interpretUniversalDraft = async (text,draftId,context,options,clarificatio
     context:{...context,internalConversationOperation:true},operationId:`draft-operation:${draftId}`,
     ...(previous?.plan ? {revision:{plan:previous.plan,evidence:previous.evidence,replyText:text.slice(previous.text.length+1)}} : {}),
     channel:context.channel ?? 'panel',...(options?.complete ? {complete:options.complete} : {})});
-  if (result.kind==='invalid') throw new InventoryOperationError('INTERPRETATION_INVALID','La interpretación no cumple el contrato. No apliqué cambios.',{reason:result.reason});
-  if (result.kind==='unavailable') throw new InventoryOperationError('INTERPRETATION_UNAVAILABLE','No pude interpretar la solicitud. Conservá el mensaje para reintentar.',{reason:result.reason});
+  if (result.kind==='invalid') throw new InventoryOperationError('INTERPRETATION_INVALID',interpretationRecoveryMessage({
+    reason:result.reason,sourceText:text,channel:context.channel,reply:previous!==null,
+  }),{reason:result.reason,recovery:interpretationRecoveryContext(text,previous!==null)});
+  if (result.kind==='unavailable') throw new InventoryOperationError('INTERPRETATION_UNAVAILABLE',operationErrorMessage({code:'INTERPRETATION_UNAVAILABLE',details:{reason:result.reason}}),{reason:result.reason});
   if (result.kind==='answer') return {...result,answer:{...result.answer,observedAt}};
   return result.kind==='ready' ? {...result,review:buildUniversalOperationReview(result.plan,catalog)}
     : result.plan ? {...result,review:previous.review} : result;

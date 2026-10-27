@@ -3,6 +3,7 @@ import { operationRequestDigest } from './operationHash.js';
 import { operationResultActions } from './operationResults.js';
 import { authorizeUniversalConversation } from './universalConversationPostgres.js';
 import { universalMetaPreviewReply } from './universalMetaOperations.js';
+import { operationErrorMessage } from './interpretationRecovery.js';
 
 export const UNIVERSAL_META_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS universal_meta_commands (
@@ -59,7 +60,7 @@ export async function executeUniversalMetaInTransaction(client,input,context,app
   } catch(error) {
     if(error.name!=='InventoryOperationError') throw error;
     await client.query('ROLLBACK TO SAVEPOINT universal_meta_effect');
-    result={handled:true,intent:'mixed',requiresConfirmation:false,replyText:error.message,actions:[],errorCode:error.code};
+    result={handled:true,intent:'mixed',requiresConfirmation:false,replyText:operationErrorMessage(error,{channel:'whatsapp',sourceText:input.sourceText,noChanges:true}),actions:[],errorCode:error.code};
     if (['INTERPRETATION_INVALID','INTERPRETATION_UNAVAILABLE'].includes(error.code)
       && typeof error.details?.reason==='string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.details.reason)) result.interpretationReason=error.details.reason;
   }

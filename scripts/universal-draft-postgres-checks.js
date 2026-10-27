@@ -72,7 +72,11 @@ export async function runUniversalDraftChecks({ db, sql, check }) {
     const fixture = await seed();
     for (const [response, code] of [[{ ok: true, json: { contractVersion: 1, kind: 'proposal', actions: [], evidence: [] } }, 'INTERPRETATION_INVALID'], [{ ok: false, reason: 'provider_unavailable' }, 'INTERPRETATION_UNAVAILABLE']]) {
       const request = { requestId: id(), text }, before = await state(true), fake = provider(response);
-      await assert.rejects(prepare(request, fake), { code }); assert.equal(fake.calls, 1); assert.deepEqual(await state(true), before);
+      await assert.rejects(prepare(request, fake), error => {
+        assert.equal(error.code,code);
+        if(code==='INTERPRETATION_INVALID') { assert.match(error.message,/Ejemplo de formato/);assert.match(error.message,/Corregí la solicitud/); }
+        return true;
+      }); assert.equal(fake.calls, 1); assert.deepEqual(await state(true), before);
       const ready = await prepare(request, provider(model(actions(fixture)))); assert.equal(ready.status, 'awaiting_confirmation');
     }
   });

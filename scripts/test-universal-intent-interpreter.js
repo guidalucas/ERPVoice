@@ -12,6 +12,26 @@ const actions=[{itemId:'receive',type:'stock.receive',target:{kind:'existing',sk
 const proposal=(entries=actions)=>({contractVersion:1,kind:'proposal',actions:structuredClone(entries),evidence:entries.map(action=>({itemId:action.itemId,quote:sourceText}))});
 const invoke=(json=proposal(),patch={})=>interpretUniversalIntent({sourceText,catalog:structuredClone(catalog),context,operationId:'secret-operation',channel:'test',complete:async()=>({ok:true,json}),...patch});
 
+test('withdrawal capability asks for an explicit final balance without exposing authorization context',async()=>{
+  for(const permissions of [['inventory:adjust'],['inventory:read'],['inventory:withdraw']]) {
+    const result=await invoke(null,{sourceText:'Borra 2 unidades',context:{...context,permissions},complete:async options=>{
+      const instruction=options.messages[0].content.split('CAPACIDADES DE ESTA SOLICITUD:')[1];
+      if(permissions.includes('inventory:withdraw')) assert.equal(instruction,undefined);
+      else {
+        assert.match(instruction,/No propongas stock.withdraw/);
+        if(permissions.includes('inventory:adjust')) {
+          assert.match(instruction,/cuántas unidades disponibles deben quedar/);
+          assert.match(instruction,/No calcules ni propongas automáticamente el saldo final/);
+          assert.match(instruction,/último mensaje ya declara el saldo final/);
+        } else assert.match(instruction,/no sugieras un ajuste de stock/);
+      }
+      assert.doesNotMatch(options.messages[1].content,/secret-tenant|secret-actor|permissions/);
+      return {ok:true,json:{contractVersion:1,kind:'clarification',question:'¿Cuántas unidades deben quedar?'}};
+    }});
+    assert.equal(result.kind,'clarification');
+  }
+});
+
 test('new customer and pending order survive a short size clarification in one reviewable proposal',async()=>{
   const original='Me pidieron la camiseta blanca de boca, tercera equipación. Me lo pidió Emiliano.';
   const clarifications=[{question:'¿A qué cliente corresponde Emiliano y qué talle tiene la camiseta blanca de boca?',answer:'nuevo cliente. la camseta talle L o XL'},

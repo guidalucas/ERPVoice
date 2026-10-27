@@ -2,7 +2,7 @@ export const DEFAULT_TRANSCRIPTION_LANGUAGE = 'es';
 export const TRANSCRIPTION_PROMPT =
   'Transcripción en español rioplatense de inventario, productos, variantes, ingresos, ventas y pedidos.';
 
-export const UNUSABLE_AUDIO_REPLY = 'No entendí el audio. Grabalo de nuevo, más claro y en español.';
+export const UNUSABLE_AUDIO_REPLY = 'No pude procesar el audio porque la transcripción no produjo una instrucción que pueda interpretar. No apliqué cambios.\n\nProbá: grabá un audio breve y claro en español, o enviá el pedido por escrito indicando la acción, el producto y la cantidad.';
 
 export const looksLikeUnusableTranscript = (text) => {
   const raw = String(text ?? '').trim();

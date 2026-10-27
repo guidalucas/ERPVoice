@@ -41,6 +41,7 @@ export async function runUniversalMetaChecks({ db, sql, check }) {
   const rejection = async (request, errorCode) => {
     const before = await state(), result = await process(request);
     assert.equal(result.handled, true); assert.equal(result.intent, 'mixed'); assert.equal(result.errorCode, errorCode);
+    assert.match(result.replyText,/porque/);assert.match(result.replyText,/Probá: /);
     assert.deepEqual(result.actions, []); assert.equal(result.requiresConfirmation, false);
     assert.deepEqual(await state(), before); await persisted(request, result);
     assert.deepEqual(await process(request), result);
@@ -132,6 +133,7 @@ export async function runUniversalMetaChecks({ db, sql, check }) {
     const invalid=command('RESPONDER',preview,' Talle L');
     const rejected=await process(invalid,provider(proposal([item],'Ingresaron tres unidades de la camiseta talle L.')).complete);
     assert.equal(rejected.errorCode,'INTERPRETATION_INVALID');assert.equal(rejected.interpretationReason,'INVALID_EVIDENCE');
+    assert.match(rejected.replyText,/Ejemplo de formato/);assert.match(rejected.replyText,/borrador anterior sigue pendiente/);
     assert.deepEqual(rejected.actions,[]);assert.equal(rejected.requiresConfirmation,false);
     assert.deepEqual(await db.getUniversalDraft(preview.draftId,context),draft);assert.deepEqual(await state(),before);
     await persisted(invalid,rejected);assert.deepEqual(await process(invalid),rejected);
@@ -278,12 +280,39 @@ export async function runUniversalMetaChecks({ db, sql, check }) {
     const request = input(`REVISAR OPERACION ${withdrawalText}`), fake = provider(proposal([withdrawal], withdrawalText));
     const result = await process(request, fake.complete), after = await state(true);
     assert.equal(fake.calls, 1); assert.equal(result.errorCode, 'INTERPRETATION_INVALID'); assert.equal(result.requiresConfirmation, false); assert.deepEqual(result.actions, []);
+    assert.match(result.replyText,/retiro directo de unidades no está habilitado/);assert.match(result.replyText,/cantidad final/);
     assert.equal(Number(after.products.find(({ id }) => id === fixture.product.id).stock_available), 5);
     for (const [table, rows] of Object.entries(before)) {
       if (!['universal_meta_commands', 'outbox'].includes(table)) assert.deepEqual(after[table], rows, `${table} must remain unchanged for a forbidden public withdrawal`);
     }
     assert.equal(after.universal_meta_commands.length, before.universal_meta_commands.length + 1); assert.equal(after.outbox.length, before.outbox.length + 1);
     await persisted(request, result); assert.deepEqual(await process(request), result); assert.deepEqual(await state(true), after);
+  });
+
+  await check('universal meta: rejected removal clarification guides a final-balance retry and applies only after confirmation', async () => {
+    const product=await db.createProductRecord({name:'Camiseta Real Madrid 2025 versión jugador',size:'M',stockAvailable:3,unit:'unit'},owner,{operationId:id()});
+    const original='Borra 2 unidades',answer='De la camiseta del real Madrid talle m';
+    const ordinary=(request,complete=forbidden)=>db.processMetaUniversalMessage(request,{ordinary:true,complete});
+    const preview=await process(input(`REVISAR OPERACION ${original}`),provider({ok:true,json:{contractVersion:1,kind:'clarification',question:'¿De qué producto querés borrar 2 unidades?'}}).complete);
+    const readContext={...context,permissions:[...context.permissions,'inventory:adjust']};
+    const draft=await db.getUniversalDraft(preview.draftId,readContext),before=await state();
+    const withdrawal={itemId:'withdrawal',type:'stock.withdraw',target:{kind:'existing',skuId:product.id},quantity:{value:2,unit:'unit'},reason:'Retiro solicitado'};
+    const failedRequest=input(answer),failed=await ordinary(failedRequest,provider(proposal([withdrawal],original)).complete);
+    assert.equal(failed.errorCode,'INTERPRETATION_INVALID');assert.equal(failed.interpretationReason,'FORBIDDEN');
+    assert.match(failed.replyText,/Ejemplo de ajuste/);assert.match(failed.replyText,/cantidad final/);assert.match(failed.replyText,/«cancelar»/);
+    assert.deepEqual(failed.actions,[]);assert.deepEqual(await state(),before);
+    assert.deepEqual(await db.getUniversalDraft(preview.draftId,readContext),draft);
+    await persisted(failedRequest,failed);assert.deepEqual(await ordinary(failedRequest),failed);
+    const retryText='Ajustá el stock disponible de la camiseta Real Madrid 2025 versión jugador talle M a 1 unidad. Motivo: corrección de inventario.';
+    const adjustment={itemId:'adjustment',type:'stock.adjust',target:{kind:'existing',skuId:product.id},balances:{available:1},reason:'Corrección de inventario'};
+    const ready=await ordinary(input(retryText),provider(proposal([adjustment],retryText)).complete);
+    assert.equal(ready.status,'awaiting_confirmation');assert.equal(ready.draftId,preview.draftId);assert.equal(ready.version,2);
+    assert.deepEqual(await state(),before);
+    const confirmation=input('confirmar'),applied=await ordinary(confirmation);
+    assert.equal(applied.status,'applied');
+    const after=await state();assert.equal(Number(after.products.find(row=>row.id===product.id).stock_available),1);
+    assert.equal(after.inventory_movements.length,before.inventory_movements.length+1);
+    assert.deepEqual(await ordinary(confirmation),applied);assert.deepEqual(await state(),after);
   });
 
   await check('universal meta: oversized real review persists terminal rejection while rolling back draft and draft command', async () => {
