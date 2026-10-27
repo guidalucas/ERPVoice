@@ -8,6 +8,7 @@ import { runUniversalCompositionChecks } from './universal-composition-postgres-
 import { runUniversalOrderChecks } from './universal-order-postgres-checks.js';
 import { runUniversalDraftChecks } from './universal-draft-postgres-checks.js';
 import { runUniversalMetaChecks } from './universal-meta-postgres-checks.js';
+import { runUniversalDependencyChecks } from './universal-dependencies-postgres-checks.js';
 import { runUniversalQueryChecks } from './universal-query-postgres-checks.js';
 import { runUniversalReviewedSetChecks } from './universal-reviewed-set-postgres-checks.js';
 import { runOrdinaryMetaRecoveryChecks } from './ordinary-meta-recovery-postgres-checks.js';
@@ -105,6 +106,7 @@ try {
   await runUniversalOrderChecks({ db, sql, check });
   await runUniversalDraftChecks({ db, sql, check });
   await runUniversalMetaChecks({ db, sql, check });
+  await runUniversalDependencyChecks({ db, sql, check });
   await runUniversalQueryChecks({ db, sql, check });
   await runUniversalReviewedSetChecks({ db, sql, check });
   await runOrdinaryMetaRecoveryChecks({ db, sql, check });

@@ -108,3 +108,30 @@ test('orders integrate homogeneous and mixed positions while reentry is rejected
   reject(()=>prepareUniversalOperation(plan([order,account,{...order,itemId:'order-again'}]),context),'UNSUPPORTED_OPERATION_ORDER');
   reject(()=>prepareUniversalOperation(plan([order,{...account,itemId:order.itemId}]),context),'INVALID_OPERATION_PLAN');
 });
+
+test('new-client order references are closed, hashed and require an earlier authorized client creation', () => {
+  const customer={itemId:'new-client',type:'client.create',name:'Emiliano'};
+  const order={itemId:'new-order',type:'order.create',clientRef:{itemId:customer.itemId},order:{producto:'Camiseta blanca de Boca',talle:'L'}};
+  const ctx={...context,permissions:[...context.permissions,'clients:create']};
+  const prepared=prepareUniversalOperation(plan([customer,order]),ctx);
+  const normalized=prepared.plan.actions[1];
+  assert.deepEqual(normalized.clientRef,{itemId:customer.itemId});
+  assert.equal(Object.hasOwn(normalized.order,'clienteId'),false);
+  assert.equal(normalized.order.estado,'pendiente');assert.equal(normalized.order.qty,1);
+  assert.ok(Object.isFrozen(normalized.clientRef));
+  assert.equal(prepareUniversalOperation(prepared.plan,ctx).requestHash,prepared.requestHash);
+  reject(()=>orderActionToRequest(normalized,'direct'),'INVALID_ORDER_CLIENT_REFERENCE');
+  reject(()=>prepareUniversalOperation(plan([order]),ctx),'INVALID_ORDER_CLIENT_REFERENCE');
+  reject(()=>prepareUniversalOperation(plan([order,customer]),ctx),'INVALID_ORDER_CLIENT_REFERENCE');
+  reject(()=>prepareUniversalOperation(plan([customer,order]),context),'FORBIDDEN');
+  reject(()=>prepareUniversalOperation(plan([{...customer,type:'supplier.create'},order]),{...ctx,permissions:[...ctx.permissions,'suppliers:create']}),'INVALID_ORDER_CLIENT_REFERENCE');
+  for(const ref of [{itemId:'unknown'},{itemId:'new-order'}])
+    reject(()=>prepareUniversalOperation(plan([customer,{...order,clientRef:ref}]),ctx),'INVALID_ORDER_CLIENT_REFERENCE');
+  for(const ref of [null,{}, {itemId:''},{itemId:customer.itemId,clientId:'forged'}])
+    reject(()=>normalizeUniversalOrderPlan(plan([{...order,clientRef:ref}])));
+  for(const clienteId of ['existing',null])
+    reject(()=>normalizeUniversalOrderPlan(plan([{...order,order:{...order.order,clienteId}}])));
+  assert.deepEqual(normalizeUniversalOrderPlan(plan([{...actions[1],clientRef:order.clientRef}])).actions[0].clientRef,order.clientRef);
+  const changed=structuredClone(prepared.plan);changed.actions[0].itemId='other-client';changed.actions[1].clientRef.itemId='other-client';
+  assert.notEqual(prepareUniversalOperation(changed,ctx).requestHash,prepared.requestHash);
+});

@@ -31,6 +31,28 @@ export async function runUniversalOrderChecks({ db, sql, check }) {
     }
   };
 
+  await check('universal orders: new client and linked pending order commit once, replay and roll back together', async () => {
+    const customerAction={itemId:'new-client',type:'client.create',name:'Emiliano'};
+    const orderAction={itemId:'new-order',type:'order.create',clientRef:{itemId:'new-client'},order:{producto:'Camiseta blanca de Boca, tercera equipación',talle:'L',qty:1}};
+    const ctx=context(owner,[...permissions,'clients:create']);
+    const input=plan([customerAction,orderAction]),before=await state();
+    const [one,two]=await Promise.all([run(input,ctx),run(input,ctx)]);assert.deepEqual(one,two);
+    const created=one.receipts[0].items[0].party,pedido=block(one).receipts[0].pedido;
+    assert.equal(created.name,'Emiliano');assert.equal(pedido.clienteId,created.id);
+    assert.equal(pedido.talle,'L');assert.equal(pedido.estado,'pendiente');assert.equal(pedido.productId,null);
+    await assertStored(one);
+    const after=await state();
+    assert.equal(after.clients.length,before.clients.length+1);assert.equal(after.pedidos.length,before.pedidos.length+1);
+    assert.equal(after.transactions.length,before.transactions.length+2);
+    assert.equal(after.inventory_movements.length,before.inventory_movements.length);
+    assert.deepEqual(await run(input,ctx),one);assert.deepEqual(await state(),after);
+    const invalid=plan([customerAction,{...orderAction,order:{...orderAction.order,estado:'conseguido'}}]);
+    await assert.rejects(run(invalid,ctx),{code:'SKU_SELECTION_REQUIRED'});assert.deepEqual(await state(),after);
+    await assert.rejects(run(plan([customerAction,orderAction]),context()),{code:'FORBIDDEN'});assert.deepEqual(await state(),after);
+    await assert.rejects(run({...input,actions:[{...customerAction,name:'Otro'},orderAction]},ctx),{code:'IDEMPOTENCY_CONFLICT'});
+    assert.deepEqual(await state(),after);
+  });
+
   await check('universal orders: achieved multi-create concurrency stores one immutable block and per-item stock receipts', async () => {
     const client = await customer(), products = [await seed(), await seed()], input = plan(products.map((product, index) => create(client, product, `order-${index}`))), before = await state();
     const [one, two] = await Promise.all([run(input), run(input)]); assert.deepEqual(one, two); assert.equal(one.domain, 'orders');

@@ -80,11 +80,11 @@ function requirePending(row,version,allowExpired=false) {
   if (row.expired && !allowExpired) fail('DRAFT_EXPIRED','El borrador venció. Prepará una revisión nueva.');
 }
 function previewFromInterpretation(interpretation,{draftId,version,text,clarifications,expiresAt,context}) {
-  if (!['ready','clarification','answer'].includes(interpretation?.kind)) fail('INTERPRETATION_UNAVAILABLE','No pude preparar una interpretación válida. No apliqué cambios.');
+  if (!['ready','clarification','answer','cancelled'].includes(interpretation?.kind)) fail('INTERPRETATION_UNAVAILABLE','No pude preparar una interpretación válida. No apliqué cambios.');
   if (interpretation.kind==='ready' && !interpretation.plan) fail('INVALID_DRAFT_REQUEST','Falta el plan revisado de la operación.');
   if(interpretation.kind==='answer' && (interpretation.plan || !interpretation.answer || typeof interpretation.answer.text!=='string' || !Array.isArray(interpretation.answer.items))) fail('INVALID_DRAFT_REQUEST','La consulta no contiene una respuesta válida.');
   const preview=json({draftId,version,text,clarifications,expiresAt,
-    status:interpretation.kind==='answer' ? 'answered' : interpretation.kind==='ready' ? 'awaiting_confirmation' : 'awaiting_clarification',
+    status:interpretation.kind==='cancelled' ? 'cancelled' : interpretation.kind==='answer' ? 'answered' : interpretation.kind==='ready' ? 'awaiting_confirmation' : 'awaiting_clarification',
     ...(interpretation.kind==='answer' ? {queries:interpretation.queries,evidence:interpretation.evidence,answer:interpretation.answer} : {}),
     ...(interpretation.plan ? {plan:interpretation.plan,evidence:interpretation.evidence,review:interpretation.review} : {}),
     ...(interpretation.kind==='clarification' ? {question:interpretation.question} : {}),

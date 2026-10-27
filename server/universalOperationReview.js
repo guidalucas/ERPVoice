@@ -31,6 +31,9 @@ const valueText=value=>value===null ? 'Sin valor' : typeof value==='boolean' ? v
 const attributeLines=attributes=>Object.entries(attributes).map(([key,value])=>`${key}: ${value.state==='known' ? valueText(value.value) : ({unknown:'Desconocido',not_applicable:'No corresponde',missing:'Falta informar'}[value.state])}${value.unit ? ` ${value.unit}` : ''} (${value.type})`);
 export function buildUniversalOperationReview(plan,catalog) {
   const maps=Object.fromEntries(['products','clients','proveedores','pedidos'].map(key=>[key,new Map(catalog[key].map(row=>[row.id,row]))]));
+  const createdClients=new Map(plan.actions.filter(action=>action.type==='client.create').map(action=>[action.itemId,action.name]));
+  const createdSuppliers=new Map(plan.actions.filter(action=>action.type==='supplier.create').map(action=>[action.itemId,action.name]));
+  const createdProducts=new Map(plan.actions.filter(action=>action.target?.kind==='new').map(action=>[action.itemId,action.target.sku]));
   const refs={clienteId:'clients',proveedorId:'proveedores',productId:'products'};
   const fields=(input)=>Object.entries(input).flatMap(([key,value])=>{
     if (key==='family') {
@@ -44,8 +47,9 @@ export function buildUniversalOperationReview(plan,catalog) {
   return plan.actions.map(action=>{
     const details=[]; let name='';
     if (action.type.startsWith('stock.') || action.type.startsWith('sku.')) {
-      const current=action.target.kind==='existing' ? maps.products.get(action.target.skuId) : action.target.sku;
+      const current=action.target.kind==='existing' ? maps.products.get(action.target.skuId) : action.target.kind==='created' ? createdProducts.get(action.target.itemId) : action.target.sku;
       name=current.name;
+      if(action.target.kind==='created') details.push('Producto nuevo: alta incluida en esta propuesta.');
       details.push(...fields(Object.fromEntries(['productType','productModel','size','unit','family'].filter(key=>current[key]!=null).map(key=>[key,current[key]]))));
       details.push(...attributeLines(current.attributes ?? {}).map(line=>`Atributo ${line}`));
       if (action.target.kind==='existing') details.push(`Existencias observadas: ${current.stockAvailable} disponibles; ${current.stockReserved} reservadas.`,`Precio de catálogo observado: ${current.price} ${current.priceCurrency}.`);
@@ -56,8 +60,8 @@ export function buildUniversalOperationReview(plan,catalog) {
       if (action.price) details.push(`Precio solicitado: ${action.price.amount} ${action.price.currency}; política: ${{initialize:'inicializar',set:'reemplazar',preserve:'conservar'}[action.price.policy]}.`);
       if (action.salePrice) details.push(`Precio unitario de la operación: ${action.salePrice.amount} ${action.salePrice.currency}.`);
     } else if (action.type.startsWith('account.')) {
-      const current=maps.clients.get(action.target.clientId);name=current.name;
-      details.push(`Saldo observado: ${current.debt}.`,`Importe: ${action.amount.value} en unidades monetarias de la cuenta.`);
+      const current=action.target.kind==='created' ? {name:createdClients.get(action.target.itemId),debt:0} : maps.clients.get(action.target.clientId);name=current.name;
+      details.push(action.target.kind==='created' ? 'Cliente nuevo: alta incluida en esta propuesta; saldo inicial 0.' : `Saldo observado: ${current.debt}.`,`Importe: ${action.amount.value} en unidades monetarias de la cuenta.`);
       if (action.destination) {const destination=maps.clients.get(action.destination.clientId);details.push(`Destino: ${destination.name}; saldo observado: ${destination.debt}.`);}
     } else if (action.type.startsWith('client.') || action.type.startsWith('supplier.')) {
       const map=action.type.startsWith('client.') ? maps.clients : maps.proveedores,current=action.target ? map.get(action.target.partyId) : null;
@@ -70,6 +74,9 @@ export function buildUniversalOperationReview(plan,catalog) {
       const current=action.target ? maps.pedidos.get(action.target.pedidoId) : null;name=current?.producto ?? action.order.producto;
       if (current) details.push(`Pedido observado: ${current.qty}; estado ${current.estado}.`);
       if (action.order) details.push(...fields(action.order));
+      if (action.clientRef) details.push(`Cliente nuevo: ${createdClients.get(action.clientRef.itemId)} (alta incluida en esta propuesta).`);
+      if (action.supplierRef) details.push(`Proveedor nuevo: ${createdSuppliers.get(action.supplierRef.itemId)} (alta incluida en esta propuesta).`);
+      if (action.productRef) details.push(`Producto nuevo: ${createdProducts.get(action.productRef.itemId).name} (alta incluida en esta propuesta).`);
       if (action.changes) details.push(...fields(action.changes).map(line=>`Cambio · ${line}`));
       if (action.reconciliation) details.push(...fields(Object.fromEntries(Object.entries(action.reconciliation).filter(([key])=>!['expectedProductRevision','expectedFingerprint'].includes(key)))));
     }

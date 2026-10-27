@@ -1,6 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {checkInterpretation,checkPersistedEffects} from './evaluate-argentine-production.js';
+import {compareUniversalGold} from './evaluate-universal-corpus.js';
+import {argentineCases} from './fixtures/argentine-live-corpus.js';
+import {universalIntentCorpus} from './fixtures/universal-intent-corpus.js';
+
+test('clarification oracles require the missing fact and reject generic, unrelated or repeated questions',()=>{
+  const expected={kind:'clarification',questionMustMention:[['talle','tamaño'],'short'],questionMustNotMention:['remera','moneda']};
+  for(const question of ['¿Qué talle tiene el short?','¿Qué tamaño corresponde al short?']) {
+    assert.doesNotThrow(()=>checkInterpretation(expected,{kind:'clarification',question},{}));
+    assert.deepEqual(compareUniversalGold({expected},{kind:'clarification',question}),[]);
+  }
+  for(const question of ['', '¿Podés repetir todo?', '¿Qué moneda usás?', '¿Qué talle tienen el short y la remera?']) {
+    assert.throws(()=>checkInterpretation(expected,{kind:'clarification',question},{}));
+    assert.ok(compareUniversalGold({expected},{kind:'clarification',question}).length);
+  }
+  assert.ok(compareUniversalGold({expected:{kind:'clarification'}},{kind:'clarification',question:'¿Qué talle?'}).length);
+  for(const fixture of [...universalIntentCorpus,...argentineCases({})]) if(fixture.expected.kind==='clarification')
+    assert.ok(fixture.expected.questionMustMention?.length,fixture.id);
+});
+
+test('universal oracle checks created-reference wiring and accepts harmless order-description casing',()=>{
+  const expected={kind:'ready',actions:[{type:'client.create',name:'Uno',notas:null},{type:'client.create',name:'Dos',notas:null},
+    {type:'order.create',clientRef:0,order:{producto:'Camiseta Blanca',qty:1}},{type:'order.create',clientRef:1,order:{producto:'Camiseta Azul',qty:2}}]};
+  const result={kind:'ready',plan:{actions:[{itemId:'a',type:'client.create',name:'Uno',notas:null},{itemId:'b',type:'client.create',name:'Dos',notas:null},
+    {itemId:'c',type:'order.create',clientRef:{itemId:'a'},order:{producto:'camiseta blanca',qty:1}},{itemId:'d',type:'order.create',clientRef:{itemId:'b'},order:{producto:'camiseta azul',qty:2}}]}};
+  assert.deepEqual(compareUniversalGold({expected},result),[]);
+  for(const mutate of [r=>r.plan.actions[2].clientRef.itemId='b',r=>r.plan.actions[2].order.qty=2,r=>r.plan.actions[0].name='Otro']) {
+    const bad=structuredClone(result);mutate(bad);assert.ok(compareUniversalGold({expected},bad).length);
+  }
+});
 
 test('live oracle rejects the wrong garment, quantity, operation and invented sale price',()=>{
   const expected={kind:'ready',actions:[{type:'stock.sell',key:'remera-l',quantity:2}]},ids={'remera-l':'correct-l'};

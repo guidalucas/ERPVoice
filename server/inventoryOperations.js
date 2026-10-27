@@ -61,7 +61,7 @@ function normalizePlan(input) {
   const actions = plan.actions;
   if (!Array.isArray(actions) || Object.getPrototypeOf(actions) !== Array.prototype || actions.length < 1 || actions.length > 100) invalid('actions must contain 1 to 100 actions');
   if (Reflect.ownKeys(actions).length !== actions.length + 1) invalid('actions must be a dense array without extra fields');
-  const itemIds = new Set();
+  const itemIds = new Set(), createdItems = new Set();
   result.actions = Array.from({ length: actions.length }, (_, index) => {
     const descriptor = Object.getOwnPropertyDescriptor(actions, String(index));
     if (!descriptor || !own(descriptor, 'value')) invalid('actions must contain data properties');
@@ -71,9 +71,10 @@ function normalizePlan(input) {
     const itemId = text(action.itemId, 'itemId');
     if (itemIds.has(itemId)) invalid('Duplicate itemId');
     itemIds.add(itemId);
-    const target = record(action.target, ['kind', 'skuId', 'expectedFingerprint', 'expectedRevision', 'sku'], 'target');
+    const target = record(action.target, ['kind', 'skuId', 'expectedFingerprint', 'expectedRevision', 'sku', 'itemId'], 'target');
     let normalizedTarget;
     if (target.kind === 'existing') {
+      if (own(target, 'itemId')) invalid('Existing targets cannot include an action reference');
       if (action.type === 'sku.create') invalid('El alta requiere un producto nuevo.');
       if (own(target, 'sku')) invalid('La operación sobre un producto existente no admite los datos de un producto nuevo.');
       normalizedTarget = { kind: 'existing', skuId: text(target.skuId, 'skuId') };
@@ -81,8 +82,13 @@ function normalizePlan(input) {
       if (own(target, 'expectedRevision')) normalizedTarget.expectedRevision = integer(target.expectedRevision, 'expectedRevision');
     } else if (target.kind === 'new') {
       if (!['stock.receive', 'sku.create'].includes(action.type)) invalid('Esta operación requiere un producto existente.');
-      if (own(target, 'skuId') || own(target, 'expectedFingerprint') || own(target, 'expectedRevision')) invalid('Un producto nuevo no puede incluir referencias a un producto existente.');
+      if (own(target, 'itemId') || own(target, 'skuId') || own(target, 'expectedFingerprint') || own(target, 'expectedRevision')) invalid('Un producto nuevo no puede incluir referencias a un producto existente.');
       normalizedTarget = { kind: 'new', sku: normalizeSku(target.sku) };
+      createdItems.add(itemId);
+    } else if (target.kind === 'created') {
+      if (action.type === 'sku.create' || Object.keys(target).some(key => !['kind','itemId'].includes(key)) || !createdItems.has(target.itemId))
+        invalid('El producto debe referenciar un alta anterior del mismo lote.');
+      normalizedTarget = {kind:'created',itemId:text(target.itemId,'target.itemId')};
     } else invalid('Unsupported target kind');
     if (action.type === 'sku.create') {
       if (['quantity', 'salePrice', 'balances', 'changes'].some((key) => own(action, key))) invalid('El alta de un producto no puede incluir campos de otras operaciones.');
@@ -95,7 +101,7 @@ function normalizePlan(input) {
     }
     if (own(action, 'initialStock')) invalid('Las existencias iniciales solo corresponden al alta de un producto.');
     if (updating) {
-      if (!own(normalizedTarget, 'expectedRevision')) invalid('Updates require expectedRevision');
+      if (normalizedTarget.kind !== 'created' && !own(normalizedTarget, 'expectedRevision')) invalid('Updates require expectedRevision');
       if (own(action, 'quantity') || own(action, 'price') || own(action, 'salePrice')) invalid('Updates cannot include receipt/sale quantities or prices');
       const normalized = { itemId, type: action.type, target: normalizedTarget, reason: text(action.reason, 'reason') };
       if (action.type === 'sku.deactivate') {
@@ -218,10 +224,13 @@ export function planInventoryOperation(input, products, { createId, familySchema
   const changed = new Map();
   // Preconditions refer to the reviewed snapshot, before any item in this plan.
   const originalFingerprints = new Map([...byId].map(([id, product]) => [id, inventoryProductFingerprint(product)]));
-  const items = [], movements = [];
+  const items = [], movements = [], createdProducts = new Map();
   for (const action of plan.actions) {
     let product, created = false;
-    if (action.target.kind === 'existing') {
+    if (action.target.kind === 'created') {
+      product = createdProducts.get(action.target.itemId);
+      if (!product) invalid('No se resolvió el producto creado en este lote.');
+    } else if (action.target.kind === 'existing') {
       product = byId.get(action.target.skuId);
       if (!product) fail('SKU_NOT_FOUND', 'No encontré el producto seleccionado.', { skuId: action.target.skuId });
       if (own(action.target, 'expectedRevision') && action.target.expectedRevision !== (product.revision ?? 0)) fail('REVISION_MISMATCH', 'El producto cambió desde su lectura. Actualizá el inventario y revisá el ajuste.', { skuId: product.id, expected: action.target.expectedRevision, actual: product.revision ?? 0 });
@@ -236,6 +245,7 @@ export function planInventoryOperation(input, products, { createId, familySchema
       if (byId.has(id)) fail('DUPLICATE_SKU_ID', 'El código generado para el producto ya existe.');
       product = { ...action.target.sku, attributes: JSON.parse(JSON.stringify(action.target.sku.attributes)), id, status: 'active', stockAvailable: 0, stockReserved: 0, price: 0, priceCurrency: 'XXX' };
       byId.set(id, product); created = true;
+      createdProducts.set(action.itemId, product);
     }
     if ((product.status ?? 'active') !== 'active') fail('SKU_INACTIVE', 'El producto está desactivado; no se puede modificar su stock.');
     if (action.type!=='sku.update') domain(()=>validateProductFamily(product,familySchemas));

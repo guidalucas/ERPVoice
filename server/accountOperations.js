@@ -42,13 +42,14 @@ export function normalizeAccountPlan(input) {
         if (seen.has(itemId))
             invalid('itemId duplicado.');
         seen.add(itemId);
-        const target = record(action.target, ['kind', 'clientId', 'expectedRevision']);
-        if (target.kind !== 'existing')
-            invalid('Se requiere cliente existente explícito.');
-        const normalizedTarget = { kind: 'existing', clientId: text(target.clientId) };
-        if (Object.hasOwn(target, 'expectedRevision'))
+        const target = record(action.target, ['kind', 'clientId', 'expectedRevision', 'itemId']);
+        if (!['existing','created'].includes(target.kind)) invalid('Se requiere un cliente existente o un alta referenciada.');
+        if (target.kind === 'created' && Object.keys(target).some(key=>!['kind','itemId'].includes(key))) invalid('La referencia de alta no admite IDs ni revisiones.');
+        if (target.kind === 'existing' && Object.hasOwn(target,'itemId')) invalid('El cliente existente no admite referencias de alta.');
+        const normalizedTarget = target.kind === 'created' ? {kind:'created',itemId:text(target.itemId)} : { kind: 'existing', clientId: text(target.clientId) };
+        if (target.kind === 'existing' && Object.hasOwn(target, 'expectedRevision'))
             normalizedTarget.expectedRevision = integer(target.expectedRevision);
-        if (['account.adjust', 'account.transfer'].includes(action.type) && normalizedTarget.expectedRevision === undefined)
+        if (target.kind === 'existing' && ['account.adjust', 'account.transfer'].includes(action.type) && normalizedTarget.expectedRevision === undefined)
             invalid('La operación requiere expectedRevision.');
         const amount = record(action.amount, ['value', 'unit']);
         if (amount.unit !== 'legacy-money')

@@ -25,20 +25,29 @@ const freeze = (value) => {
 const kinds = new Set(['create', 'update', 'delete', 'reconcile']);
 
 const normalizeAction = (input) => {
-  const action = record(input, ['itemId', 'type', 'order', 'target', 'changes', 'reconciliation']);
+  const action = record(input, ['itemId', 'type', 'order', 'clientRef', 'supplierRef', 'productRef', 'target', 'changes', 'reconciliation']);
   const itemId = text(action.itemId);
   if (typeof action.type !== 'string' || !action.type.startsWith('order.')) invalid();
   const kind = action.type.slice(6);
   if (!kinds.has(kind)) invalid();
-  const allowed = kind === 'create' ? ['itemId', 'type', 'order'] : ['itemId', 'type', 'target', ...(kind === 'update' ? ['changes'] : kind === 'reconcile' ? ['reconciliation'] : [])];
+  const allowed = kind === 'create' ? ['itemId', 'type', 'order', 'clientRef','supplierRef','productRef'] : ['itemId', 'type', 'target', ...(kind === 'update' ? ['changes','clientRef','supplierRef','productRef'] : kind === 'reconcile' ? ['reconciliation'] : [])];
   if (Object.keys(action).some(key => !allowed.includes(key))) invalid();
   const target = kind === 'create' ? null : record(action.target, ['kind', 'pedidoId', 'expectedRevision']);
   if (target && target.kind !== 'existing') invalid();
   const payload = kind === 'create' ? record(action.order, dataFields)
     : kind === 'update' ? record(action.changes, dataFields)
       : kind === 'reconcile' ? { reconciliation: record(action.reconciliation, proofFields) } : {};
-  const request = normalizeOrderRequest(kind, target?.pedidoId, { operationId: 'normalization', ...(target ? { expectedRevision: target.expectedRevision } : {}), ...payload });
+  const references={},validationPayload={...payload};
+  for (const [key,field] of [['clientRef','clienteId'],['supplierRef','proveedorId'],['productRef','productId']]) if (Object.hasOwn(action,key)) {
+    const ref=record(action[key],['itemId']);references[key]={itemId:text(ref.itemId)};
+    if(Object.hasOwn(payload,field)) invalid();
+    validationPayload[field]='unresolved-operation-reference';
+  }
+  // Domain data is validated immediately; only the universal root binds real IDs.
+  const request = normalizeOrderRequest(kind, target?.pedidoId, { operationId: 'normalization', ...(target ? { expectedRevision: target.expectedRevision } : {}), ...validationPayload });
+  for (const [key,field] of [['clientRef','clienteId'],['supplierRef','proveedorId'],['productRef','productId']]) if (references[key]) delete request.changes[field];
   return { itemId, type: action.type,
+    ...references,
     ...(kind === 'create' ? { order: request.changes } : { target: { kind: 'existing', pedidoId: request.pedidoId, expectedRevision: request.expectedRevision } }),
     ...(kind === 'update' ? { changes: request.changes } : kind === 'reconcile' ? { reconciliation: request.reconciliation } : {}) };
 };
@@ -85,6 +94,8 @@ export const universalOrderPlanDigest = (input) => {
 
 export function orderActionToRequest(action, operationId) {
   const normalized = normalizeAction(action), kind = normalized.type.slice(6);
+  if (normalized.clientRef) fail('INVALID_ORDER_CLIENT_REFERENCE', 'El cliente nuevo debe resolverse dentro de la operación completa.');
+  if (normalized.supplierRef || normalized.productRef) fail('INVALID_OPERATION_REFERENCE', 'Las altas referenciadas deben resolverse dentro de la operación completa.');
   const request = normalizeOrderRequest(kind, normalized.target?.pedidoId, {
     operationId: text(operationId),
     ...(normalized.target ? { expectedRevision: normalized.target.expectedRevision } : {}),

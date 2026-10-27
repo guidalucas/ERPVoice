@@ -1,4 +1,5 @@
 import { normalizeFamilyPublication } from '../../server/productFamilySchemas.js';
+import { universalConversationCorpus } from './universal-conversation-corpus.js';
 
 // Sintéticos públicos para evaluación semántica del intérprete universal.
 // Correr: node scripts/evaluate-universal-corpus.js --live [--out ruta.json]
@@ -43,6 +44,7 @@ const groupQuestion = '¿Qué talle corresponde a cada una de las camisetas Rive
 const groupAction = (team,size)=>({type:'stock.receive',skuId:`${team}-${size.toLowerCase()}`,quantity:{value:1,unit:'unit'}});
 
 export const universalIntentCorpus = [
+  ...universalConversationCorpus,
   ...['talle L','L'].map((answer,index)=>({
     id:`group-clarification-shared-size-${index+1}`,
     sourceText:`${groupSource}\n${answer}`,
@@ -54,7 +56,7 @@ export const universalIntentCorpus = [
     id:'group-clarification-explicit-subset',
     sourceText:`${groupSource}\nL solo la de River`,
     clarifications:[{question:groupQuestion,answer:'L solo la de River'}],
-    catalog:{products:groupProducts},context,expected:{kind:'clarification'},
+    catalog:{products:groupProducts},context,expected:{kind:'clarification',questionMustMention:[['talle','tamaño'],'Barcelona'],questionMustNotMention:['River','moneda','precio'],questionExample:'¿Qué talle tiene la camiseta Barcelona?'},
   },
   {
     id:'group-clarification-preserves-explicit-other-size',
@@ -81,7 +83,7 @@ export const universalIntentCorpus = [
     sourceText: 'Cargá 3 unidades de la remera negra.',
     catalog: { products: [product('shirt-v1', 'Remera negra algodón'), product('shirt-v2', 'Remera negra deportiva')] },
     context,
-    expected: { kind: 'clarification' },
+    expected: { kind: 'clarification',questionMustMention:[['remera','producto','variante'],['algodón','deportiva','cuál']],questionMustNotMention:['moneda','precio'],questionExample:'¿La remera negra es de algodón o deportiva?' },
   },
   {
     id: 'stock-income-and-customer-account-charge',

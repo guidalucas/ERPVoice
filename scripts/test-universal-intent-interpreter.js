@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { interpretUniversalIntent } from '../server/universalIntentInterpreter.js';
 import { inventoryProductFingerprint } from '../server/inventoryOperations.js';
 import { normalizeFamilyPublication } from '../server/productFamilySchemas.js';
+import { buildUniversalOperationReview } from '../server/universalOperationReview.js';
 
 const sourceText='Ingresá 3 unidades, cargá 5 a la cuenta y cambiá el nombre del cliente. Actualizá el pedido.';
 const catalog={products:[{id:'sku',name:'Producto',unit:'unit',revision:7,stockAvailable:4,stockReserved:1}],clients:[{id:'client',name:'Cliente',accountRevision:9,metadataRevision:4}],proveedores:[{id:'supplier',name:'Proveedor',metadataRevision:6}],pedidos:[{id:'order',revision:8}]};
@@ -10,6 +11,31 @@ const context={businessId:'secret-tenant',actorId:'secret-actor',permissions:['i
 const actions=[{itemId:'receive',type:'stock.receive',target:{kind:'existing',skuId:'sku'},quantity:{value:3,unit:'unit'}},{itemId:'charge',type:'account.charge',target:{kind:'existing',clientId:'client'},amount:{value:5,unit:'legacy-money'},reason:'Cargo solicitado'},{itemId:'client',type:'client.update',target:{kind:'existing',partyId:'client'},changes:{name:'Cliente nuevo'}},{itemId:'order',type:'order.update',target:{kind:'existing',pedidoId:'order'},changes:{qty:3,clienteId:'client',proveedorId:'supplier',productId:'sku'}}];
 const proposal=(entries=actions)=>({contractVersion:1,kind:'proposal',actions:structuredClone(entries),evidence:entries.map(action=>({itemId:action.itemId,quote:sourceText}))});
 const invoke=(json=proposal(),patch={})=>interpretUniversalIntent({sourceText,catalog:structuredClone(catalog),context,operationId:'secret-operation',channel:'test',complete:async()=>({ok:true,json}),...patch});
+
+test('new customer and pending order survive a short size clarification in one reviewable proposal',async()=>{
+  const original='Me pidieron la camiseta blanca de boca, tercera equipación. Me lo pidió Emiliano.';
+  const clarifications=[{question:'¿A qué cliente corresponde Emiliano y qué talle tiene la camiseta blanca de boca?',answer:'nuevo cliente. la camseta talle L o XL'},
+    {question:'¿Qué talle es la camiseta, L o XL?',answer:'L'}];
+  const text=[original,...clarifications.map(item=>item.answer)].join('\n');
+  const entries=[{itemId:'customer',type:'client.create',name:'Emiliano'},
+    {itemId:'order',type:'order.create',clientRef:{itemId:'customer'},order:{producto:'Camiseta blanca de Boca, tercera equipación',talle:'L',qty:1,estado:'pendiente'}}];
+  const data={contractVersion:1,kind:'proposal',actions:entries,evidence:[{itemId:'customer',quote:'nuevo cliente'},{itemId:'order',quote:original}]};
+  const result=await invoke(data,{sourceText:text,clarifications,complete:async options=>{
+    assert.match(options.messages[0].content,/Pedido para cliente nuevo/);
+    assert.match(options.messages[0].content,/OMITÍ order.clienteId/);
+    assert.deepEqual(JSON.parse(options.messages[1].content).latestClarification,clarifications[1]);
+    return {ok:true,json:data};
+  }});
+  assert.equal(result.kind,'ready');assert.equal(result.plan.actions[1].order.talle,'L');
+  assert.equal(result.plan.actions[1].order.productId,null);
+  assert.deepEqual(result.plan.actions[1].clientRef,{itemId:'customer'});
+  const review=buildUniversalOperationReview(result.plan,catalog);
+  assert.match(review[0].title,/Alta de cliente.*Emiliano/);
+  assert.ok(review[1].details.includes('Cliente nuevo: Emiliano (alta incluida en esta propuesta).'));
+  assert.ok(review[1].details.includes('Variante: L'));
+  const bad=structuredClone(data);bad.actions[1].clientRef.itemId='not-in-this-plan';
+  assert.equal((await invoke(bad,{sourceText:text,clarifications})).reason,'INVALID_ORDER_CLIENT_REFERENCE');
+});
 
 test('read queries return backend snapshot facts without a mutation plan or model-written answer',async()=>{
   const text='¿Cuánto stock y saldo tenemos?';
