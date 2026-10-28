@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { InventoryOperationError } from '../server/inventoryOperations.js';
-import { parseUniversalMetaCommand, universalMetaPreviewReply, universalMetaReceiptReply } from '../server/universalMetaOperations.js';
+import { parseUniversalMetaCommand, universalMetaPreviewReply, universalMetaReceiptReply, universalReceiptDetails, universalOperationDetail } from '../server/universalMetaOperations.js';
+import { operationDetailUrl } from '../server/operationDetailLink.js';
 import { processMetaWebhook } from '../server/metaWebhookProcessor.js';
 import { interpretationRecoveryMessage, interpretationRecoveryContext, operationErrorMessage } from '../server/interpretationRecovery.js';
 
@@ -232,4 +233,24 @@ test('cancelled preview is clear and applied preview reuses its persisted receip
   assert.match(universalMetaPreviewReply(ready({ status: 'cancelled' })), /cancelada/);
   const output = universalMetaPreviewReply(ready({ status: 'applied', result: { items: [{ type: 'account.payment', clientName: 'Ana', amount: 10, balance: 0 }] } }));
   assert.match(output, /Pago registrado: Ana; importe 10; saldo 0/);
+});
+
+test('confirmed replies link to their operation and keep the WhatsApp character limit', () => {
+  const draftId = 'f375eb6a-3184-45c7-8643-b2ebddae8cf3';
+  const url = operationDetailUrl(draftId, 'https://stocky.example/app/?old=value#previous');
+  assert.equal(url, `https://stocky.example/app/?operation=${draftId}`);
+  assert.equal(new URL(operationDetailUrl('draft with & symbols', 'http://localhost:5173')).searchParams.get('operation'), 'draft with & symbols');
+  for (const base of ['javascript:alert(1)', 'ftp://example.com', 'https://user:secret@example.com', 'not a URL']) assert.equal(operationDetailUrl(draftId, base), null);
+  const items = Array.from({ length: 30 }, (_, index) => ({ type: 'sku.create', skuName: `Remera ${index} ${'algodón '.repeat(40)}`, stockAvailable: 3, stockReserved: 0, price: 100, currency: 'ARS' }));
+  const summary = universalMetaReceiptReply({ items }, { detailUrl: url });
+  assert.ok(summary.endsWith(`Ver detalle completo:\n${url}`)); assert.ok(summary.length <= 1200);
+  const details = universalReceiptDetails({ items });
+  assert.equal(details.length, 30); assert.ok(details[29].length > 240); assert.ok(!details[29].endsWith('…'));
+  const preview = ready({ draftId, status: 'applied', result: { items } });
+  const detail = universalOperationDetail(preview);
+  assert.deepEqual(detail.changes, details); assert.deepEqual(detail.review, preview.review); assert.equal(detail.text, preview.text);
+  assert.match(universalMetaPreviewReply(preview, { detailUrl: url }), /Ver detalle completo:/);
+  assert.doesNotMatch(universalMetaPreviewReply(ready(), { detailUrl: url }), /Ver detalle completo:/);
+  assert.doesNotMatch(universalMetaPreviewReply(ready({ status: 'cancelled' }), { detailUrl: url }), /Ver detalle completo:/);
+  expectCode(() => universalOperationDetail(ready()), 'DRAFT_NOT_PENDING');
 });

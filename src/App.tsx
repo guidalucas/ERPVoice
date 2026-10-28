@@ -9,6 +9,7 @@ import { AcceptInvitePanel } from './components/onboarding/AcceptInvitePanel';
 import { ThemeProvider } from './hooks/useTheme';
 import { StockyLogo } from './components/brand/StockyLogo';
 import { WaveformMark } from './components/brand/WaveformMark';
+import { OperationDetailPage } from './components/dashboard/OperationDetailPage';
 
 function Shell() {
   return (
@@ -58,6 +59,9 @@ function AppGate() {
   if (session.needsOnboarding) {
     return <BusinessSetupPanel />;
   }
+
+  const operationId = new URLSearchParams(location.search).get('operation');
+  if (operationId) return <OperationDetailPage key={`${session.tenantPhone}:${session.phoneNumber}:${operationId}`} id={operationId}/>;
 
   return (
     <AppStoreProvider key={JSON.stringify([session.tenantPhone, session.phoneNumber])}>

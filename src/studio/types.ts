@@ -6,9 +6,10 @@ export type Candidate = { label?: string; unit?: string; skuId: string; name: st
   stockAvailable: number; stockReserved: number; price: Money | null };
 export type Photo = { id: string; status: string; altText: string; sortOrder: number; focalX: number; focalY: number;
   revision: number; width: number | null; height: number | null; errorCode: string | null };
-export type CommercialFields = { title: string; description: string; teamKey: string | null; teamName: string | null; teamKind: string | null;
-  season: string | null; kitKey: string | null; versionKey: string | null; sleeveKey: string | null };
+export type CommercialFields = { title: string; description: string };
 export type Product = CommercialFields & { id: string; slug: string; status: 'draft' | 'ready' | 'archived'; revision: number;
+  teamKey: string | null; teamName: string | null; teamKind: string | null; season: string | null;
+  kitKey: string | null; versionKey: string | null; sleeveKey: string | null;
   coverImageId: string | null; images: Photo[]; variants: Variant[]; availableQuantity: number | null; availability: string;
   priceRange: { currency: string; fractionDigits: number; minAmountMinor: string; maxAmountMinor: string } | null;
   readiness: { canPrepare: boolean; canGenerateStory: boolean; blockers: string[]; missingFields?: string[]; moneyIssues?: { skuId: string; cause: string }[] }; moneyPolicyRevision: number | null; readAt: string };

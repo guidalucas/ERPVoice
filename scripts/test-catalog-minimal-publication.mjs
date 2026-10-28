@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { startCommerceFixture } from './fullmatch/fixtureRuntime.js';
@@ -34,6 +36,51 @@ try {
   const page = await context.newPage(), errors = [];
   page.setDefaultTimeout(60000);
   page.on('pageerror', error => errors.push(error.message));
+  const sportsFields = ['teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey'];
+  const output = path.resolve('.fullmatch-runtime/browser'); await fs.mkdir(output, { recursive: true });
+  for (const [width, title] of [[1440, 'Jean recto'], [390, 'Remera de algodón']]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(fixture.url); await page.getByRole('heading', { name: 'Productos comerciales' }).waitFor();
+    if (width === 1440) {
+      // Recover an older browser draft without submitting its hidden sports fields.
+      await page.evaluate(({ owner }) => localStorage.setItem(`fullmatch.draft.${owner}.new`, JSON.stringify({ title: 'Borrador anterior', description: '', teamKey: 'barcelona', teamName: 'Barcelona', teamKind: 'club', season: '2025', kitKey: 'home', versionKey: 'player', sleeveKey: 'short' })), { owner: fixture.owner });
+    }
+    await page.getByRole('button', { name: '＋ Nueva ficha comercial', exact: true }).click();
+    await page.getByLabel('Título comercial', { exact: true }).waitFor();
+    if (width === 1440) {
+      await page.getByText('Recuperé tu borrador de este navegador. Revisalo antes de guardar.', { exact: true }).waitFor();
+      assert.equal(await page.getByLabel('Título comercial', { exact: true }).inputValue(), 'Borrador anterior');
+    }
+    for (const label of ['Equipo', 'Identificador del equipo', 'Tipo de equipo', 'Temporada', 'Equipación', 'Versión', 'Manga']) assert.equal(await page.getByLabel(label, { exact: true }).count(), 0);
+    await page.getByLabel('Título comercial', { exact: true }).fill(title);
+    const description = 'Prenda de uso diario, disponible en varios talles y colores.';
+    await page.getByLabel('Descripción · opcional', { exact: true }).fill(description);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.screenshot({ path: path.join(output, `generic-product-${width}.png`), fullPage: true });
+    const request = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/api/commerce/v1/products');
+    await page.getByRole('button', { name: 'Crear ficha', exact: true }).click();
+    assert.deepEqual((await request).postDataJSON().product, { title, description });
+    await page.waitForURL(/#\/products\/[a-f0-9-]{36}$/);
+    const id = new URL(page.url()).hash.split('/').at(-1), created = await api(`/products/${id}`);
+    assert.equal(created.title, title); assert.equal(created.description, description);
+    for (const field of sportsFields) assert.equal(created[field], null);
+    await page.reload(); await page.getByRole('button', { name: 'Guardar cambios', exact: true }).waitFor();
+    assert.equal(await page.getByLabel('Descripción · opcional', { exact: true }).inputValue(), description);
+  }
+  console.log('PASS: indumentaria creates jeans and shirts with generic fields on desktop/mobile, including legacy draft recovery');
+
+  const legacyId = fixture.products[0].id, legacyBefore = await api(`/products/${legacyId}`);
+  await page.goto(`${fixture.url}#/products/${legacyId}`);
+  await page.getByRole('button', { name: 'Guardar cambios', exact: true }).waitFor();
+  await page.getByLabel('Descripción · opcional', { exact: true }).fill('Descripción actualizada desde la ficha genérica.');
+  const patch = page.waitForRequest(request => request.method() === 'PATCH' && new URL(request.url()).pathname.endsWith(`/products/${legacyId}`));
+  await page.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
+  assert.deepEqual(Object.keys((await patch).postDataJSON().changes).sort(), ['description', 'title']);
+  await page.getByText('Ficha guardada.', { exact: true }).waitFor();
+  const legacyAfter = await api(`/products/${legacyId}`);
+  for (const field of [...sportsFields, 'identityKey']) assert.equal(legacyAfter[field], legacyBefore[field]);
+  console.log('PASS: generic editing preserves all existing sports metadata and commercial identity');
+
   await page.goto(`${fixture.url}#/products/${product.id}`, { waitUntil: 'domcontentloaded', timeout: 120000 });
   const publish = page.getByRole('button', { name: 'Publicar en catálogo', exact: true });
   await publish.waitFor(); await publish.click();

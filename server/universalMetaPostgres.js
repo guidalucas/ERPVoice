@@ -3,6 +3,7 @@ import { operationRequestDigest } from './operationHash.js';
 import { operationResultActions } from './operationResults.js';
 import { authorizeUniversalConversation } from './universalConversationPostgres.js';
 import { universalMetaPreviewReply } from './universalMetaOperations.js';
+import { operationDetailUrl } from './operationDetailLink.js';
 import { operationErrorMessage } from './interpretationRecovery.js';
 
 export const UNIVERSAL_META_SCHEMA_SQL = `
@@ -53,7 +54,7 @@ export async function executeUniversalMetaInTransaction(client,input,context,app
     const preview=await apply(client);
     const applied=preview.status==='applied';
     result={handled:true,intent:'mixed',requiresConfirmation:preview.status.startsWith('awaiting_'),
-      replyText:universalMetaPreviewReply(preview),actions:applied ? operationResultActions(preview.result) : [],
+      replyText:universalMetaPreviewReply(preview, { detailUrl: applied ? operationDetailUrl(preview.draftId) : null }),actions:applied ? operationResultActions(preview.result) : [],
       draftId:preview.draftId,version:preview.version,digest:preview.digest,status:preview.status,
       ...(preview.status==='answered' ? {answer:preview.answer} : {}),
       ...(applied ? {operationResult:preview.result} : {})};

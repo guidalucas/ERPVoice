@@ -51,6 +51,7 @@ try {
     await page.getByRole('button', { name: 'Reintentar activación guardada' }).waitFor();
     await page.getByRole('button', { name: 'Reintentar activación guardada' }).click();
     await page.getByRole('heading', { name: 'Productos comerciales' }).waitFor();
+    for (const label of ['Filtrar equipo', 'Filtrar temporada', 'Filtrar versión', 'Filtrar manga']) assert.equal(await page.getByLabel(label, { exact: true }).count(), 0);
     assert.equal(attempts.length, 2); assert.deepEqual(attempts[0], attempts[1]);
     const state = await api(first, commerce + '/setup'); assert.equal(state.enabled, true); assert.equal(state.moneyPolicy.currency, 'ARS');
     const sku = (await sql.query('SELECT price,price_currency,stock_available FROM products WHERE owner_phone=$1 AND id=$2', [first.owner, oldSku.id])).rows[0];
@@ -122,9 +123,8 @@ try {
     await page.getByText('Vínculos revisados y guardados.', { exact: true }).waitFor();
     assert.equal((await api(first, commerce + '/products/' + productId)).variants.length, 2);
     await page.getByRole('button', { name: '01 Información', exact: true }).click();
-    await page.locator('.specific-fields > summary').click();
-    for (const [label, value] of [['Equipo', 'Argentina'], ['Identificador del equipo', 'argentina'], ['Temporada', '2026']]) await page.getByLabel(label, { exact: true }).fill(value);
-    for (const [label, value] of [['Tipo de equipo', 'national_team'], ['Equipación', 'home'], ['Versión', 'player'], ['Manga', 'short']]) await page.getByLabel(label, { exact: true }).selectOption(value);
+    assert.equal(await page.getByLabel('Tipo de equipo', { exact: true }).count(), 0);
+    await page.getByLabel('Descripción · opcional', { exact: true }).fill('Camiseta disponible en varias presentaciones.');
     await page.getByRole('button', { name: 'Guardar cambios', exact: true }).click(); await page.getByText('Ficha guardada.', { exact: true }).waitFor();
     await page.getByRole('button', { name: '03 Fotografías', exact: true }).click();
     const photo = await sharp({ create: { width: 500, height: 800, channels: 3, background: '#76c8ef' } }).png().toBuffer();
@@ -144,7 +144,8 @@ try {
     const detail = await api(first, commerce + '/products/' + productId);
     await api(first, commerce + '/products/' + productId + '/publication', 'PUT', { operationId: randomUUID(), expectedRevision: 0, expectedProductRevision: detail.revision, status: 'published', reason: 'Publicación de prueba revisada' });
     const response = await fetch(fixture.apiUrl + '/c/casacas-del-sur-test'); const html = await response.text(); assert.equal(response.status, 200); assert.ok(html.includes('Argentina titular 2026')); assert.ok(!html.includes(second.owner));
-    assert.equal((await api(first, commerce + '/products?publication=published&team=argentina&season=2026&version=player&sleeve=short&photos=ready')).items.length, 1);
+    assert.equal((await api(first, commerce + '/products?publication=published&photos=ready')).items.length, 1);
+    assert.equal(detail.teamKey, null); assert.equal(detail.versionKey, null);
     assert.equal((await api(first, commerce + '/products?photos=missing')).items.length, 0);
     await api(second, commerce + '/products', 'POST', { operationId: randomUUID(), product: { title: 'Vínculo indebido' }, skuLinks: [{ skuId: oldSku.id, expectedRevision: 1, expectedFingerprint: 'wrong-tenant' }] }, 404);
   });

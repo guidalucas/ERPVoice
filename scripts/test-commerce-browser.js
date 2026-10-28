@@ -79,14 +79,8 @@ try {
   await check('complete new product flow links a pending SKU, uploads a photo and exports without retyping prices', async () => {
     await page.getByRole('heading', { name: 'Ficha recuperada navegador', exact: true }).click();
     await page.getByLabel('Título comercial', { exact: true }).fill('Boca Juniors titular 2025');
-    await page.locator('.specific-fields > summary').click();
-    await page.getByLabel('Equipo', { exact: true }).fill('Boca Juniors');
-    await page.getByLabel('Identificador del equipo', { exact: true }).fill('boca-juniors');
-    await page.getByLabel('Tipo de equipo', { exact: true }).selectOption('club');
-    await page.getByLabel('Temporada', { exact: true }).fill('2025');
-    await page.getByLabel('Equipación', { exact: true }).selectOption('home');
-    await page.getByLabel('Versión', { exact: true }).selectOption('fan');
-    await page.getByLabel('Manga', { exact: true }).selectOption('short');
+    assert.equal(await page.getByLabel('Equipo', { exact: true }).count(), 0);
+    await page.getByLabel('Descripción · opcional', { exact: true }).fill('Camiseta de manga corta, disponible en talle XL.');
     await page.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
     await page.getByText('Ficha guardada.', { exact: true }).waitFor();
     await page.getByRole('button', { name: '02 SKU vinculados', exact: true }).click();

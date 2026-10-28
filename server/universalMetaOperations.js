@@ -47,10 +47,10 @@ function validatePreview(preview) {
 const renderReview = (review) => review.map((item) => [item.title, ...item.details.map((detail) => `• ${detail}`)].join('\n')).join('\n\n');
 
 /** Render backend-owned preview facts; this function does not interpret or change a plan. */
-export function universalMetaPreviewReply(input) {
+export function universalMetaPreviewReply(input, options = {}) {
   const preview = validatePreview(input);
   if (preview.status === 'cancelled') return 'La operación fue cancelada. No se aplicó ningún cambio.';
-  if (preview.status === 'applied') return universalMetaReceiptReply(preview.result);
+  if (preview.status === 'applied') return universalMetaReceiptReply(preview.result, options);
   if (preview.status === 'answered') {
     if(preview.plan || typeof preview.answer?.text!=='string' || !preview.answer.text.trim() || !Array.isArray(preview.answer.items)) invalidDraft();
     if(preview.answer.text.length>PREVIEW_LIMIT) fail('DRAFT_PREVIEW_TOO_LARGE','La respuesta completa supera el límite de WhatsApp. Pedí un conjunto más pequeño o consultá desde el panel.');
@@ -160,20 +160,34 @@ function receiptParts(input, output = []) {
   return output;
 }
 
-/** Compose only persisted receipt facts from the existing domain result adapters. */
-export function universalMetaReceiptReply(result) {
+/** Full persisted facts, without the item and character limits of WhatsApp. */
+export function universalReceiptDetails(result) {
   const lines = receiptParts(result).flatMap(part => part.split('\n')).filter(Boolean).map(inlineText);
   if (!lines.length) invalidDraft();
+  return lines;
+}
+
+export function universalOperationDetail(preview) {
+  if (preview?.status !== 'applied') fail('DRAFT_NOT_PENDING', 'Esta operación todavía no tiene cambios aplicados para consultar.');
+  return { draftId: preview.draftId, status: preview.status, text: preview.text,
+    review: validateUniversalOperationReview(preview.plan, preview.review),
+    changes: universalReceiptDetails(preview.result) };
+}
+
+/** Compose only persisted receipt facts from the existing domain result adapters. */
+export function universalMetaReceiptReply(result, { detailUrl = null } = {}) {
+  const lines = universalReceiptDetails(result);
+  const link = detailUrl ? `\n\nVer detalle completo:\n${detailUrl}` : '';
   const visible = [];
   let shortened = false;
   for (const line of lines.slice(0, RECEIPT_ITEMS)) {
     const concise = line.length > 240 ? `${line.slice(0, 239)}…` : line;
     shortened ||= concise !== line;
-    if (visible.join('\n').length + concise.length > RECEIPT_LIMIT - 180) break;
+    if (visible.join('\n').length + concise.length > RECEIPT_LIMIT - 180 - link.length) break;
     visible.push(`• ${concise}`);
   }
   const remaining = lines.length - visible.length;
   return ['✅ *Cambios guardados*', '', ...visible,
     ...(remaining ? [`Y ${remaining} cambio${remaining === 1 ? '' : 's'} más.`] : []),
-    ...(remaining || shortened ? ['', 'El detalle completo quedó guardado en el negocio.'] : [])].join('\n');
+    ...(!link && (remaining || shortened) ? ['', 'El detalle completo quedó guardado en el negocio.'] : [])].join('\n') + link;
 }

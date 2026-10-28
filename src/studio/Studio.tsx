@@ -21,10 +21,10 @@ const blockerLabels: Record<string, string> = { COVER_REQUIRED: 'Elegí una foto
   IDENTITY_INCOMPLETE: 'Completá el nombre del producto', MONEY_UNCONFIRMED: 'Confirmá moneda y escala en la preparación de Stocky',
   SKU_IDENTITY_CHANGED: 'Revisá los vínculos: cambió una variante', INVALID_VARIANT: 'Revisá la presentación y la unidad en Stocky',
   DUPLICATE_SIZE: 'Hay variantes con la misma presentación', PRICE_NOT_READY: 'Revisá los precios en Stocky', INVENTORY_INVALID: 'Revisá los saldos en Stocky' };
-const emptyFields: CommercialFields = { title: '', description: '', teamKey: null, teamName: null, teamKind: null, season: null, kitKey: null, versionKey: null, sleeveKey: null };
+const emptyFields: CommercialFields = { title: '', description: '' };
 const fieldKeys = Object.keys(emptyFields) as (keyof CommercialFields)[];
 const identityLabels: Record<string, string> = { teamKey: 'identificador del equipo', teamName: 'equipo', teamKind: 'tipo de equipo', season: 'temporada', kitKey: 'equipación', versionKey: 'versión', sleeveKey: 'manga' };
-const productFields = (product: Product) => Object.fromEntries(fieldKeys.map(key => [key, product[key]])) as CommercialFields;
+const productFields = ({ title, description }: CommercialFields): CommercialFields => ({ title, description });
 const linkOf = (item: Candidate | Product['variants'][number]) => ({ skuId: item.skuId, expectedRevision: item.revision, expectedFingerprint: item.identityFingerprint });
 function Brand() { return <a className="studio-brand" href="/" aria-label="Stocky · ir al inventario"><StockyLogo size="md" className="studio-brand-logo"/><span className="studio-brand-copy"><strong>Stocky</strong><span>Studio</span></span></a>; }
 function AccessFrame({ children }: { children: ReactNode }) { return <div className="studio-access"><header className="studio-access-header"><Brand/><ThemeToggle/></header>{children}</div>; }
@@ -117,7 +117,6 @@ export function Studio() {
 }
 
 function ProductList({ profile, onOpen, onCreate, onBatch }: { profile: Profile | null; onOpen: (id: string) => void; onCreate: () => void; onBatch: (ids: string[]) => void }) {
-  const { session } = useAuth();
   const emptyFilters = { q: '', status: '', team: '', season: '', version: '', sleeve: '', photos: '', publication: '' };
   const [filters, setFilters] = useState(emptyFilters), [applied, setApplied] = useState(emptyFilters);
   const [products, setProducts] = useState<Product[]>([]), [cursor, setCursor] = useState<string | null>(null);
@@ -162,7 +161,7 @@ function ProductList({ profile, onOpen, onCreate, onBatch }: { profile: Profile 
       </div>
       <details className="product-filter-options"><summary>Más filtros{extraCount ? ` · ${extraCount} seleccionados` : ''}</summary>
         <div className="filter-fields">
-          {(hasSports || session?.businessCategory === 'indumentaria') && <>
+          {hasSports && <>
             <label className="filter-field"><span>Equipo</span><input aria-label="Filtrar equipo" placeholder="Identificador de equipo" value={filters.team} onChange={event => change('team', event.target.value)}/></label>
             <label className="filter-field"><span>Temporada</span><input aria-label="Filtrar temporada" placeholder="Temporada" value={filters.season} onChange={event => change('season', event.target.value)}/></label>
             <label className="filter-field"><span>Versión</span><select aria-label="Filtrar versión" value={filters.version} onChange={event => change('version', event.target.value)}><option value="">Todas las versiones</option><option value="player">Jugador</option><option value="fan">Hincha</option></select></label>
@@ -199,11 +198,11 @@ function ProductList({ profile, onOpen, onCreate, onBatch }: { profile: Profile 
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="field"><span>{label}</span>{children}</label>; }
 function Fields({ fields, setFields }: { fields: CommercialFields; setFields: (value: CommercialFields) => void }) {
-  const { session } = useAuth();
-  const showSports = session?.businessCategory === 'indumentaria' || Boolean(fields.teamKey || fields.teamName || fields.season || fields.kitKey || fields.versionKey || fields.sleeveKey);
-  const change = (key: keyof CommercialFields, value: string) => setFields({ ...fields, [key]: key === 'title' || key === 'description' ? value : value || null });
-  const select = (key: keyof CommercialFields, label: string, values: [string, string][]) => <Field label={label}><select aria-label={label} value={fields[key] ?? ''} onChange={event => change(key, event.target.value)}><option value="">Seleccionar</option>{values.map(([value, title]) => <option key={value} value={value}>{title}</option>)}</select></Field>;
-  return <div className="field-grid"><Field label="Título comercial"><input required maxLength={120} value={fields.title} onChange={event => change('title', event.target.value)} placeholder="Nombre del producto"/></Field>{showSports && <details className="specific-fields" open={Boolean(fields.teamKey || fields.teamName || fields.season || fields.kitKey || fields.versionKey || fields.sleeveKey)}><summary>Detalles de indumentaria deportiva · opcionales</summary><div className="field-grid"><Field label="Equipo"><input maxLength={100} value={fields.teamName ?? ''} onChange={event => change('teamName', event.target.value)} placeholder="Barcelona"/></Field><Field label="Identificador del equipo"><input value={fields.teamKey ?? ''} onChange={event => change('teamKey', event.target.value)} placeholder="barcelona" pattern="[a-z0-9]+(-[a-z0-9]+)*"/></Field>{select('teamKind', 'Tipo de equipo', [['club', 'Club'], ['national_team', 'Selección']])}<Field label="Temporada"><input value={fields.season ?? ''} onChange={event => change('season', event.target.value)} placeholder="2025 o 2025/26" pattern="[0-9]{4}(/[0-9]{2}([0-9]{2})?)?"/></Field>{select('kitKey', 'Equipación', [['home', 'Titular'], ['away', 'Suplente'], ['third', 'Tercera'], ['goalkeeper', 'Arquero'], ['special', 'Especial']])}{select('versionKey', 'Versión', [['fan', 'Hincha'], ['player', 'Jugador']])}{select('sleeveKey', 'Manga', [['short', 'Corta'], ['long', 'Larga'], ['sleeveless', 'Sin mangas']])}</div></details>}<Field label="Descripción · opcional"><textarea maxLength={4000} value={fields.description} onChange={event => change('description', event.target.value)} rows={4}/><small className="field-help">Contá qué es el producto y qué lo distingue. Usá solo características y condiciones reales.</small>{fields.description.trim().length > 0 && fields.description.trim().length < 12 && <small className="field-hint">Revisá si esta descripción le aporta información a quien consulta.</small>}</Field></div>;
+  const change = (key: keyof CommercialFields, value: string) => setFields({ ...fields, [key]: value });
+  return <div className="field-grid">
+    <Field label="Título comercial"><input required maxLength={120} value={fields.title} onChange={event => change('title', event.target.value)} placeholder="Nombre del producto"/></Field>
+    <Field label="Descripción · opcional"><textarea aria-label="Descripción · opcional" maxLength={4000} value={fields.description} onChange={event => change('description', event.target.value)} rows={4}/><small className="field-help">Contá qué es el producto y qué lo distingue. Usá solo características y condiciones reales.</small>{fields.description.trim().length > 0 && fields.description.trim().length < 12 && <small className="field-hint">Revisá si esta descripción le aporta información a quien consulta.</small>}</Field>
+  </div>;
 }
 
 function ProductEditor({ id, initialCandidates, onClose, onCreated }: { id: string | null; initialCandidates: Candidate[]; onClose: () => void; onCreated: (id: string) => void }) {
@@ -225,7 +224,7 @@ function ProductEditor({ id, initialCandidates, onClose, onCreated }: { id: stri
       setLoading(true); const loaded = await refresh(); if (!active || !loaded) return;
       if (initialCandidates.length && id) { setSelected(current => [...new Set([...current, ...initialCandidates.map(item => item.skuId)])]); setLinksDirty(true); }
       const saved = localStorage.getItem(draftKey); if (!saved) return;
-      try { const draft = JSON.parse(saved); if (fieldKeys.every(key => draft[key] === null || typeof draft[key] === 'string')) { setFields(draft); setDirty(true); setSuccess('Recuperé tu borrador de este navegador. Revisalo antes de guardar.'); } } catch { /* Invalid browser draft is ignored. */ }
+      try { const draft = JSON.parse(saved); if (fieldKeys.every(key => typeof draft?.[key] === 'string')) { setFields(productFields(draft)); setDirty(true); setSuccess('Recuperé tu borrador de este navegador. Revisalo antes de guardar.'); } } catch { /* Invalid browser draft is ignored. */ }
     };
     void load().catch(cause => { if (active) setError(message(cause)); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; readGeneration.current++; };
   }, [id]);

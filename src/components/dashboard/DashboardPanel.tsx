@@ -374,7 +374,10 @@ function ActivityFeed({
 
 export function DashboardPanel() {
   const { products, transactions, pedidos, executeManualMovement, refreshState } = useInventory();
-  const [activeSection, setActiveSection] = useState<DashboardSection>(() => new URLSearchParams(location.search).get('section') === 'productos' ? 'productos' : 'inicio');
+  const [activeSection, setActiveSection] = useState<DashboardSection>(() => {
+    const section = new URLSearchParams(location.search).get('section');
+    return section === 'productos' || section === 'actividad' ? section : 'inicio';
+  });
   const [productsStockFilter, setProductsStockFilter] = useState<'all' | 'low-stock'>('all');
   const [movementMode, setMovementMode] = useState<StockMovementMode | null>(null);
   const [openPedidoForm, setOpenPedidoForm] = useState(false);

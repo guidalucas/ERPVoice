@@ -6,6 +6,7 @@ import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, proces
 import { transcribeAudio, MAX_AUDIO_BYTES, TranscriptionError } from './audioTranscription.js';
 import { acknowledgeMetaMessages } from './metaProcessingAcknowledgement.js';
 import { operationErrorMessage } from './interpretationRecovery.js';
+import { universalOperationDetail } from './universalMetaOperations.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
 import { createCommerceRouter } from './commerce/router.js';
 import { createPublicCatalogRouters } from './catalog/router.js';
@@ -850,6 +851,10 @@ app.post('/api/operation-drafts', authenticateRequest, async (req,res) => {
 });
 app.get('/api/operation-drafts/:id', authenticateRequest, async (req,res) => {
   try { res.json(await getUniversalDraft(req.params.id,universalRequestContext(req))); }
+  catch(error) { universalHttpError(res,error); }
+});
+app.get('/api/operation-drafts/:id/detail', authenticateRequest, async (req,res) => {
+  try { res.json(universalOperationDetail(await getUniversalDraft(req.params.id,universalRequestContext(req)))); }
   catch(error) { universalHttpError(res,error); }
 });
 app.post('/api/operation-drafts/:id/replies', authenticateRequest, async (req,res) => {
