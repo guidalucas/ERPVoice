@@ -196,24 +196,36 @@ test('composed receipt describes persisted stock, account, order, party and deri
     { items: [{ type: 'supplier.merge', party: { id: 'supplier-secret', name: 'Tienda Norte', notas: 'Cuenta histórica' }, removedParty: { id: 'supplier-removed', name: 'Tienda Centro' }, affectedOrders: [{ id: 'o1' }, { id: 'o2' }] }] },
   ] };
   const output = universalMetaReceiptReply(result);
-  assert.match(output, /Ingreso aplicado: 4 unit de Camisa\. Disponible: 9; reservado: 2\./);
+  assert.match(output, /^✅ \*Cambios guardados\*\n\n• /);
+  assert.match(output, /Ingreso aplicado: 4 unidades de Camisa · Disponible: 9 · reservado: 2/);
   assert.match(output, /Cargo registrado: Ana; importe 35; saldo 90\./);
   assert.match(output, /Pedido actualizado: Camisa; cantidad 4; estado conseguido\./);
-  assert.match(output, /Disponible: 9; reservado: 2/);
+  assert.match(output, /Disponible: 9 · reservado: 2/);
   assert.match(output, /Proveedor unido: Tienda Centro unido a Tienda Norte\./);
-  assert.match(output, /Notas guardadas: Cuenta histórica/);
+  assert.doesNotMatch(output, /Notas guardadas|Cuenta histórica/);
   assert.match(output, /Pedidos afectados: 2/);
   assert.doesNotMatch(output, /sku-uuid-secret|order-secret|supplier-secret|supplier-removed/);
 });
 
-test('large receipt uses the exact generic summary and malformed receipts fail closed', () => {
+test('large receipts show a bounded list and remaining count; malformed receipts fail closed', () => {
   const items = Array.from({ length: 30 }, (_, index) => ({ type: 'client.update', party: { name: `Cliente ${index}`, notas: 'nota'.repeat(40) } }));
-  assert.equal(universalMetaReceiptReply({ items }), 'Operación aplicada. El recibo completo de todos los cambios quedó guardado en el negocio.');
+  const before = structuredClone(items), summary = universalMetaReceiptReply({ items });
+  assert.equal(summary.split('\n').filter(line => line.startsWith('• ')).length, 6);
+  assert.match(summary, /Y 24 cambios más/);
+  assert.match(summary, /detalle completo quedó guardado/);
+  assert.ok(summary.length <= 1200);
+  assert.deepEqual(items, before);
   expectCode(() => universalMetaReceiptReply({ items: [{ type: 'client.update', party: {} }] }), 'INVALID_DRAFT_REQUEST');
   assert.doesNotMatch(universalMetaReceiptReply({ items: [{ type: 'sku.create', skuName: 'Camisa', skuId: 'a0b1c2d3-uuid', stockAvailable: 2, stockReserved: 0, currency: 'UYU', price: 10 }] }), /a0b1c2d3-uuid/);
   const update=universalMetaReceiptReply({items:[{type:'sku.update',skuName:'Conversor',skuId:'sku-private-id',stockAvailable:2,stockReserved:0,revision:3,
     changes:{family:{id:'family-private-id',version:2},attributes:{voltage:{state:'known',type:'number',value:0,unit:'v'},certified:{state:'known',type:'boolean',value:false},length:{state:'unknown',type:'number',unit:'mm'}}}}]});
   assert.doesNotMatch(update,/private-id/);assert.match(update,/Familia: versión 2/);assert.match(update,/voltage: 0 v/);assert.match(update,/certified: No/);assert.match(update,/length: Desconocido mm/);
+});
+
+test('short receipts omit zero reservations and internal revisions and format amounts', () => {
+  const output = universalMetaReceiptReply({ items: [{ type: 'sku.create', skuName: 'Taladro', size: '650 W', stockAvailable: 3, stockReserved: 0, price: 65000, currency: 'ARS', revision: 99 }] });
+  assert.match(output, /Producto creado: Taladro \(650 W\) · Disponible: 3 · ARS 65\.000/);
+  assert.doesNotMatch(output, /reservado|revisión|99|Entendí/);
 });
 
 test('cancelled preview is clear and applied preview reuses its persisted receipt', () => {

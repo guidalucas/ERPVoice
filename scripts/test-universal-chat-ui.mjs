@@ -115,9 +115,15 @@ const send = async (f, text) => {
 try {
   {
     const f = await fixture();
+    f.setMode('hold-transcription');
     await f.page.getByRole('button', { name: 'Grabar audio', exact: true }).click();
     await f.page.getByRole('button', { name: 'Detener grabación', exact: true }).click();
+    await f.waitHold();
+    await f.page.getByRole('status').getByText('Recibí tu audio. Lo estoy procesando…', { exact: true }).waitFor();
+    assert.equal(await f.page.getByRole('button', { name: 'Grabar audio', exact: true }).isDisabled(), true);
+    f.release();
     await f.dialog.waitFor();
+    assert.equal(await f.page.getByText('Recibí tu audio. Lo estoy procesando…', { exact: true }).count(), 0);
     const transcript = 'Ingresaron tres taladros y cargá siete a Ana.';
     assert.equal(await f.dialog.getByLabel('Solicitud', { exact: true }).inputValue(), transcript);
     assert.equal(f.transcriptions.length, 1); assert.equal(f.prepares.length, 0); assert.equal(f.writes(), 0);
@@ -175,6 +181,10 @@ try {
     await f.dialog.getByText('Saldo: 0 → 7', { exact: true }).waitFor();
     await f.consent().check(); await f.button('Confirmar operación').click();
     await f.dialog.getByText('Operación aplicada correctamente.', { exact: true }).waitFor();
+    assert.equal(await f.dialog.locator('details').getAttribute('open'), null);
+    assert.equal(await f.dialog.locator('details p').filter({ hasText: 'Disponible: 2 → 5' }).isVisible(), false);
+    await f.dialog.getByText('Ver detalle de los 2 cambios guardados', { exact: true }).click();
+    await f.dialog.locator('details p').filter({ hasText: 'Disponible: 2 → 5' }).waitFor();
     assert.equal(f.writes(), 1); assert.equal(f.confirms.length, 1);
     assert.deepEqual(f.confirms[0].input, { version: 1, digest: '1'.repeat(64) });
     assert.deepEqual(f.forbidden, []); assert.deepEqual(f.errors, []); await f.page.close();

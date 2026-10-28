@@ -8,6 +8,8 @@
     "test:commerce:onboarding": "node scripts/test-commerce-onboarding.js",
     "test:commerce:money-voice": "node --test scripts/test-business-money-voice.js",
     "test:commerce:browser": "node scripts/test-commerce-browser.js",
+    "test:commerce:minimal-publication": "node scripts/test-catalog-minimal-publication.mjs",
+    "test:chat-feedback": "node --test scripts/test-meta-processing-acknowledgement.js scripts/test-universal-meta-operations.js scripts/test-meta-audio-boundary.js",
     "test:studio:deployment": "npm run build && node scripts/test-studio-deployment.mjs",
     "test:studio:templates": "node scripts/test-story-templates.mjs",
     "dev:studio": "vite --config vite.studio.config.ts",

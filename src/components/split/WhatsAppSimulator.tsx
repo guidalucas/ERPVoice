@@ -67,6 +67,7 @@ export function WhatsAppSimulator() {
           {session && <LegacyOperationRecovery key={JSON.stringify([session.tenantPhone, session.phoneNumber])} storageKey={pendingProposalKey(session.tenantPhone, session.phoneNumber)} copyToComposer={text => setDraftText(!draftText.trim() || draftText === text ? text : draftText + '\n\n' + text)} openReview={text => { setReviewText(text); setReviewOpen(true); }} />}
 
           <div className="shrink-0 border-t border-emerald-950/50 bg-[#0b1424] px-3 py-3">
+            {isTranscribing && <p role="status" className="mb-2 flex items-center gap-2 text-sm text-emerald-300"><span aria-hidden="true" className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-300/30 border-t-emerald-300 motion-reduce:animate-none"/>Recibí tu audio. Lo estoy procesando…</p>}
             {inputStorageError && <p role="alert" className="mb-2 text-sm text-amber-200">{inputStorageError}</p>}
             <div className="flex items-end gap-3">
               <button

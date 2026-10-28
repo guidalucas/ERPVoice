@@ -99,9 +99,13 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
         const previous = (await client.query('SELECT * FROM commercial_publications WHERE owner_phone=$1 AND commercial_product_id=$2 FOR UPDATE', [context.businessId, productId])).rows[0]; assertRevision(previous, command.expectedRevision);
         if (command.status === 'published') {
           const detail = await readProductDetail(client, context.businessId, productId);
-          if (product.status !== 'ready' || !detail.readiness.canPrepare) fail('PRODUCT_NOT_READY', 'Prepará y revisá la ficha antes de publicarla.', 422);
-          if (!storage.configured) fail('MEDIA_NOT_CONFIGURED', 'Configurá el almacenamiento privado antes de publicar.', 503);
+          if (!detail.readiness.canPrepare) fail('PRODUCT_NOT_READY', 'Revisá el nombre, las variantes y sus precios antes de publicar.', 422, { blockers: detail.readiness.blockers });
           if (!(await client.query('SELECT 1 FROM commerce_catalogs WHERE owner_phone=$1', [context.businessId])).rowCount) fail('CATALOG_NOT_CONFIGURED', 'Configurá el catálogo antes de publicar fichas.', 422);
+          if (product.status !== 'ready') {
+            if ((!detail.identityKey || !detail.teamName || !detail.teamKind) && !(await client.query('SELECT 1 FROM commerce_schema_migrations WHERE version=5')).rowCount)
+              fail('UNIVERSAL_SCHEMA_NOT_READY', 'El servicio comercial necesita la actualización multirrubro para publicar esta ficha.', 503);
+            await client.query("UPDATE commercial_products SET status='ready',revision=revision+1,updated_at=NOW(),updated_by=$3 WHERE owner_phone=$1 AND id=$2", [context.businessId, productId, context.actorId]);
+          }
         }
         const saved = (await client.query(`INSERT INTO commercial_publications(owner_phone,commercial_product_id,status,reason,updated_by,published_at)
           VALUES($1,$2,$3,$4,$5,CASE WHEN $3='published' THEN NOW() ELSE NULL END)

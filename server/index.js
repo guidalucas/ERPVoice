@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { InventoryOperationError } from './inventoryOperations.js';
 import { buildMetaVerificationResponse, buildConversationTurnsFromEvents, processMetaWebhook, sendMetaReply } from './metaWebhookProcessor.js';
 import { transcribeAudio, MAX_AUDIO_BYTES, TranscriptionError } from './audioTranscription.js';
+import { acknowledgeMetaMessages } from './metaProcessingAcknowledgement.js';
 import { operationErrorMessage } from './interpretationRecovery.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
 import { createCommerceRouter } from './commerce/router.js';
@@ -979,7 +980,6 @@ const dispatchPendingMetaReplies = async () => {
 };
 
 const handleMetaWebhook = async (req, res) => {
-  const fastRepliedMessageIds = new Set();
   const body = req.body ?? {};
   let processingBody = body;
 
@@ -1022,38 +1022,10 @@ const handleMetaWebhook = async (req, res) => {
   }
   res.sendStatus(200);
 
-  // Enviar ACK rápido para mensajes de texto para que el usuario reciba respuesta inmediata
-  try {
-    if (processingBody.object === 'whatsapp_business_account') {
-      const entry = Array.isArray(processingBody.entry) ? processingBody.entry[0] : null;
-      const changes = entry?.changes?.[0]?.value;
-      const message = changes?.messages?.[0];
-
-      if (message && message.type === 'text') {
-        const fromNumber = message.from;
-        const messageId = typeof message.id === 'string' ? message.id : null;
-        const senderName = changes?.contacts?.[0]?.profile?.name || 'Usuario';
-
-        console.log('[MetaWebhook] text accepted', { messageId });
-
-        // ACK corto: la confirmación real del resultado se envía al terminar de procesar.
-        const responseText = `Procesando tu mensaje, ${senderName}…`;
-
-        // no await, pero capturamos errores para no bloquear el flujo
-        sendMetaReply({ to: fromNumber, text: responseText })
-          .then((r) => console.log('[MetaWebhook] fast-reply result:', { sent: r?.sent, reason: r?.reason }))
-          .catch((err) => {
-            console.error('[MetaWebhook] fast-reply failed:', err);
-          });
-
-        if (messageId) {
-          fastRepliedMessageIds.add(messageId);
-        }
-      }
-    }
-  } catch (err) {
-    console.error('[MetaWebhook] failed to send fast-reply:', err);
-  }
+  // Acknowledge every accepted text/audio before transcription or interpretation.
+  const fastRepliedMessageIds = await acknowledgeMetaMessages(processingBody, sendMetaReply, error => {
+    console.error('[MetaWebhook] fast-reply failed:', error);
+  });
 
   await processClaimedMetaBody(processingBody, fastRepliedMessageIds);
 };

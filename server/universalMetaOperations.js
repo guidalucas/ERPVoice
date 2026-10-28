@@ -1,12 +1,14 @@
 import { InventoryOperationError } from './inventoryOperations.js';
-import { inventoryResultReply } from './inventoryResults.js';
 import { accountResultReply } from './accountOperations.js';
 import { validateUniversalOperationReview } from './universalOperationReview.js';
 
 const fail = (code, message) => { throw new InventoryOperationError(code, message); };
 const invalidDraft = () => fail('INVALID_DRAFT_REQUEST', 'El borrador o recibo de la operación está incompleto o no es válido.');
 const PREVIEW_LIMIT = 3500;
-const RECEIPT_SUMMARY = 'Operación aplicada. El recibo completo de todos los cambios quedó guardado en el negocio.';
+const RECEIPT_LIMIT = 1200;
+const RECEIPT_ITEMS = 6;
+const numberText = value => typeof value === 'number' ? value.toLocaleString('es-AR') : String(value);
+const inlineText = value => String(value).replace(/\s+/g, ' ').trim();
 
 /**
  * Explicit WhatsApp control namespace. Once a recognized verb and OPERACION
@@ -84,7 +86,18 @@ function inventoryReceipt(result) {
   if (!result || !Array.isArray(result.items) || result.items.some((item) => !item || typeof item.type !== 'string'
     || (item.type.startsWith('stock.') || item.type.startsWith('sku.')) && (typeof item.skuName !== 'string' || !item.skuName.trim()))) invalidDraft();
   return result.items.map(item=>{
-    if (item.type!=='sku.update') return inventoryResultReply({items:[item]});
+    const name = `${inlineText(item.skuName)}${item.size ? ` (${inlineText(item.size)})` : ''}`;
+    const stock = `Disponible: ${numberText(item.stockAvailable)}${item.stockReserved ? ` · reservado: ${numberText(item.stockReserved)}` : ''}`;
+    if (item.type === 'sku.create') return `Producto creado: ${name} · ${stock} · ${item.currency} ${numberText(item.price)}`;
+    if (item.type === 'sku.deactivate') return `Producto desactivado: ${name} · stock conservado: ${numberText(item.stockAvailable)}`;
+    if (item.type === 'stock.adjust') return `Stock ajustado: ${name} · ${stock}`;
+    if (item.type !== 'sku.update') {
+      const verb = { 'stock.receive': 'Ingreso aplicado', 'stock.sell': 'Venta registrada', 'stock.reserve': 'Reserva registrada', 'stock.withdraw': 'Retiro aplicado' }[item.type];
+      if (!verb || !item.quantity) invalidDraft();
+      const unit = item.quantity.unit === 'unit' ? item.quantity.value === 1 ? 'unidad' : 'unidades' : item.quantity.unit;
+      const price = item.type === 'stock.sell' ? item.price == null ? ' · precio no informado' : ` · ${item.currency} ${numberText(item.price)} c/u` : '';
+      return `${verb}: ${numberText(item.quantity.value)} ${unit} de ${name} · ${stock}${price}`;
+    }
     // The full immutable receipt retains the reference; presentation uses its
     // reviewed version and human field values instead of exposing internal IDs.
     const labels={name:'Nombre',productType:'Tipo',productModel:'Modelo',size:'Variante',price:'Precio',priceCurrency:'Moneda'};
@@ -95,8 +108,7 @@ function inventoryReceipt(result) {
         `${name}: ${attribute.state==='known' ? valueText(attribute.value) : ({unknown:'Desconocido',not_applicable:'No corresponde',missing:'Falta informar'}[attribute.state])}${attribute.unit ? ` ${attribute.unit}` : ''}`) : ['Sin atributos'];
       return [`${labels[key] ?? key}: ${valueText(value)}`];
     });
-    const {changes:_,...facts}=item;
-    return `${inventoryResultReply({items:[facts]})}${changes.length ? ` Cambios guardados: ${changes.join('; ')}.` : ''}`;
+    return `Producto actualizado: ${name}${changes.length ? ` · ${changes.join(' · ')}` : ''}`;
   }).join('\n');
 }
 
@@ -124,7 +136,6 @@ function partyReceipt(result) {
     const noun = kind === 'client' ? 'Cliente' : 'Proveedor';
     const verb = action === 'create' ? 'creado' : action === 'update' ? 'actualizado' : action === 'delete' ? 'eliminado' : 'unido';
     let line = `${noun} ${verb}: ${action === 'merge' && item.removedParty?.name ? `${item.removedParty.name} unido a ` : ''}${item.party.name}.`;
-    if (item.party.notas) line += ` Notas guardadas: ${item.party.notas}.`;
     if (action === 'merge' || action === 'delete') {
       if (!Array.isArray(item.affectedOrders)) invalidDraft();
       line += ` Pedidos afectados: ${item.affectedOrders.length}.`;
@@ -151,8 +162,18 @@ function receiptParts(input, output = []) {
 
 /** Compose only persisted receipt facts from the existing domain result adapters. */
 export function universalMetaReceiptReply(result) {
-  const lines = receiptParts(result);
-  const reply = lines.filter(Boolean).join('\n');
-  if (!reply) invalidDraft();
-  return reply.length > PREVIEW_LIMIT ? RECEIPT_SUMMARY : reply;
+  const lines = receiptParts(result).flatMap(part => part.split('\n')).filter(Boolean).map(inlineText);
+  if (!lines.length) invalidDraft();
+  const visible = [];
+  let shortened = false;
+  for (const line of lines.slice(0, RECEIPT_ITEMS)) {
+    const concise = line.length > 240 ? `${line.slice(0, 239)}…` : line;
+    shortened ||= concise !== line;
+    if (visible.join('\n').length + concise.length > RECEIPT_LIMIT - 180) break;
+    visible.push(`• ${concise}`);
+  }
+  const remaining = lines.length - visible.length;
+  return ['✅ *Cambios guardados*', '', ...visible,
+    ...(remaining ? [`Y ${remaining} cambio${remaining === 1 ? '' : 's'} más.`] : []),
+    ...(remaining || shortened ? ['', 'El detalle completo quedó guardado en el negocio.'] : [])].join('\n');
 }

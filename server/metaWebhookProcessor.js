@@ -2744,6 +2744,7 @@ export const sendMetaReply = async ({ to, text }) => {
   for (const recipient of recipients) {
     const response = await fetch(`https://graph.facebook.com/${metaGraphApiVersion}/${metaPhoneNumberId}/messages`, {
       method: 'POST',
+      signal: AbortSignal.timeout(10000),
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${metaAccessToken}`,
