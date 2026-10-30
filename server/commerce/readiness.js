@@ -24,7 +24,7 @@ export function buildCommercialReadiness(product, skus, images, policy) {
     }
     if (active && money && BigInt(money.amountMinor) <= 0n) blockers.add('PRICE_NOT_READY');
     return { skuId: sku.id, name: sku.name, size: sku.size, label: variantLabel(sku), unit: sku.unit ?? 'unit',
-      productType: sku.productType ?? null, specifications: commercialSpecifications(sku.attributes), active, revision: sku.revision,
+      productType: sku.productType ?? null, productModel: sku.productModel ?? null, specifications: commercialSpecifications(sku.attributes), active, revision: sku.revision,
       identityFingerprint: fingerprint, identityReviewed, stockAvailable: validStock ? sku.stockAvailable : null,
       stockReserved: validStock ? sku.stockReserved : null, price: money };
   });

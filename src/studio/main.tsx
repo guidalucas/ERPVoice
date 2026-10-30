@@ -11,5 +11,6 @@ import './automation.css';
 import './onboarding.css';
 import './universal.css';
 import './theme.css';
+import './pendingInventory.css';
 applyThemeClass(getStoredTheme());
 ReactDOM.createRoot(document.getElementById('studio-root')!).render(<React.StrictMode><ThemeProvider><AuthProvider><Studio/></AuthProvider></ThemeProvider></React.StrictMode>);

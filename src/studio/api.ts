@@ -29,7 +29,13 @@ export function forgetOperation(id: string) { savePending(pendingOperations().fi
 function settleOperation(pending: Pending) {
   if (pending.route === '/products' && pending.method === 'POST') {
     const key = `fullmatch.draft.${getAuthSession()?.phoneNumber}.new`;
-    try { if (JSON.stringify(JSON.parse(localStorage.getItem(key) ?? 'null')) === JSON.stringify(pending.body.product)) localStorage.removeItem(key); } catch { /* Ignore invalid draft. */ }
+    try {
+      const draft = JSON.parse(localStorage.getItem(key) ?? 'null');
+      if (draft) {
+        const { skuMetadataChanges, ...product } = draft;
+        if (JSON.stringify(product) === JSON.stringify(pending.body.product) && JSON.stringify(skuMetadataChanges ?? []) === JSON.stringify(pending.body.skuMetadataChanges ?? [])) localStorage.removeItem(key);
+      }
+    } catch { /* Ignore invalid draft. */ }
   }
   forgetOperation(pending.operationId);
 }

@@ -9,6 +9,7 @@ import { executeCommerceCommand, requireCommerceAccess } from './operationReposi
 import { inspectCommerceSchema } from './schemaInspection.js';
 import { fail } from './errors.js';
 import { appearanceOf, normalizeAppearance, requireAppearanceSchema, validateAppearanceAssets } from './appearance.js';
+import { normalizeSkuMetadataChanges, applySkuMetadata } from './skuMetadata.js';
 
 const requireRevision = (row, expected) => { if (Number(row.revision) !== integer(expected, 1)) fail('REVISION_CONFLICT', 'La ficha cambió. Revisá tu borrador antes de guardar.', 409, { currentRevision: Number(row.revision) }); };
 function linksRequest(value = []) {
@@ -33,7 +34,7 @@ async function replaceLinks(client, context, id, links) {
   [context.businessId, id, link.skuId, link.expectedFingerprint, index, context.actorId]);
 }
 
-/** Private use only. No bootstrap, public projection or inventory mutation. */
+/** Private use only. SKU metadata edits use the inventory executor atomically. */
 export function createCommerceProductService(runtime) {
   let ready;
   const ensureReady = async () => {
@@ -79,30 +80,36 @@ export function createCommerceProductService(runtime) {
         revision: Number(profile.revision), moneyPolicy: await readMoneyPolicy(client, context.businessId) };
     }),
     create: async (context, input) => {
-      const data = record(input, ['operationId', 'product', 'skuLinks']);
-      const command = { operationId: uuid(data.operationId), product: normalizeCommercialProduct(data.product), skuLinks: linksRequest(data.skuLinks) };
+      const data = record(input, ['operationId', 'product', 'skuLinks', 'skuMetadataChanges']);
+      const command = { operationId: uuid(data.operationId), product: normalizeCommercialProduct(data.product), skuLinks: linksRequest(data.skuLinks),
+        ...(Object.hasOwn(data, 'skuMetadataChanges') ? { skuMetadataChanges: normalizeSkuMetadataChanges(data.skuMetadataChanges) } : {}) };
       return mutate(context, { operationId: command.operationId, type: 'product.create', command }, async client => {
         const id = randomUUID(), product = { ...command.product, identityKey: commercialIdentityKey(command.product) };
         await insertProduct(client, context.businessId, context.actorId, id, commercialSlug(product.title, id), product);
-        await replaceLinks(client, context, id, command.skuLinks);
+        const updated = await applySkuMetadata(client, context, command.operationId, command.skuMetadataChanges ?? [], command.skuLinks.map(link => link.skuId));
+        await replaceLinks(client, context, id, command.skuLinks.map(link => updated.get(link.skuId) ?? link));
         return readProductDetail(client, context.businessId, id);
       });
     },
     update: async (context, id, input) => {
       id = uuid(id);
-      const data = record(input, ['operationId', 'expectedRevision', 'changes']);
+      const data = record(input, ['operationId', 'expectedRevision', 'changes', 'skuMetadataChanges']);
       const changes = record(data.changes, ['title', 'description', 'teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey']);
       for (const [key, value] of Object.entries(changes)) {
         if (value !== null && typeof value !== 'string') fail('INVALID_COMMAND', `El campo ${key} debe ser texto.`, 400);
       }
-      const command = { operationId: uuid(data.operationId), expectedRevision: integer(data.expectedRevision, 1), changes };
+      const command = { operationId: uuid(data.operationId), expectedRevision: integer(data.expectedRevision, 1), changes,
+        ...(Object.hasOwn(data, 'skuMetadataChanges') ? { skuMetadataChanges: normalizeSkuMetadataChanges(data.skuMetadataChanges) } : {}) };
       return mutate(context, { operationId: command.operationId, type: 'product.update', entityId: id, command }, async client => {
         const row = await requireProduct(client, context.businessId, id, { lock: true }); requireRevision(row, command.expectedRevision);
         if (row.status === 'archived') fail('PRODUCT_ARCHIVED', 'Restaurá la ficha antes de editarla.', 409);
+        const links = (await client.query('SELECT sku_id FROM commercial_product_skus WHERE owner_phone=$1 AND commercial_product_id=$2', [context.businessId, id])).rows;
+        const updated = await applySkuMetadata(client, context, command.operationId, command.skuMetadataChanges ?? [], links.map(link => link.sku_id));
+        for (const link of updated.values()) await client.query('UPDATE commercial_product_skus SET identity_fingerprint_at_link=$3 WHERE owner_phone=$1 AND commercial_product_id=$2 AND sku_id=$4', [context.businessId, id, link.expectedFingerprint, link.skuId]);
         const current = rowToCommercialProduct(row);
         const fields = Object.fromEntries(['title', 'description', 'teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey'].map(key => [key, current[key]]));
         const product = normalizeCommercialProduct({ ...fields, ...command.changes }); product.identityKey = commercialIdentityKey(product);
-        await updateProduct(client, context.businessId, context.actorId, id, product, { invalidate: product.identityKey !== current.identityKey });
+        await updateProduct(client, context.businessId, context.actorId, id, product, { invalidate: product.identityKey !== current.identityKey || updated.size > 0 });
         return readProductDetail(client, context.businessId, id);
       });
     },
@@ -171,22 +178,37 @@ export function createCommerceProductService(runtime) {
         nextCursor: rows.length > limit ? Buffer.from(JSON.stringify({ at: last.updated_at.toISOString(), id: last.id })).toString('base64url') : null };
     }),
     candidates: (context, query = {}) => read(context, async client => {
-      const data = record(query, ['q', 'cursor', 'limit']);
+      const data = record(query, ['q', 'cursor', 'limit', 'grouped']);
+      if (data.grouped !== undefined && data.grouped !== 'true') fail('INVALID_COMMAND', 'Agrupación inválida.', 400);
       const limit = data.limit === undefined ? 50 : Number(data.limit);
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) fail('INVALID_COMMAND', 'Límite inválido.', 400);
       const q = text(data.q ?? '', 120, 'query', { empty: true }).replace(/[\\%_]/g, '\\$&');
-      const rows = (await client.query(`SELECT p.* FROM products p WHERE p.owner_phone=$1 AND p.inventory_status='active'
+      const parameters = [context.businessId, q, `%${q}%`, data.cursor ? text(data.cursor, 180, 'cursor') : null, limit + 1];
+      // Page whole product identities so selecting a group never misses sizes on another page.
+      const rows = data.grouped ? (await client.query(`WITH eligible AS (
+        SELECT p.*, min(p.id) OVER (PARTITION BY p.name, p.product_model, p.product_type, p.inventory_unit) AS candidate_group
+        FROM products p WHERE p.owner_phone=$1 AND p.inventory_status='active'
+        AND NOT EXISTS(SELECT 1 FROM commercial_product_skus l WHERE l.owner_phone=p.owner_phone AND l.sku_id=p.id)
+        AND ($2='' OR p.name ILIKE $3 OR p.product_model ILIKE $3)
+      ), page AS (
+        SELECT DISTINCT candidate_group FROM eligible WHERE ($4::text IS NULL OR candidate_group>$4)
+        ORDER BY candidate_group LIMIT $5
+      ) SELECT eligible.* FROM eligible JOIN page USING(candidate_group) ORDER BY candidate_group,id`, parameters)).rows
+        : (await client.query(`SELECT p.* FROM products p WHERE p.owner_phone=$1 AND p.inventory_status='active'
         AND NOT EXISTS(SELECT 1 FROM commercial_product_skus l WHERE l.owner_phone=p.owner_phone AND l.sku_id=p.id)
         AND ($2='' OR p.name ILIKE $3 OR p.product_model ILIKE $3) AND ($4::text IS NULL OR p.id>$4)
-        ORDER BY p.id LIMIT $5`, [context.businessId, q, `%${q}%`, data.cursor ? text(data.cursor, 180, 'cursor') : null, limit + 1])).rows;
+        ORDER BY p.id LIMIT $5`, parameters)).rows;
+      const pageKeys = data.grouped ? [...new Set(rows.map(row => row.candidate_group))] : rows.map(row => row.id);
+      const visibleKeys = new Set(pageKeys.slice(0, limit));
+      const visible = rows.filter(row => visibleKeys.has(data.grouped ? row.candidate_group : row.id));
       const policy = await readMoneyPolicy(client, context.businessId);
-      return { items: rows.slice(0, limit).map(row => {
+      return { items: visible.map(row => {
         const product = inventoryRowToProduct(row); let money = null;
         try { money = inventoryPriceToMoney(product.price, product.priceCurrency, policy); } catch { /* explicit unconfirmed money */ }
         return { skuId: product.id, name: product.name, size: product.size, label: product.size || product.name, unit: product.unit, productType: product.productType, productModel: product.productModel,
           revision: product.revision, identityFingerprint: inventoryProductFingerprint(product), stockAvailable: product.stockAvailable,
           stockReserved: product.stockReserved, price: money };
-      }), nextCursor: rows.length > limit ? rows[limit - 1].id : null };
+      }), nextCursor: pageKeys.length > limit ? pageKeys[limit - 1] : null };
     }),
     summary: context => read(context, async client => ({
       products: (await client.query('SELECT status,count(*)::int AS count FROM commercial_products WHERE owner_phone=$1 GROUP BY status', [context.businessId])).rows,

@@ -29,6 +29,8 @@ La tienda usa tokens CSS y texto blanco/negro según luminancia. La portada se c
 
 ## Productos, filtros e historias
 
+La ficha muestra los campos opcionales configurados para el rubro: tipo de prenda/modelo/talle en indumentaria, tipo de calzado/modelo/número en calzado, rubro/modelo-marca/medida en ferretería, categoría/modelo/variante en electrónica y categoría/modelo o marca sin variante en general y kiosco. Se completan con cada SKU seleccionado, también antes de crear la ficha. Al editarlos se actualiza la metadata del SKU mediante el ejecutor de inventario y se revisa su vínculo comercial en la misma transacción. Se conservan precios, saldos, atributos tipados y familias; una revisión obsoleta impide guardar ambos cambios. No se exige completar ninguno para crear una ficha. Sin SKU vinculado se indica cómo vincularlo antes de completar sus atributos.
+
 Las presentaciones utilizan `size` cuando existe y el nombre del SKU cuando falta. Se conserva `size` en el contrato de consultas para mantener compatibilidad. No se alteran identificadores ni huellas físicas. Presentaciones ambiguas siguen bloqueadas y requieren revisión de vínculos.
 
 Las unidades se leen del inventario. Se proyectan únicamente atributos conocidos de una lista pública explícita: marca, modelo, medidas, material, potencia, capacidad, contenido, presentación, sabor, color y talle. No se publican atributos arbitrarios, como notas de proveedor, ni estados desconocidos o no aplicables. Este conjunto conservador no reemplaza ni duplica los esquemas de familia existentes.

@@ -95,6 +95,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .field-help, .field-hint { font-size: 13px; line-height: 1.6; color: var(--subtle); font-weight: 400; }
 .field-hint { color: #86450b; }
 .field-grid { gap: 20px; }
+.sku-metadata { margin: 24px 0; padding-top: 20px; border-top: 1px solid var(--border); }
+.sku-metadata h3, .sku-metadata h4 { margin: 0 0 10px; font-size: 16px; }
+.sku-metadata-item + .sku-metadata-item { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border); }
+.sku-metadata .field-grid > .field { grid-column: auto; }
 .inventory-specs details { padding: 4px 16px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 14px; font-size: 14px; }
 .inventory-specs dl > div { display: flex; justify-content: space-between; gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .inventory-specs dd { margin: 0; }
@@ -242,6 +246,7 @@ footer, footer span { font-size: 12px; color: var(--subtle); letter-spacing: 0; 
   .sizes > span { font-size: 12px; }
   .field-grid { grid-template-columns: 1fr; }
   .field-grid > .field { grid-column: 1/-1; }
+  .sku-metadata .field-grid > .field { grid-column: 1/-1; }
   .tabs { gap: 14px; }
   .tabs > button { font-size: 13px; }
   .variant-row { flex-wrap: wrap; }

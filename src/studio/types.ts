@@ -1,5 +1,5 @@
 export type Money = { amountMinor: string; currency: string; fractionDigits: number };
-export type Variant = { skuId: string; name: string; size: string; label?: string; unit?: string; productType?: string | null; specifications?: { label: string; value: string }[]; active: boolean; revision: number; identityFingerprint: string;
+export type Variant = { skuId: string; name: string; size: string; label?: string; unit?: string; productType?: string | null; productModel?: string | null; specifications?: { label: string; value: string }[]; active: boolean; revision: number; identityFingerprint: string;
   identityReviewed: boolean; stockAvailable: number | null; stockReserved: number | null; price: Money | null };
 export type Candidate = { label?: string; unit?: string; skuId: string; name: string; size: string; revision: number; identityFingerprint: string;
   productType?: string | null; productModel?: string | null;
@@ -7,6 +7,7 @@ export type Candidate = { label?: string; unit?: string; skuId: string; name: st
 export type Photo = { id: string; status: string; altText: string; sortOrder: number; focalX: number; focalY: number;
   revision: number; width: number | null; height: number | null; errorCode: string | null };
 export type CommercialFields = { title: string; description: string };
+export type SkuMetadataChange = { skuId: string; expectedRevision: number; expectedFingerprint: string; changes: Partial<Record<'productType' | 'productModel' | 'size', string | null>> };
 export type Product = CommercialFields & { id: string; slug: string; status: 'draft' | 'ready' | 'archived'; revision: number;
   teamKey: string | null; teamName: string | null; teamKind: string | null; season: string | null;
   kitKey: string | null; versionKey: string | null; sleeveKey: string | null;
