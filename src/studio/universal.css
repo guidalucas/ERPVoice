@@ -34,7 +34,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .sidebar nav button.active > span, .sidebar nav button.active > b { color: inherit; }
 .sidebar-bottom { border-color: var(--border); font-size: 12px; color: var(--subtle); }
 .sidebar-bottom p, .sidebar-bottom a, .sidebar-bottom button { color: var(--subtle); font-size: 12px; }
-.sidebar-bottom a { display: inline-flex; align-items: center; min-height: 44px; }
+.sidebar-bottom a { display: flex; align-items: center; min-height: 44px; margin: 4px 0; }
 .sidebar-bottom button { padding: 9px 0; }
 .sidebar-bottom button:hover:not(:disabled) { color: var(--text); text-decoration: underline; }
 .workspace { position: relative; padding: 0 32px; }

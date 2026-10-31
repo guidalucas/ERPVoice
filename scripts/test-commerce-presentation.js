@@ -77,6 +77,8 @@ test('public pages render generic products without photos or football fields, es
   assert.match(html, /data-preset="technical"/); assert.match(html, /Taladro &lt;seguro&gt;/); assert.match(html, /Sin fotografía/);
   assert.doesNotMatch(html, /Todos los equipos|Todas las versiones|undefined/);
   const page = renderCatalogProduct({ catalog, product }, ''); assert.match(page, /Presentación para tu consulta/); assert.doesNotMatch(page, /Talles|VERSIÓN HINCHA|undefined/);
+  assert.match(page, /Armá tu consulta/);
+  assert.doesNotMatch(page, /class="public-gallery"|class="main-photo"|Sin fotografía disponible|Consultanos para conocer más detalles/);
   const empty = renderCatalogList({ catalog, items: [] }, {}, '');
   assert.match(empty, /Todavía no hay productos publicados/); assert.doesNotMatch(empty, /No encontramos productos para esta búsqueda/);
   const noMatches = renderCatalogList({ catalog, items: [] }, { q: 'inexistente' }, '');

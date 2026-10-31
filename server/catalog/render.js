@@ -79,11 +79,12 @@ export function renderCatalogProduct(data, origin) {
   const content = `<section class="product-page"><a class="back" href="${escape(catalog.path)}#coleccion">← Volver a la colección</a>
     <div class="public-product-layout${photo ? '' : ' no-product-photo'}">
       ${heading}
-      <div class="public-gallery"><div class="main-photo">${photo ? `<a href="${escape(photo.url)}" target="_blank" rel="noopener noreferrer" data-gallery-zoom aria-label="Ampliar fotografía"><img data-gallery-main src="${escape(photo.url)}" alt="${escape(photo.alt || product.title)}" width="928" height="1100"></a>` : '<span class="no-photo">Sin fotografía disponible</span>'}</div>
+      ${photo ? `<div class="public-gallery"><div class="main-photo"><a href="${escape(photo.url)}" target="_blank" rel="noopener noreferrer" data-gallery-zoom aria-label="Ampliar fotografía"><img data-gallery-main src="${escape(photo.url)}" alt="${escape(photo.alt || product.title)}" width="928" height="1100"></a></div>
         ${gallery.length > 1 ? `<nav class="public-thumbnails" aria-label="Fotografías del producto">${gallery.map((image, index) => `<a href="${escape(image.url)}" data-gallery-image data-image-alt="${escape(image.alt || product.title)}" aria-label="Ver fotografía ${index + 1}"${index === 0 ? ' aria-current="true"' : ''}><img src="${escape(image.thumbnailUrl)}" alt="" loading="lazy" width="150" height="180"></a>`).join('')}</nav><p class="gallery-status" data-gallery-status role="status">Foto 1 de ${gallery.length}</p>` : ''}
-        ${photo ? `<dialog class="photo-dialog" aria-label="Fotografía ampliada"><form method="dialog"><button autofocus>Cerrar fotografía</button></form><img src="${escape(photo.url)}" alt="${escape(photo.alt || product.title)}"></dialog>` : ''}
-      </div>
+        <dialog class="photo-dialog" aria-label="Fotografía ampliada"><form method="dialog"><button autofocus>Cerrar fotografía</button></form><img src="${escape(photo.url)}" alt="${escape(photo.alt || product.title)}"></dialog>
+      </div>` : ''}
       <div class="public-product-info">
+        <div class="public-product-purchase">${!photo ? '<h2 class="purchase-heading">Armá tu consulta</h2>' : ''}
         <form data-add-inquiry data-product="${escape(product.slug)}" class="add-inquiry">
           <label>${escape(variantTitle)} para tu consulta<select name="size" required aria-label="${escape(variantTitle)} para tu consulta">${selected ? '' : '<option value="">Elegir presentación</option>'}${product.sizes.map(size => `<option value="${escape(size.size)}"${size.size === selected ? ' selected' : ''}${size.available ? '' : ' disabled'}${size.price ? ` data-price="${escape(money(size.price.amountMinor, size.price.currency, size.price.fractionDigits))}"` : ''}>${escape(size.size)}${size.unit && size.unit !== 'unit' ? ' · ' + escape(size.unit) : ''}${!size.available ? ' · Agotado' : product.priceRange && product.priceRange.minAmountMinor !== product.priceRange.maxAmountMinor && size.price ? ' · ' + escape(money(size.price.amountMinor, size.price.currency, size.price.fractionDigits)) : ''}</option>`).join('')}</select></label>
           <label>Cantidad<input type="number" name="quantity" min="1" max="10" step="1" value="1" required aria-label="Cantidad para tu consulta"></label>
@@ -92,9 +93,10 @@ export function renderCatalogProduct(data, origin) {
         <p class="stock-help">Sumá productos a Mi consulta o consultá por este producto. El comercio confirma disponibilidad y condiciones por WhatsApp.</p>
         ${chat ? `<a class="inquiry direct-inquiry" data-direct-inquiry href="${escape(chat)}" target="_blank" rel="noopener noreferrer">${product.available ? 'Consultar por WhatsApp' : 'Consultar próximas reposiciones'} ↗</a>` : ''}
         ${!product.available ? '<p class="stock-help">Este producto no puede agregarse a tu consulta mientras no tenga stock.</p>' : ''}
-        <div class="product-description"><h2>Sobre este producto</h2><p>${escape(product.description || 'Consultanos para conocer más detalles de este producto.')}</p>
-          ${product.sizes.some(item => item.specifications?.length) ? `<dl class="product-specifications">${product.sizes.map(item => (item.specifications ?? []).map(spec => `<div><dt>${escape(spec.label)}${product.sizes.length > 1 ? ' · ' + escape(item.size) : ''}</dt><dd>${escape(spec.value)}</dd></div>`).join('')).join('')}</dl>` : ''}
         </div>
+        ${photo || product.description || product.sizes.some(item => item.specifications?.length) ? `<div class="product-description"><h2>Sobre este producto</h2><p>${escape(product.description || 'Consultanos para conocer más detalles de este producto.')}</p>
+          ${product.sizes.some(item => item.specifications?.length) ? `<dl class="product-specifications">${product.sizes.map(item => (item.specifications ?? []).map(spec => `<div><dt>${escape(spec.label)}${product.sizes.length > 1 ? ' · ' + escape(item.size) : ''}</dt><dd>${escape(spec.value)}</dd></div>`).join('')).join('')}</dl>` : ''}
+        </div>` : ''}
         <div class="trust-note">${escape(catalog.brandName)}<span>${escape(appearanceOf(catalog).tagline)}</span></div>
       </div>
     </div>
