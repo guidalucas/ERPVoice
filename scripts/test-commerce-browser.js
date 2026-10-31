@@ -54,7 +54,7 @@ try {
     await page.screenshot({ path: path.join(output, 'studio-mobile.png'), fullPage: true });
     await page.getByRole('button', { name: /02.*Pendientes|Pendientes/ }).click();
     await page.getByRole('heading', { name: 'Pendientes de catalogar' }).waitFor();
-    assert.ok((await page.locator('.variant-row').first().textContent()).includes('Boca'));
+    assert.ok((await page.locator('.pending-product').first().textContent()).includes('Boca'));
   });
   await check('lost creation response recovers its immutable receipt without a second product', async () => {
     await page.setViewportSize({ width: 1440, height: 1050 });

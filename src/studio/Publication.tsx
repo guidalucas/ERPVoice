@@ -6,6 +6,25 @@ type Publication = { status: 'hidden' | 'published'; revision: number; published
 const errorText = (error: unknown) => error instanceof Error ? error.message : 'No pude consultar la publicación.';
 const publicUrl = (path: string) => `${String(import.meta.env.VITE_CATALOG_ORIGIN ?? (import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_META_API_BASE ?? '')).replace(/\/$/, '')}${path}`;
 
+export async function finishAndPublish(product: Product) {
+  const [publication, catalog] = await Promise.all([query<Publication>(`/products/${product.id}/publication`), query<Catalog | null>('/catalog')]);
+  if (!catalog?.publicEnabled) throw new Error('Habilitá el catálogo en Configuración antes de finalizar y publicar la ficha.');
+  return command<Publication>(`/products/${product.id}/publication`, 'PUT', { expectedRevision: publication.revision,
+    expectedProductRevision: product.revision, status: 'published', reason: 'Ficha finalizada y publicada explícitamente desde el último paso de Studio' });
+}
+
+export function CatalogShortcut({ refreshKey, onConfigure }: { refreshKey: number; onConfigure: () => void }) {
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
+  useEffect(() => {
+    let active = true;
+    const load = () => { void query<Catalog | null>('/catalog').then(value => { if (active) setCatalog(value); }).catch(() => { if (active) setCatalog(null); }); };
+    load(); addEventListener('focus', load);
+    return () => { active = false; removeEventListener('focus', load); };
+  }, [refreshKey]);
+  return catalog?.publicEnabled ? <a href={publicUrl(catalog.path)} target="_blank" rel="noopener noreferrer">Ir al catálogo ↗</a>
+    : <button onClick={onConfigure}>Configurar catálogo</button>;
+}
+
 export function CatalogSettings() {
   const [catalog, setCatalog] = useState<Catalog | null>(null), [slug, setSlug] = useState(''), [enabled, setEnabled] = useState(false), [busy, setBusy] = useState(true), [error, setError] = useState(''), [saved, setSaved] = useState(false);
   useEffect(() => {
