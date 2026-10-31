@@ -84,21 +84,21 @@ export function Studio() {
   const [setup, setSetup] = useState<SetupStatus | null>(null), [setupLoading, setSetupLoading] = useState(true);
   useEffect(() => {
     let active = true; setSetupLoading(true); setError(''); setSetup(null); setProfile(null);
-    if (!session || session.role !== 'owner') { setSetupLoading(false); return; }
+    if (!session || !['owner', 'admin'].includes(session.role)) { setSetupLoading(false); return; }
     query<SetupStatus>('/setup').then(result => { if (active) { setSetup(result); setProfile(result.profile); } })
       .catch(cause => { if (active) setError(message(cause)); }).finally(() => { if (active) setSetupLoading(false); });
     return () => { active = false; };
-  }, [session?.phoneNumber, session?.tenantPhone, setupVersion]);
+  }, [session?.phoneNumber, session?.tenantPhone, session?.role, setupVersion]);
   useEffect(() => {
     const sync = () => { const match = location.hash.match(/^#\/products\/([a-f0-9-]{36})$/); setSelectedId(match?.[1] ?? null); setBatchOpen(location.hash === '#/batch'); if (location.hash === '#/settings') { setCreating(false); setView('settings'); } };
     sync(); addEventListener('hashchange', sync); return () => removeEventListener('hashchange', sync);
   }, []);
   if (isBootstrapping) return <AccessFrame><div className="loading"><p>Preparando tu espacio…</p></div></AccessFrame>;
   if (!session) return <Login/>;
-  if (session.role !== 'owner' || session.pendingInvite) return <AccessFrame><main className="onboarding panel"><h1>Acceso del propietario</h1><p>La configuración comercial está disponible para el propietario. Gestioná tu acceso o invitación desde Stocky.</p><a href="/">Abrir Stocky</a><button onClick={logout}>Cerrar sesión</button></main></AccessFrame>;
+  if (!['owner', 'admin'].includes(session.role) || session.pendingInvite) return <AccessFrame><main className="onboarding panel"><h1>Acceso a Studio</h1><p>Studio está disponible para el dueño y los administradores. Pedile al dueño que revise tu rol desde Equipo.</p><a href="/">Abrir Stocky</a><button onClick={logout}>Cerrar sesión</button></main></AccessFrame>;
   if (setupLoading) return <AccessFrame><div className="loading"><p>Consultando la configuración del negocio…</p></div></AccessFrame>;
   if (!setup || !setup.enabled && setup.profile) return <AccessFrame><main className="onboarding panel"><h1>No pude abrir Studio</h1><Notice action={<button onClick={() => setSetupVersion(value => value + 1)}>Reintentar</button>}>{error || 'El acceso comercial está deshabilitado. Contactá al administrador.'}</Notice><a href="/">Volver a Stocky</a><button onClick={logout}>Cerrar sesión</button></main></AccessFrame>;
-  if (setup.needsSetup || session.needsOnboarding) return <AccessFrame><BusinessOnboarding key={session.phoneNumber + setupVersion} status={setup} onDone={() => setSetupVersion(value => value + 1)} onRefresh={() => setSetupVersion(value => value + 1)}/></AccessFrame>;
+  if (setup.needsSetup || session.needsOnboarding) return session.role === 'admin' ? <AccessFrame><main className="onboarding panel"><h1>Falta preparar el negocio</h1><p>El dueño debe completar la configuración inicial y confirmar la moneda antes de usar Studio.</p><a href="/">Volver a Stocky</a></main></AccessFrame> : <AccessFrame><BusinessOnboarding key={session.phoneNumber + setupVersion} status={setup} onDone={() => setSetupVersion(value => value + 1)} onRefresh={() => setSetupVersion(value => value + 1)}/></AccessFrame>;
   const open = (id: string, step: ProductStep = 'details') => { setCompletion(''); setInitialStep(step); setCreating(false); setView('products'); location.hash = `/products/${id}`; setSelectedId(id); };
   const close = () => { setCompletion(''); setInitialStep('details'); location.hash = '/products'; setSelectedId(null); setCreating(false); setInitialCandidates([]); setBatchOpen(false); setVersion(value => value + 1); };
   const navigate = (next: View) => { close(); setView(next); };

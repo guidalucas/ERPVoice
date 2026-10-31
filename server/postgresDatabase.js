@@ -2172,23 +2172,28 @@ const expireStaleInvites = async (executor = null) => {
   );
 };
 
-export const resolveTenant = async (phoneNumber) => {
+export const resolveBusinessAccess = async (phoneNumber) => {
   const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
 
   if (!normalizedPhoneNumber) {
-    return DEFAULT_OWNER_PHONE;
+    return { actorId: '', tenantPhone: DEFAULT_OWNER_PHONE, role: 'member' };
   }
 
   if (!hasDatabaseConfig()) {
-    return memoryMembers.get(normalizedPhoneNumber)?.tenantPhone ?? normalizedPhoneNumber;
+    const membership = memoryMembers.get(normalizedPhoneNumber);
+    return { actorId: normalizedPhoneNumber, tenantPhone: membership?.tenantPhone ?? normalizedPhoneNumber,
+      role: !membership || membership.tenantPhone === normalizedPhoneNumber ? 'owner' : membership.role === 'admin' ? 'admin' : 'member' };
   }
 
   await ensureReady();
-  const row = await queryRow('SELECT tenant_phone FROM business_members WHERE member_phone = $1', [
+  const row = await queryRow('SELECT tenant_phone, role FROM business_members WHERE member_phone = $1', [
     normalizedPhoneNumber,
   ]);
-  return row?.tenant_phone ?? normalizedPhoneNumber;
+  return { actorId: normalizedPhoneNumber, tenantPhone: row?.tenant_phone ?? normalizedPhoneNumber,
+    role: !row || row.tenant_phone === normalizedPhoneNumber ? 'owner' : row.role === 'admin' ? 'admin' : 'member' };
 };
+
+export const resolveTenant = async phoneNumber => (await resolveBusinessAccess(phoneNumber)).tenantPhone;
 
 export const claimMetaMessage = async ({ messageId, ownerPhone, senderPhone, rawBody }) => {
   await ensureReady();
@@ -2660,7 +2665,7 @@ const toAuthUserProfile = ({
   return {
     phoneNumber,
     tenantPhone: tenantPhone || phoneNumber,
-    role: role === 'member' ? 'member' : 'owner',
+    role: role === 'admin' ? 'admin' : role === 'member' ? 'member' : 'owner',
     businessName: normalizedBusinessName,
     businessCategory: normalizedCategory,
     needsOnboarding: !normalizedCategory,
@@ -2766,8 +2771,7 @@ export const getAuthUserProfile = async (phoneNumber) => {
     throw new Error('Número de teléfono inválido');
   }
 
-  const tenantPhone = await resolveTenant(normalizedPhoneNumber);
-  const role = tenantPhone === normalizedPhoneNumber ? 'owner' : 'member';
+  const { tenantPhone, role } = await resolveBusinessAccess(normalizedPhoneNumber);
 
   if (!hasDatabaseConfig()) {
     const tenantProfile = memoryBusinessProfiles.get(tenantPhone) ?? {
@@ -3218,6 +3222,29 @@ export const removeBusinessMember = async (ownerPhone, memberPhoneInput) => {
   return { ok: true };
 };
 
+export const updateBusinessMemberRole = async (ownerPhone, memberPhoneInput, role, expectedRole) => {
+  const ownerPhoneNumber = await assertOwner(ownerPhone);
+  const memberPhone = normalizeAuthPhoneNumber(memberPhoneInput);
+  if (!memberPhone || memberPhone === ownerPhoneNumber) throw new TeamError('El rol del dueño no se puede cambiar.');
+  if (!['member', 'admin'].includes(role) || !['member', 'admin'].includes(expectedRole)) throw new TeamError('Elegí Miembro o Administrador.');
+  if (!hasDatabaseConfig()) {
+    const membership = memoryMembers.get(memberPhone);
+    if (!membership || membership.tenantPhone !== ownerPhoneNumber) throw new TeamError('Ese número no forma parte del equipo.', 404);
+    if (membership.role !== expectedRole && membership.role !== role) throw new TeamError('El rol cambió. Actualizá el equipo antes de continuar.', 409);
+    memoryMembers.set(memberPhone, { ...membership, role });
+  } else {
+    await ensureReady();
+    const result = await getPool().query(`UPDATE business_members SET role=$3
+      WHERE tenant_phone=$1 AND member_phone=$2 AND (role=$4 OR role=$3) RETURNING member_phone`,
+    [ownerPhoneNumber, memberPhone, role, expectedRole]);
+    if (!result.rowCount) {
+      const member = await queryRow('SELECT 1 FROM business_members WHERE tenant_phone=$1 AND member_phone=$2', [ownerPhoneNumber, memberPhone]);
+      throw new TeamError(member ? 'El rol cambió. Actualizá el equipo antes de continuar.' : 'Ese número no forma parte del equipo.', member ? 409 : 404);
+    }
+  }
+  return { phoneNumber: memberPhone, role };
+};
+
 export const getBusinessTeam = async (phoneNumber) => {
   const normalizedPhoneNumber = normalizeAuthPhoneNumber(phoneNumber);
 
@@ -3290,7 +3317,7 @@ export const getBusinessTeam = async (phoneNumber) => {
     },
     ...memberRows.map((row) => ({
       phoneNumber: row.member_phone,
-      role: row.role === 'owner' ? 'owner' : 'member',
+      role: row.role === 'admin' ? 'admin' : 'member',
       createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     })),
   ];

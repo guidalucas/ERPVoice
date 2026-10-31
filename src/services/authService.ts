@@ -39,10 +39,12 @@ export type PendingInvite = {
   hasOwnBusiness: boolean;
 };
 
+export type BusinessRole = 'owner' | 'admin' | 'member';
+
 export type AuthUserProfile = {
   phoneNumber: string;
   tenantPhone: string;
-  role: 'owner' | 'member';
+  role: BusinessRole;
   businessName: string | null;
   businessCategory: BusinessCategoryId | null;
   needsOnboarding: boolean;

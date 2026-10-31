@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { operationRequestDigest } from '../operationHash.js';
-import { authorizeCommerce } from './authorization.js';
+import { requireCommerceIdentity } from './authorization.js';
 import { inspectCommerceSchema } from './schemaInspection.js';
 import { readProfile, readMoneyPolicy } from './productRepository.js';
 import { record, uuid, integer, text } from './validation.js';
@@ -10,10 +10,9 @@ import { appearanceOf } from './appearance.js';
 // Activation only writes business configuration. DDL and inventory corrections
 // belong to their explicit migration and reviewed inventory-operation flows.
 export function createCommerceSetupService(runtime) {
-  const owner = async (client, context) => {
-    authorizeCommerce(context, { enabled: true, permission: 'commerce:settings' });
-    const member = (await client.query('SELECT tenant_phone FROM business_members WHERE member_phone=$1 AND tenant_phone<>$1 LIMIT 1', [context.actorId])).rows[0];
-    if (member) fail('COMMERCE_FORBIDDEN', 'Solo el propietario puede configurar el negocio.', 403);
+  const access = async (client, context, ownerOnly = false) => {
+    if (ownerOnly && (context.role !== 'owner' || context.actorId !== context.businessId)) fail('COMMERCE_FORBIDDEN', 'Solo el dueño puede activar el negocio y confirmar su moneda.', 403);
+    await requireCommerceIdentity(client, context, { permission: 'commerce:settings', lock: ownerOnly });
     if (!(await inspectCommerceSchema(client)).ready) fail('COMMERCE_SCHEMA_NOT_READY', 'El servicio comercial necesita una actualización del administrador. Tu negocio no necesita ejecutar scripts.', 503);
   };
   const status = async (client, context) => {
@@ -23,7 +22,7 @@ export function createCommerceSetupService(runtime) {
       moneyPolicy };
   };
   return {
-    status: context => runtime.transaction(async client => { await owner(client, context); return status(client, context); }, { readOnly: true, repeatableRead: true }),
+    status: context => runtime.transaction(async client => { await access(client, context); return status(client, context); }, { readOnly: true, repeatableRead: true }),
     activate: async (context, input) => {
       const data = record(input, ['operationId', 'expectedProfileRevision', 'expectedPolicyRevision', 'brandName', 'salesWhatsapp', 'currency', 'confirmedMajorInteger']);
       const command = { operationId: uuid(data.operationId), expectedProfileRevision: integer(data.expectedProfileRevision), expectedPolicyRevision: integer(data.expectedPolicyRevision),
@@ -33,7 +32,7 @@ export function createCommerceSetupService(runtime) {
       if (command.salesWhatsapp !== null && !/^\d{8,15}$/.test(command.salesWhatsapp)) fail('INVALID_COMMAND', 'Ingresá WhatsApp con código de país, solo números (8 a 15 dígitos).', 422);
       const hash = operationRequestDigest({ type: 'business.activate', command });
       return runtime.transaction(async client => {
-        await owner(client, context);
+        await access(client, context, true);
         // All setup attempts for this owner serialize, including different IDs.
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify(['commerce-setup', context.businessId])]);
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify(['commerce', context.businessId, command.operationId])]);

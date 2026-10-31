@@ -14,6 +14,7 @@
     "test:studio:deployment": "npm run build && node scripts/test-studio-deployment.mjs",
     "test:studio:pending": "node scripts/test-studio-pending-groups.mjs",
     "test:studio:product-steps": "node scripts/test-studio-product-steps.mjs",
+    "test:team:admin": "node scripts/test-team-admin.mjs",
     "test:studio:rubro-attributes": "node --test scripts/test-commerce-sku-metadata.js && node scripts/test-studio-rubro-attributes.mjs",
     "test:studio:templates": "node scripts/test-story-templates.mjs",
     "dev:studio": "vite --config vite.studio.config.ts",

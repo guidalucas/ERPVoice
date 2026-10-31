@@ -4,7 +4,7 @@
 
 `npm run build` genera `dist/index.html` (Stocky) y `dist/studio.html` (Studio), con sus assets, en una sola ejecución. `vercel.json` fija ese comando y la carpeta `dist`; no hace falta copiar `dist-studio` ni usar dos builds en Vercel.
 
-El propietario tiene acceso a **Stocky Studio** desde la barra lateral de Stocky y desde **Más** en móvil. El enlace abre `/studio.html` en el mismo dominio y reutiliza la sesión existente. El backend sigue exigiendo propietario y perfil comercial habilitado.
+El dueño y los administradores tienen acceso a **Stocky Studio** desde la barra lateral de Stocky y desde **Más** en móvil. El enlace abre `/studio.html` en el mismo dominio y reutiliza la sesión existente. Desde **Equipo**, solo el dueño puede cambiar un miembro aceptado a **Administrador** o devolverlo a **Miembro**. Los administradores gestionan inventario, fichas, fotos, contenidos, marca y catálogo; el dueño conserva la gestión del equipo, el nombre/rubro del negocio y su activación inicial. El servidor consulta la membresía vigente en cada operación comercial, incluso al recuperar un recibo. El rol usa el campo existente `business_members.role`, sin migración ni cambios automáticos de permisos. Después de asignarlo, recargar Stocky actualiza el menú del otro número. Validación: `npm run test:team:admin` y `npm run test:studio:deployment`.
 
 Variables, migraciones previas y prueba después del deploy: [Guía de despliegue de Studio](docs/fullmatch/DEPLOYMENT.md).
 

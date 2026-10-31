@@ -7,6 +7,7 @@ import {
   fetchTeam,
   leaveTeam,
   removeTeamMember,
+  updateTeamMemberRole,
   type TeamSnapshot,
 } from '../../services/teamService';
 import { useAuth } from '../../store/AuthStore';
@@ -132,6 +133,19 @@ export function EquipoPanel({ onClose }: EquipoPanelProps) {
     }
   };
 
+  const handleRole = async (phoneNumber: string, role: 'admin' | 'member', expectedRole: 'admin' | 'member') => {
+    setIsSubmitting(true); setErrorText(null); setStatusText(null);
+    try {
+      await updateTeamMemberRole(phoneNumber, role, expectedRole);
+      await loadTeam();
+      setStatusText(role === 'admin' ? `${formatPhoneDisplay(phoneNumber)} ahora es administrador y puede gestionar Studio y el catálogo.`
+        : `${formatPhoneDisplay(phoneNumber)} ahora es miembro y ya no puede gestionar Studio ni el catálogo.`);
+    } catch (error) {
+      setErrorText(toUserFacingError(error, 'No se pudo cambiar el rol.'));
+      await loadTeam().catch(() => {});
+    } finally { setIsSubmitting(false); }
+  };
+
   const handleLeave = async () => {
     setIsSubmitting(true);
     setErrorText(null);
@@ -181,28 +195,35 @@ export function EquipoPanel({ onClose }: EquipoPanelProps) {
                   {(team?.members ?? []).map((member) => (
                     <li
                       key={member.phoneNumber}
-                      className="flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5"
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-3 py-2.5"
                       style={{ borderColor: 'var(--border)', background: 'var(--overlay-soft)' }}
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm type-subtitle text-[color:var(--text)]">
                           {formatPhoneDisplay(member.phoneNumber)}
                         </p>
-                        <p className="text-xs text-[color:var(--muted)]">{member.role === 'owner' ? 'Dueño' : 'Miembro'}</p>
+                        <p className="text-xs text-[color:var(--muted)]">{member.role === 'owner' ? 'Dueño' : member.role === 'admin' ? 'Administrador' : 'Miembro'}</p>
                       </div>
                       {isOwner && member.role !== 'owner' && (
-                        <button
-                          type="button"
-                          className="erp-button-secondary min-h-10 shrink-0 px-3 text-xs"
-                          disabled={isSubmitting}
-                          onClick={() => void handleRemoveMember(member.phoneNumber)}
-                        >
-                          Sacar
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select className="erp-input min-h-10 w-auto max-w-full px-2 text-sm" aria-label={`Rol de ${formatPhoneDisplay(member.phoneNumber)}`}
+                            value={member.role} disabled={isSubmitting} onChange={event => void handleRole(member.phoneNumber, event.target.value as 'admin' | 'member', member.role as 'admin' | 'member')}>
+                            <option value="member">Miembro</option><option value="admin">Administrador</option>
+                          </select>
+                          <button
+                            type="button"
+                            className="erp-button-secondary min-h-10 shrink-0 px-3 text-xs"
+                            disabled={isSubmitting}
+                            onClick={() => void handleRemoveMember(member.phoneNumber)}
+                          >
+                            Sacar
+                          </button>
+                        </div>
                       )}
                     </li>
                   ))}
                 </ul>
+                <p className="mt-3 text-xs text-[color:var(--muted)]">Los administradores pueden gestionar inventario, Studio y el catálogo. Solo el dueño puede invitar, quitar personas o cambiar sus roles. Los números invitados ingresan como miembros; podés cambiar su rol después de que acepten.</p>
               </div>
 
               {isOwner && (team?.invites.length ?? 0) > 0 && (
@@ -239,7 +260,7 @@ export function EquipoPanel({ onClose }: EquipoPanelProps) {
                 <label className="block space-y-2 text-sm type-subtitle text-[color:var(--text)]">
                   Invitar por WhatsApp
                   <div className="flex gap-2">
-                    <div className="erp-input flex h-12 flex-1 items-center gap-2 px-3">
+                    <div className="erp-input flex h-12 min-w-0 flex-1 items-center gap-2 px-3">
                       <span className="text-sm text-[color:var(--muted)]">+54</span>
                       <input
                         value={phoneInput}

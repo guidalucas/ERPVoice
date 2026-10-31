@@ -1,10 +1,10 @@
 import { requestJson } from './apiClient';
 import { normalizePhone } from './phone';
-import type { AuthUserProfile } from './authService';
+import type { AuthUserProfile, BusinessRole } from './authService';
 
 export type TeamMember = {
   phoneNumber: string;
-  role: 'owner' | 'member';
+  role: BusinessRole;
   createdAt: string | null;
 };
 
@@ -16,7 +16,7 @@ export type TeamInvite = {
 };
 
 export type TeamSnapshot = {
-  role: 'owner' | 'member';
+  role: BusinessRole;
   tenantPhone: string;
   businessName: string | null;
   members: TeamMember[];
@@ -58,3 +58,8 @@ export const removeTeamMember = async (phoneNumber: string) =>
   });
 
 export const leaveTeam = async () => requestJson<AuthUserProfile>('/api/team/leave', { method: 'POST' });
+
+export const updateTeamMemberRole = async (phoneNumber: string, role: 'admin' | 'member', expectedRole: 'admin' | 'member') =>
+  requestJson<{ phoneNumber: string; role: 'admin' | 'member' }>(`/api/team/members/${encodeURIComponent(normalizePhone(phoneNumber))}/role`, {
+    method: 'PATCH', body: JSON.stringify({ role, expectedRole }),
+  });

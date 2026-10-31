@@ -1,11 +1,11 @@
 import { operationRequestDigest } from '../operationHash.js';
-import { authorizeCommerce } from './authorization.js';
+import { authorizeCommerce, requireCommerceIdentity } from './authorization.js';
 import { readProfile } from './productRepository.js';
 import { fail } from './errors.js';
 import { uuid } from './validation.js';
 
-export async function requireCommerceAccess(client, context, permission) {
-  authorizeCommerce(context, { enabled: true, permission });
+export async function requireCommerceAccess(client, context, permission, { lock = false } = {}) {
+  await requireCommerceIdentity(client, context, { permission, lock });
   const profile = await readProfile(client, context.businessId);
   authorizeCommerce(context, { enabled: profile?.enabled === true, permission });
   return profile;
@@ -14,7 +14,7 @@ export async function executeCommerceCommand(runtime, context, { operationId, ty
   uuid(operationId);
   const hash = operationRequestDigest({ type, entityId: entityId ?? null, command });
   const execute = () => runtime.transaction(async client => {
-    await requireCommerceAccess(client, context, permission);
+    await requireCommerceAccess(client, context, permission, { lock: true });
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [JSON.stringify(['commerce', context.businessId, operationId])]);
     const existing = (await client.query('SELECT request_hash,result_json FROM commercial_operations WHERE owner_phone=$1 AND operation_id=$2', [context.businessId, operationId])).rows[0];
     if (existing) {

@@ -6,6 +6,7 @@ import {
   requestDevLogin,
   saveBusinessProfile,
   type AuthUserProfile,
+  type BusinessRole,
   type PendingInvite,
   type SaveBusinessProfilePayload,
 } from '../services/authService';
@@ -16,7 +17,7 @@ export type AuthSession = {
   token: string;
   phoneNumber: string;
   tenantPhone: string;
-  role: 'owner' | 'member';
+  role: BusinessRole;
   businessName: string | null;
   businessCategory: BusinessCategoryId | null;
   needsOnboarding: boolean;
@@ -63,7 +64,7 @@ const buildSession = (
     token,
     phoneNumber: profile.phoneNumber,
     tenantPhone: profile.tenantPhone || profile.phoneNumber,
-    role: profile.role === 'member' ? 'member' : 'owner',
+    role: profile.role === 'admin' ? 'admin' : profile.role === 'member' ? 'member' : 'owner',
     businessName,
     businessCategory,
     needsOnboarding: profile.needsOnboarding ?? !businessCategory,

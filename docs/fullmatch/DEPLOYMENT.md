@@ -4,7 +4,7 @@
 
 El build habitual `npm run build` genera ambas entradas en `dist`: Stocky (`index.html`) y Studio (`studio.html`). Vercel usa ese comando y directorio mediante `vercel.json`. El build independiente `npm run build:studio` sigue disponible para instalaciones separadas, pero no es el comando del proyecto Vercel de Stocky.
 
-En Stocky, el propietario ve **Stocky Studio** en la barra lateral y en **Más** en móvil. El enlace abre `/studio.html` en el mismo dominio y conserva el acceso existente. Es navegación: no habilita negocios, modifica permisos ni evita la autorización comercial del backend. Los miembros no ven ese enlace; entrar directamente tampoco les concede permiso comercial.
+En Stocky, el dueño y los administradores ven **Stocky Studio** en la barra lateral y en **Más** en móvil. El enlace abre `/studio.html` en el mismo dominio y conserva el acceso existente. Es navegación: no habilita negocios, modifica permisos ni evita la autorización comercial del backend. Los miembros no ven ese enlace; entrar directamente tampoco les concede permiso comercial. Solo el dueño asigna o revoca Administrador desde Equipo, después de que el número acepte su invitación. La membresía vigente se verifica en el servidor; no se confía en roles enviados por el cliente o almacenados en un JWT. El rol reutiliza `business_members.role` y no requiere migraciones. Publicar frontend y backend antes de usar el selector; ningún número cambia de rol automáticamente.
 
 URLs de esta instalación:
 
@@ -75,7 +75,7 @@ Las variantes anteriores con XXX se revisan en **Configuración → Revisar mone
 
 Los generadores administrativos de habilitación y corrección SQL se conservan como antecedentes de mantenimiento y para verificar recibos ya emitidos. **No son el procedimiento de alta ni normalización vigente.** Si se aplicó antes un archivo de corrección, no se vuelve a corregir ni se fabrican recibos de inventario retroactivos: se conserva su historial administrativo y se revisa el estado actual.
 
-No hay variables de entorno nuevas para el asistente. Se reutilizan autenticación, base y Storage privado ya configurados. Desplegar backend y frontend actualizados antes de usarlo. La configuración del catálogo y la publicación de cada ficha continúan siendo decisiones explícitas del propietario, posteriores al alta.
+No hay variables de entorno nuevas para el asistente. Se reutilizan autenticación, base y Storage privado ya configurados. Desplegar backend y frontend actualizados antes de usarlo. La configuración del catálogo y la publicación de cada ficha continúan siendo decisiones explícitas del dueño o sus administradores, posteriores al alta.
 
 ### Inspección y aplicación desde Shell
 
@@ -114,7 +114,7 @@ Este cambio integra build y navegación. No ejecuta migraciones, modifica variab
 
 ## Verificación del cambio
 
-`npm run test:studio:deployment` compila las dos entradas y prueba el resultado de producción con una API simulada, sin acceso a la red: propietario y miembro en escritorio y móvil, navegación real desde Stocky a Studio, JWT conservado al cambiar de entrada y al recargar, y ausencia de escrituras durante la navegación. Los cuatro recorridos pasaron. También pasó la regresión de grilla de inventario (`node scripts/test-product-grid-ui.mjs`). Esto no certifica la configuración ni el perfil comercial de la base real.
+`npm run test:studio:deployment` compila las dos entradas y prueba el resultado de producción con una API simulada, sin acceso a la red: dueño, administrador y miembro en escritorio y móvil, navegación real desde Stocky a Studio, JWT conservado al cambiar de entrada y al recargar, y ausencia de escrituras durante la navegación. Los seis recorridos pasaron. También pasó la regresión de grilla de inventario (`node scripts/test-product-grid-ui.mjs`). Esto no certifica la configuración ni el perfil comercial de la base real.
 
 Referencias: [Vercel: configuración del build](https://vercel.com/docs/builds/configure-a-build), [Render: variables de entorno](https://render.com/docs/configure-environment-variables).
 

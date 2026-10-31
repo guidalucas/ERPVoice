@@ -11,6 +11,8 @@ try {
   for (const scenario of [
     { role: 'owner', mobile: false },
     { role: 'owner', mobile: true },
+    { role: 'admin', mobile: false },
+    { role: 'admin', mobile: true },
     { role: 'member', mobile: false },
     { role: 'member', mobile: true },
   ]) {
@@ -53,7 +55,7 @@ try {
     await page.locator('html.dark').waitFor();
     if (scenario.mobile) await page.getByRole('button', { name: 'Más', exact: true }).click();
     const link = page.getByRole('link', { name: 'Stocky Studio', exact: true });
-    if (scenario.role === 'owner') {
+    if (['owner', 'admin'].includes(scenario.role)) {
       const visibleLink = scenario.mobile ? page.getByRole('menu', { name: 'Más secciones' }).getByRole('link', { name: 'Stocky Studio' }) : link;
       assert.equal(await visibleLink.getAttribute('href'), '/studio.html');
       const navigation = page.waitForNavigation();

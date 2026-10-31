@@ -64,6 +64,7 @@ import {
   updateProveedorRecord,
   updatePedidoRecord,
   resolveTenant,
+  resolveBusinessAccess,
   TeamError,
   createBusinessInvite,
   cancelBusinessInvite,
@@ -71,6 +72,7 @@ import {
   declineBusinessInvite,
   leaveBusinessTeam,
   removeBusinessMember,
+  updateBusinessMemberRole,
   getBusinessTeam,
   stockyDatabaseRuntime,
 } from './postgresDatabase.js';
@@ -251,9 +253,12 @@ const authenticateRequest = async (req, res, next) => {
   }
 
   try {
+    const access = await resolveBusinessAccess(payload.phoneNumber);
     req.auth = {
       ...payload,
-      tenantPhone: await resolveTenant(payload.phoneNumber),
+      phoneNumber: access.actorId,
+      tenantPhone: access.tenantPhone,
+      role: access.role,
     };
     next();
   } catch (error) {
@@ -316,7 +321,7 @@ const recentEvents = [];
 
 app.use('/api/commerce/v1', authenticateRequest, createCommerceRouter({ runtime: stockyDatabaseRuntime,
   contextOf: req => ({ businessId: tenantPhoneOf(req), actorId: authPhoneOf(req),
-    role: tenantPhoneOf(req) === authPhoneOf(req) ? 'owner' : 'member' }) }));
+    role: req.auth?.role }) }));
 const publicCatalog = createPublicCatalogRouters(stockyDatabaseRuntime);
 app.use('/api/catalog/v1', publicCatalog.api);
 app.use(publicCatalog.pages);
@@ -564,6 +569,14 @@ app.post('/api/team/invites/:id/decline', authenticateRequest, async (req, res) 
   } catch (error) {
     sendTeamError(res, error);
   }
+});
+
+app.patch('/api/team/members/:phone/role', authenticateRequest, async (req, res) => {
+  try {
+    const data = req.body;
+    if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).some(key => !['role', 'expectedRole'].includes(key))) throw new TeamError('Cambio de rol inválido.');
+    res.json(await updateBusinessMemberRole(authPhoneOf(req), req.params.phone, data.role, data.expectedRole));
+  } catch (error) { sendTeamError(res, error); }
 });
 
 app.delete('/api/team/members/:phone', authenticateRequest, async (req, res) => {

@@ -42,11 +42,15 @@ test('money requires confirmed meaning, preserves exact large integers and never
   assert.doesNotThrow(() => enforceInventoryMoneyPolicy([{ type: 'stock.sell' }], policy));
 });
 
-test('commerce is owner-only, enabled and scoped to canonical authenticated identity', () => {
+test('commerce accepts owners and delegated administrators, enabled and scoped to canonical identity', () => {
   const owner = { actorId: '59899000101', businessId: '59899000101', role: 'owner' };
   assert.equal(authorizeCommerce(owner, { enabled: true }).businessId, owner.businessId);
   assert.throws(() => authorizeCommerce(owner, { enabled: false }), { code: 'COMMERCE_FORBIDDEN' });
   assert.throws(() => authorizeCommerce({ ...owner, actorId: '59899000202', role: 'member' }, { enabled: true }), { code: 'COMMERCE_FORBIDDEN' });
+  assert.equal(authorizeCommerce({ ...owner, actorId: '59899000202', role: 'admin' }, { enabled: true }).actorId, '59899000202');
+  assert.throws(() => authorizeCommerce({ ...owner, role: 'admin' }, { enabled: true }), { code: 'COMMERCE_FORBIDDEN' });
+  assert.throws(() => authorizeCommerce({ ...owner, actorId: '59899000202', role: 'owner' }, { enabled: true }), { code: 'COMMERCE_FORBIDDEN' });
+  assert.throws(() => authorizeCommerce({ ...owner, role: 'unknown' }, { enabled: true }), { code: 'COMMERCE_FORBIDDEN' });
   assert.throws(() => authorizeCommerce({ ...owner, businessId: '__default__' }, { enabled: true }));
 });
 

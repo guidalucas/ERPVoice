@@ -4,13 +4,14 @@ import { DashboardNav, sectionTitles } from './DashboardNav';
 import type { DashboardSection } from './dashboardTypes';
 import { ThemeToggle } from './ThemeToggle';
 import { formatPhoneDisplay } from '../../services/phone';
+import type { BusinessRole } from '../../services/authService';
 
 type DashboardShellProps = {
   activeSection: DashboardSection;
   onSectionChange: (section: DashboardSection) => void;
   phoneNumber?: string | null;
   businessName?: string | null;
-  role?: 'owner' | 'member' | null;
+  role?: BusinessRole | null;
   onOpenTeam: () => void;
   onLogout: () => void;
   children: ReactNode;
@@ -54,7 +55,8 @@ export function DashboardShell({
   children,
 }: DashboardShellProps) {
   const displayBusinessName = businessName?.trim() || 'Stocky';
-  const roleLabel = role === 'member' ? `Miembro de ${displayBusinessName}` : 'Dueño';
+  const roleLabel = role === 'admin' ? 'Administrador' : role === 'member' ? `Miembro de ${displayBusinessName}` : 'Dueño';
+  const showStudio = role === 'owner' || role === 'admin';
 
   return (
     <div className="dashboard-layout">
@@ -63,7 +65,7 @@ export function DashboardShell({
           <StockyLogo size="md" withWordmark subtitle={displayBusinessName} />
         </div>
 
-        <DashboardNav activeSection={activeSection} onSectionChange={onSectionChange} variant="sidebar" showStudio={role === 'owner'} />
+        <DashboardNav activeSection={activeSection} onSectionChange={onSectionChange} variant="sidebar" showStudio={showStudio} />
 
         <div className="mt-auto space-y-3 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
           {(businessName || phoneNumber) && (
@@ -128,7 +130,7 @@ export function DashboardShell({
         onSectionChange={onSectionChange}
         variant="bottom"
         onLogout={onLogout}
-        showStudio={role === 'owner'}
+        showStudio={showStudio}
       />
     </div>
   );
