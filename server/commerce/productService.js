@@ -121,7 +121,13 @@ export function createCommerceProductService(runtime) {
         const row = await requireProduct(client, context.businessId, id, { lock: true }); requireRevision(row, command.expectedRevision);
         if (row.status === 'archived') fail('PRODUCT_ARCHIVED', 'Restaurá la ficha antes de modificar variantes.', 409);
         await replaceLinks(client, context, id, command.skuLinks);
-        await client.query("UPDATE commercial_products SET status='draft',revision=revision+1,updated_at=NOW(),updated_by=$3 WHERE owner_phone=$1 AND id=$2", [context.businessId, id, context.actorId]);
+        // A valid size addition must not take an existing publication offline.
+        // Reject invalid changes atomically so its previous variants stay public.
+        if (row.status === 'ready') {
+          const detail = await readProductDetail(client, context.businessId, id);
+          if (!detail.readiness.canPrepare) fail('PRODUCT_NOT_READY', 'No se guardaron los vínculos. Revisá que los talles no se repitan y que tengan precio y moneda confirmados.', 422, { blockers: detail.readiness.blockers });
+        }
+        await client.query('UPDATE commercial_products SET revision=revision+1,updated_at=NOW(),updated_by=$3 WHERE owner_phone=$1 AND id=$2', [context.businessId, id, context.actorId]);
         return readProductDetail(client, context.businessId, id);
       });
     },
