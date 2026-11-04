@@ -498,7 +498,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const [one,two]=await Promise.all([universalWebhook('http-meta-universal-confirm',command),universalWebhook('http-meta-universal-confirm-two',command)]);
       assert.equal(one.status,'applied');assert.deepEqual(one,two);assert.equal(one.operationResult.domain,'mixed');
       assert.deepEqual(one.actions.map(action=>action.type),['add_stock','add_debt']);
-      assert.match(one.replyText,/Ingreso aplicado: 3 unit/);assert.match(one.replyText,/7/);
+      assert.match(one.replyText,/Ingreso aplicado: 3 unidades/);assert.match(one.replyText,/7/);
       assert.equal(Number((await stock(product.id))[0].stock_available),5);
       assert.equal(Number((await sql.query('SELECT debt FROM clients WHERE owner_phone=$1 AND id=$2',[owner,customer.id])).rows[0].debt),7);
       const stored=(await sql.query('SELECT preview_json FROM universal_drafts WHERE owner_phone=$1 AND draft_id=$2',[owner,preview.draftId])).rows[0].preview_json;
@@ -955,7 +955,7 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       };
       const achievedCommand = await reviewedUniversalCommand('http-order-meta-achieved-draft', 'Marcá el pedido como conseguido', [{ itemId: 'order', type: 'order.update', target: { kind: 'existing', pedidoId: pedido.id }, changes: { estado: 'conseguido' } }]);
       const achieved = await send('http-order-meta-achieved', achievedCommand);
-      assert.equal(achieved.error,null); assert.match(achieved.reply_text,/Ingreso aplicado: 2 unit/); assert.equal(Number((await stock(product.id))[0].stock_available),2);
+      assert.equal(achieved.error,null); assert.match(achieved.reply_text,/Ingreso aplicado: 2 unidades/); assert.equal(Number((await stock(product.id))[0].stock_available),2);
       const replay = await send('http-order-meta-achieved', achievedCommand);
       assert.deepEqual(replay,achieved); assert.equal(Number((await stock(product.id))[0].stock_available),2);
       assert.equal((await sql.query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1',['http-order-meta-achieved'])).rows[0].reply_text,achieved.reply_text);

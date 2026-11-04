@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { repeatedReceiptText, repeatedReceiptProduct, repeatedReceiptProposal } from './fixtures/repeated-stock-receipts.js';
 
 export async function runUniversalMetaChecks({ db, sql, check }) {
   const owner = '59899000971', other = '59899000972', actor = '59899000973';
@@ -336,5 +337,56 @@ export async function runUniversalMetaChecks({ db, sql, check }) {
     await assert.rejects(process({ ...request, sourceText: 'REVISAR OPERACION Ingresaron otras cantidades.' }), { code: 'IDEMPOTENCY_CONFLICT' });
     await assert.rejects(process({ ...request, senderPhone: actor }), { code: 'IDEMPOTENCY_CONFLICT' });
     assert.deepEqual(await state(true), before); await persisted(request, preview); assert.deepEqual(await process(request), preview);
+  });
+
+  await check('universal meta: repeated receipt rows review and confirm twelve units in eleven variants exactly once',async()=>{
+    const {id:_,revision:__,...productInput}=repeatedReceiptProduct;
+    const existing=await db.createProductRecord(productInput,owner,{operationId:id()});
+    const data=repeatedReceiptProposal();data.actions[10].target.skuId=existing.id;
+    const before=await state(),request=input(`REVISAR OPERACION ${repeatedReceiptText}`);
+    const ready=await process(request,provider({ok:true,json:data}).complete);
+    assert.equal(ready.status,'awaiting_confirmation');assert.equal(ready.errorCode,undefined);
+    assert.deepEqual(await state(),before);await persisted(request,ready);
+    const draft=await db.getUniversalDraft(ready.draftId,context);
+    assert.equal(draft.plan.actions.length,11);assert.equal(draft.evidence.length,11);
+    assert.equal(draft.plan.actions.find(action=>action.itemId==='row-5').quantity.value,2);
+    assert.match(ready.replyText,/River Edición 125 Aniversario[\s\S]*?Cantidad: 2 unit/);
+    const confirm=input('confirmar');
+    const applied=await db.processMetaUniversalMessage(confirm,{ordinary:true,complete:forbidden});
+    assert.equal(applied.status,'applied');assert.equal(applied.errorCode,undefined);
+    const after=await state(),added=after.products.filter(product=>!before.products.some(old=>old.id===product.id));
+    assert.equal(added.length,10);
+    const river=added.filter(product=>product.name==='River Edición 125 Aniversario'&&product.size==='M');
+    assert.equal(river.length,1);assert.equal(Number(river[0].stock_available),2);assert.equal(Number(river[0].price),55000);
+    assert.equal(Number(after.products.find(product=>product.id===existing.id).stock_available),2);
+    assert.equal(after.inventory_movements.length-before.inventory_movements.length,11);
+    assert.equal(after.inventory_movements.filter(row=>!before.inventory_movements.some(old=>old.operation_id===row.operation_id&&old.item_id===row.item_id)).reduce((sum,row)=>sum+Number(row.delta_available),0),12);
+    assert.deepEqual(await process(request),ready);
+    assert.deepEqual(await db.processMetaUniversalMessage(confirm,{ordinary:true,complete:forbidden}),applied);
+    assert.deepEqual(await state(),after);await persisted(confirm,applied);
+  });
+
+  await check('universal meta: conflicting duplicate prices ask a clear question and a direct reply resumes the whole receipt',async()=>{
+    const name=`River conflicto ${id()}`,original=`Ingresaron ${name} talle M, una a 55000 ARS y otra a 65000 ARS.`;
+    const items=[55000,65000].map((amount,index)=>({itemId:`price-${index}`,type:'stock.receive',target:{kind:'new',sku:{name,size:'M',unit:'unit'}},quantity:{value:1,unit:'unit'},price:{amount,currency:'ARS',policy:'initialize'}}));
+    const before=await state();
+    const pending=await process(input(`REVISAR OPERACION ${original}`),provider(proposal(items,original)).complete);
+    assert.equal(pending.status,'awaiting_clarification');assert.match(pending.replyText,/precios distintos: 55000 ARS.*65000 ARS/);
+    assert.doesNotMatch(pending.replyText,/confirmar|DUPLICATE_SKU_IDENTITY/);assert.deepEqual(await state(),before);
+    const reply='55000 ARS para ambas.';
+    const ready=await db.processMetaUniversalMessage(input(reply),{ordinary:true,complete:async options=>{
+      const supplied=JSON.parse(options.messages[1].content);
+      assert.equal(supplied.sourceText,`${original}\n${reply}`);
+      assert.equal(supplied.latestClarification.answer,reply);
+      return proposal(items.map(action=>({...action,price:{...action.price,amount:55000}})),supplied.sourceText);
+    }});
+    assert.equal(ready.status,'awaiting_confirmation');assert.equal(ready.draftId,pending.draftId);
+    const draft=await db.getUniversalDraft(ready.draftId,context);
+    assert.equal(draft.plan.actions.length,1);assert.equal(draft.plan.actions[0].quantity.value,2);
+    assert.deepEqual(await state(),before);
+    const applied=await db.processMetaUniversalMessage(input('confirmar'),{ordinary:true,complete:forbidden});
+    assert.equal(applied.status,'applied');
+    const products=(await state()).products.filter(product=>product.name===name);
+    assert.equal(products.length,1);assert.equal(Number(products[0].stock_available),2);assert.equal(Number(products[0].price),55000);
   });
 }

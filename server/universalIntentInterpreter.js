@@ -6,6 +6,7 @@ import { normalizeFamilyReference, validateProductFamily } from './productFamily
 import { prepareUniversalQueries } from './universalQueries.js';
 import { isDeepStrictEqual } from 'node:util';
 import { validateMoneyPolicy } from './inventoryMoneyPolicy.js';
+import { prepareInventoryReceiptDraft } from './inventoryReceiptDraft.js';
 
 /** Pure interpretation boundary; never executes or persists.
  * complete receives completeChatJson options and returns {ok:true,json} or
@@ -40,6 +41,9 @@ import { validateMoneyPolicy } from './inventoryMoneyPolicy.js';
  * receive ONE model format repair. Semantic fields must remain identical;
  * only evidence and a missing required reason may change. All validation runs
  * again. Invalid permissions/references and provider errors are not retried.
+ * New-product receipts with identical identities and prices are consolidated
+ * before the draft is frozen, retaining literal evidence from every row.
+ * Revisions retain reviewed IDs; conflicting new identities ask for clarification.
  */
 const fail = (code) => { const error = new Error(code); error.code = code; throw error; };
 const dangerous = new Set(['__proto__', 'constructor', 'prototype']);
@@ -211,6 +215,7 @@ Precio de catálogo y precio de una venta son hechos distintos. Solo emití sale
 Para precios solicitados, "pesos argentinos" declara ARS y "pesos uruguayos" declara UYU; no preguntes otra vez la moneda cuando ya la declaró así. "12 lucas pesos argentinos" significa 12000 ARS. La palabra "pesos" sola no identifica el país: usá la política confirmada si existe; de lo contrario pedí aclaración.
 Los campos de cada tipo son cerrados. stock.receive, incluso con target nuevo, solo usa itemId,type,target,quantity y price opcional: nunca initialStock ni reason. stock.sell y stock.reserve solo usan itemId,type,target,quantity y salePrice opcional. initialStock pertenece EXCLUSIVAMENTE a sku.create; no combines alta inicial y cantidad recibida en una sola acción. Para ingresar cantidad a un producto nuevo, usá stock.receive con target nuevo y quantity, conservando los atributos dentro de target.sku.
 Ejemplo de alta con ingreso: {"itemId":"ingreso-1","type":"stock.receive","target":{"kind":"new","sku":{"name":"Arandelas de acero","unit":"caja"}},"quantity":{"value":3,"unit":"caja"},"price":{"amount":2000,"currency":"ARS","policy":"initialize"}}. Si hay varios productos nuevos, emití una acción independiente por cada uno con ese mismo contrato cerrado. No agregues claves fuera de las declaradas ni coloques precio o cantidad dentro de target.sku. Si no se declaró moneda, no hay moneyPolicy confirmada y es necesaria para un precio solicitado, preguntá; no uses una moneda ficticia.
+En listas o tablas de ingresos, varias filas con el mismo producto, talle, atributos, unidad y precio representan varias unidades del mismo producto: sumá sus cantidades en un único stock.receive. Dos filas de River talle M con una unidad cada una son un ingreso de cantidad 2; River talle L sigue separado. Nunca pierdas una fila al agrupar. Si ya existe exactamente esa variante en el catálogo, usá su ID existente. Si las filas repetidas tienen precios incompatibles, preguntá cuál debe quedar; no elijas uno arbitrariamente.
 Atributos: attributes es un objeto por clave, con cada valor {state:"known",type:"text"|"number"|"boolean",value:valor tipado,unit?:unidad}. Para estados unknown|not_applicable|missing, omití value. Nunca uses valores planos ni strings para números/booleanos. Cero y false son valores conocidos y válidos; no son atributos ausentes. Solo incluí unit cuando corresponda al atributo, exactamente como en el esquema ofrecido; no copies unidades de inventario a atributos que no las declaran.
 Cuentas: account.charge|account.payment|account.adjust|account.transfer: {itemId,type,target:{kind:"existing",clientId},amount:{value:entero,unit:"legacy-money"},reason}; transfer además destination:{clientId}. No convertir monedas.
 Participantes: client.create|supplier.create:{itemId,type,name,notas?}; client.update|supplier.update:{itemId,type,target:{kind:"existing",partyId},changes:{name?,notas?}}; client.delete|supplier.delete:{itemId,type,target:{kind:"existing",partyId},reason}; supplier.merge agrega destination:{partyId}. client.merge no existe.
@@ -260,7 +265,7 @@ export async function interpretUniversalIntent(options) {
     try {const safe=record(next);same=safe.ok===true&&sameRepairSemantics(data,safe.json);} catch {same=false;}
     return same?next:{ok:false,reason:'repair_semantics_changed'};
   }});
-  const accepted=same&&['ready','answer','cancelled'].includes(repaired.kind);
+  const accepted=same&&['ready','answer','cancelled','clarification'].includes(repaired.kind);
   const result=accepted?repaired:original;
   return {...result,trace:{...result.trace,formatRepairAttempts:1,formatRepairSucceeded:accepted,latencyMs:Date.now()-started}};
 }
@@ -452,7 +457,14 @@ Ejemplo de ferretería: catálogo con tornillos de 6 y 8 mm; usuario "Cargá un 
       if(action.quantity.unit!==normalizeUnit(expectedUnit)) fail('INVALID_INVENTORY_UNIT');
     }
     if(prepared.plan.actions.some(action=>!ids.has(action.itemId))) fail('INVALID_EVIDENCE');
+    const receipts=prepareInventoryReceiptDraft(prepared.plan,evidence,catalog.products,sourceText,{consolidate:!previous});
+    if(receipts.question) {
+      trace.ok=true;
+      return {kind:'clarification',question:receipts.question,...(previous?{plan:previous.plan,evidence:previous.evidence}:{}),trace:{...trace,latencyMs:Date.now()-started}};
+    }
+    const finalPlan=receipts.mergedCount
+      ? prepareUniversalOperation({...prepared.plan,actions:receipts.actions},context).plan : prepared.plan;
     trace.ok=true;
-    return {kind:'ready',plan:prepared.plan,evidence:evidence.map(item=>({itemId:item.itemId,quote:item.quote})),trace:{...trace,latencyMs:Date.now()-started}};
+    return {kind:'ready',plan:finalPlan,evidence:receipts.evidence,trace:{...trace,latencyMs:Date.now()-started}};
   } catch(error) {return outcome('invalid',error.code??'INVALID_MODEL_RESPONSE');}
 }

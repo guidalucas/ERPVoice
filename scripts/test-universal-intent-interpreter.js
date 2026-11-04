@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { interpretUniversalIntent } from '../server/universalIntentInterpreter.js';
-import { inventoryProductFingerprint } from '../server/inventoryOperations.js';
+import { inventoryProductFingerprint, planInventoryOperation } from '../server/inventoryOperations.js';
 import { normalizeFamilyPublication } from '../server/productFamilySchemas.js';
 import { buildUniversalOperationReview } from '../server/universalOperationReview.js';
+import { universalMetaPreviewReply } from '../server/universalMetaOperations.js';
+import { repeatedReceiptText, repeatedReceiptProduct, repeatedReceiptProposal } from './fixtures/repeated-stock-receipts.js';
 
 const sourceText='Ingresá 3 unidades, cargá 5 a la cuenta y cambiá el nombre del cliente. Actualizá el pedido.';
 const catalog={products:[{id:'sku',name:'Producto',unit:'unit',revision:7,stockAvailable:4,stockReserved:1}],clients:[{id:'client',name:'Cliente',accountRevision:9,metadataRevision:4}],proveedores:[{id:'supplier',name:'Proveedor',metadataRevision:6}],pedidos:[{id:'order',revision:8}]};
@@ -55,6 +57,130 @@ test('new customer and pending order survive a short size clarification in one r
   assert.ok(review[1].details.includes('Variante: L'));
   const bad=structuredClone(data);bad.actions[1].clientRef.itemId='not-in-this-plan';
   assert.equal((await invoke(bad,{sourceText:text,clarifications})).reason,'INVALID_ORDER_CLIENT_REFERENCE');
+});
+
+test('twelve receipt rows become eleven reviewed variants and twelve units with both River M rows retained',async()=>{
+  const snapshot={products:[repeatedReceiptProduct],clients:[],proveedores:[],pedidos:[]};
+  const data=repeatedReceiptProposal(), original=structuredClone(data);
+  const result=await invoke(data,{sourceText:repeatedReceiptText,catalog:snapshot});
+  assert.equal(result.kind,'ready');assert.equal(result.plan.actions.length,11);
+  assert.deepEqual(result.plan.actions.map(action=>action.itemId),data.actions.filter(action=>action.itemId!=='row-6').map(action=>action.itemId));
+  const river=result.plan.actions.find(action=>action.itemId==='row-5');
+  assert.equal(river.quantity.value,2);assert.equal(river.price.amount,55000);
+  assert.equal(result.plan.actions.reduce((sum,action)=>sum+action.quantity.value,0),12);
+  const quote=result.evidence.find(item=>item.itemId===river.itemId).quote;
+  assert.ok(quote.includes(data.evidence[4].quote));assert.ok(quote.includes(data.evidence[5].quote));
+  assert.ok(repeatedReceiptText.includes(quote));assert.equal(result.evidence.length,11);
+  let sequence=0;
+  const effect=planInventoryOperation(result.plan,snapshot.products,{createId:()=>`receipt-${++sequence}`});
+  assert.equal(effect.changedProducts.length,11);
+  assert.equal(effect.changedProducts.find(product=>product.name.startsWith('River')&&product.size==='M').stockAvailable,2);
+  assert.equal(effect.changedProducts.find(product=>product.id===repeatedReceiptProduct.id).stockAvailable,2);
+  const output=universalMetaPreviewReply({status:'awaiting_confirmation',digest:'a'.repeat(64),plan:result.plan,review:buildUniversalOperationReview(result.plan,snapshot)});
+  assert.match(output,/River Edición 125 Aniversario[\s\S]*?Variante: M[\s\S]*?Cantidad: 2 unit/);
+  assert.equal(output.match(/Ingreso de existencias · River Edición 125 Aniversario/g).length,3);
+  assert.ok(Object.isFrozen(river.quantity));assert.deepEqual(data,original);
+});
+
+const repeatedNewReceipts=()=>['one','two','three'].map(itemId=>({itemId,type:'stock.receive',target:{kind:'new',sku:{name:'River',productType:'Camiseta',size:'M',unit:'unit'}},quantity:{value:1,unit:'unit'},price:{amount:55000,currency:'ARS',policy:'initialize'}}));
+
+test('new receipt consolidation uses canonical identity and complete literal evidence even for nonadjacent rows',async()=>{
+  const entries=repeatedNewReceipts();
+  entries[0].quantity.value=2;entries[1].target.sku.size='L';entries[2].quantity.value=3;
+  entries[2].target.sku.name=' RIVER ';entries[2].target.sku.productType='camiseta';
+  delete entries[2].target.sku.size;
+  entries[2].target.sku.attributes={size:{state:'known',type:'text',value:'m'}};
+  const text='primera fila\nsegunda fila\ntercera fila';
+  const data={contractVersion:1,kind:'proposal',actions:entries,evidence:entries.map(({itemId},index)=>({itemId,quote:text.split('\n')[index]}))};
+  const result=await invoke(data,{sourceText:text});
+  assert.equal(result.kind,'ready');assert.deepEqual(result.plan.actions.map(action=>action.quantity.value),[5,1]);
+  assert.equal(result.evidence[0].quote,text);assert.equal(result.evidence[1].quote,'segunda fila');
+  assert.equal(result.plan.actions[0].target.sku.name,'River');
+});
+
+test('repeated new receipts ask about incompatible price, currency, policy or missing price before confirmation',async()=>{
+  for(const mutate of [action=>action.price.amount=65000,action=>action.price.currency='UYU',action=>action.price.policy='preserve',action=>delete action.price]) {
+    const entries=repeatedNewReceipts().slice(0,2);mutate(entries[1]);
+    const result=await invoke(proposal(entries));
+    assert.equal(result.kind,'clarification');assert.equal(result.plan,undefined);
+    assert.match(result.question,/River.*variante M/);assert.match(result.question,/precio/);
+    assert.doesNotMatch(result.question,/SKU|DUPLICATE/);
+  }
+});
+
+test('receipt consolidation keeps different sizes, attributes, units, models and families distinct',async()=>{
+  for(const mutate of [action=>action.target.sku.size='L',action=>action.target.sku.attributes={color:{state:'known',type:'text',value:'rojo'}},action=>{action.target.sku.unit='par';action.quantity.unit='par';},action=>action.target.sku.productModel='Jugador']) {
+    const entries=repeatedNewReceipts().slice(0,2);mutate(entries[1]);
+    const result=await invoke(proposal(entries));
+    assert.equal(result.kind,'ready');assert.equal(result.plan.actions.length,2);
+  }
+  const entries=repeatedNewReceipts().slice(0,2);
+  const schemas=['a','b'].map(familyId=>({familyId,version:1,schema:normalizeFamilyPublication({operationId:'publish',familyId,expectedVersion:0,schema:{name:familyId,unit:'unit',attributes:{}}}).schema}));
+  entries.forEach((action,index)=>action.target.sku.family={id:schemas[index].familyId,version:1});
+  const result=await invoke(proposal(entries),{catalog:{...catalog,familySchemas:schemas}});
+  assert.equal(result.kind,'ready');assert.equal(result.plan.actions.length,2);
+});
+
+test('receipt grouping never hides invalid evidence, unauthorized actions, overflow or an intervening mutation',async()=>{
+  const entries=repeatedNewReceipts().slice(0,2);
+  const badEvidence=proposal(entries);badEvidence.evidence[1].quote='inventada';
+  assert.equal((await invoke(badEvidence)).kind,'invalid');
+  assert.equal((await invoke(proposal(entries),{context:{...context,permissions:['inventory:read']}})).reason,'FORBIDDEN');
+  entries[0].quantity.value=Number.MAX_SAFE_INTEGER;
+  assert.equal((await invoke(proposal(entries))).kind,'clarification');
+  entries[0].quantity.value=1;
+  const update={itemId:'update',type:'sku.update',target:{kind:'existing',skuId:'sku'},changes:{price:0},reason:'Cambio explícito'};
+  const result=await invoke(proposal([entries[0],update,entries[1]]),{context:{...context,internalConversationOperation:true},operationId:'draft-operation:test'});
+  assert.equal(result.kind,'clarification');assert.equal(result.plan,undefined);
+});
+
+test('new receipt matching an existing exact identity asks to use that variant instead of offering a duplicate',async()=>{
+  const entry=repeatedNewReceipts()[0];
+  const snapshot={...catalog,products:[{...catalog.products[0],...entry.target.sku}]};
+  const result=await invoke(proposal([entry]),{catalog:snapshot});
+  assert.equal(result.kind,'clarification');assert.match(result.question,/River.*variante M.*ya existe/);
+  assert.equal(result.plan,undefined);
+});
+
+test('correcting the consolidated quantity preserves its item ID, other variants and evidence',async()=>{
+  const entries=repeatedNewReceipts();entries[1].target.sku.size='L';
+  const initial=await invoke(proposal(entries),{context:revisionContext});
+  assert.deepEqual(initial.plan.actions.map(action=>action.itemId),['one','two']);
+  const reply='River M son cuatro.';
+  const changed=await revise(initial,patchResponse([{itemId:'one',changes:{quantity:{value:4}}}],reply),reply);
+  assert.equal(changed.kind,'ready');assert.deepEqual(changed.plan.actions.map(action=>action.quantity.value),[4,1]);
+  assert.deepEqual(changed.plan.actions[1],initial.plan.actions[1]);
+  assert.equal(changed.evidence[0].quote,reply);assert.deepEqual(changed.evidence[1],initial.evidence[1]);
+});
+
+test('a revision that collides with another new variant asks without discarding the reviewed plan',async()=>{
+  const entries=repeatedNewReceipts().slice(0,2);entries[1].target.sku.size='L';
+  const initial=await invoke(proposal(entries),{context:revisionContext}),reply='La segunda también es M.';
+  const changed=await revise(initial,patchResponse([{itemId:'two',changes:{target:{kind:'new',sku:entries[0].target.sku}}}],reply),reply);
+  assert.equal(changed.kind,'clarification');assert.deepEqual(changed.plan,initial.plan);assert.deepEqual(changed.evidence,initial.evidence);
+});
+
+test('literal evidence repair still returns the clear duplicate-price question',async()=>{
+  const entries=repeatedNewReceipts().slice(0,2);entries[1].price.amount=65000;
+  const valid=proposal(entries),bad=structuredClone(valid);bad.evidence.pop();let calls=0;
+  const result=await invoke(null,{complete:async()=>({ok:true,json:++calls===1 ? bad : valid})});
+  assert.equal(calls,2);assert.equal(result.kind,'clarification');assert.match(result.question,/precios distintos/);
+  assert.equal(result.trace.formatRepairSucceeded,true);
+});
+
+test('consolidated receipts retain later stock and order references to the created product',async()=>{
+  const entries=repeatedNewReceipts().slice(0,2);
+  const reserve={itemId:'reserve',type:'stock.reserve',target:{kind:'created',itemId:'two'},quantity:{value:1,unit:'unit'}};
+  const order={itemId:'order',type:'order.create',productRef:{itemId:'two'},order:{clienteId:'client',producto:'River',qty:1,estado:'pendiente'}};
+  const result=await invoke(proposal([...entries,reserve,order]),{context:{...context,permissions:[...context.permissions,'inventory:reserve']}});
+  assert.equal(result.kind,'ready',result.reason);
+  assert.deepEqual(result.plan.actions.map(action=>action.itemId),['one','reserve','order']);
+  assert.equal(result.plan.actions[0].quantity.value,2);
+  assert.deepEqual(result.plan.actions[1].target,{kind:'created',itemId:'one'});
+  assert.deepEqual(result.plan.actions[2].productRef,{itemId:'one'});
+  const effects=planInventoryOperation({...result.plan,actions:result.plan.actions.slice(0,2)},[],{createId:()=> 'river-created'});
+  assert.equal(effects.changedProducts[0].stockAvailable,1);assert.equal(effects.changedProducts[0].stockReserved,1);
+  assert.equal(buildUniversalOperationReview(result.plan,catalog).length,3);
 });
 
 test('read queries return backend snapshot facts without a mutation plan or model-written answer',async()=>{

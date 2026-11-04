@@ -239,7 +239,7 @@ export function planInventoryOperation(input, products, { createId, familySchema
       const identity = productIdentity(action.target.sku);
       const identical = [...byId.values()].filter((entry) => productIdentity(entry) === identity);
       if (action.type === 'sku.create' && identical.some((entry) => (entry.status ?? 'active') !== 'active')) fail('SKU_INACTIVE', 'Ya existe un producto desactivado con esa identidad; no creé otro producto.');
-      if (identical.length) fail('DUPLICATE_SKU_IDENTITY', 'Ya existe un producto con las mismas características.');
+      if (identical.length) fail('DUPLICATE_SKU_IDENTITY', `El producto «${action.target.sku.name}»${action.target.sku.size ? ` (variante ${action.target.sku.size})` : ''} ya existe. No apliqué cambios. Volvé a enviar el ingreso con la cantidad total que querés sumar a ese producto.`);
       if (typeof createId !== 'function') invalid('No se pudo generar un código para el producto nuevo.');
       const id = text(createId(), 'código del producto creado');
       if (byId.has(id)) fail('DUPLICATE_SKU_ID', 'El código generado para el producto ya existe.');
