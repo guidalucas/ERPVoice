@@ -89,7 +89,7 @@ try {
     await page.getByText('Vínculos revisados y guardados.', { exact: true }).waitFor();
     await page.getByRole('button', { name: '03 Fotografías', exact: true }).click();
     const photo = await sharp({ create: { width: 600, height: 900, channels: 3, background: '#133d8c' } }).png().toBuffer();
-    await page.getByLabel('Subir fotografía', { exact: true }).setInputFiles({ name: 'fixture-boca.png', mimeType: 'image/png', buffer: photo });
+    await page.getByLabel('Subir fotografías', { exact: true }).setInputFiles({ name: 'fixture-boca.png', mimeType: 'image/png', buffer: photo });
     await page.getByText('Foto procesada y guardada.', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Preparar ficha', exact: true }).click();
     await page.getByText('Ficha preparada para generar contenido.', { exact: true }).waitFor();

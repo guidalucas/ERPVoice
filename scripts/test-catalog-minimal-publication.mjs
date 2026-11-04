@@ -113,7 +113,7 @@ try {
   await page.reload();
   await page.getByRole('button', { name: '03 Fotografías', exact: true }).click();
   const image = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#267850' } }).png().toBuffer();
-  await page.getByLabel('Subir fotografía', { exact: true }).setInputFiles({ name: 'fixture.png', mimeType: 'image/png', buffer: image });
+  await page.getByLabel('Subir fotografías', { exact: true }).setInputFiles({ name: 'fixture.png', mimeType: 'image/png', buffer: image });
   await page.getByText('Foto procesada y guardada.', { exact: true }).waitFor();
   response = await fetch(publicPath);
   assert.equal(response.status, 200); assert.equal((await response.json()).product.photos.length, 1);

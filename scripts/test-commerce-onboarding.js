@@ -128,7 +128,7 @@ try {
     await page.getByRole('button', { name: 'Guardar cambios', exact: true }).click(); await page.getByText('Ficha guardada.', { exact: true }).waitFor();
     await page.getByRole('button', { name: '03 Fotografías', exact: true }).click();
     const photo = await sharp({ create: { width: 500, height: 800, channels: 3, background: '#76c8ef' } }).png().toBuffer();
-    await page.getByLabel('Subir fotografía', { exact: true }).setInputFiles({ name: 'fixture-onboarding.png', mimeType: 'image/png', buffer: photo });
+    await page.getByLabel('Subir fotografías', { exact: true }).setInputFiles({ name: 'fixture-onboarding.png', mimeType: 'image/png', buffer: photo });
     await page.getByText('Foto procesada y guardada.', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Preparar ficha', exact: true }).click(); await page.getByText('Ficha preparada para generar contenido.', { exact: true }).waitFor();
     const started = Date.now(); await page.getByRole('button', { name: 'Generar historia ↗' }).click();

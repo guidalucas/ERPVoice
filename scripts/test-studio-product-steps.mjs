@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { chromium, expect } from 'playwright/test';
+import sharp from 'sharp';
 import { startCommerceFixture } from './fullmatch/fixtureRuntime.js';
 
 const fixture = await startCommerceFixture();
@@ -140,6 +141,64 @@ try {
   await expect(nextLinks()).toBeEnabled();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: path.join(output, 'mobile-skus.png'), fullPage: true });
-  assert.deepEqual(errors, []);
   console.log('PASS: the existing save-only actions and direct step navigation remain available on mobile');
+
+  await nextLinks().click(); await currentStep(3);
+  const photoProductId = new URL(page.url()).hash.split('/').at(-1);
+  const photos = await Promise.all(Array.from({ length: 8 }, async (_, index) => ({ name: `foto-${index + 1}.png`, mimeType: 'image/png',
+    buffer: await sharp({ create: { width: 64, height: 64, channels: 3, background: { r: index * 30, g: 100, b: 180 } } }).png().toBuffer() })));
+  const photoInput = page.getByLabel('Subir fotografías', { exact: true });
+  await expect(photoInput).toHaveAttribute('multiple', '');
+  const contentRoute = `**/api/commerce/v1/products/${photoProductId}/images/*/content`;
+  let releaseUpload;
+  const heldUpload = new Promise(resolve => { releaseUpload = resolve; });
+  await page.route(contentRoute, async route => {
+    if (route.request().method() === 'PUT') await heldUpload;
+    await route.continue();
+  });
+  await photoInput.setInputFiles(photos.slice(0, 3));
+  await expect(page.getByText('Procesando foto 1 de 3…', { exact: true })).toBeVisible();
+  await expect(photoInput).toBeDisabled();await expect(button('Finalizar ficha')).toBeDisabled();
+  releaseUpload();
+  await expect(page.getByText('3 fotos procesadas y guardadas.', { exact: true })).toBeVisible({ timeout: 30000 });
+  await page.unroute(contentRoute);
+  let gallery = await read(photoProductId);
+  assert.equal(gallery.images.length, 3);assert.ok(gallery.images.every(image => image.status === 'ready'));
+  assert.equal(gallery.coverImageId, gallery.images[0].id);
+  await expect(page.locator('.gallery-item')).toHaveCount(3);
+  await page.reload();await button('03 Fotografías').click();await expect(page.locator('.gallery-item')).toHaveCount(3);
+  console.log('PASS: one file selection uploads three photos in order with current revisions, progress and a first-photo cover; all photos survive reload');
+
+  const beforeInvalid = writes.length;
+  await photoInput.setInputFiles(photos.slice(0, 6));
+  await expect(page.getByRole('status').filter({ hasText: 'Elegiste 6 fotos y quedan 5 lugares disponibles.' })).toBeVisible();
+  assert.equal(writes.length, beforeInvalid);assert.equal((await read(photoProductId)).images.length, 3);
+  await photoInput.setInputFiles([photos[3], { name: 'notas.txt', mimeType: 'text/plain', buffer: Buffer.from('No es una imagen') }]);
+  await expect(page.getByRole('status').filter({ hasText: '«notas.txt» no es una foto' })).toBeVisible();
+  assert.equal(writes.length, beforeInvalid);assert.equal((await read(photoProductId)).images.length, 3);
+  console.log('PASS: too many photos or one invalid file rejects the whole selection before saving any image');
+
+  let attempts = 0;
+  await page.route(contentRoute, async route => {
+    if (route.request().method() === 'PUT' && ++attempts === 2) {
+      await route.fulfill({ status: 503, json: { error: { code: 'COMMERCE_UNAVAILABLE', message: 'Carga interrumpida de prueba.' } } });
+    } else await route.continue();
+  });
+  await photoInput.setInputFiles(photos.slice(3, 6));
+  await expect(page.getByRole('status').filter({ hasText: 'Se guardaron 1 de 3 fotos.' })).toBeVisible({ timeout: 30000 });
+  await page.unroute(contentRoute);
+  gallery = await read(photoProductId);
+  assert.equal(gallery.images.length, 5);assert.equal(gallery.images.filter(image => image.status === 'ready').length, 4);
+  assert.equal(attempts, 2, 'A failed upload must stop the batch and preserve already saved photos');
+  await page.getByLabel('Reintentar fotografía', { exact: true }).setInputFiles(photos[4]);
+  await expect(page.getByText('Carga recuperada.', { exact: true })).toBeVisible({ timeout: 30000 });
+  gallery = await read(photoProductId);assert.equal(gallery.images.length, 5);assert.ok(gallery.images.every(image => image.status === 'ready'));
+  await photoInput.setInputFiles(photos.slice(5, 8));
+  await expect(page.getByText('3 fotos procesadas y guardadas.', { exact: true })).toBeVisible({ timeout: 30000 });
+  assert.equal((await read(photoProductId)).images.length, 8);await expect(photoInput).toBeDisabled();
+  await expect(page.getByText('Límite de 8 fotos alcanzado', { exact: true })).toBeVisible();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: path.join(output, 'mobile-multiple-photos.png'), fullPage: true });
+  assert.deepEqual(errors, []);
+  console.log('PASS: an interrupted batch keeps its successful photos, supports retry of the pending photo and enforces the eight-photo limit on mobile');
 } finally { await browser?.close(); await fixture.stop(); }
