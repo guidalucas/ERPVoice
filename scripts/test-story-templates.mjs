@@ -47,7 +47,7 @@ try {
       variants: ['M', 'L', 'XL'].map(size => ({ skuId: size, size, stockAvailable: 1, price: { amountMinor: '7000000', currency: 'ARS', fractionDigits: 2 } })),
       price: { minAmountMinor: '7000000', maxAmountMinor: '7000000', currency: 'ARS', fractionDigits: 2 },
       settings: { templateId: 'available', templateVersion: 1, imageId: 'photo-test', expectedImageRevision: 1, skuIds: ['M', 'L', 'XL'],
-        showPrice: true, fit: 'contain', zoom: 1, focalX: .5, focalY: .5, caption: '', cta: 'PEDILA POR WHATSAPP' },
+        showPrice: true, fit: 'contain', zoom: 1, focalX: .5, focalY: .5, caption: '', cta: '' },
     },
   };
   const render = async (current, name, format = 'png') => {
@@ -74,6 +74,7 @@ try {
     if (templateId === 'promo') current.content.promotion = { percentage: 15, minAmountMinor: '5950000', maxAmountMinor: '5950000',
       startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 3600000).toISOString(), timeZone: 'America/Montevideo', label: 'PROMOCIÓN' };
     const bytes = await render(current, templateId);
+    assert.ok((await page.evaluate(() => window.lastTemplate.html)).includes('Consultas al MD'));
     if (templateId === 'promo') {
       await page.evaluate(async photo => {
         document.body.insertAdjacentHTML('beforeend', window.lastTemplate.html);

@@ -10,7 +10,7 @@ export function StoryEditor({ product, onBack }: { product: Product; onBack: () 
   const canvasRef = useRef<HTMLCanvasElement>(null), selectedImage = product.images.find(image => image.id === product.coverImageId)!;
   const [settings, setSettings] = useState<StorySettings>({ templateId: 'available', templateVersion: 1, imageId: selectedImage.id,
     expectedImageRevision: selectedImage.revision, skuIds: product.variants.filter(item => item.active && item.identityReviewed && (item.stockAvailable ?? 0) > 0).map(item => item.skuId),
-    showPrice: true, fit: 'contain', zoom: 1, focalX: selectedImage.focalX, focalY: selectedImage.focalY, caption: '', cta: 'CONSULTANOS POR WHATSAPP' });
+    showPrice: true, fit: 'contain', zoom: 1, focalX: selectedImage.focalX, focalY: selectedImage.focalY, caption: '', cta: 'Consultas al MD' });
   const [format, setFormat] = useState<'png' | 'jpeg'>('png'), [snapshot, setSnapshot] = useState<StorySnapshot | null>(null), [blob, setBlob] = useState<Blob | null>(null);
   const [generatedKey, setGeneratedKey] = useState(''), [previewExpanded, setPreviewExpanded] = useState(false), [thumbnail, setThumbnail] = useState('');
   const [profile, setProfile] = useState<Profile | null>(null);

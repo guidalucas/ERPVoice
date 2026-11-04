@@ -41,7 +41,7 @@ export function BatchStudio({ onBack }: { onBack: () => void }) {
             if (!variants.length) throw new Error('Esta ficha no tiene una última unidad disponible.');
             const settings: StorySettings = { templateId: working.options.templateId, templateVersion: 1, imageId: image.id, expectedImageRevision: image.revision,
               skuIds: variants.map(variant => variant.skuId), showPrice: working.options.showPrice, fit: 'contain', zoom: 1, focalX: image.focalX, focalY: image.focalY,
-              caption: '', cta: 'PEDILA POR WHATSAPP', promotion: working.options.promotion ?? null };
+              caption: '', cta: 'Consultas al MD', promotion: working.options.promotion ?? null };
             item.title = product.title; item.request = { expectedProductRevision: product.revision, settings };
             persist(working); // Durable operation/request before any command can reach the backend.
           }

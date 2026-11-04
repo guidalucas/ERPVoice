@@ -63,7 +63,7 @@ export async function renderStory(canvas: HTMLCanvasElement, snapshot: StorySnap
           <div class="st-sizes"><p>${esc(content.variantLabel ?? 'TALLES DISPONIBLES')}</p><div class="st-chips">${content.variants.map(variant => `<span class="st-chip">${esc(variant.label ?? variant.size)}${variant.unit && variant.unit !== 'unit' ? ' · ' + esc(variant.unit) : ''}</span>`).join('')}</div></div></div>
         ${settings.caption ? `<p class="st-note">${esc(settings.caption)}</p>` : ''}
         ${promo ? `<p class="st-note st-until">Promoción vigente hasta ${esc(until)}</p>` : ''}
-        <div class="st-cta">${esc(settings.cta || 'CONSULTANOS POR WHATSAPP')}</div>
+        <div class="st-cta">${esc(settings.cta || 'Consultas al MD')}</div>
         <footer class="st-foot">${esc(appearance?.tagline ?? (snapshot.rendererVersion >= 5 ? '' : 'CASACAS CON HISTORIA. PASIÓN POR EL FÚTBOL.'))}</footer></div>`;
     holder.style.cssText = 'position:fixed;left:-10000px;top:0;pointer-events:none';
     holder.setAttribute('aria-hidden', 'true'); holder.inert = true;

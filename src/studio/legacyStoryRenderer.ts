@@ -65,7 +65,7 @@ export async function renderLegacyStory(canvas: HTMLCanvasElement, snapshot: Sto
     ctx.fillStyle = appearance ? ink : '#bdcbe1'; fittedText(ctx, settings.caption, 76, 1570, 928, 25, 18, 1, '400');
     if (promo) { ctx.fillStyle = appearance ? ink : '#91a5c7'; ctx.font = '400 18px Arial'; const until = new Intl.DateTimeFormat('es', { timeZone: promo.timeZone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date(promo.endsAt)); ctx.fillText(`Promoción vigente hasta ${until}`, 76, 1598); }
     ctx.fillStyle = accent; ctx.fillRect(76, 1620, 928, 88);
-    ctx.fillStyle = accentInk; fittedText(ctx, settings.cta || 'CONSULTANOS POR WHATSAPP', 112, 1675, 856, 30, 20, 1);
+    ctx.fillStyle = accentInk; fittedText(ctx, settings.cta || 'Consultas al MD', 112, 1675, 856, 30, 20, 1);
     ctx.fillStyle = appearance ? ink : '#b3c0d6'; fittedText(ctx, appearance?.tagline ?? 'CASACAS CON HISTORIA. PASIÓN POR EL FÚTBOL.', 76, 1810, 928, 24, 16, 2);
     return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No pude exportar la imagen.')), `image/${format}`, format === 'jpeg' ? 0.93 : undefined));
   } finally { bitmap.close(); logo?.close(); }
