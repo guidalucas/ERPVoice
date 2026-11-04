@@ -1,3 +1,4 @@
+import { useConfirm } from '../ui/ConfirmationProvider';
 import { useMemo, useRef, useState } from 'react';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
@@ -5,6 +6,7 @@ import { EmptyState } from './EmptyState';
 import { toUserFacingError } from '../../services/apiClient';
 
 export function ClientesPanel() {
+  const confirm = useConfirm();
   const preset = useBusinessCategoryPreset();
   const { clients, pedidos, createClientRecord, updateClientRecord, deleteClientRecord, mergeClientRecords } = useInventory();
   const [name, setName] = useState('');
@@ -132,6 +134,7 @@ export function ClientesPanel() {
         || typeof source.accountRevision !== 'number' || !Number.isSafeInteger(source.accountRevision) || source.accountRevision < 0) {
         setError('Faltan revisiones. Actualizá la página y revisá los clientes antes de fusionar.'); return;
       }
+      if (!await confirm({ title: `¿Fusionar ${source.name} con ${keep.name}?`, description: `Se conservará ${keep.name} y se trasladarán los registros asociados.`, action: "fusionar", destructive: true })) return;
       attempt = { keepId: keep.id, mergeId: source.id, metadata: {
         operationId: crypto.randomUUID(),
         expectedKeepRevision: keep.accountRevision, expectedMergeRevision: source.accountRevision,
@@ -165,6 +168,7 @@ export function ClientesPanel() {
       || typeof client.accountRevision !== 'number' || !Number.isSafeInteger(client.accountRevision) || client.accountRevision < 0) {
       setError('Falta la revisión. Actualizá la página y revisá el registro antes de eliminarlo.'); return;
     }
+    if (!await confirm({ title: `¿Eliminar a ${client.name}?`, action: "eliminar", destructive: true })) return;
     const attempt = { id: client.id, body: {
       operationId: crypto.randomUUID(), expectedRevision: client.metadataRevision,
       expectedAccountRevision: client.accountRevision,

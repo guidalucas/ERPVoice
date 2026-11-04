@@ -1,3 +1,4 @@
+import { useConfirm } from '../components/ui/ConfirmationProvider';
 import { useEffect, useRef, useState } from 'react';
 import { zipSync } from 'fflate';
 import { batchKey, createBatchJob, readBatchJob, saveBatchJob, type BatchJob, type BatchOptions, type BatchItem } from './batchJob';
@@ -11,13 +12,14 @@ const MAX_BATCH_BYTES = 32 * 1024 * 1024;
 const errorText = (error: unknown) => error instanceof Error ? error.message : 'No pude completar esta historia.';
 type Generated = { snapshot: StorySnapshot; blob: Blob; filename: string };
 export function BatchStudio({ onBack }: { onBack: () => void }) {
+  const confirm = useConfirm();
   const [job, setJob] = useState<BatchJob | null>(readBatchJob), [busy, setBusy] = useState(false), [error, setError] = useState(''), [zip, setZip] = useState<Blob | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null), cancelled = useRef(false), mounted = useRef(true), files = useRef<Generated[]>([]), storageKey = useRef(batchKey());
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; cancelled.current = true; files.current = []; }; }, []);
   const persist = (next: BatchJob) => { saveBatchJob(next, storageKey.current); if (mounted.current) setJob({ ...next, items: [...next.items] }); };
-  const updateOptions = (options: BatchOptions) => {
+  const updateOptions = async (options: BatchOptions) => {
     if (!job) return;
-    if (job.items.some(item => item.request) && !confirm('Cambiar el diseño crea nuevos intentos con datos actuales. ¿Actualizar el lote?')) return;
+    if (job.items.some(item => item.request) && !await confirm({ title: '¿Actualizar el diseño del lote?', description: 'Se crearán nuevos intentos con los datos actuales.', action: 'actualizar' })) return;
     const next = createBatchJob(job.items.map(item => item.productId), options); setJob(next); setZip(null); files.current = [];
   };
   const validate = async (snapshotId: string) => {

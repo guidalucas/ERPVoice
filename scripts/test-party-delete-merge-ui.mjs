@@ -72,6 +72,7 @@ await page.route('http://127.0.0.1:5173/**', async route => {
   catch { return route.fulfill({ status: 404, body: '' }); }
 });
 const nav = name => page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name, exact: true }).click();
+const accept = () => page.getByRole('dialog').getByRole('button', { name: /^Sí,/ }).click();
 const retryDelete = () => page.getByRole('button', { name: 'Reintentar eliminación', exact: true });
 const retryMerge = () => page.getByRole('button', { name: 'Reintentar fusión', exact: true });
 const deleteButton = () => page.getByRole('button', { name: 'Eliminar', exact: true });
@@ -92,7 +93,19 @@ try {
       const record = party(`${singular}-${failure}`, `${label} ${failure}`, 4); records.push(record);
       if (tab === 'Proveedores') pedidos.push({ id: 'order-delete', clienteId: 'other-client', proveedorId: record.id, producto: 'Pedido desvinculado', qty: 1, estado: 'pendiente', fechaPedido: new Date().toISOString() });
       await page.getByText(record.name, { exact: true }).waitFor({ timeout: 12000 }); const start = attempts.length; mode = failure;
-      await deleteButton().click(); await page.getByText(failure === 'lost' ? 'Cambio aplicado con respuesta incierta.' : 'Falló la actualización.', { exact: true }).waitFor();
+      // Cancelling, Enter on the default No button and Escape must never write.
+      await deleteButton().click();
+      const confirmation = page.getByRole('dialog');
+      assert.equal(attempts.length, start);
+      assert.equal(await confirmation.getByRole('textbox').count(), 0);
+      const box = await confirmation.boundingBox();
+      assert.ok(box.y >= 0 && box.y + box.height <= 1000);
+      await page.keyboard.press('Enter');
+      await confirmation.waitFor({ state: 'hidden' });
+      assert.equal(attempts.length, start);
+      await deleteButton().click(); await page.keyboard.press('Escape');
+      await confirmation.waitFor({ state: 'hidden' }); assert.equal(attempts.length, start);
+      await deleteButton().click(); await accept(); await page.getByText(failure === 'lost' ? 'Cambio aplicado con respuesta incierta.' : 'Falló la actualización.', { exact: true }).waitFor();
       await deleteButton().waitFor({ state: 'hidden', timeout: 12000 }); await retryDelete().click(); await retryDelete().waitFor({ state: 'hidden' });
       assert.deepEqual(attempts[start], attempts[start + 1]); assert.equal(attempts[start].input.expectedRevision, 4); assert.equal(records.length, 0);
       if (tab === 'Clientes') assert.equal(attempts[start].input.expectedAccountRevision, 3);
@@ -100,12 +113,12 @@ try {
     }
     const guarded = party(`${singular}-guard`, `${label} protegido`, 2); guarded.guard = tab === 'Clientes' ? 'El cliente tiene saldo.' : 'El proveedor tiene pedidos protegidos.'; records.push(guarded);
     await page.getByText(guarded.name, { exact: true }).waitFor({ timeout: 12000 }); const guardStart = attempts.length;
-    await deleteButton().click(); await page.getByText(guarded.guard, { exact: true }).waitFor();
+    await deleteButton().click(); await accept(); await page.getByText(guarded.guard, { exact: true }).waitFor();
     delete guarded.guard; guarded.metadataRevision++; guarded.accountRevision++; await hydrate();
     await retryDelete().click(); await page.getByText('La revisión cambió.', { exact: true }).waitFor();
     assert.deepEqual(attempts[guardStart], attempts[guardStart + 1]); assert.equal(records.length, 1);
     await page.getByRole('button', { name: 'Revisar eliminación', exact: true }).click(); mode = 'hold'; const holdStart = attempts.length;
-    await deleteButton().evaluate(button => { button.click(); button.click(); }); await holdReady();
+    await deleteButton().evaluate(button => { button.click(); button.click(); }); await accept(); await holdReady();
     assert.equal(attempts.length, holdStart + 1); assert.equal(await deleteButton().isDisabled(), true);
     assert.equal(attempts[holdStart].input.expectedRevision, 3); assert.notEqual(attempts[holdStart].input.operationId, attempts[guardStart].input.operationId);
     mode = 'ok'; release(); release = undefined; await deleteButton().waitFor({ state: 'hidden' });
@@ -117,7 +130,7 @@ try {
     await page.getByRole('button', { name: /Fusionar duplicados/ }).click();
     if (tab === 'Proveedores') await page.getByText('Opcional · todos los pedidos del segundo pasan al que conservás y se unen las notas.', { exact: true }).waitFor();
     await page.getByLabel(`${label} que se conserva`).selectOption(keep.id); await page.getByLabel(`${label} que se fusiona`).selectOption(source.id);
-    const mergeStart = attempts.length; mode = 'lost'; await page.getByRole('button', { name: 'Fusionar', exact: true }).click(); await retryMerge().waitFor();
+    const mergeStart = attempts.length; mode = 'lost'; await page.getByRole('button', { name: 'Fusionar', exact: true }).click(); await accept(); await retryMerge().waitFor();
     await page.getByRole('heading', { name: 'Fusionar duplicados', exact: true }).waitFor({ state: 'hidden', timeout: 12000 });
     keep.name = `${label} posterior`; keep.metadataRevision++; if (tab === 'Clientes') keep.accountRevision++;
     await retryMerge().click(); await retryMerge().waitFor({ state: 'hidden' });
@@ -128,13 +141,13 @@ try {
     const second = party(`${singular}-second`, `${label} segundo`, 12); records.push(second);
     await page.getByRole('heading', { name: 'Fusionar duplicados', exact: true }).waitFor({ timeout: 12000 });
     await page.getByLabel(`${label} que se conserva`).selectOption(keep.id); await page.getByLabel(`${label} que se fusiona`).selectOption(second.id);
-    mode = 'conflict'; const conflictStart = attempts.length; await page.getByRole('button', { name: 'Fusionar', exact: true }).click(); await page.getByText('La revisión cambió.', { exact: true }).waitFor();
+    mode = 'conflict'; const conflictStart = attempts.length; await page.getByRole('button', { name: 'Fusionar', exact: true }).click(); await accept(); await page.getByText('La revisión cambió.', { exact: true }).waitFor();
     keep.metadataRevision++; second.metadataRevision++; if (tab === 'Clientes') { keep.accountRevision++; second.accountRevision++; }
     await hydrate(); await retryMerge().click(); await page.getByText('La revisión cambió.', { exact: true }).waitFor();
     assert.deepEqual(attempts[conflictStart], attempts[conflictStart + 1]);
     await page.getByRole('button', { name: `Revisar ${plural} actuales`, exact: true }).click();
     await page.getByLabel(`${label} que se conserva`).selectOption(keep.id); await page.getByLabel(`${label} que se fusiona`).selectOption(second.id);
-    mode = 'hold'; const mergeHoldStart = attempts.length; await page.getByRole('button', { name: 'Fusionar', exact: true }).evaluate(button => { button.click(); button.click(); }); await holdReady();
+    mode = 'hold'; const mergeHoldStart = attempts.length; await page.getByRole('button', { name: 'Fusionar', exact: true }).evaluate(button => { button.click(); button.click(); }); await accept(); await holdReady();
     assert.equal(attempts.length, mergeHoldStart + 1); assert.equal(await page.getByLabel(`${label} que se conserva`).isDisabled(), true);
     assert.notEqual(attempts[mergeHoldStart].input.operationId, attempts[conflictStart].input.operationId);
     mode = 'ok'; release(); release = undefined; await page.getByRole('heading', { name: 'Fusionar duplicados', exact: true }).waitFor({ state: 'hidden' });

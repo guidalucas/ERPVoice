@@ -149,13 +149,13 @@ try {
   assert.equal(await dialog.getByLabel('Stock Disponible').inputValue(), '0');
 
   await dialog.getByLabel('Talle', { exact: true }).fill('s');
-  await dialog.getByRole('button', { name: 'Agregar talle' }).click();
+  await dialog.getByRole('button', { name: 'Sí, agregar talle' }).click();
   await dialog.getByRole('alert').getByText(/ya existe/).waitFor();
   assert.equal(created.length, 0);
 
   await dialog.getByLabel('Talle', { exact: true }).fill('M');
   await dialog.getByLabel('Stock Disponible').fill('4');
-  await dialog.getByRole('button', { name: 'Agregar talle' }).click();
+  await dialog.getByRole('button', { name: 'Sí, agregar talle' }).click();
   await dialog.waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Editar talle M de Camiseta Argentina' }).waitFor();
 
@@ -178,10 +178,9 @@ try {
   await page.getByRole('button', { name: 'Editar modelo Camiseta Argentina' }).click();
   const modelDialog = page.getByRole('dialog', { name: 'Editar modelo Camiseta Argentina' });
   await modelDialog.getByLabel('Modelo').fill('Argentina Selección');
-  await modelDialog.getByLabel('Motivo del cambio').fill('Corregir nombre del modelo');
   await modelDialog.getByRole('button', { name: 'Revisar cambios' }).click();
   assert.equal(modelUpdates.length, 0);
-  await modelDialog.getByRole('button', { name: 'Confirmar cambios' }).click();
+  await modelDialog.getByRole('button', { name: 'Sí, guardar cambios' }).click();
   await modelDialog.waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Editar talle M de Camiseta Argentina Selección' }).waitFor();
   assert.equal(modelUpdates.length, 1);
@@ -192,7 +191,7 @@ try {
   await page.getByRole('button', { name: 'Registrar ingreso' }).click();
   await page.getByRole('button', { name: /Camiseta Argentina Selección M/ }).click();
   await page.getByLabel('Cantidad').fill('3');
-  await page.getByRole('button', { name: '+ Confirmar ingreso' }).click();
+  await page.getByRole('button', { name: 'Sí, registrar ingreso' }).click();
   await page.getByText('El resultado está pendiente de verificar. Reintentá el mismo movimiento para recuperar su recibo.').waitFor();
   assert.equal(await page.getByLabel('Cantidad').isDisabled(), true);
   assert.equal(await page.getByRole('button', { name: 'Reintentar ingreso' }).isVisible(), true);
@@ -202,7 +201,7 @@ try {
   assert.equal(selectedM.stockAvailable, 4);
 
   await page.getByRole('button', { name: 'Reintentar ingreso' }).click();
-  await page.getByRole('button', { name: '+ Confirmar ingreso' }).waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Sí, registrar ingreso' }).waitFor({ state: 'hidden' });
   assert.equal(movementAttempts.length, 2);
   assert.equal(movements.length, 1);
   assert.equal(selectedM.stockAvailable, 7);
@@ -231,12 +230,12 @@ try {
   const secondVariant = newModelDialog.getByRole('group', { name: 'talle 2' });
   assert.equal(await secondVariant.getByLabel('Precio').inputValue(), '70000');
   await secondVariant.getByLabel('Talle', { exact: true }).fill('s');
-  await newModelDialog.getByRole('button', { name: 'Crear modelo' }).click();
+  await newModelDialog.getByRole('button', { name: 'Sí, crear modelo' }).click();
   await newModelDialog.getByRole('alert').getByText(/repetido/).waitFor();
   assert.equal(createdModels.length, 0);
   await secondVariant.getByLabel('Talle', { exact: true }).fill('M');
   await secondVariant.getByLabel('Stock disponible').fill('5');
-  await newModelDialog.getByRole('button', { name: 'Crear modelo' }).click();
+  await newModelDialog.getByRole('button', { name: 'Sí, crear modelo' }).click();
   await newModelDialog.waitFor({ state: 'hidden' });
   assert.equal(createdModels.length, 1);
   assert.deepEqual(createdModels[0].variants, [
@@ -265,10 +264,8 @@ try {
   await page.getByRole('button', { name: 'Desactivar seleccionados' }).click();
   const bulkDialog = page.getByRole('dialog', { name: 'Desactivar productos' });
   await bulkDialog.getByText(/3 productos seleccionados/).waitFor();
-  await bulkDialog.getByLabel('Motivo de la desactivación').fill('Retiro del catálogo');
-  await bulkDialog.getByRole('button', { name: 'Revisar desactivación' }).click();
   assert.equal(bulkDeletions.length, 0);
-  await bulkDialog.getByRole('button', { name: 'Confirmar desactivación' }).click();
+  await bulkDialog.getByRole('button', { name: 'Sí, desactivar' }).click();
   await bulkDialog.waitFor({ state: 'hidden' });
   assert.equal(bulkDeletions.length, 1);
   assert.equal(bulkDeletions[0].length, 3);

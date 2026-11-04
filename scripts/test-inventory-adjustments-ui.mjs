@@ -84,8 +84,7 @@ try {
   await dialog.getByLabel('Stock Disponible').fill('0');
   await dialog.getByLabel('Stock Reservado').fill('0');
   await dialog.getByLabel('Precio', { exact: true }).fill('0');
-  await dialog.getByLabel('Motivo del ajuste').fill('Conteo físico');
-  const save = () => dialog.getByRole('button', { name: 'Guardar cambios' }).click();
+  const save = () => dialog.getByRole('button', { name: 'Sí, guardar cambios' }).click();
   await save();
   await dialog.getByRole('alert').getByText('Resultado incierto. Reintentá.').waitFor();
   assert.equal(attempts.length, 1);
@@ -109,11 +108,9 @@ try {
   product.revision = 2;
   product.stockAvailable = 9;
   await dialog.getByLabel('Stock Disponible').fill('4');
-  await dialog.getByLabel('Motivo del ajuste').fill('Corrección pendiente');
   await save();
   await dialog.getByRole('alert').getByText(/Actualizá la página y volvé a abrir/).waitFor();
   assert.equal(await dialog.getByLabel('Stock Disponible').inputValue(), '4');
-  assert.equal(await dialog.getByLabel('Motivo del ajuste').inputValue(), 'Corrección pendiente');
   assert.equal(attempts[3].expectedRevision, 1);
   await save();
   await dialog.getByRole('alert').waitFor();
@@ -128,7 +125,6 @@ try {
 
   await openInventory();
   dialog = await openEdit();
-  await dialog.getByLabel('Motivo del ajuste').fill('Revisión del conteo');
   await save();
   await dialog.waitFor({ state: 'hidden' });
   assert.equal(attempts[6].expectedRevision, 2);
@@ -136,7 +132,6 @@ try {
   delete product.revision;
   await openInventory();
   dialog = await openEdit();
-  await dialog.getByLabel('Motivo del ajuste').fill('Sin revisión');
   await save();
   await dialog.getByRole('alert').getByText(/Falta la revisión del producto/).waitFor();
   assert.equal(attempts.length, 7, 'Missing revision must never be replaced with zero.');

@@ -46,46 +46,44 @@ async function fixture({ closed = false, unit = 'unit', changedSchema = false } 
   });
   const dialog = page.getByRole('dialog', { name: 'Familia de un producto', exact: true });
   async function open() { await page.getByRole('navigation', { name: 'Navegación del panel' }).getByRole('button', { name: 'Inventario', exact: true }).click(); await page.getByRole('button', { name: 'Familia de un producto', exact: true }).click(); await dialog.waitFor(); await dialog.getByLabel('Producto existente', { exact: true }).waitFor(); await dialog.getByRole('button', { name: 'Releer estado y familias', exact: true }).waitFor({ state: 'visible' }); }
-  const consent = () => dialog.getByRole('checkbox', { name: 'Revisé el antes y después y autorizo cambiar la familia y atributos de este producto.', exact: true });
-  const submit = () => dialog.getByRole('button', { name: 'Confirmar familia del producto', exact: true });
-  async function fill() { await dialog.getByLabel('Producto existente', { exact: true }).selectOption(product.id); await dialog.getByLabel('Familia y versión', { exact: true }).selectOption(`${family.familyId}@2`); await dialog.getByLabel('Valor de material', { exact: true }).fill('  ACERO   Inoxidable  '); await dialog.getByLabel('Valor de voltage', { exact: true }).selectOption('0'); await dialog.getByLabel('Valor de certified', { exact: true }).selectOption('false'); await dialog.getByLabel('Estado de length', { exact: true }).selectOption('unknown'); await dialog.getByLabel('Motivo obligatorio', { exact: true }).fill('Clasificación revisada'); }
+  const submit = () => dialog.getByRole('button', { name: 'Sí, confirmar familia', exact: true });
+  async function fill() { await dialog.getByLabel('Producto existente', { exact: true }).selectOption(product.id); await dialog.getByLabel('Familia y versión', { exact: true }).selectOption(`${family.familyId}@2`); await dialog.getByLabel('Valor de material', { exact: true }).fill('  ACERO   Inoxidable  '); await dialog.getByLabel('Valor de voltage', { exact: true }).selectOption('0'); await dialog.getByLabel('Valor de certified', { exact: true }).selectOption('false'); await dialog.getByLabel('Estado de length', { exact: true }).selectOption('unknown');  }
   await page.goto('http://127.0.0.1:5173'); await open();
-  return { page, dialog, product, family, puts, errors, open, fill, consent, submit, setMode: value => { mode = value; } };
+  return { page, dialog, product, family, puts, errors, open, fill, submit, setMode: value => { mode = value; } };
 }
 try {
   {
     const f = await fixture(); await f.fill();
     const review = f.dialog.getByRole('region', { name: 'Revisión antes y después' });
     assert.match(await review.innerText(), /Componentes · versión 2/); assert.match(await review.innerText(), /acero inoxidable/); assert.match(await review.innerText(), /0 v/); assert.match(await review.innerText(), /No \(false\)/); assert.match(await review.innerText(), /Desconocido mm/); assert.doesNotMatch(await review.innerText(), /private-/);
-    await f.consent().check(); await f.dialog.getByLabel('Motivo obligatorio', { exact: true }).fill('Nueva revisión'); assert.equal(await f.consent().isChecked(), false);
-    await f.consent().check(); await f.submit().dblclick(); await f.dialog.getByRole('status').waitFor(); assert.equal(f.puts.length, 1); assert.equal(f.puts[0].attributes.material.value, 'acero inoxidable'); assert.equal(f.puts[0].attributes.voltage.value, 0); assert.equal(f.puts[0].attributes.certified.value, false); assert.deepEqual(f.puts[0].attributes.legacy, { state: 'unknown', type: 'number', unit: 'mm' }); assert.deepEqual(f.errors, []);
-    await f.dialog.getByRole('button', { name: 'Preparar otro cambio', exact: true }).click(); await f.fill(); await f.consent().check(); await f.submit().click(); await f.dialog.getByRole('status').waitFor(); assert.equal(f.puts.length, 2); assert.equal(f.puts[1].expectedRevision, 5); assert.notEqual(f.puts[0].operationId, f.puts[1].operationId); await f.page.close();
+     await f.submit().dblclick(); await f.dialog.getByRole('status').waitFor(); assert.equal(f.puts.length, 1); assert.equal(f.puts[0].attributes.material.value, 'acero inoxidable'); assert.equal(f.puts[0].attributes.voltage.value, 0); assert.equal(f.puts[0].attributes.certified.value, false); assert.deepEqual(f.puts[0].attributes.legacy, { state: 'unknown', type: 'number', unit: 'mm' }); assert.deepEqual(f.errors, []);
+    await f.dialog.getByRole('button', { name: 'Preparar otro cambio', exact: true }).click(); await f.fill(); await f.submit().click(); await f.dialog.getByRole('status').waitFor(); assert.equal(f.puts.length, 2); assert.equal(f.puts[1].expectedRevision, 5); assert.notEqual(f.puts[0].operationId, f.puts[1].operationId); await f.page.close();
   }
   {
-    const f = await fixture(); await f.fill(); f.setMode('uncertain'); await f.consent().check(); await f.submit().click(); await f.dialog.getByText('Resultado incierto', { exact: true }).waitFor();
-    await f.page.reload(); await f.open(); assert.equal(await f.consent().isChecked(), false); await f.consent().check(); await f.dialog.getByRole('button', { name: 'Reintentar la misma operación', exact: true }).click(); await f.dialog.getByRole('status').waitFor(); assert.equal(f.puts.length, 2); assert.deepEqual(f.puts[0], f.puts[1]); await f.page.close();
+    const f = await fixture(); await f.fill(); f.setMode('uncertain'); await f.submit().click(); await f.dialog.getByText('Resultado incierto', { exact: true }).waitFor();
+    await f.page.reload(); await f.open(); await f.dialog.getByRole('button', { name: 'Reintentar la misma operación', exact: true }).click(); await f.dialog.getByRole('status').waitFor(); assert.equal(f.puts.length, 2); assert.deepEqual(f.puts[0], f.puts[1]); await f.page.close();
   }
   {
-    const f = await fixture(); await f.fill(); f.setMode('conflict'); await f.consent().check(); await f.submit().click(); await f.dialog.getByText('La revisión cambió', { exact: true }).waitFor(); assert.equal(await f.consent().isEnabled(), false);
-    await f.dialog.getByRole('button', { name: 'Releer estado y familias', exact: true }).click(); await f.consent().check(); await f.submit().click(); await f.dialog.getByRole('status').waitFor(); assert.equal(f.puts.length, 2); assert.notEqual(f.puts[0].operationId, f.puts[1].operationId); assert.equal(f.puts[1].expectedRevision, 5); await f.page.close();
+    const f = await fixture(); await f.fill(); f.setMode('conflict'); await f.submit().click(); await f.dialog.getByText('La revisión cambió', { exact: true }).waitFor(); assert.equal(await f.submit().isEnabled(), false);
+    await f.dialog.getByRole('button', { name: 'Releer estado y familias', exact: true }).click(); await f.submit().click(); await f.dialog.getByRole('status').waitFor(); assert.equal(f.puts.length, 2); assert.notEqual(f.puts[0].operationId, f.puts[1].operationId); assert.equal(f.puts[1].expectedRevision, 5); await f.page.close();
   }
   {
-    const f = await fixture(); await f.fill(); f.setMode('read-failure'); await f.consent().check(); await f.submit().click(); await f.dialog.getByRole('status').waitFor(); await f.dialog.getByText(/Cambio aplicado. Falló la lectura posterior/).waitFor(); await f.dialog.getByRole('button', { name: 'Releer estado y familias', exact: true }).click(); assert.equal(f.puts.length, 1); await f.page.close();
+    const f = await fixture(); await f.fill(); f.setMode('read-failure'); await f.submit().click(); await f.dialog.getByRole('status').waitFor(); await f.dialog.getByText(/Cambio aplicado. Falló la lectura posterior/).waitFor(); await f.dialog.getByRole('button', { name: 'Releer estado y familias', exact: true }).click(); assert.equal(f.puts.length, 1); await f.page.close();
   }
   {
-    const f = await fixture({ closed: true }); await f.fill(); assert.equal(await f.consent().isEnabled(), false); await f.dialog.getByRole('checkbox', { name: 'Quitar explícitamente legacy', exact: true }).check(); await f.consent().check(); await f.submit().click(); await f.dialog.getByRole('status').waitFor(); assert.equal(Object.hasOwn(f.puts[0].attributes, 'legacy'), false); await f.page.close();
+    const f = await fixture({ closed: true }); await f.fill(); assert.equal(await f.submit().isEnabled(), false); await f.dialog.getByRole('checkbox', { name: 'Quitar explícitamente legacy', exact: true }).check(); await f.submit().click(); await f.dialog.getByRole('status').waitFor(); assert.equal(Object.hasOwn(f.puts[0].attributes, 'legacy'), false); await f.page.close();
   }
   {
-    const f = await fixture({ unit: 'box' }); await f.fill(); assert.equal(await f.consent().isEnabled(), false); assert.equal(f.puts.length, 0); await f.page.close();
+    const f = await fixture({ unit: 'box' }); await f.fill(); assert.equal(await f.submit().isEnabled(), false); assert.equal(f.puts.length, 0); await f.page.close();
   }
   {
     const f = await fixture({ changedSchema: true }); await f.dialog.getByLabel('Producto existente', { exact: true }).selectOption(f.product.id); await f.dialog.getByLabel('Familia y versión', { exact: true }).selectOption(`${f.family.familyId}@2`);
-    assert.equal(await f.dialog.getByLabel('Valor de length', { exact: true }).inputValue(), ''); assert.equal(await f.dialog.getByLabel('Valor de material', { exact: true }).inputValue(), ''); assert.equal(await f.consent().isEnabled(), false); assert.equal(f.puts.length, 0); await f.page.close();
+    assert.equal(await f.dialog.getByLabel('Valor de length', { exact: true }).inputValue(), ''); assert.equal(await f.dialog.getByLabel('Valor de material', { exact: true }).inputValue(), ''); assert.equal(await f.submit().isEnabled(), false); assert.equal(f.puts.length, 0); await f.page.close();
   }
   {
-    const f = await fixture(); await f.fill(); f.setMode('uncertain'); await f.consent().check(); await f.submit().click(); await f.dialog.getByText('Resultado incierto', { exact: true }).waitFor();
+    const f = await fixture(); await f.fill(); f.setMode('uncertain'); await f.submit().click(); await f.dialog.getByText('Resultado incierto', { exact: true }).waitFor();
     await f.page.evaluate(() => { const key = Object.keys(localStorage).find(k => k.startsWith('product-family-assignment:')); const saved = JSON.parse(localStorage.getItem(key)); saved.attempt.adjustment.stockAvailable = 0; localStorage.setItem(key, JSON.stringify(saved)); });
-    await f.page.reload(); await f.open(); await f.dialog.getByText(/El borrador guardado está corrupto/).waitFor(); assert.equal(await f.consent().isEnabled(), false); assert.equal(f.puts.length, 1); await f.page.close();
+    await f.page.reload(); await f.open(); await f.dialog.getByText(/El borrador guardado está corrupto/).waitFor(); assert.equal(await f.submit().isEnabled(), false); assert.equal(f.puts.length, 1); await f.page.close();
   }
   console.log('Product family assignment UI checks passed.');
 } finally { await browser.close(); }

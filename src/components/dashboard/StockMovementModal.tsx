@@ -1,3 +1,4 @@
+import { ModalPortal } from '../ui/ModalPortal';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Product } from '../../domain/types';
 import type { ManualInventoryAction, ManualInventoryOperation } from '../../services/productService';
@@ -212,7 +213,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit, onRefres
       : 'Buscar producto';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
+    <ModalPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
       <div role="dialog" aria-modal="true" aria-label={isIngreso ? 'Registrar ingreso' : 'Registrar venta'} className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-y-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl shadow-black/70">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -334,7 +335,7 @@ export function StockMovementModal({ mode, products, onClose, onSubmit, onRefres
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button type="button" onClick={onClose} className="erp-button-secondary min-h-11" disabled={submitting || uncertain}>
-            Cancelar
+            No, cancelar
           </button>
           <button
             type="button"
@@ -342,10 +343,10 @@ export function StockMovementModal({ mode, products, onClose, onSubmit, onRefres
             disabled={!canSubmit}
             className={`${isIngreso ? 'erp-button-primary' : 'erp-button-danger'} min-h-11`}
           >
-            {submitting ? 'Guardando...' : committed ? 'Actualizar datos' : error ? (isIngreso ? 'Reintentar ingreso' : 'Reintentar venta') : isIngreso ? '+ Confirmar ingreso' : '− Confirmar venta'}
+            {submitting ? 'Guardando...' : committed ? 'Actualizar datos' : error ? (isIngreso ? 'Reintentar ingreso' : 'Reintentar venta') : isIngreso ? 'Sí, registrar ingreso' : 'Sí, registrar venta'}
           </button>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   );
 }

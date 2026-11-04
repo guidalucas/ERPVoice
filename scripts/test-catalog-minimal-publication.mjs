@@ -83,7 +83,7 @@ try {
 
   await page.goto(`${fixture.url}#/products/${product.id}`, { waitUntil: 'domcontentloaded', timeout: 120000 });
   const publish = page.getByRole('button', { name: 'Publicar en catálogo', exact: true });
-  await publish.waitFor(); await publish.click();
+  await publish.waitFor(); await publish.click(); await page.getByRole('button', { name: 'Sí, publicar', exact: true }).click();
   await page.getByRole('button', { name: 'Ocultar del catálogo', exact: true }).waitFor();
   product = await api(`/products/${product.id}`);
   assert.equal(product.status, 'ready');

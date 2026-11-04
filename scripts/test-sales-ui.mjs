@@ -90,20 +90,20 @@ try {
   };
   let dialog = await openSale();
   await dialog.getByLabel('Cantidad', { exact: true }).fill('11');
-  assert.equal(await dialog.getByRole('button', { name: '− Confirmar venta' }).isEnabled(), false);
+  assert.equal(await dialog.getByRole('button', { name: 'Sí, registrar venta' }).isEnabled(), false);
   await dialog.getByText('La cantidad supera el stock disponible (10).').waitFor();
   assert.equal(attempts.length, 0);
   await dialog.getByLabel('Cantidad', { exact: true }).fill('2');
   for (const invalid of ['-1', '1.5', '9007199254740992']) {
     await dialog.getByLabel('Precio de venta unitario (opcional)').fill(invalid);
-    assert.equal(await dialog.getByRole('button', { name: '− Confirmar venta' }).isEnabled(), false);
+    assert.equal(await dialog.getByRole('button', { name: 'Sí, registrar venta' }).isEnabled(), false);
   }
   await dialog.getByLabel('Precio de venta unitario (opcional)').fill('');
-  await dialog.getByRole('button', { name: '− Confirmar venta' }).click();
+  await dialog.getByRole('button', { name: 'Sí, registrar venta' }).click();
   await dialog.getByRole('button', { name: 'Reintentar venta' }).waitFor();
   assert.equal(attempts.length, 1);
   assert.equal(await dialog.getByLabel('Cantidad', { exact: true }).isDisabled(), true);
-  assert.equal(await dialog.getByRole('button', { name: 'Cancelar', exact: true }).isDisabled(), true);
+  assert.equal(await dialog.getByRole('button', { name: 'No, cancelar', exact: true }).isDisabled(), true);
   assert.equal(products[1].stockAvailable, 8);
   await page.reload();
   await page.getByRole('button', { name: 'Registrar venta', exact: true }).click();
@@ -150,7 +150,7 @@ try {
     dialog = await openSale(size);
     await dialog.getByLabel('Precio de venta unitario (opcional)').fill(price);
     if (price === '0') invalidReceipt = true;
-    await dialog.getByRole('button', { name: '− Confirmar venta' }).click();
+    await dialog.getByRole('button', { name: 'Sí, registrar venta' }).click();
     if (price === '0') {
       await dialog.getByText(/No pudimos verificar el recibo/).waitFor();
       const malformedAttempt = attempts.at(-1);
@@ -213,7 +213,7 @@ try {
       return window.restoreManualStorage.call(this, key, value);
     };
   });
-  await dialog.getByRole('button', { name: '− Confirmar venta' }).click();
+  await dialog.getByRole('button', { name: 'Sí, registrar venta' }).click();
   await dialog.getByText(/No pudimos guardar la referencia recuperable/).waitFor();
   assert.equal(attempts.length, 8);
   await page.evaluate(() => { Storage.prototype.setItem = window.restoreManualStorage; });
@@ -229,7 +229,7 @@ try {
   dialog = await openSale();
   assert.equal(await dialog.getByRole('status').count(), 0);
   assert.equal(await dialog.getByLabel('Cantidad', { exact: true }).isEnabled(), true);
-  await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await dialog.getByRole('button', { name: 'No, cancelar', exact: true }).click();
   await page.evaluate(key => localStorage.setItem(key, '{"version":1,"operation":{}}'), localKey);
   await page.reload();
   await page.getByRole('button', { name: 'Registrar venta', exact: true }).click();
@@ -245,7 +245,7 @@ try {
   await page.reload();
   dialog = await openSale();
   await dialog.getByRole('alert').getByText(/Faltan datos de revisión/).waitFor();
-  assert.equal(await dialog.getByRole('button', { name: '− Confirmar venta' }).isEnabled(), false);
+  assert.equal(await dialog.getByRole('button', { name: 'Sí, registrar venta' }).isEnabled(), false);
   assert.equal(attempts.length, 8);
   console.log('Ventas UI: SKU explícito sin variantes, stock, precio opcional/0/conocido, recibo desconocido y reintento con mismo ID verificados en dist.');
 } finally {

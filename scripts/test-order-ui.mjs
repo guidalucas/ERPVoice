@@ -62,8 +62,9 @@ await page.route('**/api/**',async(route) => {
 await page.route('http://127.0.0.1:5173/**',async(route)=>{
   const path=new URL(route.request().url()).pathname;if(path.startsWith('/api/'))return route.fallback();
   const root=resolve('dist'),file=resolve(root,`.${path==='/'?'/index.html':path}`);if(!file.startsWith(`${root}${sep}`))return route.abort();
-  try{return route.fulfill({status:200,body:await readFile(file),contentType:path.endsWith('.js')?'text/javascript':path.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
+try{return route.fulfill({status:200,body:await readFile(file),contentType:path.endsWith('.js')?'text/javascript':path.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
 });
+const accept = () => page.getByRole('dialog').getByRole('button',{name:'Sí, confirmar cambio',exact:true}).click();
 const statusGroup=(name)=>page.getByText(name,{exact:true}).first().locator('xpath=../..').getByRole('group',{name:'Estado del pedido'});
 const retry=()=>page.getByRole('button',{name:'Reintentar cambio de pedido',exact:true});
 try{
@@ -80,24 +81,24 @@ try{
   assert.deepEqual(attempts[0],attempts[1]);assert.equal(pedidos.length,1);assert.equal(product.stockAvailable,10);
   await page.getByRole('button',{name:'Todos',exact:true}).click();
   mode='refresh';const start=attempts.length;
-  await statusGroup(product.name).getByRole('button',{name:'Conseguido',exact:true}).click();
+  await statusGroup(product.name).getByRole('button',{name:'Conseguido',exact:true}).click();await accept();
   await page.getByText('No pude refrescar pedidos.',{exact:true}).first().waitFor();
   // Background hydration can now show conseguido; the retained retry must remain reachable.
   await page.waitForFunction(()=>document.querySelector('[data-estado="conseguido"][aria-pressed="true"]'),{},{timeout:12000});
   await retry().click();await retry().waitFor({state:'hidden'});
   assert.deepEqual(attempts[start],attempts[start+1]);assert.equal(product.stockAvailable,13);
   mode='lost';const exit=attempts.length;
-  await statusGroup(product.name).getByRole('button',{name:'Pendiente',exact:true}).click();
+  await statusGroup(product.name).getByRole('button',{name:'Pendiente',exact:true}).click();await accept();
   await retry().waitFor();await retry().click();await retry().waitFor({state:'hidden'});
   assert.deepEqual(attempts[exit],attempts[exit+1]);assert.equal(product.stockAvailable,10);
   mode='conflict';const conflict=attempts.length;
-  await statusGroup(product.name).getByRole('button',{name:'Conseguido',exact:true}).click();await retry().waitFor();
+  await statusGroup(product.name).getByRole('button',{name:'Conseguido',exact:true}).click();await accept();await retry().waitFor();
   mode='ok';await page.getByRole('button',{name:'Revisar pedido actual',exact:true}).click();
-  await statusGroup(product.name).getByRole('button',{name:'Conseguido',exact:true}).click();
+  await statusGroup(product.name).getByRole('button',{name:'Conseguido',exact:true}).click();await accept();
   await page.waitForFunction(()=>document.querySelector('[data-estado="conseguido"][aria-pressed="true"]'));
   assert.notEqual(attempts[conflict].input.operationId,attempts[conflict+1].input.operationId);
   assert.equal(product.stockAvailable,13);
-  mode='hold';await statusGroup(product.name).getByRole('button',{name:'Pendiente',exact:true}).click();
+  mode='hold';await statusGroup(product.name).getByRole('button',{name:'Pendiente',exact:true}).click();await accept();
   await page.waitForFunction(()=>document.querySelector('[data-estado="pendiente"]')?.disabled);
   assert.equal(await page.getByRole('button',{name:'+ Nuevo pedido',exact:true}).isDisabled(),true);
   assert.equal(await statusGroup(product.name).getByRole('button',{name:'Descartado',exact:true}).isDisabled(),true);
@@ -108,25 +109,24 @@ try{
   const before=attempts.length;await statusGroup('Pedido sin SKU').getByRole('button',{name:'Conseguido',exact:true}).click();
   assert.equal(attempts.length,before);
   await page.getByLabel('Producto para Pedido sin SKU').selectOption(product.id);
-  await statusGroup('Pedido sin SKU').getByRole('button',{name:'Conseguido',exact:true}).click();
+  await statusGroup('Pedido sin SKU').getByRole('button',{name:'Conseguido',exact:true}).click();await accept();
   await page.waitForFunction(()=>Array.from(document.querySelectorAll('[data-estado="conseguido"][aria-pressed="true"]')).length===1);
   assert.equal(attempts.at(-1).input.productId,product.id);assert.equal(product.stockAvailable,12);
   pedidos.push({id:'historical-order',clienteId:'client-order',producto:'Pedido histórico',qty:3,estado:'conseguido',revision:0,productId:null,stockPosting:null,fechaPedido:new Date().toISOString()});
   await page.getByLabel('Producto histórico para Pedido histórico').waitFor({timeout:12000});
   assert.equal(await statusGroup('Pedido histórico').getByRole('button',{name:'Pendiente',exact:true}).isDisabled(),true);
   await page.getByLabel('Producto histórico para Pedido histórico').selectOption(product.id);
-  await page.getByLabel('Motivo histórico para Pedido histórico').fill('Conteo físico revisado con pedido original');
   const beforeReview=attempts.length,stockBeforeReview=product.stockAvailable;
   await page.getByRole('button',{name:'Revisar conciliación',exact:true}).click();
   assert.equal(attempts.length,beforeReview);assert.equal(product.stockAvailable,stockBeforeReview);
-  assert.equal(await page.getByRole('button',{name:'Confirmar conciliación',exact:true}).isDisabled(),true);
-  await page.getByRole('checkbox',{name:/Confirmo que el stock revisado/}).check();mode='lost';
-  await page.getByRole('button',{name:'Confirmar conciliación',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Sí, conciliar',exact:true}).isEnabled(),true);
+  mode='lost';
+  await page.getByRole('button',{name:'Sí, conciliar',exact:true}).click();
   await retry().waitFor();assert.equal(product.stockAvailable,stockBeforeReview);
   await page.getByText('Conciliar pedido histórico',{exact:true}).waitFor({state:'hidden',timeout:12000});
   await retry().click();await retry().waitFor({state:'hidden'});
   assert.deepEqual(attempts[beforeReview],attempts[beforeReview+1]);assert.equal(product.stockAvailable,stockBeforeReview);
-  await statusGroup('Pedido histórico').getByRole('button',{name:'Pendiente',exact:true}).click();
+  await statusGroup('Pedido histórico').getByRole('button',{name:'Pendiente',exact:true}).click();await accept();
   await page.waitForFunction(()=>document.querySelectorAll('[data-estado="conseguido"][aria-pressed="true"]').length===1);
   assert.equal(product.stockAvailable,stockBeforeReview-3);
   console.log('Order UI passed: explicit SKU, applied503 retries, frozen revisions, conflict review, reversal, in-flight controls, historical zero-delta review/confirmation and retry after hydration.');

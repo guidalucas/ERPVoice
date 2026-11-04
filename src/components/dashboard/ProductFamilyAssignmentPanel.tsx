@@ -10,7 +10,7 @@ type Field = { omit: boolean; state: InventoryAttribute['state']; value: string 
 type Draft = { before?: Product; family?: ProductFamily; fields: Record<string, Field>; removed: string[]; reason: string };
 type Attempt = { before: Product; family: ProductFamily; attributes: InventoryAttributes; adjustment: ProductAdjustment; status: 'pending' | 'conflict' | 'rejected' | 'complete' };
 type Saved = { draft: Draft; attempt?: Attempt };
-const fresh = (): Saved => ({ draft: { fields: {}, removed: [], reason: '' } });
+const fresh = (): Saved => ({ draft: { fields: {}, removed: [], reason: 'Cambio de familia confirmado desde el panel' } });
 const canonical = (value: unknown): string => JSON.stringify(value && typeof value === 'object' ? Array.isArray(value) ? value.map(v => JSON.parse(canonical(v))) : Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).filter(([, v]) => v !== undefined).map(([k, v]) => [k, JSON.parse(canonical(v))])) : value);
 const hasOwn = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 const states = { known: 'Conocido', unknown: 'Desconocido', not_applicable: 'No aplica', missing: 'Faltante' };
@@ -57,7 +57,7 @@ export function ProductFamilyAssignmentPanel({ onClose }: { onClose: () => void 
   const generation = useRef(0), lock = useRef(false), refresh = useRef(refreshState); refresh.current = refreshState;
   const dialogRef = useRef<HTMLDivElement>(null);
   const [saved, setSaved] = useState<Saved>(fresh), [products, setProducts] = useState<Product[]>([]), [families, setFamilies] = useState<ProductFamily[]>([]);
-  const [busy, setBusy] = useState(true), [blocked, setBlocked] = useState(false), [consent, setConsent] = useState(false), [error, setError] = useState(''), [readError, setReadError] = useState('');
+  const [busy, setBusy] = useState(true), [blocked, setBlocked] = useState(false), [error, setError] = useState(''), [readError, setReadError] = useState('');
   const draft = saved.draft, attempt = saved.attempt;
   const persist = (next: Saved) => { if (!key || key !== scope.current) throw new Error('La sesión cambió.'); localStorage.setItem(key, JSON.stringify(next)); setSaved(next); };
   const guard = (id: number, expectedKey: string | null) => generation.current === id && scope.current === expectedKey;
@@ -70,27 +70,27 @@ export function ProductFamilyAssignmentPanel({ onClose }: { onClose: () => void 
     return { products: state.products, families: catalog.families };
   }
   useEffect(() => {
-    const id = ++generation.current; lock.current = true; setBusy(true); setConsent(false); setBlocked(false); setError(''); setReadError(''); setProducts([]); setFamilies([]);
+    const id = ++generation.current; lock.current = true; setBusy(true); setBlocked(false); setError(''); setReadError(''); setProducts([]); setFamilies([]);
     void (async () => {
-      try { if (!key) throw new Error('Iniciá sesión.'); const raw = localStorage.getItem(key); const restored: unknown = raw ? JSON.parse(raw) : fresh(); if (!savedValid(restored)) throw new Error('El borrador guardado está corrupto. Se bloqueó el envío y se conservó el registro.'); if (guard(id, key)) setSaved(restored); }
+      try { if (!key) throw new Error('Iniciá sesión.'); const raw = localStorage.getItem(key); const restored: unknown = raw ? JSON.parse(raw) : fresh(); if (!savedValid(restored)) throw new Error('El borrador guardado está corrupto. Se bloqueó el envío y se conservó el registro.'); if (guard(id, key)) setSaved(restored.attempt ? restored : { ...restored, draft: { ...restored.draft, reason: restored.draft.reason.trim() || 'Cambio de familia confirmado desde el panel' } }); }
       catch (e) { if (guard(id, key)) { setBlocked(true); setError(toUserFacingError(e)); } return; }
       try { await read(id, key); } catch (e) { if (guard(id, key)) setReadError(toUserFacingError(e)); }
       finally { if (guard(id, key)) { lock.current = false; setBusy(false); } }
     })();
     return () => { generation.current++; };
   }, [key]);
-  const edit = (next: Draft) => { if (lock.current || busy || blocked || attempt) return; setConsent(false); try { persist({ draft: next }); setError(''); } catch (e) { setBlocked(true); setError(toUserFacingError(e)); } };
+  const edit = (next: Draft) => { if (lock.current || busy || blocked || attempt) return;  try { persist({ draft: next }); setError(''); } catch (e) { setBlocked(true); setError(toUserFacingError(e)); } };
   const selectFamily = (family: ProductFamily | undefined, before = draft.before) => {
     const fields: Record<string, Field> = Object.create(null);
     for (const [name, schema] of Object.entries(family?.schema.attributes ?? {})) { const old = before?.attributes?.[name]; const compatible = old?.type === schema.type && old?.unit === schema.unit; fields[name] = { omit: false, state: compatible ? old!.state : 'known', value: compatible && old?.state === 'known' ? String(old.value) : '' }; }
     edit({ ...draft, before, family, fields, removed: [] });
   };
   let attributes: InventoryAttributes | undefined, validation = '';
-  try { attributes = attributesFor(draft); if (!draft.reason.trim()) validation = 'El motivo es obligatorio.'; if (draft.before?.family && !families.some(f => f.familyId === draft.before!.family!.id && f.version === draft.before!.family!.version)) validation = 'La familia anterior no está disponible en el catálogo. Releé las familias para revisar su nombre y versión.'; } catch (e) { validation = toUserFacingError(e); }
+  try { attributes = attributesFor(draft); if (draft.before?.family && !families.some(f => f.familyId === draft.before!.family!.id && f.version === draft.before!.family!.version)) validation = 'La familia anterior no está disponible en el catálogo. Releé las familias para revisar su nombre y versión.'; } catch (e) { validation = toUserFacingError(e); }
   const familyLabel = (reference?: Product['family']) => { if (!reference) return 'Sin familia'; const family = families.find(f => f.familyId === reference.id && f.version === reference.version) ?? (draft.family?.familyId === reference.id && draft.family.version === reference.version ? draft.family : undefined); return family ? `${family.schema.name} · versión ${reference.version}` : `Familia no disponible · versión ${reference.version}`; };
   async function reload() {
     if (lock.current || busy || blocked) return;
-    lock.current = true; setBusy(true); setConsent(false); const id = generation.current, expectedKey = key;
+    lock.current = true; setBusy(true);  const id = generation.current, expectedKey = key;
     try {
       const loaded = await read(id, expectedKey); if (!loaded || !guard(id, expectedKey)) return;
       if (attempt && ['conflict', 'rejected'].includes(attempt.status)) {
@@ -104,16 +104,16 @@ export function ProductFamilyAssignmentPanel({ onClose }: { onClose: () => void 
   }
   async function prepareAnother() {
     if (lock.current || busy || blocked || !attempt || !['complete', 'conflict', 'rejected'].includes(attempt.status)) return;
-    lock.current = true; setBusy(true); setConsent(false); const id = generation.current, expectedKey = key;
+    lock.current = true; setBusy(true);  const id = generation.current, expectedKey = key;
     try { const loaded = await read(id, expectedKey); if (loaded && guard(id, expectedKey)) { persist(fresh()); if (attempt.status === 'complete') setError(''); else setError(error || 'El intento anterior fue rechazado y descartado explícitamente. Revisá y autorizá el nuevo cambio.'); } }
     catch (e) { if (guard(id, expectedKey)) setReadError(toUserFacingError(e)); }
     finally { if (guard(id, expectedKey)) { lock.current = false; setBusy(false); } }
   }
   async function submit() {
-    if (lock.current || busy || blocked || !consent || readError || attempt && attempt.status !== 'pending') return;
+    if (lock.current || busy || blocked || readError || attempt && attempt.status !== 'pending') return;
     if (!attempt && (validation || !attributes || !draft.before || !draft.family)) return;
     lock.current = true; setBusy(true); setError(''); const id = generation.current, expectedKey = key;
-    const next: Attempt = attempt ?? { before: structuredClone(draft.before!), family: structuredClone(draft.family!), attributes: attributes!, adjustment: { operationId: crypto.randomUUID(), expectedRevision: draft.before!.revision!, expectedFingerprint: draft.before!.identityFingerprint!, reason: draft.reason.trim() }, status: 'pending' };
+    const next: Attempt = attempt ?? { before: structuredClone(draft.before!), family: structuredClone(draft.family!), attributes: attributes!, adjustment: { operationId: crypto.randomUUID(), expectedRevision: draft.before!.revision!, expectedFingerprint: draft.before!.identityFingerprint!, reason: draft.reason.trim() || 'Cambio de familia confirmado desde el panel' }, status: 'pending' };
     try { persist({ draft, attempt: next }); } catch (e) { setBlocked(true); setError(`No pudimos guardar la operación: ${toUserFacingError(e)}`); lock.current = false; setBusy(false); return; }
     try {
       const { operationId, expectedRevision, expectedFingerprint, reason } = next.adjustment;
@@ -121,12 +121,12 @@ export function ProductFamilyAssignmentPanel({ onClose }: { onClose: () => void 
       if (!guard(id, expectedKey)) return;
       if (!productValid(result) || result.id !== next.before.id || result.revision !== next.adjustment.expectedRevision + 1 || canonical(result.family) !== canonical({ id: next.family.familyId, version: next.family.version }) || canonical(result.attributes ?? {}) !== canonical(next.attributes) || ['name', 'stockAvailable', 'stockReserved', 'price', 'unit', 'priceCurrency'].some(k => canonical(result[k as keyof Product]) !== canonical(next.before[k as keyof Product]))) throw new Error('Respuesta incierta: no coincide con el cambio solicitado. Conservamos el intento para reintentar.');
       try { persist({ draft, attempt: { ...next, status: 'complete' } }); } catch (e) { setBlocked(true); throw new Error(`El servidor confirmó el cambio, pero no pudimos guardar el comprobante. Conservamos el intento original. ${toUserFacingError(e)}`); }
-      setConsent(false);
+
       try { await read(id, expectedKey); if (guard(id, expectedKey)) await refresh.current(); } catch (e) { if (guard(id, expectedKey)) setReadError(`Cambio aplicado. Falló la lectura posterior: ${toUserFacingError(e)}`); }
     } catch (e) {
       if (!guard(id, expectedKey)) return;
       const status = (e as { status?: number }).status;
-      if (status && status >= 400 && status < 500) { try { persist({ draft, attempt: { ...next, status: status === 409 ? 'conflict' : 'rejected' } }); } catch { setBlocked(true); } setConsent(false); }
+      if (status && status >= 400 && status < 500) { try { persist({ draft, attempt: { ...next, status: status === 409 ? 'conflict' : 'rejected' } }); } catch { setBlocked(true); }  }
       setError(toUserFacingError(e));
     } finally { if (guard(id, expectedKey)) { lock.current = false; setBusy(false); } }
   }
@@ -154,10 +154,10 @@ export function ProductFamilyAssignmentPanel({ onClose }: { onClose: () => void 
     <label className="block">Familia y versión<select aria-label="Familia y versión" className="block bg-slate-800 p-2" disabled={immutable || !draft.before || Boolean(readError)} value={draft.family ? `${draft.family.familyId}@${draft.family.version}` : ''} onChange={e => selectFamily(families.find(f => `${f.familyId}@${f.version}` === e.target.value))}><option value="">Seleccionar familia y versión</option>{families.map(f => <option key={`${f.familyId}@${f.version}`} value={`${f.familyId}@${f.version}`}>{f.schema.name} · versión {f.version} · unidad {f.schema.unit}</option>)}</select></label>
     {Object.entries(draft.family?.schema.attributes ?? {}).map(([name, schema]) => { const field = draft.fields[name]; if (!field) return null; const change = (value: Partial<Field>) => edit({ ...draft, fields: { ...draft.fields, [name]: { ...field, ...value } } }); return <fieldset key={name} disabled={immutable} className="rounded-xl border border-slate-600 p-3"><legend>{name} · {schema.type}{schema.unit ? ` · ${schema.unit}` : ''}{schema.required ? ' · requerido' : ' · opcional'}</legend>{!schema.required && <label><input type="checkbox" checked={field.omit} onChange={e => change({ omit: e.target.checked })} />Omitir explícitamente {name}</label>}<label className="block">Estado de {name}<select aria-label={`Estado de ${name}`} disabled={field.omit} className="bg-slate-800 p-2" value={field.state} onChange={e => change({ state: e.target.value as Field['state'] })}>{schema.allowedStates.map(s => <option key={s} value={s}>{states[s]}</option>)}</select></label>{field.state === 'known' && <label className="block">Valor de {name}{schema.values || schema.type === 'boolean' ? <select aria-label={`Valor de ${name}`} className="bg-slate-800 p-2" disabled={field.omit} value={field.value} onChange={e => change({ value: e.target.value })}><option value="">Seleccionar valor</option>{(schema.values ?? [true, false]).map(v => <option key={String(v)} value={String(v)}>{typeof v === 'boolean' ? v ? 'Sí (true)' : 'No (false)' : String(v)}</option>)}</select> : <input aria-label={`Valor de ${name}`} className="bg-slate-800 p-2" type={schema.type === 'number' ? 'number' : 'text'} step="any" disabled={field.omit} value={field.value} onChange={e => change({ value: e.target.value })} />}</label>}</fieldset>; })}
     {draft.family && Object.keys(draft.before?.attributes ?? {}).filter(k => !hasOwn(draft.family!.schema.attributes, k)).map(k => <div key={k}><p>{k}: {display(draft.before!.attributes![k])} · fuera del esquema, conservado por defecto</p><label><input type="checkbox" disabled={immutable} checked={draft.removed.includes(k)} onChange={e => edit({ ...draft, removed: e.target.checked ? [...draft.removed, k] : draft.removed.filter(v => v !== k) })} />Quitar explícitamente {k}</label></div>)}
-    <label className="block">Motivo obligatorio<textarea aria-label="Motivo obligatorio" className="block w-full bg-slate-800 p-2" disabled={immutable} value={draft.reason} onChange={e => edit({ ...draft, reason: e.target.value })} /></label>
-    {draft.before && <section aria-label="Revisión antes y después" className="space-y-2 rounded-xl border border-sky-500 p-4"><h3>Revisión ANTES / DESPUÉS</h3><p>Producto: {draft.before.name}{draft.before.size ? ` · ${draft.before.size}` : ''}</p><p>Familia ANTES: {familyLabel(draft.before.family)}</p><p>Familia DESPUÉS: {draft.family ? `${draft.family.schema.name} · versión ${draft.family.version}` : 'Sin seleccionar'}</p><p>Unidad ANTES: {draft.before.unit} / DESPUÉS: {draft.family?.schema.unit ?? 'Sin seleccionar'}</p><p>Stock disponible: {draft.before.stockAvailable} / {draft.before.stockAvailable} · reservado: {draft.before.stockReserved} / {draft.before.stockReserved} · precio: {draft.before.price} {draft.before.priceCurrency} / {draft.before.price} {draft.before.priceCurrency}</p>{keys.map(k => <p key={k}>{k} — ANTES: {display(draft.before!.attributes?.[k])} / DESPUÉS: {attributes ? display(attributes[k]) : draft.removed.includes(k) || draft.fields[k]?.omit ? 'Omitido explícitamente' : 'Requiere completar validación'}{draft.family && !hasOwn(draft.family.schema.attributes, k) ? ' · atributo fuera del esquema' : ''}</p>)}<p>Motivo: {draft.reason || 'Sin completar'}</p></section>}
+    {draft.before && <section aria-label="Revisión antes y después" className="space-y-2 rounded-xl border border-sky-500 p-4"><h3>Revisión ANTES / DESPUÉS</h3><p>Producto: {draft.before.name}{draft.before.size ? ` · ${draft.before.size}` : ''}</p><p>Familia ANTES: {familyLabel(draft.before.family)}</p><p>Familia DESPUÉS: {draft.family ? `${draft.family.schema.name} · versión ${draft.family.version}` : 'Sin seleccionar'}</p><p>Unidad ANTES: {draft.before.unit} / DESPUÉS: {draft.family?.schema.unit ?? 'Sin seleccionar'}</p><p>Stock disponible: {draft.before.stockAvailable} / {draft.before.stockAvailable} · reservado: {draft.before.stockReserved} / {draft.before.stockReserved} · precio: {draft.before.price} {draft.before.priceCurrency} / {draft.before.price} {draft.before.priceCurrency}</p>{keys.map(k => <p key={k}>{k} — ANTES: {display(draft.before!.attributes?.[k])} / DESPUÉS: {attributes ? display(attributes[k]) : draft.removed.includes(k) || draft.fields[k]?.omit ? 'Omitido explícitamente' : 'Requiere completar validación'}{draft.family && !hasOwn(draft.family.schema.attributes, k) ? ' · atributo fuera del esquema' : ''}</p>)}</section>}
     {validation && !attempt && <p>{validation}</p>}
-    <label className="block"><input type="checkbox" checked={consent} disabled={busy || blocked || Boolean(readError) || Boolean(attempt && attempt.status !== 'pending') || !attempt && Boolean(validation)} onChange={e => setConsent(e.target.checked)} />Revisé el antes y después y autorizo cambiar la familia y atributos de este producto.</label>
-    <button className={button} disabled={busy || blocked || !consent || Boolean(readError) || Boolean(attempt && attempt.status !== 'pending') || !attempt && Boolean(validation)} onClick={() => void submit()}>{attempt?.status === 'pending' ? 'Reintentar la misma operación' : 'Confirmar familia del producto'}</button>
+
+    <button className={button} disabled={busy} onClick={onClose}>No, cancelar</button>
+    <button className={button} disabled={busy || blocked || Boolean(readError) || Boolean(attempt && attempt.status !== 'pending') || !attempt && Boolean(validation)} onClick={() => void submit()}>{attempt?.status === 'pending' ? 'Reintentar la misma operación' : 'Sí, confirmar familia'}</button>
   </div></div>;
 }

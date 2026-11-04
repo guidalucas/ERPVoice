@@ -10,6 +10,7 @@ import { ProductFamilyPanel } from './ProductFamilyPanel';
 import { ProductFamilyAssignmentPanel } from './ProductFamilyAssignmentPanel';
 import { DataGrid, type DataGridColumn, type DataGridSection } from '../ui/DataGrid';
 import { fetchBusinessMoneyPolicy } from '../../services/businessMoneyService';
+import { ModalPortal } from '../ui/ModalPortal';
 
 type ProductDraft = {
   name: string;
@@ -174,32 +175,26 @@ const buildProductName = (draft: ProductDraft) => {
   return parts.length ? parts.join(' ') : 'Nuevo Producto';
 };
 
-function DeactivateModal({ ids, reason, onReasonChange, preview, stale, error, busy, onCancel, onSubmit }: {
-  ids: string[]; reason: string; onReasonChange: (reason: string) => void;
+function DeactivateModal({ items, preview, stale, error, busy, onCancel, onSubmit }: {
+  items: ProductRow[];
   preview: InventorySelectionPreview | null; stale: boolean; error: string | null; busy: boolean;
   onCancel: () => void; onSubmit: (refresh?: boolean) => Promise<void>;
 }) {
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
     <div role="dialog" aria-modal="true" aria-label="Desactivar productos" className="max-h-full overflow-y-auto w-full max-w-lg rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface-elevated)] p-6 text-[color:var(--text)] shadow-2xl">
-      <h4 className="type-title text-xl">Desactivar {ids.length === 1 ? 'producto' : 'selección'}</h4>
+      <h4 className="type-title text-xl">¿Desactivar {items.length === 1 ? 'este producto' : 'estos productos'}?</h4>
       <p className="mt-3 text-sm">Se desactivarán y saldrán del inventario activo; se conservan stock e historial.</p>
-      <p className="mt-2 text-sm">{ids.length} productos seleccionados: {ids.join(', ')}</p>
-      <label className="mt-4 block text-sm">Motivo de la desactivación
-        <input className="erp-input" required disabled={busy} value={reason} onChange={(event) => onReasonChange(event.target.value)} />
-      </label>
-      {preview && <section aria-label="Vista previa de desactivación" className="mt-4 space-y-3 text-sm">
-        <p>Motivo: {preview.mutation.reason}</p>
-        <ul className="space-y-2">{preview.members.map((member) => <li key={member.skuId} className="rounded-xl border border-[color:var(--border)] p-3">
-          <strong>{member.name}</strong> · Variante: {member.size || 'Sin definir'}
-          <p>Código: {member.skuId} · Revisión: {member.revision}</p>
-          <p>Disponible: {member.stockAvailable} · Reservado: {member.stockReserved} · Precio: {member.price} {member.priceCurrency}</p>
+      <section aria-label="Productos a desactivar" className="mt-4 space-y-3 text-sm">
+        <p>{items.length === 1 ? '1 producto seleccionado' : `${items.length} productos seleccionados`}</p>
+        <ul className="max-h-[40dvh] overflow-y-auto space-y-2">{(preview?.members ?? items).map(member => <li key={'skuId' in member ? member.skuId : member.id} className="rounded-xl border border-[color:var(--border)] p-3">
+          <strong className="break-words">{member.name}</strong>
+          <p>Disponible: {member.stockAvailable} · Reservado: {member.stockReserved}</p>
         </li>)}</ul>
-        <p>Vence: {preview.expiresAt}</p>
-      </section>}
+      </section>
       {error && <p role="alert" className="mt-4 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
       <div className="mt-6 flex justify-end gap-3">
-        <button type="button" disabled={busy} onClick={onCancel} className="erp-button-secondary">Cancelar</button>
-        <button type="button" disabled={busy} onClick={() => void onSubmit(stale)} className="erp-button-danger">{busy ? 'Procesando...' : stale ? 'Revisar selección actualizada' : preview ? 'Confirmar desactivación' : 'Revisar desactivación'}</button>
+        <button type="button" disabled={busy} onClick={onCancel} className="erp-button-secondary">No, cancelar</button>
+        <button type="button" disabled={busy} onClick={() => void onSubmit(stale)} className="erp-button-danger">{busy ? 'Procesando...' : stale ? 'Revisar selección actualizada' : 'Sí, desactivar'}</button>
       </div>
     </div>
   </div>;
@@ -220,8 +215,6 @@ function ProductFormModal({
   showReserved,
   requireVariant,
   error,
-  adjustmentReason,
-  onAdjustmentReasonChange,
 }: {
   currency: string | null;
   title: string;
@@ -237,8 +230,6 @@ function ProductFormModal({
   showReserved: boolean;
   requireVariant: boolean;
   error: string | null;
-  adjustmentReason?: string;
-  onAdjustmentReasonChange?: (reason: string) => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" role="presentation">
@@ -298,20 +289,17 @@ function ProductFormModal({
             </div>
             {!showReserved && <p className="mt-2 text-xs text-[color:var(--muted)]">Podés cargar stock ahora o dejarlo en 0 y registrar un ingreso después.</p>}
           </fieldset>
-          {onAdjustmentReasonChange && <label className="block space-y-1.5 text-sm type-subtitle text-[color:var(--text)]">
-            Motivo del ajuste
-            <input className="erp-input" required value={adjustmentReason ?? ''} onChange={(event) => onAdjustmentReasonChange(event.target.value)} placeholder="Por ejemplo: corrección por conteo físico" />
-          </label>}
+
         </fieldset>
         </form>
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button type="button" disabled={submitting} onClick={onClose} className="erp-button-secondary">
-            Cancelar
+            No, cancelar
           </button>
           <button type="submit" form="product-form" disabled={submitting} className="erp-button-primary">
-            {submitting ? 'Guardando...' : submitLabel}
+            {submitting ? 'Guardando...' : `Sí, ${submitLabel.charAt(0).toLowerCase() + submitLabel.slice(1)}`}
           </button>
         </div>
       </div>
@@ -402,8 +390,8 @@ function NewModelModal({
         </form>
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button type="button" disabled={saving} onClick={onClose} className="erp-button-secondary">Cancelar</button>
-          <button type="submit" form="new-model-form" disabled={saving} className="erp-button-primary">{saving ? 'Guardando...' : 'Crear modelo'}</button>
+          <button type="button" disabled={saving} onClick={onClose} className="erp-button-secondary">No, cancelar</button>
+          <button type="submit" form="new-model-form" disabled={saving} className="erp-button-primary">{saving ? 'Guardando...' : 'Sí, crear modelo'}</button>
         </div>
       </div>
     </div>
@@ -420,7 +408,7 @@ function ModelFormModal({
   onSubmit,
   saving,
   error,
-  reason, onReasonChange, preview, stale, onRefreshPreview,
+  preview, stale, onRefreshPreview,
 }: {
   group: ProductGroup;
   preset: BusinessCategoryPreset;
@@ -431,8 +419,6 @@ function ModelFormModal({
   onSubmit: () => Promise<void>;
   saving: boolean;
   error: string | null;
-  reason: string;
-  onReasonChange: (reason: string) => void;
   preview: InventorySelectionPreview | null;
   stale: boolean;
   onRefreshPreview: () => void;
@@ -451,26 +437,20 @@ function ModelFormModal({
             {preset.productModelLabel}
             <input className="erp-input" required disabled={saving} value={productModel} onChange={(event) => onChange({ productType, productModel: event.target.value })} />
           </label>
-          <label className="block space-y-1.5 text-sm type-subtitle">Motivo del cambio
-            <input className="erp-input" required disabled={saving} value={reason} onChange={(event) => onReasonChange(event.target.value)} />
-          </label>
         </form>
         {preview && preview.mutation.type === 'sku.update' && <section aria-label="Vista previa de cambios" className="mt-4 space-y-3 text-sm">
           <p className="font-semibold">{preview.members.length} productos seleccionados · Nuevo nombre: {preview.mutation.changes.name}</p>
           <p>Tipo: {preview.mutation.changes.productType} · Modelo: {preview.mutation.changes.productModel}</p>
-          <p>Motivo: {preview.mutation.reason}</p>
           <ul className="space-y-2">{preview.members.map((member) => <li key={member.skuId} className="rounded-xl border border-[color:var(--border)] p-3">
             <strong>{member.name}</strong> · Variante: {member.size || 'Sin definir'}
-            <p>Código: {member.skuId} · Revisión: {member.revision}</p>
             <p>Disponible: {member.stockAvailable} · Reservado: {member.stockReserved} · Precio: {member.price} {member.priceCurrency}</p>
           </li>)}</ul>
-          <p>Vence: {preview.expiresAt}</p>
         </section>}
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
         <div className="mt-6 flex justify-end gap-2">
-          <button type="button" className="erp-button-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button type="button" className="erp-button-secondary" onClick={onClose} disabled={saving}>No, cancelar</button>
           {stale ? <button type="button" className="erp-button-primary" disabled={saving} onClick={onRefreshPreview}>Revisar selección actualizada</button>
-            : <button type="submit" form="model-form" className="erp-button-primary" disabled={saving}>{saving ? 'Procesando...' : preview ? 'Confirmar cambios' : 'Revisar cambios'}</button>}
+            : <button type="submit" form="model-form" className="erp-button-primary" disabled={saving}>{saving ? 'Procesando...' : preview ? 'Sí, guardar cambios' : 'Revisar cambios'}</button>}
         </div>
       </div>
     </div>
@@ -503,7 +483,7 @@ export function ProductsAbmPanel({
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editSnapshot, setEditSnapshot] = useState<ProductRow | null>(null);
-  const [adjustmentReason, setAdjustmentReason] = useState('');
+  const adjustmentReason = 'Edición confirmada desde el inventario';
   // Keep the exact operation through ambiguous failures, including a failed refresh after success.
   const editOperation = useRef<{ key: string; adjustment: ProductAdjustment; changes: Partial<ProductInput> } | null>(null);
   const createOperation = useRef<
@@ -517,14 +497,14 @@ export function ProductsAbmPanel({
   const [modelDraft, setModelDraft] = useState({ productType: '', productModel: '' });
   const [modelError, setModelError] = useState<string | null>(null);
   const [savingModel, setSavingModel] = useState(false);
-  const [modelReason, setModelReason] = useState('');
+  const modelReason = 'Edición de modelo confirmada desde el inventario';
   const [modelPreview, setModelPreview] = useState<InventorySelectionPreview | null>(null);
   const [modelStale, setModelStale] = useState(false);
   const modelRequest = useRef<InventorySelectionRequest | null>(null);
   const modelRefreshRequestNeeded = useRef(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [deactivation, setDeactivation] = useState<{ ids: string[]; single: boolean } | null>(null);
-  const [deactivationReason, setDeactivationReason] = useState('');
+  const [deactivation, setDeactivation] = useState<{ ids: string[]; items: ProductRow[]; single: boolean } | null>(null);
+  const deactivationBusy = useRef(false);
   const [deactivationPreview, setDeactivationPreview] = useState<InventorySelectionPreview | null>(null);
   const [deactivationStale, setDeactivationStale] = useState(false);
   const [deactivationError, setDeactivationError] = useState<string | null>(null);
@@ -629,21 +609,18 @@ export function ProductsAbmPanel({
   };
 
   const openDeactivation = (ids: string[], single: boolean) => {
-    setDeactivation({ ids: [...ids], single });
-    setDeactivationReason('');
+    setDeactivation({ ids: [...ids], items: products.filter(product => ids.includes(product.id)), single });
     invalidateDeactivationPreview();
   };
 
   const handleDeactivation = async (refreshPreview = false) => {
-    if (!deactivation || deleting || (deactivationStale && !refreshPreview)) return;
-    if (!deactivationReason.trim()) {
-      setDeactivationError('Ingresá el motivo de la desactivación.');
-      return;
-    }
+    if (!deactivation || deactivationBusy.current || (deactivationStale && !refreshPreview)) return;
+    deactivationBusy.current = true;
     setDeleting(true);
     setDeactivationError(null);
+    let preview = deactivationPreview;
     try {
-      if (!deactivationPreview || refreshPreview) {
+      if (!preview || refreshPreview) {
         if (refreshPreview && deactivationRefreshNeeded.current) {
           deactivationRequest.current = null;
           deactivationRefreshNeeded.current = false;
@@ -651,25 +628,29 @@ export function ProductsAbmPanel({
         deactivationRequest.current ??= {
           requestId: crypto.randomUUID(),
           selector: { kind: 'ids', skuIds: deactivation.ids },
-          mutation: { type: 'sku.deactivate', reason: deactivationReason.trim() },
+          mutation: { type: 'sku.deactivate', reason: 'Desactivación confirmada desde el inventario' },
         };
-        setDeactivationPreview(await previewInventorySelection(deactivationRequest.current));
+        preview = await previewInventorySelection(deactivationRequest.current);
+        setDeactivationPreview(preview);
         setDeactivationStale(false);
-        return;
+        // A conflict needs a fresh review and another explicit confirmation.
+        if (refreshPreview) return;
       }
-      const selection = { selectionId: deactivationPreview.selectionId, digest: deactivationPreview.digest };
+      const selection = { selectionId: preview.selectionId, digest: preview.digest };
       if (deactivation.single) await deleteProductRecord(deactivation.ids[0]!, selection);
       else await deleteProductRecords(selection);
       setSelectedIds((current) => current.filter((id) => !deactivation.ids.includes(id)));
       setDeactivation(null);
     } catch (error) {
-      const stale = Boolean(deactivationPreview && error && typeof error === 'object' && 'status' in error && error.status === 409);
+      const stale = Boolean(preview && error && typeof error === 'object' && 'status' in error && error.status === 409);
       if (stale) {
         setDeactivationStale(true);
         deactivationRefreshNeeded.current = true;
       }
-      setDeactivationError(stale ? 'El inventario cambió. Tu motivo y vista previa se conservan. Revisá una selección actualizada antes de confirmar.' : error instanceof Error ? error.message : 'No se pudo desactivar la selección.');
-    } finally { setDeleting(false); }
+      setDeactivationError(stale ? 'El inventario cambió. Revisá la selección actualizada antes de volver a confirmar.'
+        : error instanceof Error && /SKU_HAS_RESERVATIONS/.test(error.message) ? 'No se pueden desactivar productos con reservas. Resolvé las reservas antes de continuar.'
+        : error instanceof Error ? error.message : 'No se pudo desactivar la selección.');
+    } finally { deactivationBusy.current = false; setDeleting(false); }
   };
 
   const lowStockGroupKeys = useMemo(
@@ -784,7 +765,6 @@ export function ProductsAbmPanel({
     if (formBusy.current) return;
     createOperation.current = null;
     setEditSnapshot({ ...product });
-    setAdjustmentReason('');
     editOperation.current = null;
     setEditingProductId(product.id);
     setAddingToGroup(null);
@@ -808,7 +788,6 @@ export function ProductsAbmPanel({
   const openEditModelForm = (group: ProductGroup) => {
     setEditingGroup({ ...group, products: group.products.map((product) => ({ ...product })) });
     setModelDraft({ productType: group.productType ?? '', productModel: group.productModel ?? '' });
-    setModelReason('');
     setModelPreview(null);
     setModelStale(false);
     modelRequest.current = null;
@@ -830,10 +809,6 @@ export function ProductsAbmPanel({
     const productModel = modelDraft.productModel.trim();
     if (!productType || !productModel) {
       setModelError('Completá el tipo y el modelo.');
-      return;
-    }
-    if (!modelReason.trim()) {
-      setModelError('Ingresá el motivo del cambio.');
       return;
     }
     const nextKey = `model||${normalizeSearch(productType)}||${normalizeSearch(productModel)}`;
@@ -879,10 +854,6 @@ export function ProductsAbmPanel({
     const retry = createOperation.current?.kind === 'sku' && createOperation.current.key === createKey;
     if (editingProductId && (!editSnapshot || !Number.isSafeInteger(editSnapshot.revision) || (editSnapshot.revision ?? -1) < 0)) {
       setFormError('Falta la revisión del producto. Actualizá la página y volvé a abrir el formulario. Tu borrador se conserva.');
-      return;
-    }
-    if (editingProductId && !adjustmentReason.trim()) {
-      setFormError('Ingresá el motivo del ajuste.');
       return;
     }
     const size = draft.size.trim();
@@ -1123,6 +1094,7 @@ export function ProductsAbmPanel({
           footer={<span>{flatProducts.length} productos visibles · {flatProducts.reduce((total, product) => total + product.stockAvailable, 0).toLocaleString('es-AR')} unidades disponibles{sizeFilter && ' · ' + (preset.variantLabel || 'Variante') + ': ' + (filterOptions.sizes.find((option) => option.value === sizeFilter)?.label || 'Sin definir')}</span>}
         />
 
+        {(isFormOpen || productFamilyOpen || productFamilyAssignmentOpen || editingGroup || stockSetOpen || deactivation) && <ModalPortal>
         {isFormOpen && preset.useVariants && !editingProductId && !addingToGroup && (
           <NewModelModal
             currency={priceCurrency}
@@ -1160,8 +1132,6 @@ export function ProductsAbmPanel({
             showReserved={Boolean(editingProductId) || !preset.useVariants}
             requireVariant={preset.useVariants && !editingProductId}
             error={formError}
-            adjustmentReason={adjustmentReason}
-            onAdjustmentReasonChange={editingProductId ? (reason) => { setAdjustmentReason(reason); setFormError(null); } : undefined}
           />
         )}
 
@@ -1175,8 +1145,6 @@ export function ProductsAbmPanel({
           onSubmit={handleModelSubmit}
           saving={savingModel}
           error={modelError}
-          reason={modelReason}
-          onReasonChange={(reason) => { setModelReason(reason); invalidateModelPreview(); }}
           preview={modelPreview}
           stale={modelStale}
           onRefreshPreview={() => { void handleModelSubmit(true); }}
@@ -1185,9 +1153,7 @@ export function ProductsAbmPanel({
         {stockSetOpen && <StockSetAdjustmentForm onClose={() => setStockSetOpen(false)} />}
 
         {deactivation && <DeactivateModal
-          ids={deactivation.ids}
-          reason={deactivationReason}
-          onReasonChange={(reason) => { setDeactivationReason(reason); invalidateDeactivationPreview(); }}
+          items={deactivation.items}
           preview={deactivationPreview}
           stale={deactivationStale}
           error={deactivationError}
@@ -1195,6 +1161,7 @@ export function ProductsAbmPanel({
           onCancel={() => setDeactivation(null)}
           onSubmit={handleDeactivation}
         />}
+        </ModalPortal>}
       </article>
     </div>
   );

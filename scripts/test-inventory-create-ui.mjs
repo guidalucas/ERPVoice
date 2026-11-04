@@ -110,7 +110,7 @@ try {
   await openInventory();
   let dialog = await openSku('Producto vacío');
   mode = 'lost';
-  await dialog.getByRole('button', { name: 'Crear producto' }).click();
+  await dialog.getByRole('button', { name: 'Sí, crear producto' }).click();
   await dialog.getByRole('alert').getByText('Resultado incierto. Reintentá.').waitFor();
   assert.equal(products.length, 1);
   assert.equal(attempts[0].input.stockAvailable, 0);
@@ -118,17 +118,17 @@ try {
   assert.equal(attempts[0].input.priceCurrency, undefined);
   // An old applied body must replay byte-for-byte after business activation.
   moneyCurrency = 'ARS';
-  await dialog.getByRole('button', { name: 'Crear producto' }).click();
+  await dialog.getByRole('button', { name: 'Sí, crear producto' }).click();
   await dialog.waitFor({ state: 'hidden' });
   assert.deepEqual(attempts[0], attempts[1]);
   assert.equal(products.length, 1);
 
   dialog = await openSku('Borrador inicial');
   mode = 'lost';
-  await dialog.getByRole('button', { name: 'Crear producto' }).click();
+  await dialog.getByRole('button', { name: 'Sí, crear producto' }).click();
   await dialog.getByRole('alert').waitFor();
   await dialog.getByLabel('Nombre para mostrar').fill('Borrador modificado');
-  await dialog.getByRole('button', { name: 'Crear producto' }).click();
+  await dialog.getByRole('button', { name: 'Sí, crear producto' }).click();
   await dialog.waitFor({ state: 'hidden' });
   assert.notEqual(attempts[2].input.operationId, attempts[3].input.operationId);
   assert.equal(attempts[3].input.name, 'Borrador modificado');
@@ -137,23 +137,23 @@ try {
   dialog = await openSku('Vista pendiente');
   mode = 'refresh';
   const skuRefreshStart = attempts.length;
-  await dialog.getByRole('button', { name: 'Crear producto' }).click();
+  await dialog.getByRole('button', { name: 'Sí, crear producto' }).click();
   await dialog.getByRole('alert').getByText('Vista no disponible. Reintentá.').waitFor();
   await page.getByRole('checkbox', { name: 'Seleccionar producto Vista pendiente' }).waitFor({ timeout: 10000 });
-  await dialog.getByRole('button', { name: 'Crear producto' }).click();
+  await dialog.getByRole('button', { name: 'Sí, crear producto' }).click();
   await dialog.waitFor({ state: 'hidden' });
   assert.deepEqual(attempts[skuRefreshStart], attempts[skuRefreshStart + 1]);
   assert.equal(products.filter((product) => product.name === 'Vista pendiente').length, 1);
 
   dialog = await openSku('Conflicto conservado');
   mode = 'conflict';
-  await dialog.getByRole('button', { name: 'Crear producto' }).click();
+  await dialog.getByRole('button', { name: 'Sí, crear producto' }).click();
   await dialog.getByRole('alert').getByText(/Ya existe un SKU/).waitFor();
   assert.equal(await dialog.getByLabel('Nombre para mostrar').inputValue(), 'Conflicto conservado');
-  await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await dialog.getByRole('button', { name: 'No, cancelar', exact: true }).click();
   const cancelledCount = attempts.length;
   dialog = await openSku('Cancelar sin enviar');
-  await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  await dialog.getByRole('button', { name: 'No, cancelar', exact: true }).click();
   assert.equal(attempts.length, cancelledCount);
 
   category = 'indumentaria';
@@ -168,12 +168,12 @@ try {
   await dialog.getByLabel('Stock disponible', { exact: true }).nth(1).fill('7');
   mode = 'refresh';
   const modelStart = attempts.length;
-  await dialog.getByRole('button', { name: 'Crear modelo', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Sí, crear modelo', exact: true }).click();
   await dialog.getByRole('alert').getByText('Vista no disponible. Reintentá.').waitFor();
   // Background sync hydrates the applied model; local duplicate checks must permit its retry.
   await page.getByRole('button', { name: 'Agregar talle a Camiseta Creación' }).waitFor({ timeout: 10000 });
   moneyCurrency = 'UYU';
-  await dialog.getByRole('button', { name: 'Crear modelo', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Sí, crear modelo', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
   assert.deepEqual(attempts[modelStart], attempts[modelStart + 1]);
   assert.equal(attempts[modelStart].input.priceCurrency, 'ARS');
@@ -186,10 +186,10 @@ try {
   await dialog.getByLabel('Talle', { exact: true }).fill('L');
   mode = 'lost';
   const variantStart = attempts.length;
-  await dialog.getByRole('button', { name: 'Agregar talle', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Sí, agregar talle', exact: true }).click();
   await dialog.getByRole('alert').waitFor();
   await page.getByRole('checkbox', { name: 'Seleccionar talle L de Camiseta Creación' }).waitFor({ timeout: 10000 });
-  await dialog.getByRole('button', { name: 'Agregar talle', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Sí, agregar talle', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
   assert.deepEqual(attempts[variantStart], attempts[variantStart + 1]);
   assert.equal(products.filter((product) => product.productModel === 'Creación' && product.size === 'L').length, 1);
@@ -198,9 +198,9 @@ try {
   dialog = page.getByRole('dialog', { name: 'Agregar talle', exact: true });
   await dialog.getByLabel('Talle', { exact: true }).fill('XL');
   mode = 'hold';
-  await dialog.getByRole('button', { name: 'Agregar talle', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Sí, agregar talle', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#product-form fieldset')?.disabled);
-  assert.equal(await dialog.getByRole('button', { name: 'Cancelar', exact: true }).isDisabled(), true);
+  assert.equal(await dialog.getByRole('button', { name: 'No, cancelar', exact: true }).isDisabled(), true);
   assert.equal(await dialog.getByLabel('Talle', { exact: true }).isDisabled(), true);
   assert.equal(await dialog.getByRole('button', { name: 'Cerrar modal' }).isDisabled(), true);
   releaseRequest();

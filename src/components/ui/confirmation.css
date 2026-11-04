@@ -1,0 +1,9 @@
+.confirmation-overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px 16px; background: #000b; backdrop-filter: blur(6px); }
+.confirmation-dialog { box-sizing: border-box; width: 100%; max-width: 480px; max-height: 100%; overflow-y: auto; border: 1px solid var(--border, #dce1ea); border-radius: 20px; padding: 24px; background: var(--surface-elevated, #fff); color: var(--text, #112344); box-shadow: 0 24px 64px #0006; overflow-wrap: anywhere; }
+.confirmation-dialog h2 { margin: 0; font-size: 21px; line-height: 1.3; font-weight: 700; }
+.confirmation-dialog p { margin: 16px 0 0; font-size: 14px; line-height: 1.6; white-space: pre-line; }
+.confirmation-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+.confirmation-actions button { min-height: 44px; padding: 10px 16px; border: 1px solid var(--border, #dce1ea); border-radius: 12px; background: transparent; color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+.confirmation-actions .confirmation-yes { background: var(--accent, #006578); color: #fff; border-color: transparent; }
+.confirmation-actions .confirmation-danger { background: #b4233a; color: #fff; border-color: transparent; }
+.confirmation-actions button:focus-visible { outline: 3px solid var(--accent, #00b9d0); outline-offset: 3px; }

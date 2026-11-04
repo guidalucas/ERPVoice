@@ -1,3 +1,4 @@
+import { useConfirm } from '../ui/ConfirmationProvider';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBusinessCategoryPreset } from '../../hooks/useBusinessCategoryPreset';
 import { useInventory } from '../../hooks/useInventory';
@@ -56,6 +57,7 @@ type PedidosPanelProps = {
 };
 
 export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
+  const confirm = useConfirm();
   const preset = useBusinessCategoryPreset();
   const {
     pedidos,
@@ -208,6 +210,7 @@ export function PedidosPanel({ startWithForm = false }: PedidosPanelProps) {
       return;
     }
     const prior = statusAttemptsRef.current.get(pedido.id);
+    if (!prior && !await confirm({ title: `¿Marcar ${pedido.producto} como ${estado}?`, description: `Cantidad: ${pedido.qty}.`, action: "confirmar cambio", destructive: estado === "descartado" })) return;
     const attempt = prior?.estado === estado && prior.productId === productId
       ? prior
       : { estado, productId, operationId: crypto.randomUUID(), expectedRevision: pedido.revision ?? 0 };

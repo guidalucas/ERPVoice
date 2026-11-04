@@ -49,7 +49,7 @@ try {
   const openTeam = async page => { await page.goto(root); await page.getByRole('button', { name: 'Equipo', exact: true }).first().click(); await page.getByRole('dialog', { name: 'FullMatch · DEMO' }).waitFor(); };
   await openTeam(ownerPage);
   const select = ownerPage.getByRole('combobox', { name: /Rol de/ });
-  await expect(select).toHaveValue('member'); await select.selectOption('admin');
+  await expect(select).toHaveValue('member'); await select.selectOption('admin'); await ownerPage.getByRole('button', { name: 'Sí, cambiar rol', exact: true }).click();
   await expect(ownerPage.getByText(/ahora es administrador y puede gestionar Studio/)).toBeVisible();
   await expect(select).toHaveValue('admin');
   await openTeam(ownerPage); await expect(select).toHaveValue('admin');
@@ -87,7 +87,7 @@ try {
   assert.equal((await sql.query('SELECT actor_id FROM commercial_operations WHERE owner_phone=$1 AND operation_id=$2', [fixture.owner, edit.operationId])).rows[0].actor_id, fixture.member.owner);
   await adminPage.goto(fixture.url + '#/products/' + product.id);
   await adminPage.getByRole('button', { name: '03 Fotografías', exact: true }).click();
-  await adminPage.getByRole('button', { name: 'Finalizar y publicar', exact: true }).click();
+  await adminPage.getByRole('button', { name: 'Finalizar y publicar', exact: true }).click(); await adminPage.getByRole('button', { name: 'Sí, publicar', exact: true }).click();
   await expect(adminPage.getByText('Ficha finalizada y publicada en el catálogo.', { exact: true })).toBeVisible();
   assert.equal((await api(fixture.member.token, prefix + '/products/' + product.id)).status, 'ready');
   assert.equal((await fetch(fixture.apiUrl + '/c/fullmatch-demo/p/' + product.slug)).status, 200);
@@ -96,10 +96,10 @@ try {
   console.log('PASS: administrators create, edit and publish a real catalogue product with their own audit identity, preserving inventory');
 
   await ownerPage.route('**' + rolePath, route => route.fulfill({ status: 409, json: { error: 'El rol cambió. Actualizá el equipo antes de continuar.' } }));
-  await select.selectOption('member');
+  await select.selectOption('member'); await ownerPage.getByRole('button', { name: 'Sí, cambiar rol', exact: true }).click();
   await expect(ownerPage.getByText('El rol cambió. Actualizá el equipo antes de continuar.', { exact: true })).toBeVisible();
   await expect(select).toHaveValue('admin'); await ownerPage.unroute('**' + rolePath);
-  await select.selectOption('member');
+  await select.selectOption('member'); await ownerPage.getByRole('button', { name: 'Sí, cambiar rol', exact: true }).click();
   await expect(ownerPage.getByText(/ahora es miembro y ya no puede gestionar Studio/)).toBeVisible();
   assert.equal((await api(fixture.member.token, '/api/auth/me')).role, 'member');
   await api(fixture.member.token, prefix + '/setup', 'GET', undefined, 403);

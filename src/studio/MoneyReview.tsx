@@ -11,7 +11,7 @@ type Preview = { selectionId: string; digest: string; members: { skuId: string; 
 
 export function MoneyReview() {
   const { session } = useAuth(), key = `fullmatch.money-review.${session?.tenantPhone}.${session?.phoneNumber}`;
-  const [review, setReview] = useState<Review | null>(null), [selected, setSelected] = useState<string[]>([]), [reason, setReason] = useState('Confirmación de moneda histórica; importes cargados en unidades enteras');
+  const [review, setReview] = useState<Review | null>(null), [selected, setSelected] = useState<string[]>([]);
   const [error, setError] = useState(''), [success, setSuccess] = useState(''), [busy, setBusy] = useState(false), [preview, setPreview] = useState<Preview | null>(null);
   const pending = useRef<Request | null>(null), generation = useRef(0);
   const load = async (cursor?: string) => {
@@ -30,7 +30,7 @@ export function MoneyReview() {
         await confirmInventorySelection(preview);
         localStorage.removeItem(key); pending.current = null; setPreview(null); await load(); setSuccess('Moneda confirmada. Los precios y saldos se conservaron; el inventario guardó su recibo.');
       } else {
-        pending.current ??= { requestId: crypto.randomUUID(), selector: { kind: 'ids', skuIds: selected }, mutation: { type: 'sku.update', changes: { priceCurrency: review.currency }, reason: reason.trim() } };
+        pending.current ??= { requestId: crypto.randomUUID(), selector: { kind: 'ids', skuIds: selected }, mutation: { type: 'sku.update', changes: { priceCurrency: review.currency }, reason: 'Confirmación de moneda histórica; importes cargados en unidades enteras' } };
         localStorage.setItem(key, JSON.stringify(pending.current));
         const input = pending.current;
         const result = await requestJson<Preview>('/api/inventory/selections', { method: 'POST', body: JSON.stringify(input) });
@@ -46,10 +46,10 @@ export function MoneyReview() {
   };
   return <div className="panel money-review"><h2>Revisar moneda del inventario anterior</h2><p>Elegí solamente variantes cuyos importes ya estén cargados en {review?.currency ?? 'la moneda del negocio'}. Confirmar la moneda conserva el precio numérico y el stock. No realiza una conversión.</p>
     {error && <div className="notice" role="alert">{error}</div>}{success && <p role="status">{success}</p>}
-    {preview ? <><h3>Revisá antes de confirmar</h3><div className="variant-list">{preview.members.map(row => <div className="variant-row" key={row.skuId}><span>{row.name} · {row.size}</span><strong>{row.price} {row.priceCurrency} → {pending.current?.mutation.changes.priceCurrency}</strong></div>)}</div><p>Se actualizarán {preview.members.length} variantes con sus revisiones verificadas.</p></> : <fieldset disabled={busy || Boolean(pending.current)}><label className="field"><span>Motivo de la confirmación</span><input required maxLength={500} value={reason} onChange={event => setReason(event.target.value)}/></label><div className="variant-list">{review?.items.map(row => <label className="variant-row" key={row.skuId}><input type="checkbox" disabled={!row.canConfirm} checked={selected.includes(row.skuId)} onChange={event => setSelected(ids => event.target.checked ? [...ids, row.skuId] : ids.filter(id => id !== row.skuId))}/><span>{row.name} · {row.size || 'Sin presentación'}<small> · {row.price} {row.currency}{!row.canConfirm && ' · Revisá moneda e importe en Stocky'}</small></span></label>)}</div></fieldset>}
+    {preview ? <><h3>Revisá antes de confirmar</h3><div className="variant-list">{preview.members.map(row => <div className="variant-row" key={row.skuId}><span>{row.name} · {row.size}</span><strong>{row.price} {row.priceCurrency} → {pending.current?.mutation.changes.priceCurrency}</strong></div>)}</div><p>Se actualizarán {preview.members.length} variantes con sus revisiones verificadas.</p></> : <fieldset disabled={busy || Boolean(pending.current)}><div className="variant-list">{review?.items.map(row => <label className="variant-row" key={row.skuId}><input type="checkbox" disabled={!row.canConfirm} checked={selected.includes(row.skuId)} onChange={event => setSelected(ids => event.target.checked ? [...ids, row.skuId] : ids.filter(id => id !== row.skuId))}/><span>{row.name} · {row.size || 'Sin presentación'}<small> · {row.price} {row.currency}{!row.canConfirm && ' · Revisá moneda e importe en Stocky'}</small></span></label>)}</div></fieldset>}
     {!review?.items.length && !preview && <p>No hay variantes con otra moneda.</p>}
-    <div className="gallery-actions"><button className="primary" disabled={busy || (!preview && !pending.current && (!selected.length || !reason.trim()))} onClick={() => void run()}>{busy ? 'Consultando…' : preview ? 'Confirmar moneda de estas variantes' : pending.current ? 'Recuperar revisión guardada' : `Revisar selección (${selected.length})`}</button>
-      <button disabled={busy} onClick={() => { pending.current = null; localStorage.removeItem(key); setPreview(null); setError(''); void load(); }}>Iniciar una nueva revisión</button>
+    <div className="gallery-actions"><button className="primary" disabled={busy || (!preview && !pending.current && !selected.length)} onClick={() => void run()}>{busy ? 'Consultando…' : preview ? 'Sí, confirmar moneda' : pending.current ? 'Recuperar revisión guardada' : `Revisar selección (${selected.length})`}</button>
+      <button disabled={busy} onClick={() => { pending.current = null; localStorage.removeItem(key); setPreview(null); setError(''); void load(); }}>{preview ? 'No, cancelar' : 'Iniciar una nueva revisión'}</button>
       {review?.nextCursor && !preview && !pending.current && <button disabled={busy} onClick={() => void load(review.nextCursor!)}>Ver siguientes variantes</button>}</div>
   </div>;
 }

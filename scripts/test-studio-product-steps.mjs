@@ -105,7 +105,7 @@ try {
     const response = await route.fetch();
     await route.fulfill({ response, json: { ...await response.json(), publicEnabled: false } });
   });
-  await button('Finalizar y publicar').click();
+  await button('Finalizar y publicar').click(); await button('Sí, publicar').click();
   await expect(page.getByRole('status').filter({ hasText: 'Habilitá el catálogo en Configuración' })).toBeVisible();
   await currentStep(3);
   assert.equal((await read(id)).status, 'draft');
@@ -113,13 +113,13 @@ try {
   const publicationRoute = `**/api/commerce/v1/products/${id}/publication`;
   await page.route(publicationRoute, route => route.request().method() === 'PUT'
     ? route.fulfill({ status: 409, json: { error: { code: 'REVISION_CONFLICT', message: 'No se pudo publicar la ficha de prueba.' } } }) : route.continue());
-  await button('Finalizar y publicar').click();
+  await button('Finalizar y publicar').click(); await button('Sí, publicar').click();
   await expect(page.getByRole('status').filter({ hasText: 'No se pudo publicar la ficha de prueba.' })).toBeVisible();
   await currentStep(3);
   assert.equal((await read(id)).status, 'draft');
   await page.unroute(publicationRoute);
   await page.screenshot({ path: path.join(output, 'mobile-finish-publish.png'), fullPage: true });
-  await button('Finalizar y publicar').click();
+  await button('Finalizar y publicar').click(); await button('Sí, publicar').click();
   await expect(page.getByText('Ficha finalizada y publicada en el catálogo.', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Productos comerciales' })).toBeVisible();
   const published = await read(id);

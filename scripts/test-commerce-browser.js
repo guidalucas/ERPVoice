@@ -139,11 +139,11 @@ try {
   await check('Studio publication controls immediately revoke anonymous product HTML and photo URLs', async () => {
     const argentina = fixture.products.find(product => product.title.startsWith('Argentina'));
     await page.goto(`${fixture.url}#/products/${argentina.id}`);
-    await page.getByRole('button', { name: 'Ocultar del catálogo', exact: true }).click();
+    await page.getByRole('button', { name: 'Ocultar del catálogo', exact: true }).click(); await page.getByRole('button', { name: 'Sí, ocultar', exact: true }).click();
     await page.getByText('Oculta para clientes', { exact: true }).waitFor();
     assert.equal((await publicPage.goto(productUrl)).status(), 404);
     assert.equal((await publicContext.request.get(`${fixture.apiUrl}${productPhoto}`)).status(), 404);
-    await page.getByRole('button', { name: 'Publicar en catálogo', exact: true }).click();
+    await page.getByRole('button', { name: 'Publicar en catálogo', exact: true }).click(); await page.getByRole('button', { name: 'Sí, publicar', exact: true }).click();
     await page.getByRole('button', { name: 'Ocultar del catálogo', exact: true }).waitFor();
     assert.equal((await publicPage.goto(productUrl)).status(), 200);
   });
@@ -153,13 +153,13 @@ try {
     await page.waitForFunction(() => { const input = document.querySelector('.catalog-settings input[type=checkbox]'); return input && !input.disabled && input.checked; });
     await toggle.uncheck();
     const disabledResponse = page.waitForResponse(response => response.url().endsWith('/api/commerce/v1/catalog') && response.request().method() === 'PUT');
-    await page.getByRole('button', { name: 'Guardar catálogo', exact: true }).click();
+    await page.getByRole('button', { name: 'Guardar catálogo', exact: true }).click(); await page.getByRole('button', { name: 'Sí, guardar', exact: true }).click();
     const disabled = await disabledResponse; assert.equal((await disabled.json()).result.publicEnabled, false);
     await page.getByText('Configuración del catálogo guardada.', { exact: true }).waitFor();
     assert.equal((await publicPage.goto(shopUrl)).status(), 404);
     await toggle.check();
     const enabledResponse = page.waitForResponse(response => response.url().endsWith('/api/commerce/v1/catalog') && response.request().method() === 'PUT');
-    await page.getByRole('button', { name: 'Guardar catálogo', exact: true }).click();
+    await page.getByRole('button', { name: 'Guardar catálogo', exact: true }).click(); await page.getByRole('button', { name: 'Sí, guardar', exact: true }).click();
     const enabled = await enabledResponse; assert.equal((await enabled.json()).result.publicEnabled, true);
     await page.getByText('Configuración del catálogo guardada.', { exact: true }).waitFor();
     assert.equal((await publicPage.goto(productUrl)).status(), 200);
@@ -275,7 +275,7 @@ try {
       await publicPage.setViewportSize({ width: 390, height: 844 });
       assert.equal(await publicPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       await publicPage.screenshot({ path: path.join(output, 'inquiry-mobile.png'), fullPage: true });
-      await publicPage.getByRole('button', { name: 'Retirar', exact: true }).click();
+      await publicPage.getByRole('button', { name: 'Retirar', exact: true }).click(); await publicPage.getByRole('button', { name: 'Sí, retirar', exact: true }).click();
       await publicPage.getByRole('heading', { name: 'Tu pedido está esperando un producto.', exact: true }).waitFor();
       assert.equal(await publicPage.locator('[data-cart-count]').textContent(), '0');
       assert.equal(await publicPage.evaluate(() => JSON.parse(localStorage.getItem('fullmatch.inquiry.other-demo'))[0].quantity), 7);

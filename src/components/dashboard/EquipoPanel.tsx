@@ -1,3 +1,5 @@
+import { useConfirm } from '../ui/ConfirmationProvider';
+import { ModalPortal } from '../ui/ModalPortal';
 import { useEffect, useState } from 'react';
 import { toUserFacingError } from '../../services/apiClient';
 import { formatPhoneDisplay } from '../../services/phone';
@@ -31,6 +33,7 @@ function toLocalPhoneInput(value: string): string {
 }
 
 export function EquipoPanel({ onClose }: EquipoPanelProps) {
+  const confirm = useConfirm();
   const { session, applyProfile } = useAuth();
   const [team, setTeam] = useState<TeamSnapshot | null>(null);
   const [phoneInput, setPhoneInput] = useState('');
@@ -102,6 +105,7 @@ export function EquipoPanel({ onClose }: EquipoPanelProps) {
   };
 
   const handleCancelInvite = async (inviteId: string) => {
+    if (isSubmitting || !await confirm({ title: "¿Cancelar esta invitación?", action: "cancelar invitación", destructive: true })) return;
     setIsSubmitting(true);
     setErrorText(null);
     setStatusText(null);
@@ -118,6 +122,7 @@ export function EquipoPanel({ onClose }: EquipoPanelProps) {
   };
 
   const handleRemoveMember = async (phoneNumber: string) => {
+    if (isSubmitting || !await confirm({ title: `¿Quitar a ${formatPhoneDisplay(phoneNumber)} del equipo?`, description: "Esta persona dejará de tener acceso al negocio.", action: "quitar del equipo", destructive: true })) return;
     setIsSubmitting(true);
     setErrorText(null);
     setStatusText(null);
@@ -134,6 +139,7 @@ export function EquipoPanel({ onClose }: EquipoPanelProps) {
   };
 
   const handleRole = async (phoneNumber: string, role: 'admin' | 'member', expectedRole: 'admin' | 'member') => {
+    if (isSubmitting || !await confirm({ title: `¿Cambiar el rol de ${formatPhoneDisplay(phoneNumber)}?`, description: role === "admin" ? "Podrá gestionar inventario, Studio y el catálogo." : "Dejará de tener permisos de administrador.", action: "cambiar rol" })) return;
     setIsSubmitting(true); setErrorText(null); setStatusText(null);
     try {
       await updateTeamMemberRole(phoneNumber, role, expectedRole);
@@ -147,6 +153,7 @@ export function EquipoPanel({ onClose }: EquipoPanelProps) {
   };
 
   const handleLeave = async () => {
+    if (isSubmitting || !await confirm({ title: "¿Salir de este equipo?", description: "Dejarás de tener acceso a este negocio.", action: "salir del equipo", destructive: true })) return;
     setIsSubmitting(true);
     setErrorText(null);
     setStatusText(null);
@@ -162,11 +169,12 @@ export function EquipoPanel({ onClose }: EquipoPanelProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
+    <ModalPortal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
       <div
         className="flex max-h-[min(36rem,calc(100vh-3rem))] w-full max-w-lg flex-col overflow-hidden rounded-[1.5rem] border p-5"
         style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
         role="dialog"
+        aria-modal="true"
         aria-labelledby="equipo-title"
       >
         <div className="flex items-start justify-between gap-3">
@@ -308,6 +316,6 @@ export function EquipoPanel({ onClose }: EquipoPanelProps) {
           )}
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   );
 }

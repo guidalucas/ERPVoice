@@ -1,3 +1,4 @@
+import { useConfirm } from '../components/ui/ConfirmationProvider';
 import { useEffect, useRef, useState } from 'react';
 import { command, query } from './api';
 import type { Product } from './types';
@@ -26,6 +27,7 @@ export function CatalogShortcut({ refreshKey, onConfigure }: { refreshKey: numbe
 }
 
 export function CatalogSettings() {
+  const confirm = useConfirm();
   const [catalog, setCatalog] = useState<Catalog | null>(null), [slug, setSlug] = useState(''), [enabled, setEnabled] = useState(false), [busy, setBusy] = useState(true), [error, setError] = useState(''), [saved, setSaved] = useState(false);
   useEffect(() => {
     let active = true;
@@ -34,17 +36,18 @@ export function CatalogSettings() {
     return () => { active = false; };
   }, []);
   return <form className="panel catalog-settings" onSubmit={async event => {
-    event.preventDefault(); setBusy(true); setError(''); setSaved(false);
+    event.preventDefault(); if (busy || !await confirm({ title: '¿Guardar la configuración del catálogo?', description: enabled ? 'El catálogo quedará habilitado para tus clientes.' : 'El catálogo quedará oculto para tus clientes.', action: 'guardar' })) return; setBusy(true); setError(''); setSaved(false);
     try { setCatalog(await command('/catalog', 'PUT', { expectedRevision: catalog?.revision ?? 0, slug, publicEnabled: enabled })); setSaved(true); }
     catch (cause) { setError(errorText(cause)); } finally { setBusy(false); }
   }}><h2>Catálogo público</h2><p>El catálogo y cada ficha se publican de forma independiente. Preparar una ficha todavía la mantiene privada.</p><label className="field"><span>Identificador público · enlace estable</span><input required minLength={3} maxLength={64} pattern="[a-z0-9]+(-[a-z0-9]+)*" readOnly={Boolean(catalog)} disabled={busy} value={slug} onChange={event => setSlug(event.target.value)} placeholder="tu-negocio"/></label><label className="checkbox-field"><input type="checkbox" checked={enabled} disabled={busy} onChange={event => setEnabled(event.target.checked)}/> Habilitar acceso público al catálogo</label>{error && <div className="notice" role="status">{error}</div>}{saved && <div className="notice" role="status">Configuración del catálogo guardada.</div>}<button className="primary" disabled={busy}>{busy ? 'Cargando…' : 'Guardar catálogo'}</button>{catalog?.publicEnabled && <a className="catalog-preview" href={publicUrl(catalog.path)} target="_blank" rel="noopener noreferrer">Abrir catálogo ↗</a>}</form>;
 }
 export function PublicationPanel({ product, disabled, onChanged }: { product: Product; disabled: boolean; onChanged: () => Promise<unknown> }) {
+  const confirm = useConfirm();
   const generation = useRef(0);
   const [publication, setPublication] = useState<Publication | null>(null), [catalog, setCatalog] = useState<Catalog | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const load = async () => { const attempt = ++generation.current; setBusy(true); try { const [state, config] = await Promise.all([query<Publication>(`/products/${product.id}/publication`), query<Catalog | null>('/catalog')]); if (attempt === generation.current) { setPublication(state); setCatalog(config); setError(''); } } catch (cause) { if (attempt === generation.current) setError(errorText(cause)); } finally { if (attempt === generation.current) setBusy(false); } };
   useEffect(() => { void load(); return () => { generation.current++; }; }, [product.id, product.revision]);
-  const change = async (status: Publication['status']) => { if (!publication) return; generation.current++; setBusy(true); setError(''); try { setPublication(await command(`/products/${product.id}/publication`, 'PUT', { expectedRevision: publication.revision,
+  const change = async (status: Publication['status']) => { if (!publication || busy || !await confirm({ title: status === 'hidden' ? `¿Ocultar ${product.title} del catálogo?` : `¿Publicar ${product.title} en el catálogo?`, action: status === 'hidden' ? 'ocultar' : 'publicar', destructive: status === 'hidden' })) return; generation.current++; setBusy(true); setError(''); try { setPublication(await command(`/products/${product.id}/publication`, 'PUT', { expectedRevision: publication.revision,
     expectedProductRevision: product.revision, status, reason: 'Publicación revisada explícitamente en Studio' })); await onChanged(); } catch (cause) { setError(errorText(cause)); } finally { setBusy(false); } };
   return <div className="publication-panel"><hr/><h4>En el catálogo público</h4><p>Podés publicar con el nombre y los precios de Stocky. La descripción, los detalles y las fotos son opcionales; podés agregarlos después.</p>{error ? <><p>{error}</p><button onClick={() => void load()} disabled={busy}>Consultar publicación</button></> : <><p>{publication?.status === 'published' ? catalog?.publicEnabled ? 'Publicada' : 'Publicada · catálogo deshabilitado' : 'Oculta para clientes'}</p>{!catalog && <p>Configurá el catálogo para publicar fichas.</p>}{publication?.status === 'published' ? <><a className="catalog-preview" href={publicUrl(`${catalog?.path}/p/${product.slug}`)} target="_blank" rel="noopener noreferrer">Ver ficha pública ↗</a><button disabled={busy || disabled} onClick={() => void change('hidden')}>Ocultar del catálogo</button></> : <button disabled={busy || disabled || !catalog || !product.readiness.canPrepare} onClick={() => void change('published')}>Publicar en catálogo</button>}</>}</div>;
 }

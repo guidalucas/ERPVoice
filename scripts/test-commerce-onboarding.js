@@ -47,9 +47,9 @@ try {
     await page.getByLabel('Rubro', { exact: true }).selectOption('indumentaria');
     await page.getByLabel('WhatsApp para pedidos (opcional)', { exact: true }).fill('59899000091');
     await page.getByLabel('Moneda de tus precios', { exact: true }).selectOption('ARS');
-    await page.getByRole('checkbox').check(); await page.getByRole('button', { name: 'Activar mi espacio comercial' }).click();
+    await page.getByRole('button', { name: 'Activar mi espacio comercial' }).click(); await page.getByRole('button', { name: 'Sí, activar', exact: true }).click();
     await page.getByRole('button', { name: 'Reintentar activación guardada' }).waitFor();
-    await page.getByRole('button', { name: 'Reintentar activación guardada' }).click();
+    await page.getByRole('button', { name: 'Reintentar activación guardada' }).click(); await page.getByRole('button', { name: 'Sí, activar', exact: true }).click();
     await page.getByRole('heading', { name: 'Productos comerciales' }).waitFor();
     for (const label of ['Filtrar equipo', 'Filtrar temporada', 'Filtrar versión', 'Filtrar manga']) assert.equal(await page.getByLabel(label, { exact: true }).count(), 0);
     assert.equal(attempts.length, 2); assert.deepEqual(attempts[0], attempts[1]);
@@ -84,7 +84,7 @@ try {
     await page.locator('.money-review .variant-row').filter({ hasText: 'Camiseta histórica Argentina' }).getByRole('checkbox').check();
     await page.getByRole('button', { name: 'Revisar selección (1)' }).click();
     await page.getByRole('heading', { name: 'Revisá antes de confirmar' }).waitFor();
-    await page.getByRole('button', { name: 'Confirmar moneda de estas variantes' }).click();
+    await page.getByRole('button', { name: 'Sí, confirmar moneda' }).click();
     await page.getByText(/Moneda confirmada. Los precios y saldos/).waitFor();
     const row = (await sql.query('SELECT price,price_currency,stock_available,inventory_revision FROM products WHERE owner_phone=$1 AND id=$2', [first.owner, oldSku.id])).rows[0];
     assert.deepEqual(row, { price: '65000', price_currency: 'ARS', stock_available: '2', inventory_revision: 1 });
@@ -106,7 +106,7 @@ try {
   let productId;
   await check('pending selection creates a linked draft; actionable blockers lead to identity, photo, preparation and story', async () => {
     await page.getByRole('button', { name: /Pendientes/ }).click();
-    await page.locator('.variant-row').filter({ hasText: 'Camiseta histórica Argentina' }).getByRole('checkbox').check();
+    await page.getByRole('checkbox', { name: 'Seleccionar todos los talles de Camiseta histórica Argentina', exact: true }).check();
     await page.getByRole('button', { name: 'Crear ficha y vincular', exact: true }).click();
     await page.getByLabel('Título comercial', { exact: true }).fill('Argentina titular 2026');
     await page.getByRole('button', { name: 'Crear ficha', exact: true }).click();
@@ -116,9 +116,11 @@ try {
     assert.equal((await api(first, commerce + '/products/' + productId)).variants[0].skuId, oldSku.id);
     await page.getByRole('button', { name: '← Volver a productos', exact: true }).click();
     await page.getByRole('button', { name: /Pendientes/ }).click();
-    await page.locator('.variant-row').filter({ hasText: 'Nueva Argentina L' }).getByRole('checkbox').check();
+    await page.getByRole('checkbox', { name: 'Seleccionar todos los talles de Nueva Argentina L', exact: true }).check();
     await page.getByRole('button', { name: 'Vincular a una ficha existente', exact: true }).click();
-    await page.getByRole('button', { name: /Argentina titular 2026 · 1 SKU vinculados/ }).click();
+    await page.getByLabel('Publicación de destino', { exact: true }).selectOption('');
+    await page.getByRole('button', { name: 'Buscar ficha', exact: true }).click();
+    await page.getByRole('button', { name: /Argentina titular 2026.*Adjuntar a este producto/ }).click();
     await page.getByRole('button', { name: 'Guardar vínculos', exact: true }).click();
     await page.getByText('Vínculos revisados y guardados.', { exact: true }).waitFor();
     assert.equal((await api(first, commerce + '/products/' + productId)).variants.length, 2);
@@ -130,7 +132,7 @@ try {
     const photo = await sharp({ create: { width: 500, height: 800, channels: 3, background: '#76c8ef' } }).png().toBuffer();
     await page.getByLabel('Subir fotografías', { exact: true }).setInputFiles({ name: 'fixture-onboarding.png', mimeType: 'image/png', buffer: photo });
     await page.getByText('Foto procesada y guardada.', { exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Preparar ficha', exact: true }).click(); await page.getByText('Ficha preparada para generar contenido.', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Preparar ficha', exact: true }).click(); await page.getByRole('button', { name: 'Sí, confirmar cambio', exact: true }).click(); await page.getByText('Ficha preparada para generar contenido.', { exact: true }).waitFor();
     const started = Date.now(); await page.getByRole('button', { name: 'Generar historia ↗' }).click();
     await page.getByRole('button', { name: 'Generar previsualización', exact: true }).click();
     const downloadPromise = page.waitForEvent('download'); await page.getByRole('button', { name: 'Descargar PNG ↓' }).click();

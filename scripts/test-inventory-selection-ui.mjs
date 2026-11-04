@@ -75,7 +75,6 @@ async function fixture(mode = '') {
   await page.getByRole('button', { name: 'Editar modelo Camiseta Argentina' }).click();
   const dialog = page.getByRole('dialog', { name: 'Editar modelo Camiseta Argentina' });
   await dialog.getByLabel('Modelo', { exact: true }).fill('Argentina Selección');
-  await dialog.getByLabel('Motivo del cambio').fill('Corrección de catálogo');
   const review = async () => {
     await dialog.getByRole('button', { name: 'Revisar cambios', exact: true }).click();
     await dialog.getByRole('region', { name: 'Vista previa de cambios' }).waitFor();
@@ -96,7 +95,7 @@ try {
     await region.getByText('Camiseta Argentina S', { exact: true }).waitFor();
     await region.getByText(/Disponible: 8 · Reservado: 0/).waitFor();
     assert.equal(await region.getByText(/new-sku-l/).count(), 0);
-    await f.dialog.getByRole('button', { name: 'Cancelar' }).click();
+    await f.dialog.getByRole('button', { name: 'No, cancelar' }).click();
     assert.equal(f.writes(), 0);
     await f.page.close();
   }
@@ -109,11 +108,11 @@ try {
       await f.review();
       assert.deepEqual(f.previews[0], f.previews[1]);
     } else await f.review();
-    await f.dialog.getByRole('button', { name: 'Confirmar cambios' }).click();
+    await f.dialog.getByRole('button', { name: 'Sí, guardar cambios' }).click();
     if (mode !== 'preview503') {
       await f.dialog.getByRole('alert').waitFor();
       assert.equal(await f.dialog.getByRole('region', { name: 'Vista previa de cambios' }).isVisible(), true);
-      await f.dialog.getByRole('button', { name: 'Confirmar cambios' }).click();
+      await f.dialog.getByRole('button', { name: 'Sí, guardar cambios' }).click();
       assert.deepEqual(f.confirms[0], f.confirms[1]);
     }
     await f.dialog.waitFor({ state: 'hidden' });
@@ -124,19 +123,19 @@ try {
   {
     const f = await fixture('stale409');
     await f.review();
-    await f.dialog.getByRole('button', { name: 'Confirmar cambios' }).click();
+    await f.dialog.getByRole('button', { name: 'Sí, guardar cambios' }).click();
     await f.dialog.getByRole('alert').getByText(/Tu borrador y vista previa se conservan/).waitFor();
     assert.equal(f.previews.length, 1);
     assert.equal(f.writes(), 0);
     assert.equal(await f.dialog.getByLabel('Modelo', { exact: true }).inputValue(), 'Argentina Selección');
-    assert.equal(await f.dialog.getByRole('button', { name: 'Confirmar cambios' }).count(), 0);
+    assert.equal(await f.dialog.getByRole('button', { name: 'Sí, guardar cambios' }).count(), 0);
     await f.dialog.getByRole('button', { name: 'Revisar selección actualizada' }).click();
-    await f.dialog.getByRole('button', { name: 'Confirmar cambios' }).waitFor();
+    await f.dialog.getByRole('button', { name: 'Sí, guardar cambios' }).waitFor();
     assert.equal(f.previews.length, 2);
     assert.notEqual(f.previews[0].requestId, f.previews[1].requestId);
     assert.deepEqual(f.previews[1].selector.skuIds, originalIds);
     assert.equal(f.confirms.length, 1);
-    await f.dialog.getByRole('button', { name: 'Confirmar cambios' }).click();
+    await f.dialog.getByRole('button', { name: 'Sí, guardar cambios' }).click();
     await f.dialog.waitFor({ state: 'hidden' });
     assert.notEqual(f.confirms[0].selectionId, f.confirms[1].selectionId);
     await f.page.close();
@@ -144,8 +143,8 @@ try {
   {
     const f = await fixture();
     await f.review();
-    await f.dialog.getByLabel('Motivo del cambio').fill('Otro motivo');
-    assert.equal(await f.dialog.getByRole('button', { name: 'Confirmar cambios' }).count(), 0);
+    await f.dialog.getByLabel('Modelo', { exact: true }).fill('Argentina Intermedia');
+    assert.equal(await f.dialog.getByRole('button', { name: 'Sí, guardar cambios' }).count(), 0);
     await f.review();
     assert.notEqual(f.previews[0].requestId, f.previews[1].requestId);
     await f.dialog.getByLabel('Modelo', { exact: true }).fill('Argentina Final');
@@ -159,7 +158,7 @@ try {
     const f = await fixture(mode);
     await f.dialog.getByRole('button', { name: 'Revisar cambios', exact: true }).click();
     await f.dialog.getByRole('alert').getByText(/no coincide/).waitFor();
-    assert.equal(await f.dialog.getByRole('button', { name: 'Confirmar cambios' }).count(), 0);
+    assert.equal(await f.dialog.getByRole('button', { name: 'Sí, guardar cambios' }).count(), 0);
     assert.equal(f.confirms.length, 0);
     await f.page.close();
   }

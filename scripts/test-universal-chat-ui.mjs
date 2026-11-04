@@ -101,11 +101,11 @@ async function fixture() {
   const open = async () => { await page.getByRole('button', { name: 'Abrir simulador WhatsApp', exact: true }).click(); await page.getByRole('button', { name: 'Revisar operación', exact: true }).click(); await dialog.waitFor(); };
   const dialog = page.getByRole('dialog', { name: 'Revisar operación', exact: true });
   const button = name => dialog.getByRole('button', { name, exact: true });
-  const consent = () => dialog.getByRole('checkbox', { name: 'Revisé todos los cambios y autorizo aplicar esta operación.', exact: true });
+  const affirmative = () => button("Sí, confirmar operación");
   const prepare = async () => { await dialog.getByLabel('Solicitud', { exact: true }).fill('Ingresaron tres taladros y cargá siete a Ana.'); await button('Preparar revisión').click(); };
   const waitHold = async () => { const deadline = Date.now() + 5000; while (!release && Date.now() < deadline) await page.waitForTimeout(20); assert.ok(release); };
   await page.goto('http://127.0.0.1:5173'); await page.getByRole('button', { name: 'Abrir simulador WhatsApp', exact: true }).click();
-  return { page, dialog, button, consent, prepare, open, forbidden, prepares, replies, confirms, gets, drafts, errors, transcriptions, external, waitHold, writes: () => writes, setMode: value => { mode = value; }, release: () => { mode = 'ok'; release(); release = undefined; }, setIdentity: value => { identity = value; } };
+  return { page, dialog, button, affirmative, prepare, open, forbidden, prepares, replies, confirms, gets, drafts, errors, transcriptions, external, waitHold, writes: () => writes, setMode: value => { mode = value; }, release: () => { mode = 'ok'; release(); release = undefined; }, setIdentity: value => { identity = value; } };
 }
 const send = async (f, text) => {
   await f.page.getByPlaceholder('Escribí un mensaje...').fill(text);
@@ -133,7 +133,7 @@ try {
     assert.ok(stored.every(([, value]) => !value.includes('private-audio-fixture')));
     await f.page.reload(); await f.open();
     assert.equal(await f.dialog.getByLabel('Solicitud', { exact: true }).inputValue(), transcript);
-    await f.button('Preparar revisión').click(); await f.consent().waitFor();
+    await f.button('Preparar revisión').click(); await f.affirmative().waitFor();
     assert.equal(f.prepares.length, 1); assert.equal(f.writes(), 0);
     assert.deepEqual(f.forbidden, []); assert.deepEqual(f.external, []); assert.deepEqual(f.errors, []);
     await f.page.close();
@@ -161,8 +161,8 @@ try {
     await f.button('Preparar revisión').click();
     const answer = 'Taladro: 2 disponibles.\nPrecio: $99.\nNo hay reservas.';
     await f.dialog.getByText(answer, { exact: true }).waitFor();
-    assert.equal(await f.button('Confirmar operación').count(), 0);
-    assert.equal(await f.button('Cancelar operación').count(), 0);
+    assert.equal(await f.button('Sí, confirmar operación').count(), 0);
+    assert.equal(await f.button('No, cancelar operación').count(), 0);
     assert.equal(f.writes(), 0); assert.deepEqual(f.forbidden, []);
     assert.equal(f.prepares.length, 1);
     await f.page.reload(); await f.open();
@@ -174,12 +174,12 @@ try {
     const f = await fixture(); await send(f, 'Ingresaron tres taladros y cargá siete a Ana.');
     f.setMode('prepare503'); await f.button('Preparar revisión').click();
     await f.dialog.getByText('Interpretación no disponible.', { exact: true }).waitFor();
-    await f.button('Reintentar revisión').click(); await f.consent().waitFor();
+    await f.button('Reintentar revisión').click(); await f.affirmative().waitFor();
     assert.deepEqual(f.prepares[0], f.prepares[1]);
-    assert.equal(f.writes(), 0); assert.equal(await f.button('Confirmar operación').isDisabled(), true);
+    assert.equal(f.writes(), 0); assert.equal(await f.button('Sí, confirmar operación').isDisabled(), false);
     await f.dialog.getByText('Disponible: 2 → 5', { exact: true }).waitFor();
     await f.dialog.getByText('Saldo: 0 → 7', { exact: true }).waitFor();
-    await f.consent().check(); await f.button('Confirmar operación').click();
+    await f.button('Sí, confirmar operación').click();
     await f.dialog.getByText('Operación aplicada correctamente.', { exact: true }).waitFor();
     assert.equal(await f.dialog.locator('details').getAttribute('open'), null);
     assert.equal(await f.dialog.locator('details p').filter({ hasText: 'Disponible: 2 → 5' }).isVisible(), false);
@@ -191,15 +191,15 @@ try {
   }
   {
     const f = await fixture(); await send(f, 'Ingresaron tres taladros y cargá siete a Ana.');
-    await f.button('Preparar revisión').click(); await f.consent().waitFor();
+    await f.button('Preparar revisión').click(); await f.affirmative().waitFor();
     const original = await f.page.evaluate(() => localStorage.getItem('universal-draft:' + JSON.stringify(['5491100000000', '5491100000000'])));
     await f.button('Cerrar revisión').click(); await send(f, '¿Qué pedidos tengo pendientes?');
-    await f.consent().waitFor();
+    await f.affirmative().waitFor();
     assert.equal(await f.page.evaluate(() => localStorage.getItem('universal-draft:' + JSON.stringify(['5491100000000', '5491100000000']))), original);
     assert.equal(f.prepares.length, 1);
     await f.page.reload(); await f.page.getByRole('button', { name: 'Abrir simulador WhatsApp', exact: true }).click();
     assert.equal(await f.page.getByPlaceholder('Escribí un mensaje...').inputValue(), '¿Qué pedidos tengo pendientes?');
-    await f.page.getByRole('button', { name: 'Revisar operación', exact: true }).click(); await f.consent().waitFor();
+    await f.page.getByRole('button', { name: 'Revisar operación', exact: true }).click(); await f.affirmative().waitFor();
     assert.equal(f.prepares.length, 1); assert.equal(f.writes(), 0);
     assert.deepEqual(f.forbidden, []); assert.deepEqual(f.errors, []); await f.page.close();
   }
@@ -243,5 +243,5 @@ try {
     await f.page.getByRole('alert').getByText(/No pudimos recuperar tu mensaje guardado/).waitFor();
     assert.deepEqual(f.errors, []); assert.equal(f.prepares.length, 0); await f.page.close();
   }
-  console.log('Universal ordinary chat UI passed: authenticated audio transcription and retry, durable transcript review, shared draft entry, durable answered recovery, explicit write consent, and stable retry IDs.');
+  console.log('Universal ordinary chat UI passed: authenticated audio transcription and retry, durable transcript review, shared draft entry, durable answered recovery, explicit write affirmative, and stable retry IDs.');
 } finally { await browser.close(); }

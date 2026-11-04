@@ -117,8 +117,6 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [readError, setReadError] = useState('');
-  const [familyConsent, setFamilyConsent] = useState(false);
-  const [skuConsent, setSkuConsent] = useState(false);
   const lock = useRef(false);
   const activeRef = useRef(false);
   const scope = useRef(storageKey);
@@ -139,7 +137,7 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
     setSaved(next);
   };
   const loadFamilies = async (expectedScope = storageKey, isActive: () => boolean = () => activeRef.current) => {
-    setFamilyConsent(false); setSkuConsent(false);
+
     if (!expectedScope) throw new Error('Iniciá sesión para consultar familias.');
     const result = await fetchProductFamilies();
     if (scope.current !== expectedScope || !isActive()) return null;
@@ -148,7 +146,7 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
   };
   const updateDraft = (changes: Partial<Draft>) => {
     if (lock.current || busy || hasPendingAttempt || invalidRecovery || loading) return;
-    setFamilyConsent(false); setSkuConsent(false); setError('');
+      setError('');
     persist({ ...saved, draft: { ...draft, ...changes }, reviewNote: undefined });
   };
 
@@ -156,7 +154,7 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
     let active = true;
     activeRef.current = true;
     lock.current = true;
-    setBusy(true); setHydrated(false); setInvalidRecovery(false); setError(''); setReadError(''); setFamilyConsent(false); setSkuConsent(false); setFamilies([]);
+    setBusy(true); setHydrated(false); setInvalidRecovery(false); setError(''); setReadError('');   setFamilies([]);
     const restore = async () => {
       let parsed: Saved;
       try {
@@ -212,9 +210,9 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
     catch { setReadError('La familia se publicó, pero no pudimos actualizar la lista. Reintentá solo las lecturas.'); }
   };
   const submitFamily = async (retry = false) => {
-    if (lock.current || !hydrated || !storageKey || !familyConsent || invalidRecovery || familyComplete || (retry ? Boolean(saved.skuAttempt) : hasPendingAttempt)) return;
+    if (lock.current || !hydrated || !storageKey || invalidRecovery || familyComplete || (retry ? Boolean(saved.skuAttempt) : hasPendingAttempt)) return;
     if (saved.familyAttempt && !retry) return;
-    lock.current = true; setBusy(true); setError(''); setFamilyConsent(false); setSkuConsent(false);
+    lock.current = true; setBusy(true); setError('');
     let attempt = saved.familyAttempt;
     try {
       if (!attempt) {
@@ -274,9 +272,9 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
     return { family: family.schema.name, version: family.version, name: inputDraft.skuName.trim() || 'Sin nombre', unit: family.schema.unit, attributes, available: inputDraft.stockAvailable, reserved: inputDraft.stockReserved, price: inputDraft.price, currency: inputDraft.currency.trim().toUpperCase() || 'Sin definir' };
   };
   const submitSku = async (retry = false) => {
-    if (lock.current || !hydrated || !storageKey || !skuConsent || invalidRecovery || skuComplete || (retry ? Boolean(saved.familyAttempt) : hasPendingAttempt)) return;
+    if (lock.current || !hydrated || !storageKey || invalidRecovery || skuComplete || (retry ? Boolean(saved.familyAttempt) : hasPendingAttempt)) return;
     if (saved.skuAttempt && !retry) return;
-    lock.current = true; setBusy(true); setError(''); setSkuConsent(false); setFamilyConsent(false);
+    lock.current = true; setBusy(true); setError('');
     let attempt = saved.skuAttempt;
     try {
       if (!attempt) {
@@ -314,7 +312,7 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
 
   const retryReads = async () => {
     if (loading || busy) return;
-    setLoading(true); setReadError(''); setError(''); setFamilyConsent(false); setSkuConsent(false);
+    setLoading(true); setReadError(''); setError('');
     try {
       const currentFamilies = await loadFamilies();
       if (!currentFamilies || scope.current !== storageKey || !activeRef.current) return;
@@ -325,7 +323,7 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
   };
   const reviewRejected = async (kind: 'family' | 'sku') => {
     if (loading || busy || lock.current) return;
-    setLoading(true); setError(''); setFamilyConsent(false); setSkuConsent(false);
+    setLoading(true); setError('');
     try {
       const currentFamilies = await loadFamilies();
       if (!currentFamilies || scope.current !== storageKey || !activeRef.current) return;
@@ -340,12 +338,12 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
   const prepareAnotherFamily = () => {
     if (busy || loading || hasPendingAttempt || invalidRecovery) return;
     persist({ ...saved, draft: { ...draft, familyId: crypto.randomUUID(), name: '', unit: '', allowAdditional: false, attrs: [freshAttr()] }, completed: (saved.completed ?? []).filter(item => item.kind !== 'family') });
-    setFamilyConsent(false); setSkuConsent(false); setError(''); setReadError('');
+      setError(''); setReadError('');
   };
   const prepareAnotherSku = () => {
     if (busy || loading || hasPendingAttempt || invalidRecovery) return;
     persist({ ...saved, draft: { ...draft, skuName: '', stockAvailable: '0', stockReserved: '0', price: '0', currency: 'XXX', attrValues: Object.create(null) as Draft['attrValues'] }, completed: (saved.completed ?? []).filter(item => item.kind !== 'sku') });
-    setFamilyConsent(false); setSkuConsent(false); setError(''); setReadError('');
+      setError(''); setReadError('');
   };
 
   const schemaPreview = (() => { try { return makeSchema(draft); } catch { return null; } })();
@@ -395,7 +393,7 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
 
   return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3">
     <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="product-family-title" aria-busy={busy || loading} onKeyDown={onDialogKeyDown} className="max-h-[92dvh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-sky-500/30 bg-[color:var(--surface-elevated)] p-5 text-[color:var(--text)] shadow-2xl">
-      <div className="flex items-start justify-between gap-3"><div><h2 id="product-family-title" className="type-title text-xl">Familias y atributos</h2><p className="mt-1 text-sm text-[color:var(--muted)]">Definí un esquema versionado y usalo para crear un producto nuevo.</p></div><button type="button" className="erp-button-secondary" onClick={onClose} disabled={busy}>Cerrar</button></div>
+      <div className="flex items-start justify-between gap-3"><div><h2 id="product-family-title" className="type-title text-xl">Familias y atributos</h2><p className="mt-1 text-sm text-[color:var(--muted)]">Definí un esquema versionado y usalo para crear un producto nuevo.</p></div><button type="button" className="erp-button-secondary" onClick={onClose} disabled={busy}>No, cancelar</button></div>
       {!hydrated && <p className="mt-5" role="status">Recuperando borrador y familias…</p>}
       {hydrated && <div className="mt-5 space-y-6">
         <section className="space-y-4 rounded-xl border border-[color:var(--border)] p-4" aria-labelledby="family-config-title">
@@ -420,8 +418,8 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
             <label className="block text-sm"><input type="checkbox" checked={draft.allowAdditional} onChange={e => updateDraft({ allowAdditional: e.target.checked })} /> Permitir atributos adicionales</label>
           </fieldset>
           {schemaPreview && <div role="region" className="rounded-lg bg-[color:var(--overlay-soft)] p-3" aria-label="Vista previa de familia"><strong>Vista previa</strong><p className="mt-1">{schemaPreview.name || 'Sin nombre'} · unidad: {schemaPreview.unit || 'Sin definir'}</p><ul className="mt-2 list-inside list-disc text-sm">{Object.entries(schemaPreview.attributes).map(([key, item]) => <li key={key}>{key} · {translateType(item.type)} · {item.required ? 'requerido' : 'opcional'}{item.unit ? ` · ${item.unit}` : ''}{item.values ? ` · permitidos: ${item.values.map(value => String(value)).join(', ')}` : ''} · estados: {item.allowedStates.map(translateState).join(', ')}</li>)}</ul><p className="text-sm">Atributos adicionales: {schemaPreview.allowAdditionalAttributes ? 'permitidos' : 'no permitidos'}</p></div>}
-          {saved.familyAttempt && <div className="rounded-lg border border-amber-500/40 p-3 text-sm">Intento de publicación: {saved.familyAttempt.body.schema.name}, versión esperada {saved.familyAttempt.body.expectedVersion + 1}.{saved.familyAttempt.rejectionMessage && <p role="alert">{saved.familyAttempt.rejectionMessage}</p>}{saved.familyAttempt.rejected ? <button type="button" className={`${button} mt-2`} disabled={loading || busy} onClick={() => void reviewRejected('family')}>Revisar respuesta y datos actuales</button> : <><label className="mt-2 block"><input type="checkbox" checked={familyConsent} disabled={busy || loading} onChange={e => setFamilyConsent(e.target.checked)} /> Confirmo que revisé y autorizo reintentar exactamente esta publicación.</label><button type="button" className={`${button} mt-2`} disabled={busy || loading || !familyConsent} onClick={() => void submitFamily(true)}>Reintentar misma publicación</button></>}</div>}
-          {!saved.familyAttempt && !familyComplete && <><label className="block text-sm"><input type="checkbox" checked={familyConsent} disabled={busy || loading || hasPendingAttempt || invalidRecovery} onChange={e => setFamilyConsent(e.target.checked)} /> Revisé esta familia y autorizo publicarla como una nueva versión inmutable.</label><button type="button" className="erp-button-primary" disabled={busy || loading || !familyConsent || hasPendingAttempt || invalidRecovery} onClick={() => void submitFamily()}>Publicar familia</button></>}
+          {saved.familyAttempt && <div className="rounded-lg border border-amber-500/40 p-3 text-sm">Intento de publicación: {saved.familyAttempt.body.schema.name}, versión esperada {saved.familyAttempt.body.expectedVersion + 1}.{saved.familyAttempt.rejectionMessage && <p role="alert">{saved.familyAttempt.rejectionMessage}</p>}{saved.familyAttempt.rejected ? <button type="button" className={`${button} mt-2`} disabled={loading || busy} onClick={() => void reviewRejected('family')}>Revisar respuesta y datos actuales</button> : <><button type="button" className={`${button} mt-2`} disabled={busy || loading} onClick={() => void submitFamily(true)}>Reintentar misma publicación</button></>}</div>}
+          {!saved.familyAttempt && !familyComplete && <><button type="button" className={button} disabled={busy} onClick={onClose}>No, cancelar</button><button type="button" className="erp-button-primary" disabled={busy || loading || hasPendingAttempt || invalidRecovery} onClick={() => void submitFamily()}>Sí, publicar familia</button></>}
         </section>
 
         <section className="space-y-4 rounded-xl border border-[color:var(--border)] p-4" aria-labelledby="sku-create-title">
@@ -445,11 +443,11 @@ export function ProductFamilyPanel({ onClose }: { onClose: () => void }) {
               <p className="text-sm text-[color:var(--muted)]">Unidad del producto: {chosenFamily.schema.unit}.</p>
               <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Stock disponible<input className="erp-input mt-1" type="number" min="0" step="1" value={draft.stockAvailable} onChange={e => updateDraft({ stockAvailable: e.target.value })} /></label><label className="text-sm">Stock reservado<input className="erp-input mt-1" type="number" min="0" step="1" value={draft.stockReserved} onChange={e => updateDraft({ stockReserved: e.target.value })} /></label><label className="text-sm">Precio<input className="erp-input mt-1" type="number" min="0" step="1" value={draft.price} onChange={e => updateDraft({ price: e.target.value })} /></label><label className="text-sm">Moneda ISO 4217<input className="erp-input mt-1 uppercase" maxLength={3} value={draft.currency} onChange={e => updateDraft({ currency: e.target.value.toUpperCase() })} /></label></div>
               {!saved.skuAttempt && renderSkuReview(chosenFamily)}
-              {!saved.skuAttempt && <label className="block text-sm"><input type="checkbox" checked={skuConsent} onChange={e => setSkuConsent(e.target.checked)} /> Revisé los datos del producto y autorizo crearlo.</label>}
+
             </>}
           </fieldset>
-          {saved.skuAttempt && <div className="rounded-lg border border-amber-500/40 p-3 text-sm">Intento de creación: {saved.skuAttempt.body.name} · {familyNameForSku(saved.skuAttempt)} v{saved.skuAttempt.body.family?.version}.{saved.skuAttempt.rejectionMessage && <p role="alert">{saved.skuAttempt.rejectionMessage}</p>}{saved.skuAttempt.rejected ? <button type="button" className={`${button} mt-2`} disabled={loading || busy} onClick={() => void reviewRejected('sku')}>Revisar respuesta y datos actuales</button> : <><label className="mt-3 block"><input type="checkbox" checked={skuConsent} disabled={busy || loading} onChange={e => setSkuConsent(e.target.checked)} /> Revisé los datos del producto y autorizo crearlo.</label>{renderSkuReview(familyForSkuAttempt(saved.skuAttempt), Object.fromEntries(Object.entries(saved.skuAttempt.body.attributes ?? {}).map(([key, attr]) => [key, { state: attr.state, value: attr.state === 'known' ? String(attr.value) : '' }])), { ...draft, skuName: saved.skuAttempt.body.name, stockAvailable: String(saved.skuAttempt.body.stockAvailable ?? ''), stockReserved: String(saved.skuAttempt.body.stockReserved ?? ''), price: String(saved.skuAttempt.body.price ?? ''), currency: saved.skuAttempt.body.priceCurrency ?? 'XXX' })}<button type="button" className={`${button} mt-2`} disabled={busy || loading || !skuConsent} onClick={() => void submitSku(true)}>Reintentar misma creación</button></>}</div>}
-          {!saved.skuAttempt && !skuComplete && chosenFamily && <button type="button" className="erp-button-primary" disabled={busy || loading || !skuConsent || hasPendingAttempt || invalidRecovery} onClick={() => void submitSku()}>Crear producto</button>}
+          {saved.skuAttempt && <div className="rounded-lg border border-amber-500/40 p-3 text-sm">Intento de creación: {saved.skuAttempt.body.name} · {familyNameForSku(saved.skuAttempt)} v{saved.skuAttempt.body.family?.version}.{saved.skuAttempt.rejectionMessage && <p role="alert">{saved.skuAttempt.rejectionMessage}</p>}{saved.skuAttempt.rejected ? <button type="button" className={`${button} mt-2`} disabled={loading || busy} onClick={() => void reviewRejected('sku')}>Revisar respuesta y datos actuales</button> : <>{renderSkuReview(familyForSkuAttempt(saved.skuAttempt), Object.fromEntries(Object.entries(saved.skuAttempt.body.attributes ?? {}).map(([key, attr]) => [key, { state: attr.state, value: attr.state === 'known' ? String(attr.value) : '' }])), { ...draft, skuName: saved.skuAttempt.body.name, stockAvailable: String(saved.skuAttempt.body.stockAvailable ?? ''), stockReserved: String(saved.skuAttempt.body.stockReserved ?? ''), price: String(saved.skuAttempt.body.price ?? ''), currency: saved.skuAttempt.body.priceCurrency ?? 'XXX' })}<button type="button" className={`${button} mt-2`} disabled={busy || loading} onClick={() => void submitSku(true)}>Reintentar misma creación</button></>}</div>}
+          {!saved.skuAttempt && !skuComplete && chosenFamily && <><button type="button" className={button} disabled={busy} onClick={onClose}>No, cancelar</button><button type="button" className="erp-button-primary" disabled={busy || loading || hasPendingAttempt || invalidRecovery} onClick={() => void submitSku()}>Sí, crear producto</button></>}
         </section>
       </div>}
       {saved.reviewNote && <p role="status" className="mt-4 text-sm">{saved.reviewNote}</p>}

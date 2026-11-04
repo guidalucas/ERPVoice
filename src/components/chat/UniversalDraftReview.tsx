@@ -1,3 +1,4 @@
+import { ModalPortal } from '../ui/ModalPortal';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../store/AuthStore';
 import { useInventory } from '../../hooks/useInventory';
@@ -14,7 +15,6 @@ export function UniversalDraftReview({ onClose, initialText }: { onClose: () => 
   const storageKey = session ? `universal-draft:${JSON.stringify([session.tenantPhone, session.phoneNumber])}` : null;
   const [saved, setSaved] = useState<Saved>({ text: '' });
   const [preview, setPreview] = useState<UniversalDraftPreview | null>(null);
-  const [consent, setConsent] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -50,7 +50,7 @@ export function UniversalDraftReview({ onClose, initialText }: { onClose: () => 
   useEffect(() => {
     let active = true;
     mounted.current = true;
-    lock.current = true; setBusy(true); setHydrated(false); setSaved({ text: '' }); setConsent(false); setCorrecting(false); setPreview(null); setError(''); setRefreshError(''); setConflict(false);
+    lock.current = true; setBusy(true); setHydrated(false); setSaved({ text: '' }); setCorrecting(false); setPreview(null); setError(''); setRefreshError(''); setConflict(false);
     const restore = async () => {
       try {
         const raw = storageKey ? localStorage.getItem(storageKey) : null;
@@ -86,7 +86,7 @@ export function UniversalDraftReview({ onClose, initialText }: { onClose: () => 
 
   const recover = async (finishCorrection=false) => {
     if (lock.current || !saved.draftId) return;
-    lock.current = true; setBusy(true); setConsent(false); setError('');
+    lock.current = true; setBusy(true); setError('');
     try {
       const current = await fetchUniversalDraft(saved.draftId);
       if (!isCurrent()) return;
@@ -101,7 +101,7 @@ export function UniversalDraftReview({ onClose, initialText }: { onClose: () => 
 
   const submit = async (kind: Attempt['kind']) => {
     if (lock.current || !hydrated || !storageKey) return;
-    if (kind === 'confirm' && (correcting || !consent || conflict || expired || !completeReview || preview?.status !== 'awaiting_confirmation' || Date.parse(preview.expiresAt) <= Date.now())) return;
+    if (kind === 'confirm' && (correcting || conflict || expired || !completeReview || preview?.status !== 'awaiting_confirmation' || Date.parse(preview.expiresAt) <= Date.now())) return;
     if ((kind === 'reply' || kind === 'prepare') && !saved.text.trim()) return;
     lock.current = true; setBusy(true); setError('');
     const prior = saved.attempt;
@@ -114,12 +114,12 @@ export function UniversalDraftReview({ onClose, initialText }: { onClose: () => 
           : kind === 'confirm' ? await confirmUniversalDraft(attempt.draftId!, attempt.version!, attempt.digest!)
             : await cancelUniversalDraft(attempt.draftId!, attempt.version!, attempt.digest!);
       if (scope.current !== storageKey) return;
-      setPreview(current); setConsent(false); setConflict(false); setCorrecting(false);
+      setPreview(current); setConflict(false); setCorrecting(false);
       persist({ text: current.status === 'awaiting_clarification' ? '' : attempt.text, draftId: current.draftId });
       if (current.status === 'applied') await updateInventory();
     } catch (failure) {
       if (!isCurrent()) return;
-      setConsent(false);
+
       if (typeof failure === 'object' && failure && 'status' in failure) {
         const status=Number(failure.status);
         if (status===409) setConflict(true);
@@ -136,16 +136,16 @@ export function UniversalDraftReview({ onClose, initialText }: { onClose: () => 
   };
   const startNew = () => {
     if (busy || unresolvedWrite || (pending && !conflict)) return;
-    try { persist({ text: incoming.current }); incoming.current = ''; setQueuedInput(false); setPreview(null); setConsent(false); setCorrecting(false); setConflict(false); setError(''); setRefreshError(''); }
+    try { persist({ text: incoming.current }); incoming.current = ''; setQueuedInput(false); setPreview(null); setCorrecting(false); setConflict(false); setError(''); setRefreshError(''); }
     catch (failure) { setError(toUserFacingError(failure)); }
   };
   const beginCorrection = () => {
     if (busy || expired || conflict || saved.attempt || preview?.status !== 'awaiting_confirmation') return;
-    try { persist({text:'',draftId:preview.draftId,correcting:true}); setCorrecting(true); setConsent(false); setError(''); }
+    try { persist({text:'',draftId:preview.draftId,correcting:true}); setCorrecting(true); setError(''); }
     catch (failure) { setError(toUserFacingError(failure)); }
   };
 
-  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3">
+  return <ModalPortal><div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-3">
     <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="universal-review-title" aria-busy={busy} className="max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-sky-500/30 bg-[#101a2e] p-5 text-slate-100 shadow-2xl" onKeyDown={event => {
       if (event.key === 'Escape') { event.stopPropagation(); onClose(); }
       if (event.key === 'Tab') {
@@ -169,7 +169,7 @@ export function UniversalDraftReview({ onClose, initialText }: { onClose: () => 
       {preview?.review && (preview.status === 'applied' ? <details className="mt-3"><summary className="cursor-pointer text-sm">Ver detalle de los {preview.review.length} cambios guardados</summary><ul className="mt-2 list-disc space-y-2 pl-5 text-sm">{preview.review.map(item => <li key={item.itemId}><strong>{item.title}</strong><p>{item.details.join(' · ')}</p></li>)}</ul></details> : <ol className="mt-4 space-y-3">{preview.review.map(item => <li key={item.itemId} className="rounded-xl border border-sky-500/20 p-3"><h3 className="font-semibold">{item.title}</h3><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-200">{item.details.map((detail, index) => <li key={index}>{detail}</li>)}</ul></li>)}</ol>)}
       {expired && pending && <p role="status" className="mt-4 text-amber-200">Esta revisión venció. Recuperá su estado o cancelala para comenzar otra.</p>}
       {conflict && <p className="mt-4 text-amber-200">La revisión cambió. Recuperá el estado antes de confirmar nuevamente.</p>}
-      {preview?.status === 'awaiting_confirmation' && !correcting && <label className="mt-4 flex items-start gap-3"><input type="checkbox" checked={consent} disabled={busy || expired || conflict || !completeReview} onChange={event => setConsent(event.target.checked)} /><span className="text-sm">Revisé todos los cambios y autorizo aplicar esta operación.</span></label>}
+
       {preview?.status === 'awaiting_confirmation' && !completeReview && <p role="alert" className="mt-3 text-amber-200">No está disponible la revisión completa. Recuperá el estado para continuar.</p>}
       {error && <p role="alert" className="mt-4 text-rose-200">{error}</p>}
       {unresolvedWrite && <p className="mt-3 text-sm text-amber-200">Hay una confirmación o cancelación pendiente de recuperar. Conservamos su referencia para consultar el resultado antes de iniciar otra operación.</p>}
@@ -177,15 +177,15 @@ export function UniversalDraftReview({ onClose, initialText }: { onClose: () => 
       <div className="mt-5 flex flex-wrap gap-2">
         {!preview && !saved.draftId && <button type="button" className={`${button} bg-sky-600`} disabled={busy || !hydrated || !saved.text.trim()} onClick={() => void submit('prepare')}>{saved.attempt ? 'Reintentar revisión' : 'Preparar revisión'}</button>}
         {preview?.status === 'awaiting_clarification' && <button type="button" className={`${button} bg-sky-600`} disabled={busy || !saved.text.trim() || conflict} onClick={() => void submit('reply')}>Enviar respuesta</button>}
-        {preview?.status === 'awaiting_confirmation' && !correcting && <button type="button" className={`${button} bg-emerald-600`} disabled={busy || !consent || conflict || expired || !completeReview} onClick={() => void submit('confirm')}>Confirmar operación</button>}
+        {preview?.status === 'awaiting_confirmation' && !correcting && <button type="button" className={`${button} bg-emerald-600`} disabled={busy || conflict || expired || !completeReview} onClick={() => void submit('confirm')}>Sí, confirmar operación</button>}
         {preview?.status === 'awaiting_confirmation' && !correcting && <button type="button" className={button} disabled={busy || expired || conflict || Boolean(saved.attempt)} onClick={beginCorrection}>Corregir revisión</button>}
         {correcting && <button type="button" className={`${button} bg-sky-600`} disabled={busy || !saved.text.trim() || conflict} onClick={() => void submit('reply')}>Revisar corrección</button>}
         {correcting && <button type="button" className={button} disabled={busy} onClick={() => void recover(true)}>Volver a revisión</button>}
-        {pending && <button type="button" className={button} disabled={busy} onClick={() => void submit('cancel')}>Cancelar operación</button>}
+        {pending && <button type="button" className={button} disabled={busy} onClick={() => void submit('cancel')}>No, cancelar operación</button>}
         {saved.draftId && <button type="button" className={button} disabled={busy} onClick={() => void recover()}>Recuperar estado</button>}
         {(!pending || conflict) && !unresolvedWrite && (preview || saved.draftId || saved.attempt) && <button type="button" className={button} disabled={busy} onClick={startNew}>Nueva operación</button>}
       </div>
       {busy && <p role="status" className="mt-3 text-sm text-slate-300">Procesando…</p>}
     </div>
-  </div>;
+  </div></ModalPortal>;
 }

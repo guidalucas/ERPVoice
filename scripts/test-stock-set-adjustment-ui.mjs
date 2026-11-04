@@ -63,46 +63,43 @@ async function fixture() {
   const dialog = page.getByRole('dialog', { name: 'Ajustar conjunto', exact: true });
   const available = () => dialog.getByLabel('Disponible absoluto (opcional)', { exact: true });
   const reserved = () => dialog.getByLabel('Reservado absoluto (opcional)', { exact: true });
-  const reason = () => dialog.getByLabel('Motivo del ajuste', { exact: true });
   const review = () => dialog.getByRole('button', { name: 'Revisar ajuste', exact: true });
-  const confirm = () => dialog.getByRole('button', { name: 'Confirmar ajuste', exact: true });
-  const consent = () => dialog.getByRole('checkbox', { name: 'Confirmo los saldos finales de cada producto revisado.', exact: true });
+  const confirm = () => dialog.getByRole('button', { name: 'Sí, confirmar ajuste', exact: true });
   const region = () => dialog.getByRole('region', { name: 'Vista previa del ajuste', exact: true });
-  const prepare = async () => { for (const product of products) await dialog.getByLabel(`Seleccionar producto ${product.id}`, { exact: true }).check(); await available().fill('12'); await reason().fill('  Conteo físico revisado  '); };
+  const prepare = async () => { for (const product of products) await dialog.getByLabel(`Seleccionar producto ${product.name}`, { exact: true }).check(); await available().fill('12');  };
   const hydrate = async () => { const before = reads, deadline = Date.now() + 12000; while (reads === before && Date.now() < deadline) await page.waitForTimeout(30); assert.ok(reads > before); await page.waitForTimeout(100); };
   const waitHold = async () => { const deadline = Date.now() + 5000; while (!release && Date.now() < deadline) await page.waitForTimeout(20); assert.ok(release); };
-  return { page, dialog, products, requests, confirms, pageErrors, prepare, available, reserved, reason, review, confirm, consent, region, hydrate, waitHold, writes: () => writes, setMode: value => { mode = value; }, release: () => { mode = 'ok'; release(); release = undefined; } };
+  return { page, dialog, products, requests, confirms, pageErrors, prepare, available, reserved, review, confirm, region, hydrate, waitHold, writes: () => writes, setMode: value => { mode = value; }, release: () => { mode = 'ok'; release(); release = undefined; } };
 }
 try {
   {
     const f = await fixture(); await f.review().click(); await f.dialog.getByText('Seleccioná entre 1 y 100 productos.', { exact: true }).waitFor(); assert.equal(f.requests.length, 0);
     await f.prepare(); await f.review().click(); await f.region().waitFor(); assert.equal(f.writes(), 0); assert.equal(f.confirms.length, 0);
     assert.deepEqual(f.requests[0].selector, { kind: 'ids', skuIds: ['sku-S', 'sku-M'] });
-    assert.deepEqual(f.requests[0].mutation, { type: 'stock.adjust', balances: { available: 12 }, reason: 'Conteo físico revisado' });
+    assert.deepEqual(f.requests[0].mutation, { type: 'stock.adjust', balances: { available: 12 }, reason: 'Ajuste de stock confirmado desde el panel' });
     await f.region().getByText('Disponible: 8 → 12 · Reservado: 0 → 0', { exact: true }).waitFor();
     await f.region().getByText('Disponible: 9 → 12 · Reservado: 1 → 1', { exact: true }).waitFor();
-    await f.region().getByText(/Unidad: box/).waitFor(); assert.equal(await f.confirm().isDisabled(), true);
-    await f.consent().check(); await f.reserved().fill('0'); await f.region().waitFor({ state: 'hidden' }); assert.equal(await f.confirm().count(), 0);
-    await f.review().click(); await f.region().waitFor(); assert.notEqual(f.requests[0].requestId, f.requests[1].requestId); assert.equal(await f.consent().isChecked(), false);
-    await f.consent().check(); await f.confirm().click(); await f.dialog.waitFor({ state: 'hidden' }); assert.equal(f.writes(), 1); assert.ok(f.products.every(product => product.stockAvailable === 12 && product.stockReserved === 0)); assert.deepEqual(f.pageErrors, []); await f.page.close();
+    await f.region().getByText(/Unidad: box/).waitFor(); assert.equal(await f.confirm().isDisabled(), false);
+    await f.reserved().fill('0'); await f.region().waitFor({ state: 'hidden' }); assert.equal(await f.confirm().count(), 0);
+    await f.review().click(); await f.region().waitFor(); assert.notEqual(f.requests[0].requestId, f.requests[1].requestId); await f.confirm().click(); await f.dialog.waitFor({ state: 'hidden' }); assert.equal(f.writes(), 1); assert.ok(f.products.every(product => product.stockAvailable === 12 && product.stockReserved === 0)); assert.deepEqual(f.pageErrors, []); await f.page.close();
   }
   {
     const f = await fixture(); await f.prepare(); f.setMode('preview503'); await f.review().click(); await f.dialog.getByText('Vista previa incierta.', { exact: true }).waitFor();
     await f.dialog.getByRole('button', { name: 'Reintentar vista previa', exact: true }).click(); await f.region().waitFor(); assert.deepEqual(f.requests[0], f.requests[1]); assert.equal(f.writes(), 0); await f.page.close();
   }
   for (const failure of ['confirm503', 'refresh503']) {
-    const f = await fixture(); await f.prepare(); await f.review().click(); await f.region().waitFor(); await f.consent().check(); f.setMode(failure); await f.confirm().click();
+    const f = await fixture(); await f.prepare(); await f.review().click(); await f.region().waitFor(); f.setMode(failure); await f.confirm().click();
     await f.dialog.getByText(failure === 'confirm503' ? 'Ajuste aplicado con respuesta incierta.' : 'Falló la actualización del ajuste.', { exact: true }).waitFor();
     f.products[0].stockAvailable = 17; f.products[0].revision++; await f.hydrate();
-    assert.equal(await f.consent().isChecked(), true); await f.region().getByText('Disponible: 8 → 12 · Reservado: 0 → 0', { exact: true }).waitFor();
+    await f.region().getByText('Disponible: 8 → 12 · Reservado: 0 → 0', { exact: true }).waitFor();
     await f.confirm().click(); await f.dialog.waitFor({ state: 'hidden' }); assert.deepEqual(f.confirms[0], f.confirms[1]); assert.equal(f.writes(), 1); assert.equal(f.products[0].stockAvailable, 17); assert.deepEqual(f.pageErrors, []); await f.page.close();
   }
   {
-    const f = await fixture(); await f.prepare(); await f.review().click(); await f.region().waitFor(); await f.consent().check(); f.setMode('stale409'); await f.confirm().click();
-    await f.dialog.getByText(/El inventario cambió. Revisá una selección actualizada/).waitFor(); assert.equal(await f.confirm().isDisabled(), true); assert.equal(await f.consent().isChecked(), false); assert.equal(f.writes(), 0);
+    const f = await fixture(); await f.prepare(); await f.review().click(); await f.region().waitFor(); f.setMode('stale409'); await f.confirm().click();
+    await f.dialog.getByText(/El inventario cambió. Revisá una selección actualizada/).waitFor(); assert.equal(await f.confirm().isDisabled(), true); assert.equal(f.writes(), 0);
     f.products[0].stockAvailable = 21; f.products[0].revision++; await f.hydrate(); assert.equal(f.requests.length, 1); assert.equal(f.confirms.length, 1);
     f.setMode('ok'); await f.dialog.getByRole('button', { name: 'Revisar selección actualizada', exact: true }).click(); await f.region().getByText('Disponible: 21 → 12 · Reservado: 0 → 0', { exact: true }).waitFor();
-    assert.notEqual(f.requests[0].requestId, f.requests[1].requestId); assert.equal(await f.confirm().isDisabled(), true); await f.consent().check(); await f.confirm().click(); await f.dialog.waitFor({ state: 'hidden' }); assert.notEqual(f.confirms[0].path, f.confirms[1].path); await f.page.close();
+    assert.notEqual(f.requests[0].requestId, f.requests[1].requestId); assert.equal(await f.confirm().isDisabled(), false); await f.confirm().click(); await f.dialog.waitFor({ state: 'hidden' }); assert.notEqual(f.confirms[0].path, f.confirms[1].path); await f.page.close();
   }
   for (const forged of ['forge-final', 'forge-unchanged', 'forge-mutation', 'forge-unit', 'forge-extra-balance']) {
     const f = await fixture(); await f.prepare(); f.setMode(forged); await f.review().click(); await f.dialog.getByRole('alert').getByText(/La vista previa no coincide/).waitFor();
@@ -110,9 +107,9 @@ try {
   }
   {
     const f = await fixture(); await f.prepare(); f.setMode('hold-preview'); await f.review().evaluate(button => { button.click(); button.click(); }); await f.waitHold();
-    assert.equal(f.requests.length, 1); assert.equal(await f.available().isDisabled(), true); assert.equal(await f.dialog.getByLabel('Seleccionar producto sku-S', { exact: true }).isDisabled(), true); assert.equal(await f.dialog.getByRole('button', { name: 'Cancelar', exact: true }).isDisabled(), true);
-    f.release(); await f.region().waitFor(); await f.consent().check(); f.setMode('hold-confirm'); await f.confirm().evaluate(button => { button.click(); button.click(); }); await f.waitHold();
-    assert.equal(f.confirms.length, 1); assert.equal(await f.consent().isDisabled(), true); assert.equal(await f.reason().isDisabled(), true); f.release(); await f.dialog.waitFor({ state: 'hidden' }); assert.equal(f.writes(), 1); assert.deepEqual(f.pageErrors, []); await f.page.close();
+    assert.equal(f.requests.length, 1); assert.equal(await f.available().isDisabled(), true); assert.equal(await f.dialog.getByLabel('Seleccionar producto Remera S', { exact: true }).isDisabled(), true); assert.equal(await f.dialog.getByRole('button', { name: 'No, cancelar', exact: true }).isDisabled(), true);
+    f.release(); await f.region().waitFor(); f.setMode('hold-confirm'); await f.confirm().evaluate(button => { button.click(); button.click(); }); await f.waitHold();
+    assert.equal(f.confirms.length, 1); assert.equal(await f.confirm().isDisabled(), true); assert.equal(await f.available().isDisabled(), true); f.release(); await f.dialog.waitFor({ state: 'hidden' }); assert.equal(f.writes(), 1); assert.deepEqual(f.pageErrors, []); await f.page.close();
   }
   console.log('Stock SET adjustment UI passed: explicit IDs, absolute/unchanged balances, read-only per-SKU review, consent, draft reset, stable preview and confirmation retries after hydration/refresh failure, explicit stale re-review, forged planner rejection, and synchronous double-send locks.');
 } finally { await browser.close(); }

@@ -10,6 +10,7 @@ import { ThemeProvider } from './hooks/useTheme';
 import { StockyLogo } from './components/brand/StockyLogo';
 import { WaveformMark } from './components/brand/WaveformMark';
 import { OperationDetailPage } from './components/dashboard/OperationDetailPage';
+import { ConfirmationProvider } from './components/ui/ConfirmationProvider';
 
 function Shell() {
   return (
@@ -24,7 +25,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <AppGate />
+        <ConfirmationProvider><AppGate /></ConfirmationProvider>
       </AuthProvider>
     </ThemeProvider>
   );
