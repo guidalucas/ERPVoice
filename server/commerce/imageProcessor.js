@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import { fail } from './errors.js';
 
 export const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+export const MAX_IMAGE_PIXELS = 32_000_000;
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 /** Decode the actual bytes, orient pixels and re-encode without source metadata. */
@@ -14,7 +15,7 @@ export async function processCommercialImage(bytes) {
   const webp = bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
   if (!jpeg && !png && !webp) fail('IMAGE_FORMAT_INVALID', 'Usá una foto JPG, PNG o WebP.', 415);
   try {
-    const options = { limitInputPixels: 24_000_000, failOn: 'warning', animated: false };
+    const options = { limitInputPixels: MAX_IMAGE_PIXELS, failOn: 'warning', animated: false };
     const metadata = await sharp(bytes, options).metadata();
     if (!['jpeg', 'png', 'webp'].includes(metadata.format) || (metadata.pages ?? 1) !== 1) fail('IMAGE_FORMAT_INVALID', 'Usá una foto JPG, PNG o WebP sin animación.', 415);
     const { data: master, info } = await sharp(bytes, options).rotate().resize({ width: 2400, height: 2400, fit: 'inside', withoutEnlargement: true })
@@ -23,6 +24,9 @@ export async function processCommercialImage(bytes) {
     return { master, thumbnail, width: info.width, height: info.height, mimeType: 'image/jpeg', masterSha256: sha256(master) };
   } catch (error) {
     if (error?.code?.startsWith('IMAGE_')) throw error;
-    fail('IMAGE_DECODE_FAILED', 'No pude leer la foto. Probá con otra imagen JPG, PNG o WebP de hasta 24 megapíxeles.', 422);
+    // Keep Sharp's native limit so oversized images are rejected before decoding.
+    if (error?.message === 'Input image exceeds pixel limit')
+      fail('IMAGE_RESOLUTION_EXCEEDED', `La foto supera el máximo de ${MAX_IMAGE_PIXELS / 1_000_000} megapíxeles. Reducí sus dimensiones y volvé a intentar.`, 422);
+    fail('IMAGE_DECODE_FAILED', 'No pude leer la foto. Probá con otra imagen JPG, PNG o WebP.', 422);
   }
 }

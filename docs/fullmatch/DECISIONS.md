@@ -58,3 +58,7 @@ Content library reuses existing receipts instead of adding a second snapshot sto
 Stage 4 adds a local per-catalog inquiry cart and a bounded read-only live quote. It accepts only public product slug, size and quantity; server derives money and eligibility from current scoped Stocky data. Fingerprint comparison requires reviewing changed data before the final explicit WhatsApp handoff. No customer database, order/payment record, inventory movement, commercial receipt or reservation is created by this flow.
 
 Keep the current catalog/inquiry architecture until country, currency, payment/delivery operations, maintenance budget and a tested synchronization contract justify a provider/checkout integration. The official Empretienda, Shopify and WooCommerce capabilities and the uncertainty around Empretienda synchronization were evaluated in STAGE_4_CONTRACT.md. No commercial account/service was contracted or connected.
+
+## D015 — photo input resolution margin
+
+Raise the input pixel limit from 24 to 32 megapixels so 5712 × 4284 phone photos (24.47 MP) can be uploaded without manual resizing. Product photos and brand assets share the same native Sharp limit; files remain capped at 12 MiB. Product masters still fit within 2400 × 2400 and thumbnails within 480 × 480, with orientation applied and source metadata removed. Resolution-limit failures now use IMAGE_RESOLUTION_EXCEEDED with guidance to reduce dimensions; unreadable files retain IMAGE_DECODE_FAILED.

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { record, text, uuid } from './validation.js';
 import { fail } from './errors.js';
 import { requireCommerceAccess } from './operationRepository.js';
-import { processCommercialImage } from './imageProcessor.js';
+import { MAX_IMAGE_PIXELS, processCommercialImage } from './imageProcessor.js';
 import { defaultAppearance, defaultHeroLayout } from '../../src/shared/catalogAppearance.js';
 export { defaultAppearance, appearanceOf, textOnColor } from '../../src/shared/catalogAppearance.js';
 
@@ -62,7 +62,7 @@ export function createBrandAssetService(runtime) {
       if (!['logo', 'cover'].includes(kind)) fail('INVALID_COMMAND', 'Tipo de imagen inválido.', 400);
       // Validate signatures, dimensions and animation before the second decode.
       await processCommercialImage(bytes);
-      const pipeline = sharp(bytes, { limitInputPixels: 24_000_000 }).rotate().resize({ width: kind === 'logo' ? 400 : 1600,
+      const pipeline = sharp(bytes, { limitInputPixels: MAX_IMAGE_PIXELS }).rotate().resize({ width: kind === 'logo' ? 400 : 1600,
         height: kind === 'logo' ? 400 : 1000, fit: 'inside', withoutEnlargement: true });
       const content = kind === 'logo' ? await pipeline.png().toBuffer() : await pipeline.flatten({ background: '#ffffff' }).jpeg({ quality: 82 }).toBuffer();
       if (content.length > 1048576) fail('IMAGE_SIZE_INVALID', 'La imagen procesada supera 1 MB. Probá una imagen más simple.', 413);

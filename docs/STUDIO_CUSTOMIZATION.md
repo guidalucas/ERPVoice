@@ -8,7 +8,7 @@ La configuración permite cargar logo y portada, elegir fondo y acento, y editar
 
 El catálogo usa toda esa identidad. Las nuevas historias usan nombre, logo, colores y frase de marca. Cambiar esos datos invalida una historia preparada con otra identidad y exige generarla otra vez. Los archivos ya descargados son imágenes estáticas.
 
-Las imágenes admiten JPG, PNG y WebP de hasta 12 MB y 24 megapíxeles. El servidor valida los bytes, aplica orientación, elimina metadatos y reduce el logo a 400 × 400 como máximo, conservando transparencia, y la portada a 1600 × 1000. Cada archivo procesado tiene un límite de 1 MB. Se guardan como archivos inmutables en PostgreSQL (`commerce_brand_assets`) separados del perfil; los endpoints comprueban negocio y permisos. La vista pública solo expone las imágenes actualmente seleccionadas de un catálogo habilitado. Quitar una imagen la desvincula, conservando el archivo para historias y recibos anteriores.
+Las imágenes admiten JPG, PNG y WebP de hasta 12 MB y 32 megapíxeles. El servidor valida los bytes, aplica orientación, elimina metadatos y reduce el logo a 400 × 400 como máximo, conservando transparencia, y la portada a 1600 × 1000. Cada archivo procesado tiene un límite de 1 MB. Se guardan como archivos inmutables en PostgreSQL (`commerce_brand_assets`) separados del perfil; los endpoints comprueban negocio y permisos. La vista pública solo expone las imágenes actualmente seleccionadas de un catálogo habilitado. Quitar una imagen la desvincula, conservando el archivo para historias y recibos anteriores.
 
 ## De dónde salen las plantillas
 
