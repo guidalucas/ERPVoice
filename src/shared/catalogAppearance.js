@@ -8,7 +8,7 @@ export const catalogDesigns = Object.freeze([
 ]);
 export const defaultAppearance = Object.freeze({ logoId: null, coverId: null, primaryColor: '#001A4D', accentColor: '#FF6A00',
   tagline: 'Productos con identidad', heroTitle: 'Conocé nuestros productos',
-  heroDescription: 'Explorá el catálogo y consultanos por WhatsApp.', collectionTitle: 'Nuestro catálogo' });
+  heroDescription: 'Explorá el catálogo y armá tu pedido.', collectionTitle: 'Nuestro catálogo' });
 export const appearanceOf = profile => ({ ...defaultAppearance, ...profile?.appearance });
 export const textOnColor = hex => {
   const rgb = [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16) / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);

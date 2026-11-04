@@ -207,7 +207,7 @@ function Fields({ fields, setFields }: { fields: CommercialFields; setFields: (v
   const change = (key: keyof CommercialFields, value: string) => setFields({ ...fields, [key]: value });
   return <div className="field-grid">
     <Field label="Título comercial"><input required maxLength={120} value={fields.title} onChange={event => change('title', event.target.value)} placeholder="Nombre del producto"/></Field>
-    <Field label="Descripción · opcional"><textarea aria-label="Descripción · opcional" maxLength={4000} value={fields.description} onChange={event => change('description', event.target.value)} rows={4}/><small className="field-help">Contá qué es el producto y qué lo distingue. Usá solo características y condiciones reales.</small>{fields.description.trim().length > 0 && fields.description.trim().length < 12 && <small className="field-hint">Revisá si esta descripción le aporta información a quien consulta.</small>}</Field>
+    <Field label="Descripción · opcional"><textarea aria-label="Descripción · opcional" maxLength={4000} value={fields.description} onChange={event => change('description', event.target.value)} rows={4}/><small className="field-help">Contá qué es el producto y qué lo distingue. Usá solo características y condiciones reales.</small>{fields.description.trim().length > 0 && fields.description.trim().length < 12 && <small className="field-hint">Revisá si esta descripción le aporta información a quien compra.</small>}</Field>
   </div>;
 }
 

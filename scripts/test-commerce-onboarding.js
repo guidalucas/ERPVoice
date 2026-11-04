@@ -45,7 +45,7 @@ try {
     await page.goto(fixture.url); await page.getByRole('heading', { name: 'Configurá tu negocio' }).waitFor();
     await page.getByLabel('Nombre comercial', { exact: true }).fill('Casacas del Sur');
     await page.getByLabel('Rubro', { exact: true }).selectOption('indumentaria');
-    await page.getByLabel('WhatsApp para consultas (opcional)', { exact: true }).fill('59899000091');
+    await page.getByLabel('WhatsApp para pedidos (opcional)', { exact: true }).fill('59899000091');
     await page.getByLabel('Moneda de tus precios', { exact: true }).selectOption('ARS');
     await page.getByRole('checkbox').check(); await page.getByRole('button', { name: 'Activar mi espacio comercial' }).click();
     await page.getByRole('button', { name: 'Reintentar activación guardada' }).waitFor();

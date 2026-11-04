@@ -24,12 +24,17 @@ export function publicProductProjection(product, shop) {
     teamKind: product.teamKind, season: product.season, kitKey: product.kitKey, versionKey: product.versionKey, sleeveKey: product.sleeveKey,
     priceRange: product.priceRange, available: product.availability === 'in_stock',
     category: [...new Set(product.variants.filter(item => item.active).map(item => item.productType).filter(Boolean))].join(' · '),
-    variantLabel: product.variants.filter(item => item.active).every(item => item.size?.trim()) && product.teamKey ? 'Talle' : 'Presentación',
+    variantLabel: publicVariantTitle(product),
     sizes: product.variants.filter(item => item.active).map(item => ({ size: item.label, unit: item.unit, specifications: item.specifications, available: item.stockAvailable > 0, price: item.price })),
     photos: product.images.filter(image => image.status === 'ready').map(image => ({ id: image.id, alt: image.altText,
       url: photoUrl(shop, product.slug, image.id), thumbnailUrl: photoUrl(shop, product.slug, image.id, true), cover: image.id === product.coverImageId })),
     path: `/c/${shop}/p/${product.slug}` };
 }
+
+const publicVariantTitle = product => {
+  const active = product.variants.filter(item => item.active);
+  return active.length && active.every(item => item.size?.trim()) ? 'Talle' : 'Presentación';
+};
 
 export function createCatalogService(runtime, storage = createMediaStorage()) {
   let initialized;
@@ -119,12 +124,12 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
       const data = record(input, ['items', 'previousFingerprint']);
       const items = denseArray(data.items, 20, 'inquiry items').map(raw => {
         const item = record(raw, ['productSlug', 'size', 'quantity']);
-        const quantity = integer(item.quantity, 1); if (quantity > 10) fail('INQUIRY_QUANTITY_INVALID', 'Hasta diez unidades por presentación en una consulta.', 400);
+        const quantity = integer(item.quantity, 1); if (quantity > 10) fail('INQUIRY_QUANTITY_INVALID', 'Hasta diez unidades por variante en un pedido.', 400);
         return { productSlug: slug(item.productSlug), size: text(item.size, 200, 'size'), quantity };
       });
       if (!items.length || new Set(items.map(item => JSON.stringify([item.productSlug, item.size.toLocaleLowerCase('es')]))).size !== items.length) fail('INQUIRY_ITEMS_INVALID', 'Elegí productos sin repetir la misma presentación.', 400);
       const previous = data.previousFingerprint == null ? null : text(data.previousFingerprint, 64, 'previous fingerprint');
-      if (previous && !/^[a-f0-9]{64}$/.test(previous)) fail('INVALID_COMMAND', 'Huella de consulta inválida.', 400);
+      if (previous && !/^[a-f0-9]{64}$/.test(previous)) fail('INVALID_COMMAND', 'Huella de pedido inválida.', 400);
       return publicRead(shop, async (client, catalog) => {
         const lines = [];
         for (const item of items) {
@@ -132,9 +137,11 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
           try { product = await publicProduct(client, catalog, item.productSlug); }
           catch (error) { if (error.status !== 404) throw error; }
           const variant = product?.variants.find(variant => variant.active && variantLabel(variant).normalize('NFC').trim().toLocaleLowerCase('es') === item.size.toLocaleLowerCase('es'));
-          if (!product || !variant) { lines.push({ ...item, title: 'Producto o presentación no disponible', available: false, unitPrice: null, lineTotal: null, path: null }); continue; }
+          if (!product || !variant) { lines.push({ ...item, title: 'Producto o variante no disponible', variantLabel: 'Variante', photo: null, available: false, unitPrice: null, lineTotal: null, path: null }); continue; }
+          const image = product.images.find(image => image.status === 'ready' && image.id === product.coverImageId) ?? product.images.find(image => image.status === 'ready');
           const total = (BigInt(variant.price.amountMinor) * BigInt(item.quantity)).toString();
-          lines.push({ ...item, size: variantLabel(variant), title: product.title, available: variant.stockAvailable >= item.quantity,
+          lines.push({ ...item, size: variantLabel(variant), title: product.title, variantLabel: publicVariantTitle(product),
+            photo: image ? { thumbnailUrl: photoUrl(shop, product.slug, image.id, true), alt: image.altText || product.title } : null, available: variant.stockAvailable >= item.quantity,
             unitPrice: variant.price, lineTotal: { ...variant.price, amountMinor: total }, path: `/c/${shop}/p/${product.slug}` });
         }
         const currencies = new Set(lines.filter(line => line.unitPrice).map(line => line.unitPrice.currency));
@@ -142,7 +149,7 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
         const total = canContact ? { ...lines[0].unitPrice, amountMinor: lines.reduce((sum, line) => sum + BigInt(line.lineTotal.amountMinor), 0n).toString() } : null;
         const brand = publicBrand(catalog), fingerprint = operationRequestDigest({ catalog: brand, lines, total });
         const format = amount => formatMoneyAmount(amount.amountMinor, amount.currency, amount.fractionDigits);
-        const contactText = canContact ? `Hola, quiero consultar estos productos de ${brand.brandName}:\n${lines.map(line => `• ${line.quantity} × ${line.title.slice(0, 80)} · ${line.size.slice(0, 80)} · ${format(line.unitPrice)} c/u`).join('\n')}\nTotal orientativo: ${format(total)}.\nA confirmar con el comercio. Esta consulta no reserva stock ni realiza un pago.` : null;
+        const contactText = canContact ? `Hola, quiero hacer este pedido en ${brand.brandName}:\n${lines.map(line => `• ${line.quantity} × ${line.title.slice(0, 80)} · ${line.variantLabel}: ${line.size.slice(0, 80)} · ${format(line.unitPrice)} c/u`).join('\n')}\nTotal de productos: ${format(total)}.\nQuedo a la espera de la confirmación de disponibilidad, envío y pago. Este pedido no reserva stock ni realiza un pago.` : null;
         return { catalog: brand, lines, total, canContact, fingerprint, changed: Boolean(previous && previous !== fingerprint),
           quotedAt: new Date().toISOString(), contactUrl: contactText ? `https://wa.me/${brand.salesWhatsapp}?text=${encodeURIComponent(contactText)}` : null };
       });

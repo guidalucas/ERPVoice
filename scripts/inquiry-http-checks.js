@@ -27,7 +27,7 @@ export async function runInquiryHttpChecks({ sql, check, req, request, product, 
     for (const quantity of [0, -1, 1.5, 11, '2']) assert.equal((await quote({ items: [{ ...item, quantity }] })).status, 400);
     assert.equal((await quote({ items: [] })).status, 400); assert.equal((await quote({ items: Array.from({ length: 21 }, () => item) })).status, 400);
     assert.equal((await quote({ items: [item], previousFingerprint: 'not-a-hash' })).status, 400);
-    const unknown = await quote({ items: [{ ...item, productSlug: 'private-or-other-business' }] }); assert.equal(unknown.status, 200); assert.equal(unknown.json.canContact, false); assert.equal(unknown.json.lines[0].title, 'Producto o presentación no disponible');
+    const unknown = await quote({ items: [{ ...item, productSlug: 'private-or-other-business' }] }); assert.equal(unknown.status, 200); assert.equal(unknown.json.canContact, false); assert.equal(unknown.json.lines[0].title, 'Producto o variante no disponible');
   });
   await run('current prices and stock override the old summary before any contact handoff', async () => {
     await sql.query('UPDATE products SET price=40000 WHERE owner_phone=$1 AND id=$2', [owner, sku.id]);
@@ -43,7 +43,7 @@ export async function runInquiryHttpChecks({ sql, check, req, request, product, 
     const hidden = await req(`/products/${product.id}/publication`, { method: 'PUT', body }); assert.equal(hidden.status, 200, hidden.text);
     assert.equal((await quote({ items: [item] })).json.canContact, false);
     const restored = await req(`/products/${product.id}/publication`, { method: 'PUT', body: { ...body, operationId: randomUUID(), expectedRevision: hidden.json.result.revision, status: 'published' } }); assert.equal(restored.status, 200, restored.text);
-    const page = await request(`/c/${shop}/consulta`, { method: 'GET', auth: false }); assert.equal(page.status, 200); assert.ok(page.text.includes('Mi consulta')); assert.ok(page.text.includes('no crea un pedido ni reserva unidades'));
+    const page = await request(`/c/${shop}/consulta`, { method: 'GET', auth: false }); assert.equal(page.status, 200); assert.ok(page.text.includes('Mi pedido')); assert.ok(page.text.includes('se abre WhatsApp con el detalle de tu pedido listo para enviar'));
     assert.ok(page.headers['content-security-policy'].includes("connect-src 'self'")); assert.ok(!page.text.includes('/api/state'));
     assert.equal((await request('/catalog-assets/cart.js', { method: 'GET', auth: false })).status, 200);
   });

@@ -37,17 +37,25 @@
     document.getElementById('inquiry-total').textContent = money(result?.total);
     document.getElementById('inquiry-checked').textContent = result ? `Datos revisados a las ${new Date(result.quotedAt).toLocaleTimeString('es-UY')}.` : '';
     for (const [index, line] of (result?.lines ?? []).entries()) {
-      const row = node('article', undefined, `inquiry-line${line.available ? '' : ' unavailable'}`), detail = node('div', undefined, 'inquiry-line-detail');
+      const row = node('article', undefined, `inquiry-line${line.available ? '' : ' unavailable'}`), product = node('div', undefined, 'inquiry-line-product'), detail = node('div', undefined, 'inquiry-line-detail');
+      const variant = line.variantLabel || 'Presentación';
+      if (line.photo) {
+        const photo = node(line.path ? 'a' : 'div', undefined, 'inquiry-line-photo'), img = node('img');
+        if (line.path) photo.href = line.path;
+        img.src = line.photo.thumbnailUrl; img.alt = line.photo.alt || line.title; img.width = 88; img.height = 104; img.loading = 'lazy';
+        photo.append(img); product.append(photo);
+      }
       const title = node(line.path ? 'a' : 'strong', line.title); if (line.path) title.href = line.path;
-      detail.append(title, node('small', `Presentación ${line.size} · ${money(line.unitPrice)} c/u`));
-      if (!line.available) detail.append(node('p', 'Revisá la presentación o la cantidad disponible.', 'line-warning'));
-      const quantityLabel = node('label', 'Cantidad'), quantity = node('input'); quantity.type = 'number'; quantity.min = '1'; quantity.max = '10'; quantity.step = '1'; quantity.value = String(line.quantity); quantity.setAttribute('aria-label', `Cantidad ${line.title} presentación ${line.size}`);
+      detail.append(title, node('small', `${variant} ${line.size} · ${money(line.unitPrice)} c/u`));
+      if (!line.available) detail.append(node('p', `Revisá ${variant === 'Talle' ? 'el talle' : 'la presentación'} o la cantidad disponible.`, 'line-warning'));
+      product.append(detail);
+      const quantityLabel = node('label', 'Cantidad'), quantity = node('input'); quantity.type = 'number'; quantity.min = '1'; quantity.max = '10'; quantity.step = '1'; quantity.value = String(line.quantity); quantity.setAttribute('aria-label', `Cantidad ${line.title} ${variant.toLocaleLowerCase('es')} ${line.size}`);
       quantity.addEventListener('change', () => {
-        const value = Number(quantity.value); if (!Number.isSafeInteger(value) || value < 1 || value > 10) { quantity.value = String(cart[index].quantity); message('Elegí entre una y diez unidades por presentación.'); return; }
+        const value = Number(quantity.value); if (!Number.isSafeInteger(value) || value < 1 || value > 10) { quantity.value = String(cart[index].quantity); message('Elegí entre una y diez unidades por variante.'); return; }
         try { const next = cart.map((item, position) => position === index ? { ...item, quantity: value } : item); store(next); void refresh(false); } catch { message('No pude conservar el cambio en este navegador.'); }
       }); quantityLabel.append(quantity);
       const remove = node('button', 'Retirar'); remove.type = 'button'; remove.addEventListener('click', () => { try { store(cart.filter((_item, position) => position !== index)); void refresh(false); } catch { message('No pude conservar el cambio.'); } });
-      row.append(detail, quantityLabel, node('strong', money(line.lineTotal), 'line-total'), remove); target.append(row);
+      row.append(product, quantityLabel, node('strong', money(line.lineTotal), 'line-total'), remove); target.append(row);
     }
     controls();
   }
@@ -58,15 +66,15 @@
     try {
       const response = await fetch(`/api/catalog/v1/${shop}/inquiry-preview`, { method: 'POST', credentials: 'omit', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: cart, previousFingerprint: previous }), signal: AbortSignal.timeout(15_000) });
-      const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'No pude revisar la consulta.');
+      const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'No pude revisar el pedido.');
       if (attempt !== generation) return null; quote = result; render(result);
-      message(result.changed ? 'Cambiaron los datos de tu consulta. Revisá los importes actuales y volvé a confirmar.' : !result.canContact ? 'Hay productos, presentaciones o cantidades que necesitan revisión.' : 'Tu consulta está lista para revisar con el comercio.');
+      message(result.changed ? 'Cambiaron los datos de tu pedido. Revisá los importes actuales y volvé a confirmar.' : !result.canContact ? 'Hay productos, variantes o cantidades que necesitan revisión.' : 'Tu pedido está listo para finalizar por WhatsApp.');
       return result;
-    } catch (error) { if (attempt === generation) { quote = null; message(error instanceof Error ? error.message : 'No pude revisar la consulta.'); } return null; }
+    } catch (error) { if (attempt === generation) { quote = null; message(error instanceof Error ? error.message : 'No pude revisar el pedido.'); } return null; }
     finally { if (attempt === generation) { busy = false; controls(); } }
   }
   updateCount();
-  // A single native variant control drives price, direct contact and the inquiry.
+  // A single native variant control drives price, direct contact and the order.
   for (const form of document.querySelectorAll('[data-add-inquiry]')) {
     const select = form.elements.namedItem('size'), quantity = form.elements.namedItem('quantity');
     const price = document.querySelector('.public-price'), contact = document.querySelector('[data-direct-inquiry]');
@@ -76,7 +84,7 @@
       if (price) price.textContent = selected?.dataset.price || price.dataset.defaultPrice;
       if (contact && originalContact) {
         const url = new URL(originalContact);
-        if (select.value) url.searchParams.set('text', `${url.searchParams.get('text')} Presentación: ${select.value}. Cantidad: ${quantity.value}.`);
+        if (select.value) url.searchParams.set('text', `${url.searchParams.get('text')} ${form.dataset.variantLabel || 'Presentación'}: ${select.value}. Cantidad: ${quantity.value}.`);
         contact.href = url.href;
       }
       const status = form.querySelector('[data-inquiry-status]'); if (status) status.textContent = '';
@@ -85,14 +93,21 @@
   }
   const mainImage = document.querySelector('[data-gallery-main]'), zoom = document.querySelector('[data-gallery-zoom]');
   const thumbnails = [...document.querySelectorAll('[data-gallery-image]')], dialog = document.querySelector('.photo-dialog');
+  let currentImage = 0;
   function showImage(link) {
     if (!mainImage) return;
     mainImage.src = link.href; mainImage.alt = link.dataset.imageAlt;
     if (zoom) zoom.href = link.href;
     if (dialog) { dialog.querySelector('img').src = link.href; dialog.querySelector('img').alt = mainImage.alt; }
     for (const item of thumbnails) { if (item === link) item.setAttribute('aria-current', 'true'); else item.removeAttribute('aria-current'); }
-    const status = document.querySelector('[data-gallery-status]'); if (status) status.textContent = `Foto ${thumbnails.indexOf(link) + 1} de ${thumbnails.length}`;
+    currentImage = thumbnails.indexOf(link);
+    for (const status of document.querySelectorAll('[data-gallery-status]')) status.textContent = `Foto ${currentImage + 1} de ${thumbnails.length}`;
   }
+  function stepImage(step) { if (thumbnails.length > 1) showImage(thumbnails[(currentImage + step + thumbnails.length) % thumbnails.length]); }
+  for (const button of document.querySelectorAll('[data-gallery-step]')) button.addEventListener('click', () => stepImage(Number(button.dataset.galleryStep)));
+  for (const surface of [zoom, dialog].filter(Boolean)) surface.addEventListener('keydown', event => {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') { event.preventDefault(); stepImage(event.key === 'ArrowRight' ? 1 : -1); }
+  });
   thumbnails.forEach((link, index) => {
     link.addEventListener('click', event => { event.preventDefault(); showImage(link); });
     link.addEventListener('keydown', event => {
@@ -103,19 +118,19 @@
   if (zoom && typeof dialog?.showModal === 'function') zoom.addEventListener('click', event => { event.preventDefault(); dialog.showModal(); });
   addEventListener('storage', event => { if (event.key === key) { cart = read(); quote = null; updateCount(); if (isInquiry) void refresh(false); } });
   for (const form of document.querySelectorAll('[data-add-inquiry]')) form.addEventListener('submit', event => {
-    event.preventDefault(); const status = form.querySelector('[data-inquiry-status]');
+    event.preventDefault(); const status = form.querySelector('[data-inquiry-status]'), variant = (form.dataset.variantLabel || 'Presentación').toLocaleLowerCase('es');
     try {
       const productSlug = form.dataset.product, size = form.elements.namedItem('size').value, quantity = Number(form.elements.namedItem('quantity').value);
-      if (!size || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10) throw new Error('Elegí una presentación y una cantidad válida.');
+      if (!size || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10) throw new Error(`Elegí ${variant === 'talle' ? 'un talle' : 'una presentación'} y una cantidad válida.`);
       const next = read(), existing = next.find(item => item.productSlug === productSlug && item.size === size);
-      if (existing) { if (existing.quantity + quantity > 10) throw new Error('Podés consultar hasta diez unidades por presentación.'); existing.quantity += quantity; }
-      else { if (next.length >= 20) throw new Error('Podés incluir hasta veinte presentaciones en una consulta.'); next.push({ productSlug, size, quantity }); }
-      store(next); status.textContent = 'Agregada a tu consulta. Podés seguir eligiendo o revisar el resumen.';
-    } catch (error) { status.textContent = error instanceof Error ? error.message : 'No pude conservar la consulta en este navegador.'; }
+      if (existing) { if (existing.quantity + quantity > 10) throw new Error('Podés pedir hasta diez unidades por variante.'); existing.quantity += quantity; }
+      else { if (next.length >= 20) throw new Error('Podés incluir hasta veinte variantes en un pedido.'); next.push({ productSlug, size, quantity }); }
+      store(next); status.textContent = 'Producto agregado a tu pedido. Podés seguir eligiendo o revisar el resumen.';
+    } catch (error) { status.textContent = error instanceof Error ? error.message : 'No pude conservar el pedido en este navegador.'; }
   });
   if (isInquiry) {
     document.getElementById('inquiry-refresh').addEventListener('click', () => void refresh(false));
-    document.getElementById('inquiry-clear').addEventListener('click', () => { if (!confirm('¿Vaciar tu consulta en este dispositivo?')) return; try { store([]); void refresh(false); } catch { message('No pude vaciar la consulta.'); } });
+    document.getElementById('inquiry-clear').addEventListener('click', () => { if (!confirm('¿Vaciar tu pedido en este dispositivo?')) return; try { store([]); void refresh(false); } catch { message('No pude vaciar el pedido.'); } });
     document.getElementById('inquiry-contact').addEventListener('click', async () => {
       const latest = await refresh(true);
       if (!latest?.canContact || latest.changed || !latest.contactUrl) return;

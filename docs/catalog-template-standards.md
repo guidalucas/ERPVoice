@@ -19,7 +19,7 @@ Revisión de referencias: 21 de octubre de 2026. Se toman patrones de composici�
 - Las vistas previas usan el mismo HTML y CSS que la tienda pública. Los productos de ejemplo están identificados como tales.
 - El banner admite textos vacíos, modo solo imagen y posiciones manuales. Las posiciones manuales prevalecen sobre la portada estándar.
 - El recuadro detrás del texto se puede desactivar. Con una portada cargada, los textos se muestran directamente sobre la imagen y se puede elegir texto claro u oscuro. El botón conserva su color de acento.
-- Cada tienda conserva su logo, colores, fotos, textos, precios, disponibilidad y enlaces de consulta.
+- Cada tienda conserva su logo, colores, fotos, textos, precios, disponibilidad y enlaces de pedido.
 - Las categorías visuales usan fotografías de productos de la página cuando están disponibles; si no, muestran la inicial de la categoría.
 - No se generan promociones, valoraciones, ventajas comerciales ni condiciones de envío ficticias.
 - En celulares, los filtros laterales de Megatienda pasan arriba del catálogo; Boutique muestra una ficha horizontal por fila. Esencial y Editorial muestran dos columnas. Los textos con posiciones manuales vuelven a un flujo vertical legible.

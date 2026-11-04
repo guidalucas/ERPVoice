@@ -26,7 +26,7 @@ try {
   await db.saveBusinessProfile(owner, { businessName: 'FullMatch · DEMO', businessCategory: 'indumentaria' });
   await sql.query("INSERT INTO commerce_profiles(owner_phone,id,brand_name,enabled,created_by,sales_whatsapp) VALUES($1,$2,'FULLMATCH CASACAS · DEMO',true,$1,'59899000088')", [owner, randomUUID()]);
   await sql.query("INSERT INTO inventory_money_policies(owner_phone,currency,storage_unit,fraction_digits,confirmed_by,confirmed_at) VALUES($1,'ARS','major_integer',2,'fixture',NOW())", [owner]);
-  await sql.query("UPDATE commerce_profiles SET appearance=$2::jsonb WHERE owner_phone=$1", [owner, JSON.stringify({ tagline: 'Tu colección, con identidad', heroTitle: 'Encontrá tu próxima camiseta', heroDescription: 'Explorá nuestra colección y consultanos por WhatsApp.', collectionTitle: 'La colección' })]);
+  await sql.query("UPDATE commerce_profiles SET appearance=$2::jsonb WHERE owner_phone=$1", [owner, JSON.stringify({ tagline: 'Tu colección, con identidad', heroTitle: 'Encontrá tu próxima camiseta', heroDescription: 'Explorá nuestra colección y hacé tu pedido por WhatsApp.', collectionTitle: 'La colección' })]);
   const catalog = createCatalogService(db.stockyDatabaseRuntime);
   await catalog.configure(context, { operationId: randomUUID(), expectedRevision: 0, slug: 'fullmatch-demo', publicEnabled: true });
   const products = createCommerceProductService(db.stockyDatabaseRuntime), media = createCommerceMediaService(db.stockyDatabaseRuntime), created = [];

@@ -76,11 +76,20 @@ test('public pages render generic products without photos or football fields, es
   const html = renderCatalogList({ catalog, items: [product], facets: { categories: ['Herramientas'], variants: ['Producto'] } }, {}, '');
   assert.match(html, /data-preset="technical"/); assert.match(html, /Taladro &lt;seguro&gt;/); assert.match(html, /Sin fotografía/);
   assert.doesNotMatch(html, /Todos los equipos|Todas las versiones|undefined/);
-  const page = renderCatalogProduct({ catalog, product }, ''); assert.match(page, /Presentación para tu consulta/); assert.doesNotMatch(page, /Talles|VERSIÓN HINCHA|undefined/);
-  assert.match(page, /Armá tu consulta/);
+  const page = renderCatalogProduct({ catalog, product }, ''); assert.match(page, /Presentación para tu pedido/); assert.doesNotMatch(page, /Talles|VERSIÓN HINCHA|undefined/);
+  assert.match(page, /Armá tu pedido/);
   assert.doesNotMatch(page, /class="public-gallery"|class="main-photo"|Sin fotografía disponible|Consultanos para conocer más detalles/);
   const empty = renderCatalogList({ catalog, items: [] }, {}, '');
   assert.match(empty, /Todavía no hay productos publicados/); assert.doesNotMatch(empty, /No encontramos productos para esta búsqueda/);
   const noMatches = renderCatalogList({ catalog, items: [] }, { q: 'inexistente' }, '');
   assert.match(noMatches, /No encontramos productos para esta búsqueda/); assert.match(noMatches, /Limpiar filtros/);
+});
+
+test('clothing sizes use Talle without requiring football identity', () => {
+  const detail = { title: 'Remera lisa', slug: 'remera-lisa', images: [], ...buildCommercialReadiness({ title: 'Remera lisa', status: 'ready' }, [sku({ id: 'small', size: 'S', productType: 'Indumentaria' }), sku({ id: 'medium', size: 'M', productType: 'Indumentaria' })], [], policy) };
+  const product = publicProductProjection(detail, 'ropa');
+  assert.equal(product.variantLabel, 'Talle');
+  const html = renderCatalogProduct({ catalog: { slug: 'ropa', brandName: 'Ropa', path: '/c/ropa' }, product }, '');
+  assert.match(html, /Talle para tu pedido/); assert.match(html, /Elegir talle/);
+  assert.doesNotMatch(html, /Elegir presentación|Mi consulta/);
 });

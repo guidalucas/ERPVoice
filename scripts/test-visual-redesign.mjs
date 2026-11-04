@@ -137,9 +137,9 @@ try {
   assert.equal(await publicPage.locator('dialog[open]').count(), 1); await publicPage.keyboard.press('Escape');
   assert.equal(await publicPage.locator('dialog[open]').count(), 0);
   const select = publicPage.locator('[data-add-inquiry] select'); assert.equal(await select.count(), 1); assert.equal(await publicPage.locator('.catalog-sizes.large').count(), 0);
-  await select.selectOption('L'); await publicPage.getByLabel('Cantidad para tu consulta').fill('2');
-  assert.ok(decodeURIComponent(await publicPage.locator('[data-direct-inquiry]').getAttribute('href')).replace(/\+/g, ' ').includes('Presentación: L. Cantidad: 2.'));
-  await publicPage.getByRole('button', { name: 'Agregar a mi consulta ＋', exact: true }).click();
+  await select.selectOption('L'); await publicPage.getByLabel('Cantidad para tu pedido').fill('2');
+  assert.ok(decodeURIComponent(await publicPage.locator('[data-direct-inquiry]').getAttribute('href')).replace(/\+/g, ' ').includes('Talle: L. Cantidad: 2.'));
+  await publicPage.getByRole('button', { name: 'Agregar a mi pedido ＋', exact: true }).click();
   assert.equal(await publicPage.locator('[data-cart-count]').innerText(), '2');
   await screenshot(publicPage, 'product-gallery-desktop');
   await publicPage.setViewportSize({ width: 390, height: 844 }); assert.equal((await geometry(publicPage, '.public-product-heading')).scrollWidth, 390);
