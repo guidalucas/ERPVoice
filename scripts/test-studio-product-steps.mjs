@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { chromium, expect } from 'playwright/test';
 import sharp from 'sharp';
+import { Client } from 'pg';
 import { startCommerceFixture } from './fullmatch/fixtureRuntime.js';
 
 const fixture = await startCommerceFixture();
@@ -157,9 +158,14 @@ try {
     await route.continue();
   });
   await photoInput.setInputFiles(photos.slice(0, 3));
-  await expect(page.getByText('Procesando foto 1 de 3…', { exact: true })).toBeVisible();
-  await expect(photoInput).toBeDisabled();await expect(button('Finalizar ficha')).toBeDisabled();
-  releaseUpload();
+  try {
+    await expect(page.getByText('Procesando foto 1 de 3…', { exact: true })).toBeVisible();
+    await expect(photoInput).toBeDisabled();await expect(button('Finalizar ficha')).toBeDisabled();
+    await expect(page.locator('.gallery-item')).toHaveCount(1);
+    await expect(page.locator('.gallery-photo').getByRole('status')).toHaveText('Procesando…');
+    await expect(page.getByText('Carga fallida', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Reintentar fotografía', { exact: true })).toHaveCount(0);
+  } finally { releaseUpload(); }
   await expect(page.getByText('3 fotos procesadas y guardadas.', { exact: true })).toBeVisible({ timeout: 30000 });
   await page.unroute(contentRoute);
   let gallery = await read(photoProductId);
@@ -190,8 +196,31 @@ try {
   gallery = await read(photoProductId);
   assert.equal(gallery.images.length, 5);assert.equal(gallery.images.filter(image => image.status === 'ready').length, 4);
   assert.equal(attempts, 2, 'A failed upload must stop the batch and preserve already saved photos');
+  // Reproduce a persisted failure from an earlier attempt (e.g. the old pixel limit).
+  const failedImage = gallery.images.find(image => image.status === 'pending');
+  assert.ok(failedImage);
+  const sql = new Client({ connectionString: fixture.connection });
+  await sql.connect();
+  try {
+    await sql.query("UPDATE commercial_product_images SET status='failed',error_code='IMAGE_DECODE_FAILED' WHERE owner_phone=$1 AND id=$2", [fixture.owner, failedImage.id]);
+  } finally { await sql.end(); }
+  await page.reload();await button('03 Fotografías').click();
+  const failedPhoto = page.locator('.gallery-item').filter({ hasText: 'Carga fallida' });
+  await expect(failedPhoto).toHaveCount(1);
+  let releaseRetry;
+  const heldRetry = new Promise(resolve => { releaseRetry = resolve; });
+  await page.route(contentRoute, async route => {
+    if (route.request().method() === 'PUT') await heldRetry;
+    await route.continue();
+  });
   await page.getByLabel('Reintentar fotografía', { exact: true }).setInputFiles(photos[4]);
+  try {
+    await expect(page.locator('.gallery-photo').getByRole('status')).toHaveText('Procesando…');
+    await expect(page.getByText('Carga fallida', { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Reintentar fotografía', { exact: true })).toHaveCount(0);
+  } finally { releaseRetry(); }
   await expect(page.getByText('Carga recuperada.', { exact: true })).toBeVisible({ timeout: 30000 });
+  await page.unroute(contentRoute);
   gallery = await read(photoProductId);assert.equal(gallery.images.length, 5);assert.ok(gallery.images.every(image => image.status === 'ready'));
   await photoInput.setInputFiles(photos.slice(5, 8));
   await expect(page.getByText('3 fotos procesadas y guardadas.', { exact: true })).toBeVisible({ timeout: 30000 });
