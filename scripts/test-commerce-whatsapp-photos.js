@@ -227,7 +227,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
   });
 });
 
-test('signed image webhooks reach the published product gallery through the running server', async t => {
+test('signed image webhooks reach the published gallery and album headers receive no reply', async t => {
   const secret = 'whatsapp-photo-integration-test-secret';
   const bytes = await sharp({ create: { width: 32, height: 40, channels: 3, background: 'blue' } }).png().toBuffer();
   const fixture = await startCommerceFixture({ configureApi: async ({ connection, directory }) => {
@@ -258,10 +258,10 @@ test('signed image webhooks reach the published product gallery through the runn
   const runtime = createDatabaseRuntime({ connectionString: fixture.connection });
   t.after(async () => { await runtime.close(); await fixture.stop(); });
   const product = fixture.products[0];
-  const send = async (id, caption) => {
+  const send = async message => {
     const body = JSON.stringify({ object: 'whatsapp_business_account', entry: [{ changes: [{ value: {
-      metadata: { phone_number_id: '456' }, messages: [{ type: 'image', from: fixture.owner, id,
-        timestamp: String(Math.floor(Date.now() / 1_000)), image: { id, caption } }],
+      metadata: { phone_number_id: '456' }, messages: [{ from: fixture.owner,
+        timestamp: String(Math.floor(Date.now() / 1_000)), ...message }],
     } }] }] });
     const signature = createHmac('sha256', secret).update(body).digest('hex');
     const response = await fetch(`${fixture.apiUrl}/api/meta-webhook`, { method: 'POST', body,
@@ -269,10 +269,15 @@ test('signed image webhooks reach the published product gallery through the runn
     assert.equal(response.status, 200);
     await response.text();
   };
-  await send('wamid-photo-1');
-  await send('wamid-photo-2');
-  await send('wamid-photo-3', 'la blaugrana del 25');
-  await send('wamid-photo-2');
+  const sendImage = (id, caption) => send({ id, type: 'image', image: { id, caption } });
+  const sendAlbumHeader = id => send({ id, type: 'unsupported', unsupported: { type: 'album' },
+    errors: [{ code: 131051, title: 'Message type unknown' }] });
+  await sendAlbumHeader('wamid-album-before-photos');
+  await sendImage('wamid-photo-1');
+  await sendAlbumHeader('wamid-album-during-photos');
+  await sendImage('wamid-photo-2');
+  await sendImage('wamid-photo-3', 'la blaugrana del 25');
+  await sendImage('wamid-photo-2');
 
   const expectedReply = `Agregué 3 fotos a ${product.title}.`;
   let delivered = [];
@@ -283,6 +288,9 @@ test('signed image webhooks reach the published product gallery through the runn
     await delay(100);
   }
   assert.deepEqual(delivered.map(row => row.reply_text), [expectedReply]);
+  const { rows: albumClaims } = await runtime.withClient(client => client.query(`SELECT c.status, e.id AS event_id
+    FROM meta_message_claims c LEFT JOIN meta_events e ON e.id=c.message_id WHERE c.message_id LIKE 'wamid-album-%'`));
+  assert.deepEqual(albumClaims, [{ status: 'completed', event_id: null }, { status: 'completed', event_id: null }]);
   const gallery = await fetch(`${fixture.apiUrl}/api/commerce/v1/products/${product.id}`, { headers: { Authorization: `Bearer ${fixture.token}` } });
   assert.equal(gallery.status, 200);
   assert.equal((await gallery.json()).images.filter(photo => photo.status === 'ready').length, 4);

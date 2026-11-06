@@ -1051,8 +1051,8 @@ const handleMetaWebhook = async (req, res) => {
   await processClaimedMetaBody(processingBody, { acknowledge: true });
 };
 
-const routeWhatsAppPhotos = async body => {
-  if (!whatsAppPhotos || body.object !== 'whatsapp_business_account') return body;
+const routeMetaAttachments = async body => {
+  if (body.object !== 'whatsapp_business_account') return body;
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
       const value = change.value;
@@ -1060,12 +1060,21 @@ const routeWhatsAppPhotos = async body => {
       const ordinary = [];
       for (const message of value.messages) {
         try {
+          // Meta sends album headers separately from their individual image messages.
+          if (message.type === 'unsupported' && message.unsupported?.type === 'album') {
+            await completeMetaMessageClaim(message.id);
+            continue;
+          }
+          if (!whatsAppPhotos) {
+            ordinary.push(message);
+            continue;
+          }
           const { tenantPhone, actorId, role } = await resolveBusinessAccess(message.from);
           const handled = await whatsAppPhotos.route({ businessId: tenantPhone, actorId, role }, message, value.metadata?.phone_number_id ?? null);
           if (!handled) ordinary.push(message);
         } catch (error) {
-          console.error('[MetaWebhook] photo routing failed:', error.code ?? 'PHOTO_ROUTING_FAILED');
-          await failMetaMessageClaim(message.id, error.code ?? 'PHOTO_ROUTING_FAILED').catch(() => {});
+          console.error('[MetaWebhook] attachment routing failed:', error.code ?? 'ATTACHMENT_ROUTING_FAILED');
+          await failMetaMessageClaim(message.id, error.code ?? 'ATTACHMENT_ROUTING_FAILED').catch(() => {});
         }
       }
       value.messages = ordinary;
@@ -1082,7 +1091,7 @@ const processClaimedMetaBody = async (processingBody, { acknowledge = false } = 
       console.error('[auth:wa-login] recovery handler failed:', error);
     }
   }
-  processingBody = await routeWhatsAppPhotos(processingBody);
+  processingBody = await routeMetaAttachments(processingBody);
 
   // Acknowledge ordinary text/audio before transcription or interpretation.
   const fastRepliedMessageIds = acknowledge ? await acknowledgeMetaMessages(processingBody, sendMetaReply, error => {
