@@ -81,6 +81,7 @@ export function Studio() {
   const [selectedId, setSelectedId] = useState<string | null>(null), [creating, setCreating] = useState(false), [version, setVersion] = useState(0);
   const [initialStep, setInitialStep] = useState<ProductStep>('details');
   const [completion, setCompletion] = useState('');
+  const [showMissingPhotos, setShowMissingPhotos] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
   const [initialCandidates, setInitialCandidates] = useState<Candidate[]>([]);
   const [setupVersion, setSetupVersion] = useState(0);
@@ -104,7 +105,7 @@ export function Studio() {
   if (setup.needsSetup || session.needsOnboarding) return session.role === 'admin' ? <AccessFrame><main className="onboarding panel"><h1>Falta preparar el negocio</h1><p>El dueño debe completar la configuración inicial y confirmar la moneda antes de usar Studio.</p><a href="/">Volver a Stocky</a></main></AccessFrame> : <AccessFrame><BusinessOnboarding key={session.phoneNumber + setupVersion} status={setup} onDone={() => setSetupVersion(value => value + 1)} onRefresh={() => setSetupVersion(value => value + 1)}/></AccessFrame>;
   const open = (id: string, step: ProductStep = 'details') => { setCompletion(''); setInitialStep(step); setCreating(false); setView('products'); location.hash = `/products/${id}`; setSelectedId(id); };
   const close = () => { setCompletion(''); setInitialStep('details'); location.hash = '/products'; setSelectedId(null); setCreating(false); setInitialCandidates([]); setBatchOpen(false); setVersion(value => value + 1); };
-  const navigate = (next: View) => { close(); setView(next); };
+  const navigate = (next: View) => { close(); setShowMissingPhotos(false); setView(next); };
   const resumeBatch = () => { setSelectedId(null); setCreating(false); setBatchOpen(true); location.hash = '/batch'; };
   const startBatch = async (ids: string[]) => {
     if (readBatchJob()?.items.some(item => item.request) && !await confirm({ title: '¿Crear un lote nuevo con esta selección?', description: 'Se reemplazará el lote guardado.', action: 'crear lote', destructive: true })) return;
@@ -117,16 +118,18 @@ export function Studio() {
       {error && <Notice action={<button onClick={() => { setError(''); setVersion(value => value + 1); }}>Reintentar</button>}>{error}</Notice>}
       {completion && !selectedId && !creating && <Notice>{completion}</Notice>}
       {batchOpen ? <BatchStudio onBack={close}/> : selectedId || creating ? <ProductEditor key={selectedId ?? 'new'} id={selectedId} initialStep={creating ? 'details' : initialStep} initialCandidates={initialCandidates} onClose={close} onAttach={id => open(id, 'variants')} onPublished={() => { close(); setCompletion('Ficha finalizada y publicada en el catálogo.'); }} onCreated={(id, step) => { setInitialCandidates([]); open(id, step); }}/>
-        : view === 'products' ? <ProductList profile={profile} key={version} onOpen={open} onCreate={() => { setInitialCandidates([]); setCreating(true); }} onBatch={startBatch}/>
-        : view === 'pending' ? <PendingInventory onCreate={items => { setInitialCandidates(items); setView('products'); setCreating(true); }} onLink={(id, items) => { setInitialCandidates(items); open(id); }}/>
+        : view === 'products' ? <ProductList profile={profile} key={version} showMissingPhotos={showMissingPhotos} onOpen={open} onCreate={() => { setInitialCandidates([]); setCreating(true); }} onBatch={startBatch}/>
+        : view === 'pending' ? <PendingInventory onCreate={items => { setInitialCandidates(items); setView('products'); setCreating(true); }} onLink={(id, items) => { setInitialCandidates(items); open(id); }} onPhotos={() => { navigate('products'); setShowMissingPhotos(true); }}/>
         : view === 'library' ? <ContentLibrary onOpen={open} onResumeBatch={resumeBatch}/> : view === 'settings' ? profile && <><Settings profile={profile} onSaved={setProfile}/><MoneyReview/></> : <Recovery onRecovered={() => setVersion(value => value + 1)}/>}
       <footer>STOCKY STUDIO <span>Una ficha. Todas tus posibilidades.</span></footer>
     </main></div>;
 }
 
-function ProductList({ profile, onOpen, onCreate, onBatch }: { profile: Profile | null; onOpen: (id: string) => void; onCreate: () => void; onBatch: (ids: string[]) => void }) {
+function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: {
+  profile: Profile | null; showMissingPhotos: boolean; onOpen: (id: string, step?: ProductStep) => void; onCreate: () => void; onBatch: (ids: string[]) => void;
+}) {
   const emptyFilters = { q: '', status: '', team: '', season: '', version: '', sleeve: '', photos: '', publication: '' };
-  const [filters, setFilters] = useState(emptyFilters), [applied, setApplied] = useState(emptyFilters);
+  const [filters, setFilters] = useState({ ...emptyFilters, photos: showMissingPhotos ? 'missing' : '' }), [applied, setApplied] = useState(filters);
   const [products, setProducts] = useState<Product[]>([]), [cursor, setCursor] = useState<string | null>(null);
   const [busy, setBusy] = useState(true), [error, setError] = useState(''), [hasSports, setHasSports] = useState(false);
   const [selection, setSelection] = useState<string[]>([]);
@@ -188,7 +191,7 @@ function ProductList({ profile, onOpen, onCreate, onBatch }: { profile: Profile 
       const showVariants = variants.length > 1 || variants.some(variant => (variant.label || variant.size || variant.name).trim().toLocaleLowerCase('es') !== product.title.trim().toLocaleLowerCase('es'));
       return <div className="selectable-product" key={product.id}>
         <label className="product-selector"><input type="checkbox" aria-label={`Seleccionar ${product.title}`} checked={selection.includes(product.id)} disabled={!product.readiness.canGenerateStory} onChange={event => setSelection(current => event.target.checked ? [...current, product.id] : current.filter(id => id !== product.id))}/><span className="sr-only">Seleccionar producto</span></label>
-        <button className="product-card" onClick={() => onOpen(product.id)}><div className={`card-photo ${!product.coverImageId ? 'without-photo' : ''}`}><PrivatePhoto product={product} imageId={product.coverImageId}/><span className={`status ${product.status}`}>{statusLabel[product.status]}</span></div>
+        <button className="product-card" onClick={() => onOpen(product.id, showMissingPhotos && applied.photos === 'missing' ? 'photos' : 'details')}><div className={`card-photo ${!product.coverImageId ? 'without-photo' : ''}`}><PrivatePhoto product={product} imageId={product.coverImageId}/><span className={`status ${product.status}`}>{statusLabel[product.status]}</span></div>
           <div className="card-body"><small>{product.teamName || 'Producto comercial'} <span aria-hidden="true">↗</span></small><h3>{product.title}</h3>
             {[product.season, product.versionKey === 'player' ? 'Jugador' : product.versionKey === 'fan' ? 'Hincha' : ''].some(Boolean) && <p>{[product.season, product.versionKey === 'player' ? 'Jugador' : product.versionKey === 'fan' ? 'Hincha' : ''].filter(Boolean).join(' · ')}</p>}
             <div className="card-bottom"><strong>{priceLabel(product)}</strong><span>{product.availableQuantity ?? '—'} disponibles</span></div>

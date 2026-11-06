@@ -1,9 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { query } from './api';
+import { command, pendingOperations, query, retryOperation } from './api';
 import { moneyLabel, type Candidate } from './types';
 import { ExistingProductPicker } from './ExistingProductPicker';
 
 const selectionLimit = 100;
+const syncRoute = '/inventory-candidates/sync';
+type SyncResult = { created: number; linkedSkus: number; needsReview: number };
 const sizeOrder = ['XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', 'XXXL', '3XL', '4XL', '5XL', '6XL'];
 function compareSizes(a: Candidate, b: Candidate) {
   const left = sizeOrder.indexOf(a.size?.toUpperCase()), right = sizeOrder.indexOf(b.size?.toUpperCase());
@@ -41,11 +43,16 @@ function PendingProduct({ items, selectedIds, busy, onSelect }: {
   </article>;
 }
 
-export function PendingInventory({ onCreate, onLink }: { onCreate: (items: Candidate[]) => void; onLink: (id: string, items: Candidate[]) => void }) {
+export function PendingInventory({ onCreate, onLink, onPhotos }: {
+  onCreate: (items: Candidate[]) => void; onLink: (id: string, items: Candidate[]) => void; onPhotos: () => void;
+}) {
   const [items, setItems] = useState<Candidate[]>([]), [selected, setSelected] = useState<Candidate[]>([]), [cursor, setCursor] = useState<string | null>(null);
   const [q, setQ] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const [choosing, setChoosing] = useState(false);
   const [selectionError, setSelectionError] = useState('');
+  const [syncing, setSyncing] = useState(false), [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const syncInProgress = useRef(false);
+  const working = busy || syncing;
   const selectedIds = useMemo(() => new Set(selected.map(item => item.skuId)), [selected]);
   const groups = useMemo(() => {
     const result = new Map<string, Candidate[]>();
@@ -65,9 +72,9 @@ export function PendingInventory({ onCreate, onLink }: { onCreate: (items: Candi
     setSelected(rows => checked ? [...rows, ...additions] : rows.filter(item => !ids.has(item.skuId)));
   };
   const generation = useRef(0);
-  const load = async (next?: string) => {
+  const load = async (next?: string, search = q) => {
     const current = ++generation.current; setBusy(true); setError('');
-    try { const result = await query<{ items: Candidate[]; nextCursor: string | null }>(`/inventory-candidates?${new URLSearchParams({ q, grouped: 'true', ...(next ? { cursor: next } : {}) })}`);
+    try { const result = await query<{ items: Candidate[]; nextCursor: string | null }>(`/inventory-candidates?${new URLSearchParams({ q: search, grouped: 'true', ...(next ? { cursor: next } : {}) })}`);
       if (current !== generation.current) return;
       setItems(rows => next ? [...rows, ...result.items] : result.items); setCursor(result.nextCursor);
       // A new search requires reviewing the selection again.
@@ -76,14 +83,34 @@ export function PendingInventory({ onCreate, onLink }: { onCreate: (items: Candi
     finally { if (current === generation.current) setBusy(false); }
   };
   const latestLoad = useRef(load); latestLoad.current = load;
-  useEffect(() => { void latestLoad.current(); const focus = () => { if (!document.hidden) void latestLoad.current(); }; addEventListener('focus', focus); return () => { generation.current++; removeEventListener('focus', focus); }; }, []);
-  return <section className="page-section pending-inventory"><p className="eyebrow dark">DEL STOCK A TU CATÁLOGO</p><h1>Pendientes de catalogar</h1><p>Seleccioná un producto para incluir todas sus variantes. Desplegalo para revisar los talles o elegirlos de a uno antes de crear o vincular la ficha.</p>
+  useEffect(() => { void latestLoad.current(); const focus = () => { if (!document.hidden && !syncInProgress.current) void latestLoad.current(); }; addEventListener('focus', focus); return () => { generation.current++; removeEventListener('focus', focus); }; }, []);
+  const sync = async () => {
+    if (working || syncInProgress.current) return;
+    syncInProgress.current = true;
+    setSyncing(true); setSyncResult(null); setError(''); setChoosing(false);
+    try {
+      const previous = pendingOperations().find(item => item.route === syncRoute);
+      const result = previous ? await retryOperation<SyncResult>(previous) : await command<SyncResult>(syncRoute, 'POST', {});
+      setSyncResult(result);
+      setQ('');
+      await latestLoad.current(undefined, '');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'No pude sincronizar el catálogo.'); }
+    finally { syncInProgress.current = false; setSyncing(false); }
+  };
+  return <section className="page-section pending-inventory"><p className="eyebrow dark">DEL STOCK A TU CATÁLOGO</p><h1>Pendientes de catalogar</h1><p>Sincronizá todos los pendientes de Stocky para crear una ficha en borrador por producto con sus talles o variantes. Después podés agregarle las fotos.</p>
+    <button type="button" className="primary" disabled={working} onClick={() => void sync()}>{syncing ? 'Sincronizando…' : 'Sincronizar con Stocky'}</button>
+    {syncResult && <div className="notice">
+      <span role="status">{syncResult.created ? `${syncResult.created} ${syncResult.created === 1 ? 'ficha creada' : 'fichas creadas'} · ${syncResult.linkedSkus} ${syncResult.linkedSkus === 1 ? 'variante vinculada' : 'variantes vinculadas'}.` : 'No hay fichas nuevas para crear.'}
+        {syncResult.needsReview > 0 && ` ${syncResult.needsReview} ${syncResult.needsReview === 1 ? 'grupo requiere' : 'grupos requieren'} revisión manual. Podés revisarlos en la lista de pendientes.`}</span>
+      {syncResult.created > 0 && <button type="button" onClick={onPhotos}>Ver fichas sin fotos</button>}
+    </div>}
     {error && <div className="notice" role="alert">{error}</div>}
-    <form className="filters" onSubmit={event => { event.preventDefault(); void load(); }}><input aria-label="Buscar variantes pendientes" value={q} onChange={event => setQ(event.target.value)} placeholder="Buscá un producto…"/><button disabled={busy}>Buscar</button><button type="button" disabled={busy} onClick={() => void load()}>Actualizar pendientes</button></form>
-    <div className="selection-toolbar"><strong aria-live="polite" aria-atomic="true">{selected.length} variantes seleccionadas (máximo 100)</strong><button className="primary" disabled={busy || !selected.length} onClick={() => onCreate(selected)}>Crear ficha y vincular</button><button disabled={busy || !selected.length} onClick={() => setChoosing(true)}>Vincular a una ficha existente</button></div>
+    <p>Para revisar una ficha por separado, desplegá el producto y elegí sus variantes antes de crearla o vincularla.</p>
+    <form className="filters" onSubmit={event => { event.preventDefault(); if (!working) void load(); }}><input aria-label="Buscar variantes pendientes" value={q} onChange={event => setQ(event.target.value)} disabled={syncing} placeholder="Buscá un producto…"/><button disabled={working}>Buscar</button><button type="button" disabled={working} onClick={() => void load()}>Actualizar pendientes</button></form>
+    <div className="selection-toolbar"><strong aria-live="polite" aria-atomic="true">{selected.length} variantes seleccionadas (máximo 100)</strong><button disabled={working || !selected.length} onClick={() => onCreate(selected)}>Crear ficha y vincular</button><button disabled={working || !selected.length} onClick={() => setChoosing(true)}>Vincular a una ficha existente</button></div>
     {choosing && <ExistingProductPicker onChoose={id => onLink(id, selected)} onCancel={() => setChoosing(false)}/>}
     {selectionError && <div className="notice" role="alert">{selectionError}</div>}
-    <div className="pending-product-list" aria-busy={busy}>{groups.map(group => <PendingProduct key={group.key} items={group.items} selectedIds={selectedIds} busy={busy} onSelect={select}/>)}</div>
-    {!items.length && !busy && !error && <p>No hay variantes pendientes para esta búsqueda. <a href="/?section=productos">Cargar productos en Stocky</a></p>}{cursor && <button disabled={busy} onClick={() => void load(cursor)}>Cargar más</button>}
+    <div className="pending-product-list" aria-busy={working}>{groups.map(group => <PendingProduct key={group.key} items={group.items} selectedIds={selectedIds} busy={working} onSelect={select}/>)}</div>
+    {!items.length && !working && !error && <p>No hay variantes pendientes para esta búsqueda. <a href="/?section=productos">Cargar productos en Stocky</a></p>}{cursor && <button disabled={working} onClick={() => void load(cursor)}>Cargar más</button>}
   </section>;
 }
