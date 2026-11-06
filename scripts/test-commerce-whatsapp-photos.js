@@ -149,6 +149,36 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.match((await replies('commerce-photo:access:blocked'))[0], /permiso de edición/);
     assert.equal(await ready(white), 4);
   });
+
+  await t.test('the natural name of a camiseta matches its Studio title in captions and replies', async () => {
+    const boca = await create('Boca Titular 2026');
+    const older = await create('Camiseta de Boca Titular 2025');
+    assert.equal(await image('boca-with-caption', 'Camiseta de boca titular 2026'), true);
+    assert.equal(await image('boca-without-caption'), true);
+    assert.equal(await advance(5_000), true);
+    assert.equal(await bot.processJob(), true);
+    assert.equal(await ready(boca), 2);
+    assert.equal(await ready(older), 0);
+    assert.deepEqual(await replies('commerce-photo:result:boca-with-caption'), ['Agregué 2 fotos a Boca Titular 2026.']);
+
+    assert.equal(await say('¿Cuánto stock tengo?'), false);
+    assert.equal(await image('boca-pending'), true);
+    assert.equal(await advance(5_000), true);
+    await query('UPDATE meta_reply_outbox SET provider_message_ids=$1 WHERE event_id=$2',
+      [JSON.stringify(['wamid.photo-question']), 'commerce-photo:question:boca-pending']);
+    assert.equal(await receive({ type: 'text', text: { body: 'Camiseta de Boca 2030' }, context: { id: 'wamid.photo-question' } }, 'unknown-photo-reply'), true);
+    assert.match((await replies('commerce-photo:choose:unknown-photo-reply'))[0], /No encontré esa ficha en Studio/);
+    assert.equal(await say('Camiseta de boca titular 2026'), true);
+    assert.equal(await bot.processJob(), true);
+    assert.equal(await ready(boca), 3);
+
+    const alternate = await create('Camiseta de Boca Titular 2026');
+    assert.equal(await image('boca-ambiguous', 'La camiseta de Boca Titular 2026'), true);
+    assert.equal(await advance(5_000), true);
+    assert.equal(await bot.processJob(), false);
+    assert.match((await replies('commerce-photo:question:boca-ambiguous'))[0], /¿Cuál ficha querés usar\?/);
+    assert.equal(await ready(alternate), 0);
+  });
 });
 
 test('signed image webhooks reach the published product gallery through the running server', async t => {
@@ -187,7 +217,7 @@ test('signed image webhooks reach the published product gallery through the runn
   };
   await send('wamid-photo-1');
   await send('wamid-photo-2');
-  await send('wamid-photo-3', product.title);
+  await send('wamid-photo-3', `Camiseta de ${product.title}`);
   await send('wamid-photo-2');
 
   const expectedReply = `Agregué 3 fotos a ${product.title}.`;

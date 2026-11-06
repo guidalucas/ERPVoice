@@ -6,26 +6,41 @@ const inactivityMs = 15 * 60_000;
 const maxPendingPhotos = 8;
 const startCommand = /^(?:agregar|adjuntar|cargar)\s+fotos?\s+(?:a|de|para)\s+(.+)$/iu;
 const choiceCommand = /^ficha\s+([1-5])$/iu;
+const garmentPrefix = '^(?:(?:la|una) )?(?:camisetas?|remeras?) (?:(?:de|del) )?';
+const garmentPrefixPattern = new RegExp(garmentPrefix);
 const normalize = value => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim().replace(/\s+/g, ' ');
 const photoCount = count => `${count} ${count === 1 ? 'foto' : 'fotos'}`;
 
 async function findProducts(client, businessId, name, partial = false) {
   const key = normalize(name);
   if (!key || key.length > 160) return [];
+  const alias = key.replace(garmentPrefixPattern, '');
   const { rows } = await client.query(`WITH matches AS (
     SELECT id,title,slug,identity_key,trim(regexp_replace(lower(regexp_replace(normalize(title,NFD), '[\u0300-\u036f]', '', 'g')), '\\s+', ' ', 'g')) AS title_key
     FROM commercial_products WHERE owner_phone=$1 AND status<>'archived'
   ), candidates AS (
-    SELECT id,title,slug,identity_key,(title_key=$2 OR slug=$2) AS exact FROM matches
-    WHERE title_key=$2 OR slug=$2 OR ($3 AND starts_with(title_key,$2 || ' '))
-  ) SELECT id,title,slug,identity_key AS "identityKey" FROM candidates WHERE exact OR NOT EXISTS (SELECT 1 FROM candidates WHERE exact)
-    ORDER BY title,id LIMIT 6`, [businessId, key, partial]);
+    SELECT id,title,slug,identity_key,CASE
+      WHEN title_key=$2 OR slug=$2 THEN 1
+      WHEN $4<>'' AND regexp_replace(title_key,$5,'')=$4 THEN 2
+      WHEN $3 AND starts_with(title_key,$2 || ' ') THEN 3
+    END AS priority FROM matches
+  ) SELECT id,title,slug,identity_key AS "identityKey" FROM candidates
+    WHERE priority=(SELECT MIN(priority) FROM candidates) ORDER BY title,id LIMIT 6`,
+  [businessId, key, partial, alias, garmentPrefix]);
   return rows;
 }
 
 const eventId = (type, id) => `commerce-photo:${type}:${id}`;
 const enqueue = (client, id, actor, text) => client.query(`INSERT INTO meta_reply_outbox(event_id,recipient,reply_text)
   VALUES($1,$2,$3) ON CONFLICT(event_id) DO NOTHING`, [id, actor, text]);
+
+async function isReplyToPhotoPrompt(client, actor, batch, replyTo) {
+  if (!batch?.asked || typeof replyTo !== 'string') return false;
+  const prompt = batch.prompt ?? eventId('question', batch.questionId);
+  const { rowCount } = await client.query(`SELECT 1 FROM meta_reply_outbox
+    WHERE event_id=$1 AND recipient=$2 AND provider_message_ids @> jsonb_build_array($3::text)`, [prompt, actor, replyTo]);
+  return rowCount > 0;
+}
 
 function uploadId(messageId) {
   const bytes = createHash('sha256').update(eventId('image', messageId)).digest().subarray(0, 16);
@@ -74,9 +89,10 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
       : references.length > 1 ? 'Las fotos traen nombres distintos. ¿A qué ficha va este envío?'
         : references.length ? 'No encontré esa ficha. ¿A qué producto van las fotos?'
           : photos.length === 1 ? '¿A qué producto va esta foto?' : '¿A qué producto van estas fotos?';
-    await enqueue(client, eventId('question', state.batch.questionId), context.actorId, question);
+    const prompt = eventId('question', state.batch.questionId);
+    await enqueue(client, prompt, context.actorId, question);
     delete state.active;
-    state.batch = { ...state.batch, id, asked: true, choices: choices.length <= 5 ? choices : [],
+    state.batch = { ...state.batch, id, asked: true, prompt, choices: choices.length <= 5 ? choices : [],
       photos: photos.map(photo => ({ ...photo, caption: '' })) };
   }
 
@@ -147,13 +163,14 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
         await save(client, context, state, null, expiresAt);
         return markRouted(client, message.id, true);
       }
-      if (command || choice || choices.length) {
+      if (command || choice || choices.length || await isReplyToPhotoPrompt(client, context.actorId, state.batch, message.context?.id)) {
         state.batch ??= { id: message.id, questionId: message.id, photos: [] };
         state.batch.asked = true;
+        state.batch.prompt = eventId('choose', message.id);
         state.batch.choices = choices.length <= 5 ? choices : [];
         delete state.active;
-        const reply = choices.length ? selectionPrompt(choices) : 'No encontré esa ficha. Decime el nombre completo o elegí una de las opciones.';
-        await enqueue(client, eventId('choose', message.id), context.actorId, reply);
+        const reply = choices.length ? selectionPrompt(choices) : 'No encontré esa ficha en Studio. Decime el nombre completo que aparece ahí.';
+        await enqueue(client, state.batch.prompt, context.actorId, reply);
         await save(client, context, state, null, expiresAt);
         return markRouted(client, message.id, true);
       }
