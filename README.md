@@ -12,7 +12,7 @@ Para habilitar fotos por WhatsApp, con el webhook de Meta y el almacenamiento pr
 `npm run commerce:whatsapp-photos:migrate -- --apply` con `COMMERCE_DATABASE_URL` apuntando explícitamente a la base del backend.
 Para una base remota, agregá `--allow-remote-database`. Luego configurá `COMMERCE_WHATSAPP_PHOTOS=true` en el backend y reinicialo.
 Desde el WhatsApp de un dueño o administrador, mandá varias fotos juntas y poné el nombre de la ficha en el pie de una de ellas,
-o escribí `agregar fotos a <ficha>` antes de enviarlas. Probá primero con una ficha de prueba del negocio.
+o escribí `agregar fotos a <ficha>` antes de enviarlas. Revisá la ficha propuesta y respondé con el código `CONFIRMAR FOTOS` que te indica Stocky o citá la pregunta y respondé `sí`.
 
 Personalización de marca y funcionamiento de las plantillas: [Guía de Stocky Studio](docs/STUDIO_CUSTOMIZATION.md). La personalización requiere la migración comercial 4, incluida en el bundle SQL.
 

@@ -9,26 +9,32 @@ const inactivityMs = 15 * 60_000;
 const maxPendingPhotos = 8;
 const startCommand = /^(?:agregar|adjuntar|cargar)\s+fotos?\s+(?:a|de|para)\s+(.+)$/iu;
 const choiceCommand = /^ficha\s+([1-5])$/iu;
+const confirmCommand = /^confirmar\s+fotos(?:\s+([0-9a-f]{8}))?$/iu;
+const cancelCommand = /^cancelar\s+fotos[.!]?$/iu;
+const yes = /^s[ií][.!]?$/iu;
+const no = /^no[.!]?$/iu;
 const garmentPrefix = '^(?:(?:la|una) )?(?:camisetas?|remeras?) (?:(?:de|del) )?';
 const garmentPrefixPattern = new RegExp(garmentPrefix);
 const normalize = value => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim().replace(/\s+/g, ' ');
 const photoCount = count => `${count} ${count === 1 ? 'foto' : 'fotos'}`;
+const titles = values => [...new Set(values)].slice(0, 3).map(title => `«${title}»`).join(', ');
+const archivedNote = products => `Encontré ${titles(products.map(product => product.title))} en Studio, con estado archivado. Restaurá la ficha correcta en Studio o indicame otra ficha activa para estas fotos.`;
 
 async function findProducts(client, businessId, name, partial = false) {
   const key = normalize(name);
   if (!key || key.length > 160) return [];
   const alias = key.replace(garmentPrefixPattern, '');
   const { rows } = await client.query(`WITH matches AS (
-    SELECT id,title,slug,identity_key,trim(regexp_replace(lower(regexp_replace(normalize(title,NFD), '[\u0300-\u036f]', '', 'g')), '\\s+', ' ', 'g')) AS title_key
-    FROM commercial_products WHERE owner_phone=$1 AND status<>'archived'
+    SELECT id,title,slug,identity_key,status,trim(regexp_replace(lower(regexp_replace(normalize(title,NFD), '[\u0300-\u036f]', '', 'g')), '\\s+', ' ', 'g')) AS title_key
+    FROM commercial_products WHERE owner_phone=$1
   ), candidates AS (
-    SELECT id,title,slug,identity_key,CASE
+    SELECT id,title,slug,identity_key,status,CASE
       WHEN title_key=$2 OR slug=$2 THEN 1
       WHEN $4<>'' AND regexp_replace(title_key,$5,'')=$4 THEN 2
       WHEN $3 AND starts_with(title_key,$2 || ' ') THEN 3
     END AS priority FROM matches
-  ) SELECT id,title,slug,identity_key AS "identityKey" FROM candidates
-    WHERE priority=(SELECT MIN(priority) FROM candidates) ORDER BY title,id LIMIT 6`,
+  ) SELECT id,title,slug,status,identity_key AS "identityKey" FROM candidates
+    WHERE priority=(SELECT MIN(priority) FROM candidates) ORDER BY status='archived',title,id LIMIT 6`,
   [businessId, key, partial, alias, garmentPrefix]);
   return rows;
 }
@@ -82,7 +88,9 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
   }
 
   async function resolveReference(client, context, reference, { partial, purpose, batchId, interpreted }) {
-    const choices = await findProducts(client, context.businessId, reference, partial);
+    const direct = await findProducts(client, context.businessId, reference, partial);
+    const choices = direct.filter(product => product.status !== 'archived');
+    if (direct.length && !choices.length) return { choices, addressed: true, note: archivedNote(direct) };
     if (choices.length || !purpose || !reference || reference.length > 240) return { choices };
     const key = JSON.stringify([batchId, reference, purpose]);
     if (!interpreted.has(key)) return { lookup: { key, reference, purpose } };
@@ -90,16 +98,16 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
     if (result.kind !== 'answer') return { choices };
     const ids = result.queries[0].selector.ids;
     if (!ids.length) return { choices, addressed: true };
-    const { rows } = await client.query(`SELECT i.id AS sku_id,p.id,p.title,p.slug,p.identity_key AS "identityKey"
+    const { rows } = await client.query(`SELECT i.name AS sku_name,p.id,p.title,p.slug,p.status,p.identity_key AS "identityKey"
       FROM products i LEFT JOIN commercial_product_skus l ON l.owner_phone=i.owner_phone AND l.sku_id=i.id
-      LEFT JOIN commercial_products p ON p.owner_phone=l.owner_phone AND p.id=l.commercial_product_id AND p.status<>'archived'
+      LEFT JOIN commercial_products p ON p.owner_phone=l.owner_phone AND p.id=l.commercial_product_id
       WHERE i.owner_phone=$1 AND i.id=ANY($2) AND i.inventory_status='active' ORDER BY p.title,p.id`, [context.businessId, ids]);
-    const products = new Map(rows.filter(row => row.id).map(({ sku_id, ...product }) => [product.id, product]));
-    const linked = new Set(rows.filter(row => row.id).map(row => row.sku_id));
-    if (linked.size !== ids.length && products.size < 2) {
-      return { choices, addressed: true, note: 'Encontré el producto en inventario, pero necesito que me indiques su ficha en Studio.' };
-    }
-    return { choices: [...products.values()].slice(0, 6), addressed: true };
+    const products = [...new Map(rows.filter(row => row.id).map(({ sku_name, ...product }) => [product.id, product])).values()];
+    const active = products.filter(product => product.status !== 'archived');
+    if (active.length) return { choices: active.slice(0, 6), addressed: true };
+    if (products.length) return { choices, addressed: true, note: archivedNote(products) };
+    const note = rows.length ? `Encontré ${titles(rows.map(row => row.sku_name))} en inventario, pero todavía no tiene una ficha vinculada en Studio. Vinculalo desde Studio o indicame otra ficha activa.` : undefined;
+    return { choices, addressed: true, note };
   }
 
   const save = (client, context, state, dueAt, expiresAt) => client.query(`UPDATE commerce_whatsapp_photo_chats
@@ -113,37 +121,53 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
     return handled;
   };
 
-  const queue = async (client, context, state, product) => {
-    if (state.batch?.photos.length) {
-      await client.query(`INSERT INTO commerce_whatsapp_photo_jobs(id,owner_phone,actor_id,product,photos)
-        VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO NOTHING`,
-      [state.batch.id, context.businessId, context.actorId, { ...product, overflow: state.batch.overflow ?? 0 }, JSON.stringify(state.batch.photos)]);
-    }
+  const queueConfirmedBatch = async (client, context, state) => {
+    const { id, photos, overflow, confirmation: { product } } = state.batch;
+    await client.query(`INSERT INTO commerce_whatsapp_photo_jobs(id,owner_phone,actor_id,product,photos)
+      VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO NOTHING`,
+    [id, context.businessId, context.actorId, { ...product, overflow: overflow ?? 0 }, JSON.stringify(photos)]);
     state.active = product;
     delete state.batch;
   };
 
-  async function flushBatch(client, context, state, interpreted, { ask = true } = {}) {
-    if (!state.batch) return;
+  async function askAboutBatch(client, context, state, prompt, question, choices = []) {
+    await enqueue(client, prompt, context.actorId, question);
+    delete state.active;
+    delete state.batch.confirmation;
+    Object.assign(state.batch, { asked: true, prompt, choices: choices.length <= 5 ? choices : [],
+      photos: state.batch.photos.map(photo => ({ ...photo, caption: '' })) });
+  }
+
+  async function proposeBatch(client, context, state, product, sourceId) {
+    const code = randomUUID().slice(0, 8);
+    const question = `¿Agrego ${photoCount(state.batch.photos.length)} a «${product.title}»?\n` +
+      `Respondé «CONFIRMAR FOTOS ${code}» o citá este mensaje y respondé «sí». Si es otra ficha, decime cuál.`;
+    await askAboutBatch(client, context, state, eventId('confirm', sourceId), question);
+    state.batch.confirmation = { product, code };
+  }
+
+  async function flushBatch(client, context, state, interpreted) {
+    if (!state.batch || state.batch.confirmation) return;
     const { id, photos } = state.batch;
     const references = new Map(photos.filter(photo => photo.caption).map(photo => [normalize(photo.caption), photo.caption]));
-    if (!references.size && state.active && !state.batch.asked) { await queue(client, context, state, state.active); return; }
+    if (!references.size && state.active && !state.batch.asked) {
+      await proposeBatch(client, context, state, state.active, state.batch.questionId);
+      return;
+    }
     const match = references.size === 1 ? await resolveReference(client, context, references.values().next().value,
       { partial: true, purpose: 'photo-reference', batchId: id, interpreted }) : { choices: [] };
     if (match.lookup) return match;
     const { choices } = match;
-    if (choices.length === 1) { await queue(client, context, state, choices[0]); return; }
-    if (!ask) return;
+    if (choices.length === 1) {
+      await proposeBatch(client, context, state, choices[0], state.batch.questionId);
+      return;
+    }
 
     const question = choices.length ? selectionPrompt(choices) : match.note
       ?? (references.size > 1 ? 'Las fotos traen nombres distintos. ¿A qué ficha va este envío?'
         : references.size ? 'No encontré esa ficha. ¿A qué producto van las fotos?'
           : photos.length === 1 ? '¿A qué producto va esta foto?' : '¿A qué producto van estas fotos?');
-    const prompt = eventId('question', state.batch.questionId);
-    await enqueue(client, prompt, context.actorId, question);
-    delete state.active;
-    state.batch = { ...state.batch, id, asked: true, prompt, choices: choices.length <= 5 ? choices : [],
-      photos: photos.map(photo => ({ ...photo, caption: '' })) };
+    await askAboutBatch(client, context, state, eventId('question', state.batch.questionId), question, choices);
   }
 
   const route = (context, message, phoneNumberId) => withReferenceLookup(context, async (client, interpreted) => {
@@ -156,11 +180,13 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
     const isPhoto = message.type === 'image';
     const text = typeof message.text?.body === 'string' ? message.text.body.trim() : '';
     const command = startCommand.exec(text);
-    const explicit = isPhoto || Boolean(command);
+    const confirm = confirmCommand.exec(text);
+    const cancel = cancelCommand.test(text);
+    const explicit = isPhoto || Boolean(command || confirm || cancel);
     const scope = [context.businessId, context.actorId];
     const now = clock();
     const expiresAt = now + inactivityMs;
-    if (explicit) await client.query(`INSERT INTO commerce_whatsapp_photo_chats(owner_phone,actor_id,state,expires_at)
+    if (isPhoto || command) await client.query(`INSERT INTO commerce_whatsapp_photo_chats(owner_phone,actor_id,state,expires_at)
       VALUES($1,$2,'{}'::jsonb,$3) ON CONFLICT(owner_phone,actor_id) DO NOTHING`, [...scope, new Date(expiresAt)]);
     const row = (await client.query(`SELECT state,due_at,expires_at FROM commerce_whatsapp_photo_chats
       WHERE owner_phone=$1 AND actor_id=$2 FOR UPDATE`, scope)).rows[0];
@@ -184,13 +210,15 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
         await enqueue(client, eventId('invalid', message.id), context.actorId, 'No pude leer esa foto. Probá enviarla de nuevo.');
         return markRouted(client, message.id, true);
       }
-      const due = state.batch && row.due_at?.getTime() <= now;
-      if (due) {
-        const pending = await flushBatch(client, context, state, interpreted);
-        if (pending) return pending;
-      }
       const caption = typeof message.image.caption === 'string' ? message.image.caption.trim().slice(0, 1024) : '';
       state.batch ??= { id: message.id, questionId: message.id, photos: [] };
+      if (state.batch.confirmation) {
+        state.active = state.batch.confirmation.product;
+        delete state.batch.confirmation;
+        delete state.batch.prompt;
+        state.batch.asked = false;
+        state.batch.questionId = message.id;
+      }
       if (!state.batch.photos.length) {
         await enqueue(client, eventId('processing', state.batch.id), context.actorId, 'Recibí tu envío. Estoy procesando la carga de fotos…');
       }
@@ -202,8 +230,32 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
         if (caption && !state.batch.photos.some(photo => photo.caption)) state.batch.photos[0].caption = caption;
       }
       if (caption) state.batch.questionId = message.id;
-      const dueAt = state.batch.asked && !caption && (!row.due_at || due) ? null : now + graceMs;
+      const dueAt = state.batch.asked && !caption && !row.due_at ? null : now + graceMs;
       await save(client, context, state, dueAt, expiresAt);
+      return markRouted(client, message.id, true);
+    }
+
+    const quoted = await isReplyToPhotoPrompt(client, context.actorId, state.batch, message.context?.id);
+    const confirmation = state.batch?.confirmation;
+    if (confirm || (confirmation && yes.test(text))) {
+      if (confirmation && (confirm?.[1]?.toLowerCase() === confirmation.code || (quoted && yes.test(text)))) {
+        await queueConfirmedBatch(client, context, state);
+        await save(client, context, state, null, expiresAt);
+      } else {
+        const reply = confirmation ? `Para guardar las fotos, respondé «CONFIRMAR FOTOS ${confirmation.code}» o citá la pregunta y respondé «sí».`
+          : 'No hay una confirmación de fotos vigente. Esperá la propuesta o volvé a mandar las fotos.';
+        await enqueue(client, eventId('confirm-invalid', message.id), context.actorId, reply);
+      }
+      return markRouted(client, message.id, true);
+    }
+    if (cancel) {
+      if (row) await save(client, context, { closedAt: sentAt }, null, expiresAt);
+      await enqueue(client, eventId('cancelled', message.id), context.actorId, 'Cerré la carga de fotos pendiente.');
+      return markRouted(client, message.id, true);
+    }
+    if (confirmation && no.test(text)) {
+      await askAboutBatch(client, context, state, eventId('choose', message.id), '¿A qué ficha van estas fotos?');
+      await save(client, context, state, null, expiresAt);
       return markRouted(client, message.id, true);
     }
 
@@ -211,39 +263,31 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
     if (command || (state.batch && text && !stockControl)) {
       const choice = choiceCommand.exec(text);
       const product = !command && choice ? state.batch?.choices?.[Number(choice[1]) - 1] : null;
-      const quoted = await isReplyToPhotoPrompt(client, context.actorId, state.batch, message.context?.id);
       const purpose = choice ? null : command || quoted ? 'photo-reference' : state.batch?.asked ? 'photo-reply' : null;
       const match = product ? { choices: [product] } : await resolveReference(client, context, command?.[1] ?? text,
         { partial: Boolean(command), purpose, batchId: state.batch?.id ?? message.id, interpreted });
       if (match.lookup) return match;
       const { choices } = match;
       if (choices.length === 1) {
-        if (command && state.active && state.batch && !state.batch.asked) {
-          const pending = await flushBatch(client, context, state, interpreted, { ask: false });
-          if (pending) return pending;
+        if (state.batch?.photos.length) {
+          await proposeBatch(client, context, state, choices[0], message.id);
+        } else {
+          state.active = choices[0];
+          delete state.batch;
+          await enqueue(client, eventId('start', message.id), context.actorId, `Mandame las fotos para ${choices[0].title}.`);
         }
-        const hadPhotos = Boolean(state.batch?.photos.length);
-        await queue(client, context, state, choices[0]);
-        if (!hadPhotos) await enqueue(client, eventId('start', message.id), context.actorId, `Mandame las fotos para ${choices[0].title}.`);
         await save(client, context, state, null, expiresAt);
         return markRouted(client, message.id, true);
       }
       if (command || choice || choices.length || quoted || match.addressed) {
         state.batch ??= { id: message.id, questionId: message.id, photos: [] };
-        state.batch.asked = true;
-        state.batch.prompt = eventId('choose', message.id);
-        state.batch.choices = choices.length <= 5 ? choices : [];
-        delete state.active;
         const reply = choices.length ? selectionPrompt(choices) : match.note ?? 'No encontré esa ficha en Studio. Decime algún detalle más, como el modelo, el color o el año.';
-        await enqueue(client, state.batch.prompt, context.actorId, reply);
+        await askAboutBatch(client, context, state, eventId('choose', message.id), reply, choices);
         await save(client, context, state, null, expiresAt);
         return markRouted(client, message.id, true);
       }
     }
 
-    // Finish already addressed photos before passing a new topic to the stock flow.
-    const pending = await flushBatch(client, context, state, interpreted, { ask: false });
-    if (pending) return pending;
     await save(client, context, { closedAt: sentAt }, null, expiresAt);
     return markRouted(client, message.id, false);
   });

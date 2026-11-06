@@ -64,6 +64,17 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
   const say = (body, id) => receive({ type: 'text', text: { body } }, id);
   const advance = async ms => { now += ms; return bot.flushDue(); };
   const replies = async id => (await query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1', [id])).rows.map(row => row.reply_text);
+  const proposed = async () => {
+    const { rows: [row] } = await query(`SELECT state #> '{batch,confirmation}' AS confirmation FROM commerce_whatsapp_photo_chats
+      WHERE owner_phone=$1 AND actor_id=$1`, [fixture.owner]);
+    assert.ok(row?.confirmation, 'a photo confirmation must be pending');
+    return row.confirmation;
+  };
+  const approve = async id => {
+    const { code } = await proposed();
+    assert.equal(await say(`CONFIRMAR FOTOS ${code}`, id), true);
+    return code;
+  };
 
   await t.test('three photos with one caption on the last photo save once to the same gallery', async () => {
     assert.equal(await image('group-1'), true);
@@ -77,6 +88,11 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.deepEqual(notices, [{ reply_text: processingReply }]);
     bot = service();
     assert.equal(await advance(5_000), true);
+    assert.match((await replies('commerce-photo:confirm:group-3'))[0], /¿Agrego 3 fotos a «Camiséta Negra»\?/);
+    assert.equal(await bot.processJob(), false);
+    assert.equal(await ready(black), 0);
+    const code = await approve('confirm-group');
+    assert.equal(await say(`CONFIRMAR FOTOS ${code}`, 'confirm-group'), true);
     assert.equal(await bot.processJob(), true);
     assert.equal(await ready(black), 3);
     assert.equal(await ready(white), 0);
@@ -84,11 +100,14 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.deepEqual(await replies('commerce-photo:question:group-1'), []);
     const detail = await products.detail(context, black.id);
     assert.equal(detail.coverImageId, detail.images[0].id);
+
   });
 
   await t.test('a caption switches a new group even with another active product; a stock question closes the load', async () => {
     assert.equal(await image('switch-1'), true);
     assert.equal(await image('switch-2', 'Camiseta blanca'), true);
+    assert.equal(await advance(5_000), true);
+    await approve();
     assert.equal(await say('¿Cuánto stock tengo?', 'new-topic'), false);
     assert.equal(await bot.processJob(), true);
     assert.equal(await ready(black), 3);
@@ -98,6 +117,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.equal(await advance(5_000), true);
     assert.deepEqual(await replies('commerce-photo:question:needs-product'), ['¿A qué producto va esta foto?']);
     assert.equal(await say('Camiseta blanca'), true);
+    await approve();
     assert.equal(await bot.processJob(), true);
     assert.equal(await ready(white), 3);
   });
@@ -105,6 +125,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
   await t.test('inactivity expires the active product; ambiguous captions offer an explicit selection', async () => {
     assert.equal(await image('renew'), true);
     assert.equal(await advance(5_000), true);
+    await approve();
     assert.equal(await bot.processJob(), true);
     assert.equal(await ready(white), 4);
     await advance(15 * 60_000);
@@ -117,6 +138,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.match(question, /1\. Camiseta Blanca/);
     assert.match(question, /2\. Camiséta Negra/);
     assert.equal(await say('ficha 2'), true);
+    await approve();
     assert.equal(await bot.processJob(), true);
     assert.equal(await ready(black), 5);
   });
@@ -125,6 +147,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.equal(await say('agregar fotos a Camiseta negra'), true);
     assert.equal(await image('invalid-image'), true);
     assert.equal(await advance(5_000), true);
+    await approve();
     assert.equal(await bot.processJob(), true);
     const detail = await products.detail(context, black.id);
     assert.equal(detail.images.length, 5);
@@ -133,6 +156,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     bot = service({ ...media, upload: async (...args) => { await media.upload(...args); throw new Error('simulated lost response'); } });
     assert.equal(await image('retry-save'), true);
     assert.equal(await advance(5_000), true);
+    await approve();
     assert.equal(await bot.processJob(), false);
     assert.equal(await ready(black), 6);
     assert.deepEqual(await replies('commerce-photo:result:retry-save'), []);
@@ -148,6 +172,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
   await t.test('Studio capacity allows partial success and a regular member cannot attach photos', async () => {
     for (const id of ['cap-1', 'cap-2', 'cap-3']) assert.equal(await image(id), true);
     assert.equal(await advance(5_000), true);
+    await approve();
     assert.equal(await bot.processJob(), true);
     assert.equal(await ready(black), 8);
     assert.match((await replies('commerce-photo:result:cap-1'))[0], /Agregué 2 fotos.*sin guardar 1 foto/);
@@ -162,6 +187,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.equal(await image('boca-with-caption', 'Camiseta de boca titular 2026'), true);
     assert.equal(await image('boca-without-caption'), true);
     assert.equal(await advance(5_000), true);
+    await approve();
     assert.equal(await bot.processJob(), true);
     assert.equal(await ready(boca), 2);
     assert.equal(await ready(older), 0);
@@ -175,6 +201,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.equal(await receive({ type: 'text', text: { body: 'Camiseta de Boca 2030' }, context: { id: 'wamid.photo-question' } }, 'unknown-photo-reply'), true);
     assert.match((await replies('commerce-photo:choose:unknown-photo-reply'))[0], /No encontré esa ficha en Studio/);
     assert.equal(await say('Camiseta de boca titular 2026'), true);
+    await approve();
     assert.equal(await bot.processJob(), true);
     assert.equal(await ready(boca), 3);
 
@@ -207,6 +234,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.equal(await image('short-name', 'la blaugrana del año pasado'), true);
     assert.equal(await image('short-name-extra'), true);
     assert.equal(await advance(5_000), true);
+    await approve();
     assert.equal(await bot.processJob(), true);
     assert.equal(await ready(barcelona), 3);
     assert.equal(await ready(argentina), 1);
@@ -222,6 +250,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.equal(await image('pending-short-name'), true);
     assert.equal(await advance(5_000), true);
     assert.equal(await say('la del Barça del 25'), true);
+    await approve();
     assert.equal(await bot.processJob(), true);
     assert.equal(await ready(barcelona), 4);
 
@@ -231,9 +260,83 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.equal(await ready(barcelona), 4);
     assert.ok(seen.includes('la del Barça del 25'));
   });
+
+  await t.test('correcting a proposed product requires confirming the new exact title', async () => {
+    const genoa = await create('Genoa homenaje a Boca versión jugador');
+    const boca = await create('Camiseta de Boca, tercera equipación, versión jugador, con dorsal de aranda');
+    assert.equal(await say('cancelar fotos'), true);
+    assert.equal(await image('genoa-caption', genoa.title), true);
+    assert.equal(await image('boca-second'), true);
+    assert.equal(await image('boca-third'), true);
+    assert.equal(await advance(5_000), true);
+    const original = await proposed();
+    assert.equal(original.product.id, genoa.id);
+    assert.equal(await bot.processJob(), false);
+    assert.equal(await say(boca.title, 'correct-photo-product'), true);
+    assert.match((await replies('commerce-photo:confirm:correct-photo-product'))[0], /¿Agrego 3 fotos a «Camiseta de Boca/);
+    assert.equal(await say(`CONFIRMAR FOTOS ${original.code}`), true);
+    assert.equal(await bot.processJob(), false);
+    assert.equal(await ready(genoa), 0);
+    assert.equal(await ready(boca), 0);
+
+    await query('UPDATE meta_reply_outbox SET provider_message_ids=$1 WHERE event_id=$2',
+      [JSON.stringify(['wamid.confirm-boca']), 'commerce-photo:confirm:correct-photo-product']);
+    assert.equal(await receive({ type: 'text', text: { body: 'sí' }, context: { id: 'wamid.confirm-boca' } }), true);
+    assert.equal(await bot.processJob(), true);
+    assert.equal(await ready(genoa), 0);
+    assert.equal(await ready(boca), 3);
+
+    assert.equal(await image('new-unconfirmed'), true);
+    assert.equal(await advance(5_000), true);
+    const unconfirmed = await proposed();
+    assert.equal(await image('new-unconfirmed-extra'), true);
+    assert.equal(await say(`CONFIRMAR FOTOS ${unconfirmed.code}`), true);
+    assert.equal(await bot.processJob(), false);
+    assert.equal(await advance(5_000), true);
+    assert.match((await replies('commerce-photo:confirm:new-unconfirmed-extra'))[0], /¿Agrego 2 fotos/);
+    const updated = await proposed();
+    assert.equal(await say('cancelar fotos'), true);
+    assert.equal(await say(`CONFIRMAR FOTOS ${updated.code}`), true);
+    assert.equal(await bot.processJob(), false);
+    assert.equal(await ready(boca), 3);
+  });
+
+  await t.test('archived and unlinked inventory explain why no Studio destination is available', async () => {
+    const argentina = fixture.products[1];
+    const original = await products.detail(context, argentina.id);
+    const archived = (await products.setStatus(context, argentina.id, { operationId: randomUUID(), expectedRevision: original.revision,
+      status: 'archived', reason: 'Test archived photo destination' })).result;
+    bot = service(media, async request => {
+      const { sourceText, catalog } = JSON.parse(request.messages[1].content);
+      const unlinked = catalog.products.find(product => product.name === 'Demo Boca Juniors pendiente').id;
+      const ids = sourceText === 'la de Boca pendiente' ? [unlinked] : argentina.skuIds;
+      return { ok: true, json: { contractVersion: 1, kind: 'query', queries: [{ itemId: 'photo', type: 'inventory.query', selector: { kind: 'ids', ids } }],
+        evidence: [{ itemId: 'photo', quote: sourceText }] } };
+    });
+
+    assert.equal(await image('archived-caption', argentina.title), true);
+    assert.equal(await advance(5_000), true);
+    assert.match((await replies('commerce-photo:question:archived-caption'))[0], /Argentina titular 2025.*estado archivado/);
+    assert.equal(await say('la albiceleste del 25', 'archived-inventory'), true);
+    assert.match((await replies('commerce-photo:choose:archived-inventory'))[0], /Argentina titular 2025.*estado archivado/);
+    assert.equal(await bot.processJob(), false);
+
+    await products.setStatus(context, argentina.id, { operationId: randomUUID(), expectedRevision: archived.revision,
+      status: 'draft', reason: 'Test restore photo destination' });
+    assert.equal(await say('la albiceleste del 25'), true);
+    assert.equal(await bot.processJob(), false);
+    await approve();
+    assert.equal(await bot.processJob(), true);
+    assert.equal(await ready(argentina), 2);
+
+    assert.equal(await image('unlinked-caption', 'la de Boca pendiente'), true);
+    assert.equal(await advance(5_000), true);
+    assert.match((await replies('commerce-photo:question:unlinked-caption'))[0], /Demo Boca Juniors pendiente.*no tiene una ficha vinculada/);
+    assert.equal(await bot.processJob(), false);
+  });
 });
 
-test('signed image webhooks send one progress notice before saving the album to the published gallery', async t => {
+test('signed image webhooks wait for confirmation before saving the album to the published gallery', async t => {
   const secret = 'whatsapp-photo-integration-test-secret';
   const bytes = await sharp({ create: { width: 32, height: 40, channels: 3, background: 'blue' } }).png().toBuffer();
   const fixture = await startCommerceFixture({ configureApi: async ({ connection, directory }) => {
@@ -285,15 +388,27 @@ test('signed image webhooks send one progress notice before saving the album to 
   await sendImage('wamid-photo-3', 'la blaugrana del 25');
   await sendImage('wamid-photo-2');
 
+  const waitForReplies = async predicate => {
+    const deadline = Date.now() + 15_000;
+    let delivered = [];
+    while (Date.now() < deadline) {
+      delivered = (await runtime.withClient(client => client.query("SELECT reply_text FROM meta_reply_outbox WHERE status='sent' ORDER BY sent_at"))).rows.map(row => row.reply_text);
+      if (delivered.some(predicate)) break;
+      await delay(100);
+    }
+    return delivered;
+  };
+  const before = await waitForReplies(reply => reply.startsWith('¿Agrego 3 fotos'));
+  assert.equal(before.length, 2);
+  assert.equal(before[0], processingReply);
+  assert.ok(before[1].startsWith(`¿Agrego 3 fotos a «${product.title}»?`));
+  const { rows: [{ count: jobs }] } = await runtime.withClient(client => client.query('SELECT count(*)::int AS count FROM commerce_whatsapp_photo_jobs'));
+  assert.equal(jobs, 0);
+  const confirmation = /CONFIRMAR FOTOS [0-9a-f]{8}/.exec(before[1])[0];
+  await send({ id: 'wamid-confirm-album', type: 'text', text: { body: confirmation } });
   const expectedReply = `Agregué 3 fotos a ${product.title}.`;
-  let delivered = [];
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    delivered = (await runtime.withClient(client => client.query("SELECT reply_text FROM meta_reply_outbox WHERE status='sent' ORDER BY sent_at"))).rows;
-    if (delivered.some(row => row.reply_text === expectedReply)) break;
-    await delay(100);
-  }
-  assert.deepEqual(delivered.map(row => row.reply_text), [processingReply, expectedReply]);
+  const delivered = await waitForReplies(reply => reply === expectedReply);
+  assert.deepEqual(delivered, [...before, expectedReply]);
   const { rows: albumClaims } = await runtime.withClient(client => client.query(`SELECT c.status, e.id AS event_id
     FROM meta_message_claims c LEFT JOIN meta_events e ON e.id=c.message_id WHERE c.message_id LIKE 'wamid-album-%'`));
   assert.deepEqual(albumClaims, [{ status: 'completed', event_id: null }, { status: 'completed', event_id: null }]);
