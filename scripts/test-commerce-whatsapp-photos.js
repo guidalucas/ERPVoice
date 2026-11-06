@@ -48,7 +48,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
   const bytes = await sharp({ create: { width: 32, height: 40, channels: 3, background: 'red' } }).png().toBuffer();
   let now = Date.now(), downloads = 0;
   const download = async id => { downloads++; return id.startsWith('invalid') ? Buffer.from('not an image') : bytes; };
-  const service = (mediaService = media) => createWhatsAppPhotoService({ runtime, media: mediaService, download, clock: () => now });
+  const service = (mediaService = media, complete) => createWhatsAppPhotoService({ runtime, media: mediaService, download, clock: () => now, complete });
   let bot = service();
   const query = (statement, params) => runtime.withClient(client => client.query(statement, params));
   const create = async title => (await products.create(context, { operationId: randomUUID(), product: { title }, skuLinks: [] })).result;
@@ -179,6 +179,52 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.match((await replies('commerce-photo:question:boca-ambiguous'))[0], /¿Cuál ficha querés usar\?/);
     assert.equal(await ready(alternate), 0);
   });
+
+  await t.test('approximate references use inventory interpretation and collapse sizes to one Studio gallery', async () => {
+    const [barcelona, argentina] = fixture.products;
+    const seen = [];
+    bot = service(media, async request => {
+      const { sourceText, catalog } = JSON.parse(request.messages[1].content);
+      seen.push(sourceText);
+      assert.ok(catalog.products.some(product => product.id === barcelona.skuIds[0]));
+      assert.equal(Object.hasOwn(catalog.products[0], 'stockAvailable'), false);
+      if (['Decime el stock disponible', '¿Cuánto stock queda?'].includes(sourceText)) {
+        return { ok: true, json: { contractVersion: 1, kind: 'other_topic' } };
+      }
+      const ids = sourceText === 'la titular del año pasado' ? [...barcelona.skuIds, ...argentina.skuIds] : barcelona.skuIds;
+      const selector = sourceText === 'todos los productos' ? { kind: 'all' } : { kind: 'ids', ids };
+      return { ok: true, json: { contractVersion: 1, kind: 'query', queries: [{ itemId: 'photo', type: 'inventory.query', selector }],
+        evidence: [{ itemId: 'photo', quote: sourceText }] } };
+    });
+
+    assert.equal(await say('Decime el stock disponible'), false);
+    assert.equal(await image('short-name', 'la blaugrana del año pasado'), true);
+    assert.equal(await image('short-name-extra'), true);
+    assert.equal(await advance(5_000), true);
+    assert.equal(await bot.processJob(), true);
+    assert.equal(await ready(barcelona), 3);
+    assert.equal(await ready(argentina), 1);
+
+    assert.equal(await image('multiple-models', 'la titular del año pasado'), true);
+    assert.equal(await advance(5_000), true);
+    assert.equal(await bot.processJob(), false);
+    assert.match((await replies('commerce-photo:question:multiple-models'))[0], /Barcelona titular 2025/);
+    assert.match((await replies('commerce-photo:question:multiple-models'))[0], /Argentina titular 2025/);
+    assert.equal(await say('¿Cuánto stock queda?'), false);
+    assert.equal(await bot.processJob(), false);
+
+    assert.equal(await image('pending-short-name'), true);
+    assert.equal(await advance(5_000), true);
+    assert.equal(await say('la del Barça del 25'), true);
+    assert.equal(await bot.processJob(), true);
+    assert.equal(await ready(barcelona), 4);
+
+    assert.equal(await image('global-model-selection', 'todos los productos'), true);
+    assert.equal(await advance(5_000), true);
+    assert.equal(await bot.processJob(), false);
+    assert.equal(await ready(barcelona), 4);
+    assert.ok(seen.includes('la del Barça del 25'));
+  });
 });
 
 test('signed image webhooks reach the published product gallery through the running server', async t => {
@@ -196,10 +242,18 @@ test('signed image webhooks reach the published product gallery through the runn
           return Response.json({ url: 'https://lookaside.fbsbx.com/test-photo', mime_type: 'image/png' });
         }
         if (url.hostname === 'lookaside.fbsbx.com') return new Response(Buffer.from('${bytes.toString('base64')}', 'base64'));
+        if (url.hostname === 'photo-model.example') {
+          const { sourceText, catalog } = JSON.parse(JSON.parse(options.body).messages[1].content);
+          const ids = catalog.products.filter(product => product.name === 'Demo Barcelona 2025').map(product => product.id);
+          const result = { contractVersion: 1, kind: 'query', queries: [{ itemId: 'photo', type: 'inventory.query', selector: { kind: 'ids', ids } }],
+            evidence: [{ itemId: 'photo', quote: sourceText }] };
+          return Response.json({ choices: [{ message: { content: JSON.stringify(result) }, finish_reason: 'stop' }] });
+        }
         return fetchActual(input, options);
       };`);
     return { NODE_OPTIONS: `--import=${pathToFileURL(stub).href}`, META_APP_SECRET: secret,
-      META_ACCESS_TOKEN: 'fixture-token', META_PHONE_NUMBER_ID: '456', COMMERCE_WHATSAPP_PHOTOS: 'true' };
+      META_ACCESS_TOKEN: 'fixture-token', META_PHONE_NUMBER_ID: '456', COMMERCE_WHATSAPP_PHOTOS: 'true',
+      LLM_PROVIDER: 'gemini', GEMINI_API_KEY: 'fixture-model-token', GEMINI_MODEL_ENDPOINT: 'https://photo-model.example/chat/completions' };
   } });
   const runtime = createDatabaseRuntime({ connectionString: fixture.connection });
   t.after(async () => { await runtime.close(); await fixture.stop(); });
@@ -217,7 +271,7 @@ test('signed image webhooks reach the published product gallery through the runn
   };
   await send('wamid-photo-1');
   await send('wamid-photo-2');
-  await send('wamid-photo-3', `Camiseta de ${product.title}`);
+  await send('wamid-photo-3', 'la blaugrana del 25');
   await send('wamid-photo-2');
 
   const expectedReply = `Agregué 3 fotos a ${product.title}.`;

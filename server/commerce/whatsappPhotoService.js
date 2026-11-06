@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { CommerceError } from './errors.js';
 import { requireCommerceAccess } from './operationRepository.js';
+import { inventoryRowToProduct } from '../inventoryPostgres.js';
+import { interpretUniversalIntent } from '../universalIntentInterpreter.js';
+import { parseUniversalMetaCommand } from '../universalMetaOperations.js';
 
 const inactivityMs = 15 * 60_000;
 const maxPendingPhotos = 8;
@@ -54,7 +57,51 @@ const selectionPrompt = choices => choices.length > 5
   ? 'Encontré varias fichas. Respondé con el nombre completo o el identificador de la ficha.'
   : `¿Cuál ficha querés usar?\n${choices.map((product, index) => `${index + 1}. ${product.title} (${product.slug})`).join('\n')}\nRespondé «ficha 1», «ficha 2», etc.`;
 
-export function createWhatsAppPhotoService({ runtime, media, download, graceMs = 5_000, clock = Date.now }) {
+export function createWhatsAppPhotoService({ runtime, media, download, graceMs = 5_000, clock = Date.now, complete }) {
+  async function interpretReference(context, { reference, purpose }) {
+    const products = await runtime.transaction(async client => {
+      await requireCommerceAccess(client, context, 'commerce:media');
+      const { rows } = await client.query(`SELECT * FROM products WHERE owner_phone=$1 AND inventory_status='active'
+        ORDER BY id LIMIT 1001`, [context.businessId]);
+      return rows.map(inventoryRowToProduct);
+    }, { readOnly: true });
+    return interpretUniversalIntent({ sourceText: reference, purpose, channel: 'whatsapp', operationId: randomUUID(),
+      context: { ...context, permissions: ['inventory:read'] }, catalog: { products, clients: [], proveedores: [], pedidos: [] },
+      ...(complete ? { complete } : {}) });
+  }
+
+  // Resolve references outside transactions, then re-read the chat and links before applying the result.
+  async function withReferenceLookup(context, run) {
+    const interpreted = new Map();
+    for (;;) {
+      const result = await runtime.transaction(client => run(client, interpreted));
+      if (!result?.lookup) return result;
+      const { key } = result.lookup;
+      interpreted.set(key, interpreted.size >= 3 ? { kind: 'unavailable' } : await interpretReference(context, result.lookup));
+    }
+  }
+
+  async function resolveReference(client, context, reference, { partial, purpose, batchId, interpreted }) {
+    const choices = await findProducts(client, context.businessId, reference, partial);
+    if (choices.length || !purpose || !reference || reference.length > 240) return { choices };
+    const key = JSON.stringify([batchId, reference, purpose]);
+    if (!interpreted.has(key)) return { lookup: { key, reference, purpose } };
+    const result = interpreted.get(key);
+    if (result.kind !== 'answer') return { choices };
+    const ids = result.queries[0].selector.ids;
+    if (!ids.length) return { choices, addressed: true };
+    const { rows } = await client.query(`SELECT i.id AS sku_id,p.id,p.title,p.slug,p.identity_key AS "identityKey"
+      FROM products i LEFT JOIN commercial_product_skus l ON l.owner_phone=i.owner_phone AND l.sku_id=i.id
+      LEFT JOIN commercial_products p ON p.owner_phone=l.owner_phone AND p.id=l.commercial_product_id AND p.status<>'archived'
+      WHERE i.owner_phone=$1 AND i.id=ANY($2) AND i.inventory_status='active' ORDER BY p.title,p.id`, [context.businessId, ids]);
+    const products = new Map(rows.filter(row => row.id).map(({ sku_id, ...product }) => [product.id, product]));
+    const linked = new Set(rows.filter(row => row.id).map(row => row.sku_id));
+    if (linked.size !== ids.length && products.size < 2) {
+      return { choices, addressed: true, note: 'Encontré el producto en inventario, pero necesito que me indiques su ficha en Studio.' };
+    }
+    return { choices: [...products.values()].slice(0, 6), addressed: true };
+  }
+
   const save = (client, context, state, dueAt, expiresAt) => client.query(`UPDATE commerce_whatsapp_photo_chats
     SET state=$3,due_at=$4,expires_at=$5 WHERE owner_phone=$1 AND actor_id=$2`,
   [context.businessId, context.actorId, state, dueAt === null ? null : new Date(dueAt), new Date(expiresAt)]);
@@ -76,19 +123,22 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
     delete state.batch;
   };
 
-  async function flushBatch(client, context, state, { ask = true } = {}) {
+  async function flushBatch(client, context, state, interpreted, { ask = true } = {}) {
     if (!state.batch) return;
     const { id, photos } = state.batch;
-    const references = [...new Set(photos.map(photo => normalize(photo.caption)).filter(Boolean))];
-    if (!references.length && state.active && !state.batch.asked) return queue(client, context, state, state.active);
-    const choices = references.length === 1 ? await findProducts(client, context.businessId, references[0], true) : [];
-    if (choices.length === 1) return queue(client, context, state, choices[0]);
+    const references = new Map(photos.filter(photo => photo.caption).map(photo => [normalize(photo.caption), photo.caption]));
+    if (!references.size && state.active && !state.batch.asked) { await queue(client, context, state, state.active); return; }
+    const match = references.size === 1 ? await resolveReference(client, context, references.values().next().value,
+      { partial: true, purpose: 'photo-reference', batchId: id, interpreted }) : { choices: [] };
+    if (match.lookup) return match;
+    const { choices } = match;
+    if (choices.length === 1) { await queue(client, context, state, choices[0]); return; }
     if (!ask) return;
 
-    const question = choices.length ? selectionPrompt(choices)
-      : references.length > 1 ? 'Las fotos traen nombres distintos. ¿A qué ficha va este envío?'
-        : references.length ? 'No encontré esa ficha. ¿A qué producto van las fotos?'
-          : photos.length === 1 ? '¿A qué producto va esta foto?' : '¿A qué producto van estas fotos?';
+    const question = choices.length ? selectionPrompt(choices) : match.note
+      ?? (references.size > 1 ? 'Las fotos traen nombres distintos. ¿A qué ficha va este envío?'
+        : references.size ? 'No encontré esa ficha. ¿A qué producto van las fotos?'
+          : photos.length === 1 ? '¿A qué producto va esta foto?' : '¿A qué producto van estas fotos?');
     const prompt = eventId('question', state.batch.questionId);
     await enqueue(client, prompt, context.actorId, question);
     delete state.active;
@@ -96,7 +146,7 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
       photos: photos.map(photo => ({ ...photo, caption: '' })) };
   }
 
-  const route = (context, message, phoneNumberId) => runtime.transaction(async client => {
+  const route = (context, message, phoneNumberId) => withReferenceLookup(context, async (client, interpreted) => {
     const claim = (await client.query(`SELECT commerce_photo_handled FROM meta_message_claims
       WHERE message_id=$1 AND owner_phone=$2 AND sender_phone=$3 FOR UPDATE`,
     [message.id, context.businessId, context.actorId])).rows[0];
@@ -135,7 +185,10 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
         return markRouted(client, message.id, true);
       }
       const due = state.batch && row.due_at?.getTime() <= now;
-      if (due) await flushBatch(client, context, state);
+      if (due) {
+        const pending = await flushBatch(client, context, state, interpreted);
+        if (pending) return pending;
+      }
       const caption = typeof message.image.caption === 'string' ? message.image.caption.trim().slice(0, 1024) : '';
       state.batch ??= { id: message.id, questionId: message.id, photos: [] };
       if (state.batch.photos.length < maxPendingPhotos) {
@@ -151,25 +204,34 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
       return markRouted(client, message.id, true);
     }
 
-    if (command || (state.batch && text)) {
+    const stockControl = /^(?:confirmar|cancelar)[.!]?$/i.test(text) || parseUniversalMetaCommand(text);
+    if (command || (state.batch && text && !stockControl)) {
       const choice = choiceCommand.exec(text);
       const product = !command && choice ? state.batch?.choices?.[Number(choice[1]) - 1] : null;
-      const choices = product ? [product] : await findProducts(client, context.businessId, command?.[1] ?? text, Boolean(command));
+      const quoted = await isReplyToPhotoPrompt(client, context.actorId, state.batch, message.context?.id);
+      const purpose = choice ? null : command || quoted ? 'photo-reference' : state.batch?.asked ? 'photo-reply' : null;
+      const match = product ? { choices: [product] } : await resolveReference(client, context, command?.[1] ?? text,
+        { partial: Boolean(command), purpose, batchId: state.batch?.id ?? message.id, interpreted });
+      if (match.lookup) return match;
+      const { choices } = match;
       if (choices.length === 1) {
-        if (command && state.active && state.batch && !state.batch.asked) await flushBatch(client, context, state, { ask: false });
+        if (command && state.active && state.batch && !state.batch.asked) {
+          const pending = await flushBatch(client, context, state, interpreted, { ask: false });
+          if (pending) return pending;
+        }
         const hadPhotos = Boolean(state.batch?.photos.length);
         await queue(client, context, state, choices[0]);
         if (!hadPhotos) await enqueue(client, eventId('start', message.id), context.actorId, `Mandame las fotos para ${choices[0].title}.`);
         await save(client, context, state, null, expiresAt);
         return markRouted(client, message.id, true);
       }
-      if (command || choice || choices.length || await isReplyToPhotoPrompt(client, context.actorId, state.batch, message.context?.id)) {
+      if (command || choice || choices.length || quoted || match.addressed) {
         state.batch ??= { id: message.id, questionId: message.id, photos: [] };
         state.batch.asked = true;
         state.batch.prompt = eventId('choose', message.id);
         state.batch.choices = choices.length <= 5 ? choices : [];
         delete state.active;
-        const reply = choices.length ? selectionPrompt(choices) : 'No encontré esa ficha en Studio. Decime el nombre completo que aparece ahí.';
+        const reply = choices.length ? selectionPrompt(choices) : match.note ?? 'No encontré esa ficha en Studio. Decime algún detalle más, como el modelo, el color o el año.';
         await enqueue(client, state.batch.prompt, context.actorId, reply);
         await save(client, context, state, null, expiresAt);
         return markRouted(client, message.id, true);
@@ -177,31 +239,47 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
     }
 
     // Finish already addressed photos before passing a new topic to the stock flow.
-    await flushBatch(client, context, state, { ask: false });
+    const pending = await flushBatch(client, context, state, interpreted, { ask: false });
+    if (pending) return pending;
     await save(client, context, { closedAt: sentAt }, null, expiresAt);
     return markRouted(client, message.id, false);
   });
 
-  const flushDue = () => runtime.transaction(async client => {
+  const dueChats = () => runtime.transaction(async client => {
     const now = new Date(clock());
     await client.query(`DELETE FROM commerce_whatsapp_photo_chats WHERE (owner_phone,actor_id) IN (
       SELECT owner_phone,actor_id FROM commerce_whatsapp_photo_chats WHERE expires_at<=$1 LIMIT 25 FOR UPDATE SKIP LOCKED)`, [now]);
-    const { rows } = await client.query(`SELECT * FROM commerce_whatsapp_photo_chats WHERE due_at<=$1 AND expires_at>$1
-      ORDER BY due_at LIMIT 10 FOR UPDATE SKIP LOCKED`, [now]);
-    for (const row of rows) {
-      const context = { businessId: row.owner_phone, actorId: row.actor_id, role: row.owner_phone === row.actor_id ? 'owner' : 'admin' };
-      try {
-        await requireCommerceAccess(client, context, 'commerce:media');
-        await flushBatch(client, context, row.state);
-      } catch (error) {
-        if (!(error instanceof CommerceError)) throw error;
-        await enqueue(client, eventId('access', row.state.batch.id), context.actorId, 'Necesitás permiso de edición en Studio para cargar fotos por WhatsApp.');
-        row.state = {};
-      }
-      await save(client, context, row.state, null, row.expires_at.getTime());
-    }
-    return rows.length > 0;
+    const { rows } = await client.query(`SELECT owner_phone,actor_id FROM commerce_whatsapp_photo_chats WHERE due_at<=$1 AND expires_at>$1
+      ORDER BY due_at LIMIT 10`, [now]);
+    return rows;
   });
+
+  const flushDue = async () => {
+    const rows = await dueChats();
+    const results = await Promise.allSettled(rows.map(({ owner_phone, actor_id }) => {
+      const context = { businessId: owner_phone, actorId: actor_id, role: owner_phone === actor_id ? 'owner' : 'admin' };
+      return withReferenceLookup(context, async (client, interpreted) => {
+        const { rows: [row] } = await client.query(`SELECT state,expires_at FROM commerce_whatsapp_photo_chats
+          WHERE owner_phone=$1 AND actor_id=$2 AND due_at<=$3 AND expires_at>$3 FOR UPDATE SKIP LOCKED`,
+        [owner_phone, actor_id, new Date(clock())]);
+        if (!row) return false;
+        try {
+          await requireCommerceAccess(client, context, 'commerce:media');
+          const pending = await flushBatch(client, context, row.state, interpreted);
+          if (pending) return pending;
+        } catch (error) {
+          if (!(error instanceof CommerceError)) throw error;
+          await enqueue(client, eventId('access', row.state.batch.id), context.actorId, 'Necesitás permiso de edición en Studio para cargar fotos por WhatsApp.');
+          row.state = {};
+        }
+        await save(client, context, row.state, null, row.expires_at.getTime());
+        return true;
+      });
+    }));
+    const failed = results.find(result => result.status === 'rejected');
+    if (failed) throw failed.reason;
+    return results.some(result => result.value);
+  };
 
   const claimJob = () => runtime.transaction(async client => {
     const { rows } = await client.query(`WITH next AS (
