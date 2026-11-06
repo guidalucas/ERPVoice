@@ -72,6 +72,7 @@ export function createCommerceRouter({ runtime, contextOf }) {
   router.put('/products/:id/sku-links', handle(req => products.link(req.commerceContext, req.params.id, req.body)));
   router.post('/products/:id/status', handle(req => products.setStatus(req.commerceContext, req.params.id, req.body)));
   router.get('/inventory-candidates', handle(req => products.candidates(req.commerceContext, req.query)));
+  router.post('/inventory-candidates/sync', handle(req => products.syncInventory(req.commerceContext, req.body)));
   router.get('/operations/:id', handle(req => products.recover(req.commerceContext, req.params.id)));
   router.use((error, req, res, _next) => {
     if (error.type === 'entity.too.large') return res.status(413).json({ error: { code: 'IMAGE_SIZE_INVALID', message: 'La foto debe pesar hasta 12 MB.' }, requestId: req.commerceRequestId });

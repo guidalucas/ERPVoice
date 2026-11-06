@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Client } from 'pg';
@@ -11,9 +12,12 @@ const output = path.resolve('.fullmatch-runtime/pending-groups');
 const argentina = 'PRUEBA agrupación Camiseta Argentina titular 2026 versión jugador';
 const chelsea = 'PRUEBA agrupación Camiseta Chelsea tercera equipación versión jugador';
 const oversized = 'PRUEBA agrupación Lote de 101 talles';
-const api = async (route, user = fixture) => {
-  const response = await fetch(`${fixture.apiUrl}/api/commerce/v1${route}`, { headers: { Authorization: `Bearer ${user.token}` } });
-  const body = await response.json(); assert.equal(response.status, 200, JSON.stringify(body)); return body;
+const api = async (route, user = fixture, command, status = 200) => {
+  const response = await fetch(`${fixture.apiUrl}/api/commerce/v1${route}`, {
+    headers: { Authorization: `Bearer ${user.token}`, ...(command && { 'Content-Type': 'application/json' }) },
+    ...(command && { method: 'POST', body: JSON.stringify(command) }),
+  });
+  const body = await response.json(); assert.equal(response.status, status, JSON.stringify(body)); return body;
 };
 let browser;
 try {
@@ -107,4 +111,45 @@ try {
   assert.deepEqual(errors, []);
   assert.deepEqual((await sql.query('SELECT * FROM products ORDER BY id')).rows, before);
   console.log('PASS UI: group/individual selection, mixed state, limit, load more, keyboard, mobile, both themes, create/link review; inventory unchanged');
+
+  const { items: [chelseaSmall] } = await api(`/inventory-candidates?${new URLSearchParams({ q: chelsea, limit: '1' })}`);
+  const { result: existing } = await api('/products', fixture, {
+    operationId: randomUUID(), product: { title: 'Chelsea con nombre comercial' },
+    skuLinks: [{ skuId: chelseaSmall.skuId, expectedRevision: chelseaSmall.revision, expectedFingerprint: chelseaSmall.identityFingerprint }],
+  }, 201);
+  await pending();
+  await page.getByLabel('Buscar variantes pendientes').fill(argentina);
+  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.pending-product').length === 1);
+  await page.getByRole('button', { name: 'Sincronizar con Stocky', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: '56 fichas creadas · 61 variantes vinculadas. 2 grupos requieren revisión manual.' }).waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('.pending-product').length === 2);
+  const detail = (await api(`/products?${new URLSearchParams({ q: argentina })}`)).items[0];
+  assert.equal(detail.status, 'draft');
+  assert.equal(detail.images.length, 0);
+  assert.deepEqual(detail.variants.map(variant => variant.size).sort(), ['S','M','XL','XXL','4XL','3XL'].sort());
+  assert.ok(detail.variants.every(variant => variant.identityReviewed && variant.stockAvailable === 2));
+  assert.deepEqual((await api(`/products/${existing.id}`)).variants.map(variant => variant.skuId), [chelseaSmall.skuId]);
+  assert.equal((await sql.query('SELECT count(*)::int AS total FROM commercial_publications')).rows[0].total, fixture.products.length);
+  assert.deepEqual((await sql.query('SELECT * FROM products ORDER BY id')).rows, before);
+  await page.getByRole('button', { name: 'Ver fichas sin fotos', exact: true }).click();
+  await page.getByLabel('Buscar productos').fill(argentina);
+  await page.getByRole('button', { name: 'Buscar', exact: true }).click();
+  await page.locator('.product-card').filter({ hasText: argentina }).click();
+  await page.getByRole('heading', { name: 'Fotografías del producto', exact: true }).waitFor();
+  await page.getByLabel('Subir fotografías').waitFor({ state: 'attached' });
+
+  const longName = 'A'.repeat(89) + ' ' + 'B'.repeat(50);
+  await insert('pending-concurrent', longName, 'M');
+  const syncRoute = '/inventory-candidates/sync';
+  const attempts = [{ operationId: randomUUID() }, { operationId: randomUUID() }];
+  const receipts = await Promise.all(attempts.map(command => api(syncRoute, fixture, command)));
+  assert.deepEqual(receipts.map(receipt => receipt.result.created).sort(), [0, 1]);
+  assert.deepEqual(await api(syncRoute, fixture, attempts[0]), receipts[0]);
+  assert.deepEqual((await api(syncRoute, fixture, { operationId: randomUUID() })).result, { created: 0, linkedSkus: 0, needsReview: 2 });
+  const longTitle = (await api(`/products?${new URLSearchParams({ q: longName.slice(0, 89) })}`)).items[0].title;
+  assert.equal(longTitle, longName.slice(0, 120));
+  await api(syncRoute, fixture.member, { operationId: randomUUID() }, 403);
+  assert.deepEqual(errors, []);
+  console.log('PASS sync: all pages despite search, complete drafts, manual exceptions, photo shortcut, tenant and public state, concurrent requests and receipt replay');
 } finally { await browser?.close(); await sql.end().catch(() => {}); await fixture.stop(); }

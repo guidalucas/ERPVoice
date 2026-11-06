@@ -11,9 +11,18 @@ import { fail } from './errors.js';
 import { appearanceOf, normalizeAppearance, requireAppearanceSchema, validateAppearanceAssets } from './appearance.js';
 import { normalizeSkuMetadataChanges, applySkuMetadata } from './skuMetadata.js';
 
+const skuLinkLimit = 100;
+const inventoryGroupColumns = ['name', 'product_model', 'product_type', 'inventory_unit'];
+const inventoryGroupFields = inventoryGroupColumns.map(column => `p.${column}`).join(', ');
+const inventoryGroupKey = row => JSON.stringify(inventoryGroupColumns.map(column => row[column]));
+const pendingSkuCondition = `p.owner_phone=$1 AND p.inventory_status='active'
+  AND NOT EXISTS(SELECT 1 FROM commercial_product_skus l WHERE l.owner_phone=p.owner_phone AND l.sku_id=p.id)`;
+const lockInventoryLinks = (client, businessId) => client.query('SELECT pg_advisory_xact_lock(hashtext($1))',
+  [JSON.stringify(['commerce-inventory-links', businessId])]);
+
 const requireRevision = (row, expected) => { if (Number(row.revision) !== integer(expected, 1)) fail('REVISION_CONFLICT', 'La ficha cambió. Revisá tu borrador antes de guardar.', 409, { currentRevision: Number(row.revision) }); };
 function linksRequest(value = []) {
-  const links = denseArray(value, 100, 'SKU links').map(item => {
+  const links = denseArray(value, skuLinkLimit, 'SKU links').map(item => {
     const link = record(item, ['skuId', 'expectedRevision', 'expectedFingerprint']);
     return { skuId: text(link.skuId, 180, 'SKU id'), expectedRevision: integer(link.expectedRevision), expectedFingerprint: text(link.expectedFingerprint, 128, 'SKU fingerprint') };
   });
@@ -29,9 +38,22 @@ async function replaceLinks(client, context, id, links) {
     if (product.revision !== link.expectedRevision || inventoryProductFingerprint(product) !== link.expectedFingerprint) fail('REVISION_CONFLICT', 'La variante cambió. Revisá la selección.', 409);
   }
   await client.query('DELETE FROM commercial_product_skus WHERE owner_phone=$1 AND commercial_product_id=$2', [context.businessId, id]);
-  for (const [index, link] of links.entries()) await client.query(`INSERT INTO commercial_product_skus
-    (owner_phone,commercial_product_id,sku_id,identity_fingerprint_at_link,sort_order,linked_by) VALUES($1,$2,$3,$4,$5,$6)`,
-  [context.businessId, id, link.skuId, link.expectedFingerprint, index, context.actorId]);
+  await insertLinks(client, context, id, links);
+}
+
+async function insertLinks(client, context, id, links) {
+  await client.query(`INSERT INTO commercial_product_skus
+    (owner_phone,commercial_product_id,sku_id,identity_fingerprint_at_link,sort_order,linked_by)
+    SELECT $1,$2,sku_id,fingerprint,position-1,$3
+    FROM unnest($4::text[],$5::text[]) WITH ORDINALITY AS links(sku_id,fingerprint,position)`,
+  [context.businessId, id, context.actorId, links.map(link => link.skuId), links.map(link => link.expectedFingerprint)]);
+}
+
+async function insertDraft(client, context, product) {
+  const id = randomUUID();
+  await insertProduct(client, context.businessId, context.actorId, id, commercialSlug(product.title, id),
+    { ...product, identityKey: commercialIdentityKey(product) });
+  return id;
 }
 
 /** Private use only. SKU metadata edits use the inventory executor atomically. */
@@ -84,11 +106,45 @@ export function createCommerceProductService(runtime) {
       const command = { operationId: uuid(data.operationId), product: normalizeCommercialProduct(data.product), skuLinks: linksRequest(data.skuLinks),
         ...(Object.hasOwn(data, 'skuMetadataChanges') ? { skuMetadataChanges: normalizeSkuMetadataChanges(data.skuMetadataChanges) } : {}) };
       return mutate(context, { operationId: command.operationId, type: 'product.create', command }, async client => {
-        const id = randomUUID(), product = { ...command.product, identityKey: commercialIdentityKey(command.product) };
-        await insertProduct(client, context.businessId, context.actorId, id, commercialSlug(product.title, id), product);
+        await lockInventoryLinks(client, context.businessId);
+        const id = await insertDraft(client, context, command.product);
         const updated = await applySkuMetadata(client, context, command.operationId, command.skuMetadataChanges ?? [], command.skuLinks.map(link => link.skuId));
         await replaceLinks(client, context, id, command.skuLinks.map(link => updated.get(link.skuId) ?? link));
         return readProductDetail(client, context.businessId, id);
+      });
+    },
+    syncInventory: async (context, input) => {
+      const data = record(input, ['operationId']);
+      const command = { operationId: uuid(data.operationId) };
+      return mutate(context, { operationId: command.operationId, type: 'product.syncInventory', command }, async client => {
+        await lockInventoryLinks(client, context.businessId);
+        const pending = (await client.query(`SELECT p.* FROM products p WHERE ${pendingSkuCondition} ORDER BY p.id FOR SHARE`, [context.businessId])).rows;
+        const result = { created: 0, linkedSkus: 0, needsReview: 0 };
+        if (!pending.length) return result;
+        const linked = (await client.query(`SELECT DISTINCT ${inventoryGroupFields} FROM products p JOIN commercial_product_skus l
+          ON l.owner_phone=p.owner_phone AND l.sku_id=p.id WHERE p.owner_phone=$1`, [context.businessId])).rows;
+        const existingGroups = new Set(linked.map(inventoryGroupKey));
+        const groups = new Map();
+        for (const row of pending) {
+          const key = inventoryGroupKey(row);
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(row);
+        }
+        for (const [key, variants] of groups) {
+          const first = variants[0];
+          const title = (first.product_model?.trim() || first.name.trim()).normalize('NFC').slice(0, 120).replace(/[\uD800-\uDBFF]$/u, '').trim();
+          if (!title || variants.length > skuLinkLimit || existingGroups.has(key)) {
+            result.needsReview++;
+            continue;
+          }
+          const id = await insertDraft(client, context, normalizeCommercialProduct({ title }));
+          await insertLinks(client, context, id, variants.map(row => ({
+            skuId: row.id, expectedFingerprint: inventoryProductFingerprint(inventoryRowToProduct(row)),
+          })));
+          result.created++;
+          result.linkedSkus += variants.length;
+        }
+        return result;
       });
     },
     update: async (context, id, input) => {
@@ -118,6 +174,7 @@ export function createCommerceProductService(runtime) {
       const data = record(input, ['operationId', 'expectedRevision', 'skuLinks']);
       const command = { operationId: uuid(data.operationId), expectedRevision: integer(data.expectedRevision, 1), skuLinks: linksRequest(data.skuLinks) };
       return mutate(context, { operationId: command.operationId, type: 'product.link', entityId: id, command }, async client => {
+        await lockInventoryLinks(client, context.businessId);
         const row = await requireProduct(client, context.businessId, id, { lock: true }); requireRevision(row, command.expectedRevision);
         if (row.status === 'archived') fail('PRODUCT_ARCHIVED', 'Restaurá la ficha antes de modificar variantes.', 409);
         await replaceLinks(client, context, id, command.skuLinks);
@@ -192,16 +249,14 @@ export function createCommerceProductService(runtime) {
       const parameters = [context.businessId, q, `%${q}%`, data.cursor ? text(data.cursor, 180, 'cursor') : null, limit + 1];
       // Page whole product identities so selecting a group never misses sizes on another page.
       const rows = data.grouped ? (await client.query(`WITH eligible AS (
-        SELECT p.*, min(p.id) OVER (PARTITION BY p.name, p.product_model, p.product_type, p.inventory_unit) AS candidate_group
-        FROM products p WHERE p.owner_phone=$1 AND p.inventory_status='active'
-        AND NOT EXISTS(SELECT 1 FROM commercial_product_skus l WHERE l.owner_phone=p.owner_phone AND l.sku_id=p.id)
+        SELECT p.*, min(p.id) OVER (PARTITION BY ${inventoryGroupFields}) AS candidate_group
+        FROM products p WHERE ${pendingSkuCondition}
         AND ($2='' OR p.name ILIKE $3 OR p.product_model ILIKE $3)
       ), page AS (
         SELECT DISTINCT candidate_group FROM eligible WHERE ($4::text IS NULL OR candidate_group>$4)
         ORDER BY candidate_group LIMIT $5
       ) SELECT eligible.* FROM eligible JOIN page USING(candidate_group) ORDER BY candidate_group,id`, parameters)).rows
-        : (await client.query(`SELECT p.* FROM products p WHERE p.owner_phone=$1 AND p.inventory_status='active'
-        AND NOT EXISTS(SELECT 1 FROM commercial_product_skus l WHERE l.owner_phone=p.owner_phone AND l.sku_id=p.id)
+        : (await client.query(`SELECT p.* FROM products p WHERE ${pendingSkuCondition}
         AND ($2='' OR p.name ILIKE $3 OR p.product_model ILIKE $3) AND ($4::text IS NULL OR p.id>$4)
         ORDER BY p.id LIMIT $5`, parameters)).rows;
       const pageKeys = data.grouped ? [...new Set(rows.map(row => row.candidate_group))] : rows.map(row => row.id);
@@ -220,8 +275,7 @@ export function createCommerceProductService(runtime) {
       products: (await client.query('SELECT status,count(*)::int AS count FROM commercial_products WHERE owner_phone=$1 GROUP BY status', [context.businessId])).rows,
       withoutPhotos: (await client.query(`SELECT count(*)::int AS count FROM commercial_products p WHERE p.owner_phone=$1 AND p.status<>'archived'
         AND NOT EXISTS(SELECT 1 FROM commercial_product_images i WHERE i.owner_phone=p.owner_phone AND i.commercial_product_id=p.id AND i.status='ready')`, [context.businessId])).rows[0].count,
-      unlinkedSkus: (await client.query(`SELECT count(*)::int AS count FROM products p WHERE p.owner_phone=$1 AND inventory_status='active'
-        AND NOT EXISTS(SELECT 1 FROM commercial_product_skus l WHERE l.owner_phone=p.owner_phone AND l.sku_id=p.id)`, [context.businessId])).rows[0].count,
+      unlinkedSkus: (await client.query(`SELECT count(*)::int AS count FROM products p WHERE ${pendingSkuCondition}`, [context.businessId])).rows[0].count,
     })),
     updateProfile: async (context, input) => {
       const data = record(input, ['operationId', 'expectedRevision', 'brandName', 'salesWhatsapp', 'appearance']);
