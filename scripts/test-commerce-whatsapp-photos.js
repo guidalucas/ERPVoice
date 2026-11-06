@@ -15,6 +15,8 @@ import { createWhatsAppPhotoService } from '../server/commerce/whatsappPhotoServ
 import { startCommerceFixture } from './fullmatch/fixtureRuntime.js';
 
 const processingReply = 'Recibí tu envío. Estoy procesando la carga de fotos…';
+const photoReview = (title, count) => `Carga de fotos · ${title}\n* Cantidad: ${count} ${count === 1 ? 'foto' : 'fotos'}.\n\n` +
+  'Respondé «confirmar» para guardar, «cancelar» para descartar, o escribí qué querés corregir.\n\nLa vigencia del borrador es de 15 minutos.';
 
 test('Meta photo download uses authenticated, bounded downloads from Meta', async () => {
   const env = { META_ACCESS_TOKEN: 'test-token', META_GRAPH_API_VERSION: 'v21.0' };
@@ -65,15 +67,15 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
   const advance = async ms => { now += ms; return bot.flushDue(); };
   const replies = async id => (await query('SELECT reply_text FROM meta_reply_outbox WHERE event_id=$1', [id])).rows.map(row => row.reply_text);
   const proposed = async () => {
-    const { rows: [row] } = await query(`SELECT state #> '{batch,confirmation}' AS confirmation FROM commerce_whatsapp_photo_chats
+    const { rows: [row] } = await query(`SELECT state #> '{batch,confirmation}' AS confirmation, state #>> '{batch,prompt}' AS prompt FROM commerce_whatsapp_photo_chats
       WHERE owner_phone=$1 AND actor_id=$1`, [fixture.owner]);
     assert.ok(row?.confirmation, 'a photo confirmation must be pending');
-    return row.confirmation;
+    return { ...row.confirmation, prompt: row.prompt };
   };
   const approve = async id => {
-    const { code } = await proposed();
-    assert.equal(await say(`CONFIRMAR FOTOS ${code}`, id), true);
-    return code;
+    const { prompt } = await proposed();
+    await query("UPDATE meta_reply_outbox SET status='sent',sent_at=$1 WHERE event_id=$2", [new Date(now), prompt]);
+    assert.equal(await say('confirmar', id), true);
   };
 
   await t.test('three photos with one caption on the last photo save once to the same gallery', async () => {
@@ -88,11 +90,12 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.deepEqual(notices, [{ reply_text: processingReply }]);
     bot = service();
     assert.equal(await advance(5_000), true);
-    assert.match((await replies('commerce-photo:confirm:group-3'))[0], /¿Agrego 3 fotos a «Camiséta Negra»\?/);
+    assert.deepEqual(await replies('commerce-photo:confirm:group-3'), [photoReview(black.title, 3)]);
+    assert.equal(await say('confirmar'), true);
     assert.equal(await bot.processJob(), false);
     assert.equal(await ready(black), 0);
-    const code = await approve('confirm-group');
-    assert.equal(await say(`CONFIRMAR FOTOS ${code}`, 'confirm-group'), true);
+    await approve('confirm-group');
+    assert.equal(await say('confirmar', 'confirm-group'), true);
     assert.equal(await bot.processJob(), true);
     assert.equal(await ready(black), 3);
     assert.equal(await ready(white), 0);
@@ -100,6 +103,8 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.deepEqual(await replies('commerce-photo:question:group-1'), []);
     const detail = await products.detail(context, black.id);
     assert.equal(detail.coverImageId, detail.images[0].id);
+    assert.equal(await say('confirmar'), true);
+    assert.equal(await bot.processJob(), false);
 
   });
 
@@ -273,7 +278,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.equal(original.product.id, genoa.id);
     assert.equal(await bot.processJob(), false);
     assert.equal(await say(boca.title, 'correct-photo-product'), true);
-    assert.match((await replies('commerce-photo:confirm:correct-photo-product'))[0], /¿Agrego 3 fotos a «Camiseta de Boca/);
+    assert.deepEqual(await replies('commerce-photo:confirm:correct-photo-product'), [photoReview(boca.title, 3)]);
     assert.equal(await say(`CONFIRMAR FOTOS ${original.code}`), true);
     assert.equal(await bot.processJob(), false);
     assert.equal(await ready(genoa), 0);
@@ -293,12 +298,15 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
     assert.equal(await say(`CONFIRMAR FOTOS ${unconfirmed.code}`), true);
     assert.equal(await bot.processJob(), false);
     assert.equal(await advance(5_000), true);
-    assert.match((await replies('commerce-photo:confirm:new-unconfirmed-extra'))[0], /¿Agrego 2 fotos/);
+    assert.deepEqual(await replies('commerce-photo:confirm:new-unconfirmed-extra'), [photoReview(boca.title, 2)]);
     const updated = await proposed();
-    assert.equal(await say('cancelar fotos'), true);
+    assert.equal(await say('cancelar'), true);
+    assert.equal(await say('confirmar'), true);
     assert.equal(await say(`CONFIRMAR FOTOS ${updated.code}`), true);
     assert.equal(await bot.processJob(), false);
     assert.equal(await ready(boca), 3);
+    assert.equal(await say('¿Cuánto stock queda?'), false);
+    assert.equal(await say('confirmar'), false);
   });
 
   await t.test('archived and unlinked inventory explain why no Studio destination is available', async () => {
@@ -398,14 +406,12 @@ test('signed image webhooks wait for confirmation before saving the album to the
     }
     return delivered;
   };
-  const before = await waitForReplies(reply => reply.startsWith('¿Agrego 3 fotos'));
-  assert.equal(before.length, 2);
-  assert.equal(before[0], processingReply);
-  assert.ok(before[1].startsWith(`¿Agrego 3 fotos a «${product.title}»?`));
+  const review = photoReview(product.title, 3);
+  const before = await waitForReplies(reply => reply === review);
+  assert.deepEqual(before, [processingReply, review]);
   const { rows: [{ count: jobs }] } = await runtime.withClient(client => client.query('SELECT count(*)::int AS count FROM commerce_whatsapp_photo_jobs'));
   assert.equal(jobs, 0);
-  const confirmation = /CONFIRMAR FOTOS [0-9a-f]{8}/.exec(before[1])[0];
-  await send({ id: 'wamid-confirm-album', type: 'text', text: { body: confirmation } });
+  await send({ id: 'wamid-confirm-album', type: 'text', text: { body: 'confirmar' } });
   const expectedReply = `Agregué 3 fotos a ${product.title}.`;
   const delivered = await waitForReplies(reply => reply === expectedReply);
   assert.deepEqual(delivered, [...before, expectedReply]);

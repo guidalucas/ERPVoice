@@ -11,6 +11,7 @@ const startCommand = /^(?:agregar|adjuntar|cargar)\s+fotos?\s+(?:a|de|para)\s+(.
 const choiceCommand = /^ficha\s+([1-5])$/iu;
 const confirmCommand = /^confirmar\s+fotos(?:\s+([0-9a-f]{8}))?$/iu;
 const cancelCommand = /^cancelar\s+fotos[.!]?$/iu;
+const simpleControl = /^(confirmar|cancelar)[.!]?$/iu;
 const yes = /^s[ií][.!]?$/iu;
 const no = /^no[.!]?$/iu;
 const garmentPrefix = '^(?:(?:la|una) )?(?:camisetas?|remeras?) (?:(?:de|del) )?';
@@ -48,6 +49,12 @@ async function isReplyToPhotoPrompt(client, actor, batch, replyTo) {
   const prompt = batch.prompt ?? eventId('question', batch.questionId);
   const { rowCount } = await client.query(`SELECT 1 FROM meta_reply_outbox
     WHERE event_id=$1 AND recipient=$2 AND provider_message_ids @> jsonb_build_array($3::text)`, [prompt, actor, replyTo]);
+  return rowCount > 0;
+}
+
+async function wasPhotoPromptSent(client, actor, prompt, sentAt) {
+  const { rowCount } = await client.query(`SELECT 1 FROM meta_reply_outbox WHERE event_id=$1 AND recipient=$2
+    AND status='sent' AND date_trunc('second',sent_at)<=$3`, [prompt, actor, new Date(sentAt)]);
   return rowCount > 0;
 }
 
@@ -140,9 +147,15 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
 
   async function proposeBatch(client, context, state, product, sourceId) {
     const code = randomUUID().slice(0, 8);
-    const question = `¿Agrego ${photoCount(state.batch.photos.length)} a «${product.title}»?\n` +
-      `Respondé «CONFIRMAR FOTOS ${code}» o citá este mensaje y respondé «sí». Si es otra ficha, decime cuál.`;
-    await askAboutBatch(client, context, state, eventId('confirm', sourceId), question);
+    const review = [
+      `Carga de fotos · ${product.title}`,
+      `* Cantidad: ${photoCount(state.batch.photos.length)}.`,
+      '',
+      'Respondé «confirmar» para guardar, «cancelar» para descartar, o escribí qué querés corregir.',
+      '',
+      'La vigencia del borrador es de 15 minutos.',
+    ].join('\n');
+    await askAboutBatch(client, context, state, eventId('confirm', sourceId), review);
     state.batch.confirmation = { product, code };
   }
 
@@ -182,6 +195,7 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
     const command = startCommand.exec(text);
     const confirm = confirmCommand.exec(text);
     const cancel = cancelCommand.test(text);
+    const control = simpleControl.exec(text)?.[1].toLowerCase();
     const explicit = isPhoto || Boolean(command || confirm || cancel);
     const scope = [context.businessId, context.actorId];
     const now = clock();
@@ -191,19 +205,21 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
     const row = (await client.query(`SELECT state,due_at,expires_at FROM commerce_whatsapp_photo_chats
       WHERE owner_phone=$1 AND actor_id=$2 FOR UPDATE`, scope)).rows[0];
     const state = row && row.expires_at.getTime() > now ? row.state : {};
-    if (!explicit && !state.active && !state.batch) return markRouted(client, message.id, false);
+    const photoContext = Boolean(state.active || state.batch || state.photoControl);
+    const photoControl = photoContext ? control : undefined;
+    if (!explicit && !photoContext) return markRouted(client, message.id, false);
 
     try {
       await requireCommerceAccess(client, context, 'commerce:media');
     } catch (error) {
       if (!(error instanceof CommerceError)) throw error;
-      if (explicit) await enqueue(client, eventId('access', message.id), context.actorId, 'Necesitás permiso de edición en Studio para cargar fotos por WhatsApp.');
+      if (explicit || photoControl) await enqueue(client, eventId('access', message.id), context.actorId, 'Necesitás permiso de edición en Studio para cargar fotos por WhatsApp.');
       await client.query('DELETE FROM commerce_whatsapp_photo_chats WHERE owner_phone=$1 AND actor_id=$2', scope);
-      return markRouted(client, message.id, explicit);
+      return markRouted(client, message.id, explicit || Boolean(photoControl));
     }
 
     const sentAt = Number(message.timestamp) * 1_000 || now;
-    if (sentAt < (state.closedAt ?? 0) || sentAt < now - inactivityMs) return markRouted(client, message.id, explicit);
+    if (sentAt < (state.closedAt ?? 0) || sentAt < now - inactivityMs) return markRouted(client, message.id, explicit || Boolean(photoControl));
 
     if (isPhoto) {
       if (typeof message.image?.id !== 'string' || !/^[\w-]{1,200}$/.test(message.image.id)) {
@@ -237,20 +253,29 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
 
     const quoted = await isReplyToPhotoPrompt(client, context.actorId, state.batch, message.context?.id);
     const confirmation = state.batch?.confirmation;
-    if (confirm || (confirmation && yes.test(text))) {
-      if (confirmation && (confirm?.[1]?.toLowerCase() === confirmation.code || (quoted && yes.test(text)))) {
+    if (confirm || photoControl === 'confirmar' || (confirmation && yes.test(text))) {
+      const acceptsCurrent = confirmation && (
+        confirm?.[1]?.toLowerCase() === confirmation.code ||
+        (quoted && (photoControl === 'confirmar' || yes.test(text))) ||
+        (photoControl === 'confirmar' && !message.context?.id && await wasPhotoPromptSent(client, context.actorId, state.batch.prompt, sentAt))
+      );
+      if (acceptsCurrent) {
         await queueConfirmedBatch(client, context, state);
         await save(client, context, state, null, expiresAt);
       } else {
-        const reply = confirmation ? `Para guardar las fotos, respondé «CONFIRMAR FOTOS ${confirmation.code}» o citá la pregunta y respondé «sí».`
+        const reply = confirmation ? 'Respondé «confirmar» después de recibir la propuesta vigente para estas fotos.'
           : 'No hay una confirmación de fotos vigente. Esperá la propuesta o volvé a mandar las fotos.';
         await enqueue(client, eventId('confirm-invalid', message.id), context.actorId, reply);
       }
       return markRouted(client, message.id, true);
     }
-    if (cancel) {
-      if (row) await save(client, context, { closedAt: sentAt }, null, expiresAt);
-      await enqueue(client, eventId('cancelled', message.id), context.actorId, 'Cerré la carga de fotos pendiente.');
+    if (cancel || photoControl === 'cancelar') {
+      const hasPending = Boolean(state.batch || state.active);
+      const acceptsCurrent = cancel || !message.context?.id || quoted;
+      if (row && acceptsCurrent) await save(client, context, { closedAt: sentAt, photoControl: true }, null, expiresAt);
+      const reply = !acceptsCurrent ? 'Respondé «cancelar» para descartar la carga de fotos vigente.'
+        : hasPending ? 'Cerré la carga de fotos pendiente.' : 'No hay una carga de fotos pendiente.';
+      await enqueue(client, eventId('cancelled', message.id), context.actorId, reply);
       return markRouted(client, message.id, true);
     }
     if (confirmation && no.test(text)) {
@@ -259,7 +284,7 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
       return markRouted(client, message.id, true);
     }
 
-    const stockControl = /^(?:confirmar|cancelar)[.!]?$/i.test(text) || parseUniversalMetaCommand(text);
+    const stockControl = control || parseUniversalMetaCommand(text);
     if (command || (state.batch && text && !stockControl)) {
       const choice = choiceCommand.exec(text);
       const product = !command && choice ? state.batch?.choices?.[Number(choice[1]) - 1] : null;
@@ -319,7 +344,8 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
           await enqueue(client, eventId('access', row.state.batch.id), context.actorId, 'Necesitás permiso de edición en Studio para cargar fotos por WhatsApp.');
           row.state = {};
         }
-        await save(client, context, row.state, null, row.expires_at.getTime());
+        const expiresAt = row.state.batch?.confirmation ? clock() + inactivityMs : row.expires_at.getTime();
+        await save(client, context, row.state, null, expiresAt);
         return true;
       });
     }));
