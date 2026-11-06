@@ -8,6 +8,12 @@ El dueño y los administradores tienen acceso a **Stocky Studio** desde la barra
 
 Variables, migraciones previas y prueba después del deploy: [Guía de despliegue de Studio](docs/fullmatch/DEPLOYMENT.md).
 
+Para habilitar fotos por WhatsApp, con el webhook de Meta y el almacenamiento privado de Studio configurados, ejecutá
+`npm run commerce:whatsapp-photos:migrate -- --apply` con `COMMERCE_DATABASE_URL` apuntando explícitamente a la base del backend.
+Para una base remota, agregá `--allow-remote-database`. Luego configurá `COMMERCE_WHATSAPP_PHOTOS=true` en el backend y reinicialo.
+Desde el WhatsApp de un dueño o administrador, mandá varias fotos juntas y poné el nombre de la ficha en el pie de una de ellas,
+o escribí `agregar fotos a <ficha>` antes de enviarlas. Probá primero con una ficha de prueba del negocio.
+
 Personalización de marca y funcionamiento de las plantillas: [Guía de Stocky Studio](docs/STUDIO_CUSTOMIZATION.md). La personalización requiere la migración comercial 4, incluida en el bundle SQL.
 
 La transición a arquitectura C se sigue en [STOCKY_REENGINEERING_PLAN.md](STOCKY_REENGINEERING_PLAN.md).

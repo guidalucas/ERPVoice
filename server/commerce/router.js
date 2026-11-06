@@ -12,9 +12,8 @@ import { readMoneyPolicy } from './productRepository.js';
 import { createBrandAssetService } from './appearance.js';
 
 /** Authentication middleware must be mounted before this private router. */
-export function createCommerceRouter({ runtime, contextOf }) {
+export function createCommerceRouter({ runtime, contextOf, media = createCommerceMediaService(runtime) }) {
   const router = express.Router(), products = createCommerceProductService(runtime);
-  const media = createCommerceMediaService(runtime);
   const stories = createCommerceStoryService(runtime);
   const catalog = createCatalogService(runtime);
   const content = createContentService(runtime);

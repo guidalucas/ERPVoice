@@ -31,27 +31,49 @@ export function createCommerceMediaService(runtime, storage = createMediaStorage
     await runtime.withClient(async client => { if (!(await inspectCommerceSchema(client)).ready) fail('COMMERCE_SCHEMA_NOT_READY', 'La preparación comercial está pendiente.', 503); });
   };
   const mutate = async (context, meta, apply) => { await ensure(); return executeCommerceCommand(runtime, context, meta, apply); };
+  const initialize = async (context, productId, command, fromWhatsApp = false) => {
+    productId = uuid(productId);
+    if (!/^[a-f0-9]{64}$/.test(command.sourceSha256) || command.sourceSizeBytes > MAX_IMAGE_BYTES) fail('IMAGE_SIZE_INVALID', 'Revisá la foto: máximo 12 MB.', 413);
+    const type = fromWhatsApp ? 'image.whatsapp' : 'image.initialize';
+    return mutate(context, { operationId: command.operationId, type, entityId: productId, command,
+      permission: fromWhatsApp ? 'commerce:media' : 'commerce:write' }, async client => {
+      const product = await requireProduct(client, context.businessId, productId, { lock: true });
+      expected(product, fromWhatsApp ? Number(product.revision) : command.expectedRevision);
+      if (fromWhatsApp && (product.title !== command.productTitle || product.identity_key !== command.productIdentityKey)) {
+        fail('PRODUCT_CHANGED', 'La ficha cambió. Volvé a enviar la foto con el nombre actualizado.', 409);
+      }
+      const images = (await client.query("SELECT id FROM commercial_product_images WHERE owner_phone=$1 AND commercial_product_id=$2 AND status<>'deleted'", [context.businessId, productId])).rows;
+      if (images.length >= 8) fail('IMAGE_LIMIT_REACHED', 'Podés guardar hasta 8 fotos por ficha.', 422);
+      const id = randomUUID();
+      await client.query(`INSERT INTO commercial_product_images(owner_phone,id,commercial_product_id,source_sha256,source_size_bytes,
+        alt_text,sort_order,upload_expires_at,product_identity_at_start,created_by)
+        VALUES($1,$2,$3,$4,$5,$6,$7,NOW()+INTERVAL '30 minutes',$8,$9)`, [context.businessId, id, productId,
+        command.sourceSha256, command.sourceSizeBytes, command.altText, images.length, product.identity_key, context.actorId]);
+      await touch(client, context, productId);
+      return { imageId: id, product: await readProductDetail(client, context.businessId, productId) };
+    });
+  };
   return {
     initialize: async (context, productId, input) => {
-      productId = uuid(productId);
       const data = record(input, ['operationId', 'expectedRevision', 'sourceSha256', 'sourceSizeBytes', 'altText']);
       const command = { operationId: uuid(data.operationId), expectedRevision: integer(data.expectedRevision, 1),
         sourceSha256: text(data.sourceSha256, 64, 'image hash'), sourceSizeBytes: integer(data.sourceSizeBytes, 1), altText: text(data.altText ?? '', 300, 'alt text', { empty: true }) };
-      if (!/^[a-f0-9]{64}$/.test(command.sourceSha256) || command.sourceSizeBytes > MAX_IMAGE_BYTES) fail('IMAGE_SIZE_INVALID', 'Revisá la foto: máximo 12 MB.', 413);
-      return mutate(context, { operationId: command.operationId, type: 'image.initialize', entityId: productId, command }, async client => {
-        const product = await requireProduct(client, context.businessId, productId, { lock: true }); expected(product, command.expectedRevision);
-        const images = (await client.query("SELECT id FROM commercial_product_images WHERE owner_phone=$1 AND commercial_product_id=$2 AND status<>'deleted'", [context.businessId, productId])).rows;
-        if (images.length >= 8) fail('IMAGE_LIMIT_REACHED', 'Podés guardar hasta 8 fotos por ficha.', 422);
-        const id = randomUUID();
-        await client.query(`INSERT INTO commercial_product_images(owner_phone,id,commercial_product_id,source_sha256,source_size_bytes,
-          alt_text,sort_order,upload_expires_at,product_identity_at_start,created_by)
-          VALUES($1,$2,$3,$4,$5,$6,$7,NOW()+INTERVAL '30 minutes',$8,$9)`, [context.businessId, id, productId,
-          command.sourceSha256, command.sourceSizeBytes, command.altText, images.length, product.identity_key, context.actorId]);
-        await touch(client, context, productId);
-        return { imageId: id, product: await readProductDetail(client, context.businessId, productId) };
-      });
+      return initialize(context, productId, command);
     },
-    upload: async (context, productId, imageId, bytes) => {
+    initializeWhatsApp: (context, product, operationId, bytes) => {
+      if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > MAX_IMAGE_BYTES) fail('IMAGE_SIZE_INVALID', 'La foto debe pesar hasta 12 MB.', 413);
+      return initialize(context, product.id, { operationId: uuid(operationId), sourceSha256: sha256(bytes),
+        sourceSizeBytes: bytes.length, altText: '', productTitle: product.title, productIdentityKey: product.identityKey }, true);
+    },
+    isWhatsAppUploadReady: (context, productId, operationId) => runtime.transaction(async client => {
+      await requireCommerceAccess(client, context, 'commerce:media');
+      const result = await client.query(`SELECT 1 FROM commercial_operations o JOIN commercial_product_images i
+        ON i.owner_phone=o.owner_phone AND i.id::text=o.result_json->'result'->>'imageId'
+        WHERE o.owner_phone=$1 AND o.operation_id=$2 AND o.operation_type='image.whatsapp'
+          AND i.commercial_product_id=$3 AND i.status='ready'`, [context.businessId, operationId, productId]);
+      return result.rowCount > 0;
+    }, { readOnly: true }),
+    upload: async (context, productId, imageId, bytes, { whatsapp = false } = {}) => {
       productId = uuid(productId); imageId = uuid(imageId); await ensure();
       if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > MAX_IMAGE_BYTES) fail('IMAGE_SIZE_INVALID', 'La foto debe pesar hasta 12 MB.', 413);
       return withSlot(async () => {
@@ -95,9 +117,14 @@ export function createCommerceMediaService(runtime, storage = createMediaStorage
         return result;
       } catch (error) {
         const code = /^IMAGE_[A-Z_]+$/.test(error.code ?? '') ? error.code : 'IMAGE_PROCESSING_FAILED';
+        const invalid = whatsapp && ['IMAGE_FORMAT_INVALID', 'IMAGE_RESOLUTION_EXCEEDED', 'IMAGE_DECODE_FAILED'].includes(code);
         await runtime.transaction(async client => {
-          await client.query(`UPDATE commercial_product_images SET status='failed',error_code=$5,revision=revision+1,updated_at=NOW()
-            WHERE owner_phone=$1 AND commercial_product_id=$2 AND id=$3 AND attempt_id=$4 AND status='processing'`, [context.businessId, productId, imageId, attempt, code]);
+          if (invalid) await requireProduct(client, context.businessId, productId, { lock: true });
+          const changed = await client.query(`UPDATE commercial_product_images SET status=$6,error_code=$5,
+            deleted_at=CASE WHEN $6='deleted' THEN NOW() ELSE NULL END,revision=revision+1,updated_at=NOW()
+            WHERE owner_phone=$1 AND commercial_product_id=$2 AND id=$3 AND attempt_id=$4 AND status='processing'`,
+          [context.businessId, productId, imageId, attempt, code, invalid ? 'deleted' : 'failed']);
+          if (invalid && changed.rowCount) await touch(client, context, productId);
         }).catch(() => {}); // A crashed process leaves a bounded lease, recoverable after two minutes.
         // COMMIT acknowledgements can be lost. Never delete a stored file on an unknown DB outcome.
         await runtime.withClient(async client => {

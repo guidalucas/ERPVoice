@@ -9,6 +9,10 @@ import { operationErrorMessage } from './interpretationRecovery.js';
 import { universalOperationDetail } from './universalMetaOperations.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
 import { createCommerceRouter } from './commerce/router.js';
+import { createCommerceMediaService } from './commerce/mediaService.js';
+import { createWhatsAppPhotoService } from './commerce/whatsappPhotoService.js';
+import { downloadWhatsAppPhoto } from './commerce/whatsappPhotoDownload.js';
+import { inspectWhatsAppPhotoSchema } from './commerce/whatsappPhotoMigration.js';
 import { createPublicCatalogRouters } from './catalog/router.js';
 import {
   createProductRecord,
@@ -90,6 +94,16 @@ import {
 
 dotenv.config({ path: '.env.local', override: true });
 dotenv.config();
+
+const commerceMedia = createCommerceMediaService(stockyDatabaseRuntime);
+const photoSchemaReady = process.env.COMMERCE_WHATSAPP_PHOTOS === 'true' && await stockyDatabaseRuntime
+  .withClient(inspectWhatsAppPhotoSchema).then(result => result.ready).catch(() => false);
+if (process.env.COMMERCE_WHATSAPP_PHOTOS === 'true' && !photoSchemaReady) {
+  console.warn('[MetaWebhook] WhatsApp photos disabled: photo schema unavailable.');
+}
+const whatsAppPhotos = photoSchemaReady && createWhatsAppPhotoService({
+  runtime: stockyDatabaseRuntime, media: commerceMedia, download: downloadWhatsAppPhoto,
+});
 
 const app = express();
 const port = Number(process.env.PORT || process.env.META_WEBHOOK_PORT || 8080);
@@ -319,7 +333,7 @@ app.use((error, req, res, next) => {
 
 const recentEvents = [];
 
-app.use('/api/commerce/v1', authenticateRequest, createCommerceRouter({ runtime: stockyDatabaseRuntime,
+app.use('/api/commerce/v1', authenticateRequest, createCommerceRouter({ runtime: stockyDatabaseRuntime, media: commerceMedia,
   contextOf: req => ({ businessId: tenantPhoneOf(req), actorId: authPhoneOf(req),
     role: req.auth?.role }) }));
 const publicCatalog = createPublicCatalogRouters(stockyDatabaseRuntime);
@@ -1007,12 +1021,6 @@ const handleMetaWebhook = async (req, res) => {
     console.error('[auth:wa-login] webhook handler failed:', error);
   }
   try {
-    await dispatchPendingMetaReplies();
-  } catch (error) {
-    console.error('[auth:wa-login] outbox dispatch failed:', error);
-  }
-
-  try {
     if (processingBody.object === 'whatsapp_business_account') {
       processingBody = JSON.parse(JSON.stringify(processingBody));
       for (const entry of processingBody.entry ?? []) {
@@ -1040,20 +1048,51 @@ const handleMetaWebhook = async (req, res) => {
   }
   res.sendStatus(200);
 
-  // Acknowledge every accepted text/audio before transcription or interpretation.
-  const fastRepliedMessageIds = await acknowledgeMetaMessages(processingBody, sendMetaReply, error => {
-    console.error('[MetaWebhook] fast-reply failed:', error);
-  });
-
-  await processClaimedMetaBody(processingBody, fastRepliedMessageIds);
+  await processClaimedMetaBody(processingBody, { acknowledge: true });
 };
 
-const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = new Set()) => {
+const routeWhatsAppPhotos = async body => {
+  if (!whatsAppPhotos || body.object !== 'whatsapp_business_account') return body;
+  for (const entry of body.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      const value = change.value;
+      if (!Array.isArray(value?.messages)) continue;
+      const ordinary = [];
+      for (const message of value.messages) {
+        try {
+          const { tenantPhone, actorId, role } = await resolveBusinessAccess(message.from);
+          const handled = await whatsAppPhotos.route({ businessId: tenantPhone, actorId, role }, message, value.metadata?.phone_number_id ?? null);
+          if (!handled) ordinary.push(message);
+        } catch (error) {
+          console.error('[MetaWebhook] photo routing failed:', error.code ?? 'PHOTO_ROUTING_FAILED');
+          await failMetaMessageClaim(message.id, error.code ?? 'PHOTO_ROUTING_FAILED').catch(() => {});
+        }
+      }
+      value.messages = ordinary;
+    }
+  }
+  return body;
+};
+
+const processClaimedMetaBody = async (processingBody, { acknowledge = false } = {}) => {
+  if (!acknowledge) {
+    try {
+      processingBody = await stripAndConsumeWaLoginMessages(processingBody);
+    } catch (error) {
+      console.error('[auth:wa-login] recovery handler failed:', error);
+    }
+  }
+  processingBody = await routeWhatsAppPhotos(processingBody);
+
+  // Acknowledge ordinary text/audio before transcription or interpretation.
+  const fastRepliedMessageIds = acknowledge ? await acknowledgeMetaMessages(processingBody, sendMetaReply, error => {
+    console.error('[MetaWebhook] fast-reply failed:', error);
+  }) : new Set();
+
   try {
-    processingBody = await stripAndConsumeWaLoginMessages(processingBody);
     await dispatchPendingMetaReplies();
   } catch (error) {
-    console.error('[auth:wa-login] recovery handler failed:', error);
+    console.error('[MetaWebhook] outbox dispatch failed:', error);
   }
 
   try {
@@ -1189,6 +1228,27 @@ const processClaimedMetaBody = async (processingBody, fastRepliedMessageIds = ne
 };
 
 app.post('/api/meta-webhook', createMetaWebhookSignatureMiddleware(), handleMetaWebhook);
+
+if (whatsAppPhotos) {
+  let scanning = false, uploading = false;
+  const dispatchPhotoReplies = changed => {
+    if (changed) dispatchPendingMetaReplies().catch(error => console.warn('[MetaWebhook] photo reply failed:', error.code ?? 'PHOTO_REPLY_FAILED'));
+  };
+  setInterval(() => {
+    if (!scanning) {
+      scanning = true;
+      whatsAppPhotos.flushDue().then(dispatchPhotoReplies)
+        .catch(error => console.warn('[MetaWebhook] photo scan failed:', error.code ?? 'PHOTO_SCAN_FAILED'))
+        .finally(() => { scanning = false; });
+    }
+    if (!uploading) {
+      uploading = true;
+      whatsAppPhotos.processJob().then(dispatchPhotoReplies)
+        .catch(error => console.warn('[MetaWebhook] photo upload failed:', error.code ?? 'PHOTO_UPLOAD_FAILED'))
+        .finally(() => { uploading = false; });
+    }
+  }, 1_000).unref();
+}
 
 setInterval(() => {
   dispatchPendingMetaReplies().catch((error) => {

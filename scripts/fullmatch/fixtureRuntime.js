@@ -19,7 +19,7 @@ const waitFor = async (url, child) => {
     if (ok) return; await new Promise(resolve => setTimeout(resolve, 100));
   } throw new Error('FIXTURE_STARTUP_TIMEOUT');
 };
-export async function startCommerceFixture() {
+export async function startCommerceFixture({ configureApi } = {}) {
   const tempParent = await fs.realpath(os.tmpdir()), directory = await fs.mkdtemp(path.join(tempParent, 'fullmatch-fixture-'));
   const dbDirectory = path.join(directory, 'pg'), pgPort = await freePort(), apiPort = await freePort(), vitePort = await freePort();
   const password = randomBytes(20).toString('hex'), dbName = `fullmatch_fixture_${randomBytes(6).toString('hex')}`;
@@ -61,7 +61,8 @@ export async function startCommerceFixture() {
     const seedCode = await new Promise((resolve, reject) => { seed.once('error', reject); seed.once('close', resolve); });
     if (seedCode !== 0) throw new Error('FIXTURE_SEED_FAILED');
     const metadata = JSON.parse(await fs.readFile(manifest, 'utf8'));
-    const api = launch(path.join(repo, 'server/index.js'), [], { ...env, STOCKY_SCHEMA_MODE: 'verify' }); await waitFor(`http://127.0.0.1:${apiPort}/api/health`, api);
+    const apiEnv = await configureApi?.({ connection, directory });
+    const api = launch(path.join(repo, 'server/index.js'), [], { ...env, ...apiEnv, STOCKY_SCHEMA_MODE: 'verify' }); await waitFor(`http://127.0.0.1:${apiPort}/api/health`, api);
     const frontend = launch(path.join(repo, 'node_modules/vite/bin/vite.js'), ['--config', path.join(repo, 'vite.studio.config.ts'), '--port', String(vitePort)], {
       ...process.env, NODE_ENV: 'development', VITE_API_PROXY_TARGET: `http://127.0.0.1:${apiPort}` }, repo);
     await waitFor(`http://127.0.0.1:${vitePort}/studio.html`, frontend);
