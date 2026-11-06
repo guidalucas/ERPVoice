@@ -214,31 +214,36 @@ export function createCommerceProductService(runtime) {
       const data = record(query, ['q', 'status', 'team', 'season', 'version', 'sleeve', 'photos', 'publication', 'cursor', 'limit']);
       const limit = data.limit === undefined ? 24 : typeof data.limit === 'string' && /^\d+$/.test(data.limit) ? integer(Number(data.limit), 1) : integer(data.limit, 1);
       if (limit > 50) fail('INVALID_COMMAND', 'Hasta 50 fichas por página.', 400);
-      const filters = [context.businessId], conditions = ['owner_phone=$1'];
+      const hasPublications = (await client.query("SELECT to_regclass('public.commercial_publications') AS name")).rows[0].name !== null;
+      const publicationStatus = hasPublications ? "COALESCE(s.status,'hidden')" : "'hidden'";
+      const filters = [context.businessId], conditions = ['p.owner_phone=$1'];
       if (data.photos) {
         if (!['missing', 'ready'].includes(data.photos)) fail('INVALID_COMMAND', 'Filtro de fotos inválido.', 400);
-        conditions.push(`${data.photos === 'missing' ? 'NOT ' : ''}EXISTS(SELECT 1 FROM commercial_product_images i WHERE i.owner_phone=commercial_products.owner_phone AND i.commercial_product_id=commercial_products.id AND i.status='ready')`);
+        conditions.push(`${data.photos === 'missing' ? 'NOT ' : ''}EXISTS(SELECT 1 FROM commercial_product_images i WHERE i.owner_phone=p.owner_phone AND i.commercial_product_id=p.id AND i.status='ready')`);
       }
       if (data.publication) {
         if (!['published', 'hidden'].includes(data.publication)) fail('INVALID_COMMAND', 'Filtro de publicación inválido.', 400);
-        conditions.push(`${data.publication === 'hidden' ? 'NOT ' : ''}EXISTS(SELECT 1 FROM commercial_publications p WHERE p.owner_phone=commercial_products.owner_phone AND p.commercial_product_id=commercial_products.id AND p.status='published')`);
+        filters.push(data.publication); conditions.push(`${publicationStatus}=$${filters.length}`);
       }
       for (const [key, column] of Object.entries({ status: 'status', team: 'team_key', season: 'season', version: 'version_key', sleeve: 'sleeve_key' })) if (data[key]) {
-        filters.push(text(data[key], 80, key)); conditions.push(`${column}=$${filters.length}`);
+        filters.push(text(data[key], 80, key)); conditions.push(`p.${column}=$${filters.length}`);
       }
-      if (data.q) { filters.push(`%${text(data.q, 120, 'query').replace(/[\\%_]/g, '\\$&')}%`); conditions.push(`(title ILIKE $${filters.length} OR team_name ILIKE $${filters.length})`); }
+      if (data.q) { filters.push(`%${text(data.q, 120, 'query').replace(/[\\%_]/g, '\\$&')}%`); conditions.push(`(p.title ILIKE $${filters.length} OR p.team_name ILIKE $${filters.length})`); }
       if (data.cursor) {
         let cursor; try { cursor = JSON.parse(Buffer.from(text(data.cursor, 600, 'cursor'), 'base64url').toString()); } catch { fail('INVALID_COMMAND', 'Cursor inválido.', 400); }
         record(cursor, ['at', 'id']); uuid(cursor.id);
         if (typeof cursor.at !== 'string' || !Number.isFinite(Date.parse(cursor.at))) fail('INVALID_COMMAND', 'Cursor inválido.', 400);
-        filters.push(cursor.at, cursor.id); conditions.push(`(updated_at,id)<($${filters.length - 1}::timestamptz,$${filters.length}::uuid)`);
+        filters.push(cursor.at, cursor.id); conditions.push(`(p.updated_at,p.id)<($${filters.length - 1}::timestamptz,$${filters.length}::uuid)`);
       }
       filters.push(limit + 1);
-      const rows = (await client.query(`SELECT id,updated_at FROM commercial_products WHERE ${conditions.join(' AND ')}
-        ORDER BY updated_at DESC,id DESC LIMIT $${filters.length}`, filters)).rows;
+      const rows = (await client.query(`SELECT p.id,to_char(p.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at,${publicationStatus} AS publication_status,
+        ${hasPublications ? 'COALESCE(s.revision,0)' : '0'} AS publication_revision FROM commercial_products p
+        ${hasPublications ? 'LEFT JOIN commercial_publications s ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id' : ''}
+        WHERE ${conditions.join(' AND ')} ORDER BY p.updated_at DESC,p.id DESC LIMIT $${filters.length}`, filters)).rows;
       const visible = rows.slice(0, limit), last = visible.at(-1);
-      return { items: await Promise.all(visible.map(row => readProductDetail(client, context.businessId, row.id))),
-        nextCursor: rows.length > limit ? Buffer.from(JSON.stringify({ at: last.updated_at.toISOString(), id: last.id })).toString('base64url') : null };
+      return { items: await Promise.all(visible.map(async row => ({ ...await readProductDetail(client, context.businessId, row.id),
+        publication: { status: row.publication_status, revision: Number(row.publication_revision) } }))),
+        nextCursor: rows.length > limit ? Buffer.from(JSON.stringify({ at: last.cursor_at, id: last.id })).toString('base64url') : null };
     }),
     candidates: (context, query = {}) => read(context, async client => {
       const data = record(query, ['q', 'cursor', 'limit', 'grouped']);

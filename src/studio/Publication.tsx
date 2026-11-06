@@ -2,16 +2,21 @@ import { useConfirm } from '../components/ui/ConfirmationProvider';
 import { useEffect, useRef, useState } from 'react';
 import { command, query } from './api';
 import type { Product } from './types';
-type Catalog = { slug: string; publicEnabled: boolean; revision: number; path: string };
-type Publication = { status: 'hidden' | 'published'; revision: number; publishedAt: string | null };
+export type Catalog = { slug: string; publicEnabled: boolean; revision: number; path: string };
+export type Publication = { status: 'hidden' | 'published'; revision: number; publishedAt: string | null };
 const errorText = (error: unknown) => error instanceof Error ? error.message : 'No pude consultar la publicación.';
 const publicUrl = (path: string) => `${String(import.meta.env.VITE_CATALOG_ORIGIN ?? (import.meta.env.DEV ? '' : import.meta.env.VITE_API_BASE ?? import.meta.env.VITE_META_API_BASE ?? '')).replace(/\/$/, '')}${path}`;
+
+export function publishProduct(product: Product, expectedRevision: number, reason: string) {
+  return command<Publication>(`/products/${product.id}/publication`, 'PUT', {
+    expectedRevision, expectedProductRevision: product.revision, status: 'published', reason,
+  });
+}
 
 export async function finishAndPublish(product: Product) {
   const [publication, catalog] = await Promise.all([query<Publication>(`/products/${product.id}/publication`), query<Catalog | null>('/catalog')]);
   if (!catalog?.publicEnabled) throw new Error('Habilitá el catálogo en Configuración antes de finalizar y publicar la ficha.');
-  return command<Publication>(`/products/${product.id}/publication`, 'PUT', { expectedRevision: publication.revision,
-    expectedProductRevision: product.revision, status: 'published', reason: 'Ficha finalizada y publicada explícitamente desde el último paso de Studio' });
+  return publishProduct(product, publication.revision, 'Ficha finalizada y publicada explícitamente desde el último paso de Studio');
 }
 
 export function CatalogShortcut({ refreshKey, onConfigure }: { refreshKey: number; onConfigure: () => void }) {

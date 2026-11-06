@@ -2,11 +2,11 @@ import { useConfirm } from '../components/ui/ConfirmationProvider';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useAuth } from '../store/AuthStore';
 import { createWhatsAppLogin, pollWhatsAppLogin, type WhatsAppLoginChallenge } from '../services/authService';
-import { command, imageBlob, pendingOperations, query, recoverOperation, retryOperation, studioFetch, uploadPhoto } from './api';
+import { command, imageBlob, pendingOperations, query, recoverOperation, retryOperation, studioFetch, StudioError, uploadPhoto } from './api';
 import { defaultAppearance, brandInitials, moneyLabel, priceLabel, type Candidate, type CommercialFields, type Product, type Profile, type Photo, type SkuMetadataChange } from './types';
 import { SkuMetadataFields, validSkuMetadataChange } from './SkuMetadataFields';
 import { StoryEditor } from './StoryEditor';
-import { CatalogSettings, CatalogShortcut, PublicationPanel, finishAndPublish } from './Publication';
+import { CatalogSettings, CatalogShortcut, PublicationPanel, finishAndPublish, publishProduct, type Catalog, type Publication } from './Publication';
 import { ContentLibrary } from './ContentLibrary';
 import { BatchStudio } from './BatchStudio';
 import { createBatchJob, readBatchJob } from './batchJob';
@@ -125,23 +125,43 @@ export function Studio() {
     </main></div>;
 }
 
+const emptyProductFilters = { q: '', status: '', team: '', season: '', version: '', sleeve: '', photos: '', publication: '' };
+type ListedProduct = Product & { publication: Pick<Publication, 'status' | 'revision'> };
+type ProductPage = { items: ListedProduct[]; nextCursor: string | null };
+const isPublished = (product: ListedProduct) => product.status === 'ready' && product.publication.status === 'published';
+const canPublish = (product: ListedProduct) => product.readiness.canPrepare && !isPublished(product);
+
+function readProductPage(filters: typeof emptyProductFilters, cursor?: string, limit?: number) {
+  const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+  if (cursor) params.set('cursor', cursor);
+  if (limit) params.set('limit', String(limit));
+  return query<ProductPage>(`/products?${params}`);
+}
+
 function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: {
   profile: Profile | null; showMissingPhotos: boolean; onOpen: (id: string, step?: ProductStep) => void; onCreate: () => void; onBatch: (ids: string[]) => void;
 }) {
-  const emptyFilters = { q: '', status: '', team: '', season: '', version: '', sleeve: '', photos: '', publication: '' };
-  const [filters, setFilters] = useState({ ...emptyFilters, photos: showMissingPhotos ? 'missing' : '' }), [applied, setApplied] = useState(filters);
-  const [products, setProducts] = useState<Product[]>([]), [cursor, setCursor] = useState<string | null>(null);
+  const [filters, setFilters] = useState({ ...emptyProductFilters, photos: showMissingPhotos ? 'missing' : '' }), [applied, setApplied] = useState(filters);
+  const [products, setProducts] = useState<ListedProduct[]>([]), [cursor, setCursor] = useState<string | null>(null);
   const [busy, setBusy] = useState(true), [error, setError] = useState(''), [hasSports, setHasSports] = useState(false);
   const [selection, setSelection] = useState<string[]>([]);
+  const [publicationProgress, setPublicationProgress] = useState('');
+  const [publicationResult, setPublicationResult] = useState<{ text: string; failures?: string[] } | null>(null);
   const [summary, setSummary] = useState<{ products: { status: string; count: number }[]; unlinkedSkus: number; withoutPhotos: number } | null>(null);
+  const confirm = useConfirm();
+  const mounted = useRef(false), publicationRunning = useRef(false);
   const readGeneration = useRef(0);
-  const load = async (next?: string, values = filters) => {
+  const refreshSummary = () => void query<typeof summary>('/summary').then(value => { if (mounted.current) setSummary(value); }).catch(() => {});
+  const load = async (next?: string, values = applied) => {
     const generation = ++readGeneration.current; setBusy(true); setError('');
     try {
-      const params = new URLSearchParams({ ...Object.fromEntries(Object.entries(values).filter(([, value]) => value)), ...(next ? { cursor: next } : {}) });
-      const result = await query<{ items: Product[]; nextCursor: string | null }>(`/products?${params}`);
+      const result = await readProductPage(values, next);
       if (generation !== readGeneration.current) return;
       setProducts(current => next ? [...current, ...result.items] : result.items);
+      if (!next) {
+        const selectableIds = new Set(result.items.filter(product => canPublish(product) || product.readiness.canGenerateStory).map(product => product.id));
+        setSelection(current => current.filter(id => selectableIds.has(id)));
+      }
       setCursor(result.nextCursor); setApplied(values);
       if (result.items.some(product => product.teamKey)) setHasSports(true);
     } catch (cause) { if (generation === readGeneration.current) setError(message(cause)); }
@@ -149,26 +169,95 @@ function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: 
   };
   const listLoad = useRef(load); listLoad.current = load;
   useEffect(() => {
-    let active = true;
-    const refresh = () => { if (!document.hidden) { void listLoad.current(); void query<typeof summary>('/summary').then(value => { if (active) setSummary(value); }).catch(() => {}); } };
+    mounted.current = true;
+    const refresh = () => { if (!document.hidden && !publicationRunning.current) { void listLoad.current(); refreshSummary(); } };
     refresh(); addEventListener('focus', refresh);
-    return () => { active = false; readGeneration.current++; removeEventListener('focus', refresh); };
+    return () => { mounted.current = false; readGeneration.current++; removeEventListener('focus', refresh); };
   }, []);
   const change = (key: keyof typeof filters, value: string) => setFilters(current => ({ ...current, [key]: value }));
-  const clear = () => { setFilters(emptyFilters); void load(undefined, emptyFilters); };
+  const applyFilters = (values: typeof filters) => { setSelection([]); void load(undefined, values); };
+  const clear = () => { setFilters(emptyProductFilters); applyFilters(emptyProductFilters); };
   const filtered = Object.values(applied).some(Boolean), extraCount = Object.entries(filters).filter(([key, value]) => !['q', 'status'].includes(key) && value).length;
+  const working = busy || Boolean(publicationProgress);
+  const publishable = products.filter(canPublish);
+  const selectedToPublish = publishable.filter(product => selection.includes(product.id));
+  const storyEligible = new Set(products.filter(product => product.readiness.canGenerateStory).map(product => product.id));
+  const storyIds = selection.filter(id => storyEligible.has(id));
+
+  const publish = async (all: boolean) => {
+    if (busy || publicationRunning.current) return;
+    publicationRunning.current = true;
+    setPublicationProgress('Consultando fichas para publicar…');
+    setPublicationResult(null);
+    try {
+      const catalog = await query<Catalog | null>('/catalog');
+      if (!mounted.current) return;
+      if (!catalog) throw new Error('Configurá el catálogo en Configuración antes de publicar fichas.');
+
+      let candidates = selectedToPublish;
+      if (all) {
+        const matches = new Map<string, ListedProduct>();
+        let next: string | undefined;
+        do {
+          const page = await readProductPage(applied, next, 50);
+          if (!mounted.current) return;
+          for (const product of page.items.filter(canPublish)) matches.set(product.id, product);
+          next = page.nextCursor ?? undefined;
+        } while (next);
+        candidates = [...matches.values()];
+      }
+      if (!candidates.length) {
+        setPublicationResult({ text: 'No hay fichas aptas pendientes de publicar.' });
+        return;
+      }
+      const count = candidates.length === 1 ? '1 ficha' : `${candidates.length} fichas`;
+      const scope = all ? filtered ? 'Se incluyen todas las fichas aptas de los resultados filtrados.' : 'Se incluyen todas las fichas aptas de la colección.' : '';
+      const visibility = catalog.publicEnabled ? 'Tus clientes podrán verlas en el catálogo público.' : 'Tus clientes podrán verlas cuando habilites el catálogo público.';
+      if (!await confirm({ title: `¿Publicar ${count} en el catálogo?`, description: [scope, visibility].filter(Boolean).join(' '), action: 'publicar' }) || !mounted.current) return;
+
+      const published = new Set<string>(), failures: string[] = [];
+      let remaining = 0;
+      for (const [index, product] of candidates.entries()) {
+        setPublicationProgress(`Publicando ficha ${index + 1} de ${candidates.length}… Mantené esta pantalla abierta.`);
+        try {
+          await publishProduct(product, product.publication.revision, 'Publicación por lote desde Productos comerciales');
+          published.add(product.id);
+        } catch (cause) {
+          failures.push(`${product.title} · ${message(cause)}`);
+          if (cause instanceof StudioError && ([0, 401, 403, 429].includes(cause.status) || ['PENDING_LIMIT', 'CATALOG_NOT_CONFIGURED', 'CATALOG_SCHEMA_NOT_READY'].includes(cause.code))) {
+            remaining = candidates.length - index - 1;
+            break;
+          }
+        }
+        if (!mounted.current) return;
+      }
+      if (!mounted.current) return;
+      setSelection(current => current.filter(id => !published.has(id)));
+      const completed = published.size === 1 ? '1 ficha publicada.' : `${published.size} fichas publicadas.`;
+      const incomplete = failures.length === 1 ? ' No se pudo confirmar 1 publicación.' : failures.length ? ` No se pudieron confirmar ${failures.length} publicaciones.` : '';
+      const pending = remaining ? ` Quedaron ${remaining} sin intentar.` : '';
+      setPublicationResult({ text: completed + incomplete + pending, failures });
+      refreshSummary();
+      await load();
+    } catch (cause) {
+      if (mounted.current) setPublicationResult({ text: message(cause) });
+    } finally {
+      publicationRunning.current = false;
+      if (mounted.current) setPublicationProgress('');
+    }
+  };
   return <section className="product-list">
     <header className="products-heading">
       <div><h1>Productos comerciales <span className="count">{summary?.products.reduce((sum, item) => sum + item.count, 0) ?? products.length}{cursor && !summary ? '+' : ''}</span></h1>
         <p>Prepará y compartí el catálogo de {profile?.brandName ?? 'tu negocio'}.</p></div>
-      <button className="primary" onClick={onCreate}>＋ Nueva ficha comercial</button>
+      <button className="primary" onClick={onCreate} disabled={Boolean(publicationProgress)}>＋ Nueva ficha comercial</button>
     </header>
     {summary && <p className="collection-stats"><span>{summary.products.find(item => item.status === 'ready')?.count ?? 0} preparadas</span><span>{summary.withoutPhotos ?? 0} sin fotos</span><span>{summary.unlinkedSkus} variantes pendientes</span></p>}
-    <form className="filters product-filters" onSubmit={event => { event.preventDefault(); void load(); }}>
+    <form className="filters product-filters" onSubmit={event => { event.preventDefault(); if (!working) applyFilters(filters); }}>
       <div className="filter-primary">
         <label className="search"><span aria-hidden="true">⌕</span><input aria-label="Buscar productos" placeholder="Buscá por producto…" value={filters.q} onChange={event => change('q', event.target.value)}/></label>
         <label className="filter-field"><span>Estado</span><select aria-label="Filtrar estado" value={filters.status} onChange={event => change('status', event.target.value)}><option value="">Todos los estados</option><option value="draft">Borradores</option><option value="ready">Preparadas</option><option value="archived">Archivadas</option></select></label>
-        <button className="primary" type="submit" disabled={busy}>Buscar</button>
+        <button className="primary" type="submit" disabled={working}>Buscar</button>
       </div>
       <details className="product-filter-options"><summary>Más filtros{extraCount ? ` · ${extraCount} seleccionados` : ''}</summary>
         <div className="filter-fields">
@@ -180,18 +269,31 @@ function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: 
           </>}
           <label className="filter-field"><span>Fotografías</span><select aria-label="Filtrar fotografías" value={filters.photos} onChange={event => change('photos', event.target.value)}><option value="">Con o sin fotos</option><option value="missing">Sin fotos listas</option><option value="ready">Con fotos listas</option></select></label>
           <label className="filter-field"><span>Publicación</span><select aria-label="Filtrar publicación" value={filters.publication} onChange={event => change('publication', event.target.value)}><option value="">Toda publicación</option><option value="published">Publicadas</option><option value="hidden">Ocultas</option></select></label>
-        </div><div className="filter-actions"><button type="submit" disabled={busy}>Aplicar filtros</button><button type="button" disabled={busy} onClick={() => void load()}>Actualizar colección</button></div>
+        </div><div className="filter-actions"><button type="submit" disabled={working}>Aplicar filtros</button><button type="button" disabled={working} onClick={() => applyFilters(filters)}>Actualizar colección</button></div>
       </details>
     </form>
-    {filtered && <div className="filter-result" role="status"><span>{products.length}{cursor ? '+' : ''} resultados{applied.q ? ` para «${applied.q}»` : ' con los filtros aplicados'}</span><button onClick={clear} disabled={busy}>Limpiar filtros</button></div>}
-    {error && <div role="alert" className="notice"><span>{error}</span><button onClick={() => void load()}>Reintentar</button></div>}
-    {products.length > 0 && <div className={`selection-toolbar ${selection.length ? 'has-selection' : ''}`}><span>{selection.length ? `${selection.length} fichas seleccionadas` : 'Seleccioná fichas para generar historias por lote'}</span><button disabled={!selection.length || selection.length > 20} onClick={() => onBatch(selection)}>Generar historias por lote ({selection.length}) ↗</button></div>}
+    {filtered && <div className="filter-result" role="status"><span>{products.length}{cursor ? '+' : ''} resultados{applied.q ? ` para «${applied.q}»` : ' con los filtros aplicados'}</span><button onClick={clear} disabled={working}>Limpiar filtros</button></div>}
+    {error && <div role="alert" className="notice"><span>{error}</span><button disabled={working} onClick={() => applyFilters(filters)}>Reintentar</button></div>}
+    {products.length > 0 && <div className={`selection-toolbar ${selection.length ? 'has-selection' : ''}`}>
+      <span>{selection.length ? `${selection.length} fichas seleccionadas` : 'Seleccioná fichas para publicar o generar historias por lote'}</span>
+      <div className="selection-actions">
+        {selection.length > 0 && <>
+          <button className="primary" disabled={working || !selectedToPublish.length} onClick={() => void publish(false)}>Publicar seleccionadas ({selectedToPublish.length})</button>
+          <button disabled={working || !storyIds.length || storyIds.length > 20} onClick={() => onBatch(storyIds)}>Generar historias por lote ({storyIds.length}) ↗</button>
+        </>}
+        <button disabled={working || (!publishable.length && !cursor)} onClick={() => void publish(true)}>Publicar todas las fichas aptas</button>
+      </div>
+    </div>}
+    {publicationProgress && <p className="list-loading" role="status">{publicationProgress}</p>}
+    {publicationResult && <Notice><div className="publication-result"><p>{publicationResult.text}</p>
+      {publicationResult.failures?.length ? <ul>{publicationResult.failures.map((failure, index) => <li key={index}>{failure}</li>)}</ul> : null}
+    </div></Notice>}
     <div className="product-grid" aria-busy={busy}>{products.map(product => {
       const variants = product.variants.filter(variant => variant.active);
       const showVariants = variants.length > 1 || variants.some(variant => (variant.label || variant.size || variant.name).trim().toLocaleLowerCase('es') !== product.title.trim().toLocaleLowerCase('es'));
       return <div className="selectable-product" key={product.id}>
-        <label className="product-selector"><input type="checkbox" aria-label={`Seleccionar ${product.title}`} checked={selection.includes(product.id)} disabled={!product.readiness.canGenerateStory} onChange={event => setSelection(current => event.target.checked ? [...current, product.id] : current.filter(id => id !== product.id))}/><span className="sr-only">Seleccionar producto</span></label>
-        <button className="product-card" onClick={() => onOpen(product.id, showMissingPhotos && applied.photos === 'missing' ? 'photos' : 'details')}><div className={`card-photo ${!product.coverImageId ? 'without-photo' : ''}`}><PrivatePhoto product={product} imageId={product.coverImageId}/><span className={`status ${product.status}`}>{statusLabel[product.status]}</span></div>
+        <label className="product-selector"><input type="checkbox" aria-label={`Seleccionar ${product.title}`} checked={selection.includes(product.id)} disabled={working || (!canPublish(product) && !product.readiness.canGenerateStory)} onChange={event => setSelection(current => event.target.checked ? [...current, product.id] : current.filter(id => id !== product.id))}/><span className="sr-only">Seleccionar producto</span></label>
+        <button className="product-card" disabled={Boolean(publicationProgress)} onClick={() => onOpen(product.id, showMissingPhotos && applied.photos === 'missing' ? 'photos' : 'details')}><div className={`card-photo ${!product.coverImageId ? 'without-photo' : ''}`}><PrivatePhoto product={product} imageId={product.coverImageId}/><span className={`status ${product.status}`}>{isPublished(product) ? 'Publicada' : statusLabel[product.status]}</span></div>
           <div className="card-body"><small>{product.teamName || 'Producto comercial'} <span aria-hidden="true">↗</span></small><h3>{product.title}</h3>
             {[product.season, product.versionKey === 'player' ? 'Jugador' : product.versionKey === 'fan' ? 'Hincha' : ''].some(Boolean) && <p>{[product.season, product.versionKey === 'player' ? 'Jugador' : product.versionKey === 'fan' ? 'Hincha' : ''].filter(Boolean).join(' · ')}</p>}
             <div className="card-bottom"><strong>{priceLabel(product)}</strong><span>{product.availableQuantity ?? '—'} disponibles</span></div>
@@ -200,10 +302,10 @@ function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: 
         </button>
       </div>;
     })}
-    {!products.length && !busy && !error && (filtered ? <div className="empty-state"><h2>No encontramos fichas con esta búsqueda.</h2><p>Probá otro nombre o quitá los filtros para ver tu catálogo.</p><button onClick={clear}>Limpiar filtros</button></div> : <div className="empty-state"><h2>Empezá tu catálogo comercial</h2><p>Vinculá productos de Stocky, sumá sus fotos y prepará la primera ficha.</p><button className="primary" onClick={onCreate}>Crear primera ficha</button></div>)}
+    {!products.length && !busy && !error && (filtered ? <div className="empty-state"><h2>No encontramos fichas con esta búsqueda.</h2><p>Probá otro nombre o quitá los filtros para ver tu catálogo.</p><button onClick={clear} disabled={working}>Limpiar filtros</button></div> : <div className="empty-state"><h2>Empezá tu catálogo comercial</h2><p>Vinculá productos de Stocky, sumá sus fotos y prepará la primera ficha.</p><button className="primary" onClick={onCreate} disabled={working}>Crear primera ficha</button></div>)}
     </div>
     {busy && <p role="status" className="list-loading">Cargando colección…</p>}
-    {cursor && !error && <button className="load-more" disabled={busy} onClick={() => void load(cursor)}>Ver más productos ↓</button>}
+    {cursor && !error && <button className="load-more" disabled={working} onClick={() => void load(cursor)}>Ver más productos ↓</button>}
   </section>;
 }
 

@@ -64,8 +64,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .selection-toolbar { font-size: 13px; margin: 8px 0 14px; }
 .selection-toolbar > span { font-size: 13px; color: var(--subtle); }
 .selection-toolbar button { font-size: 13px; }
-.product-list .selection-toolbar:not(.has-selection) button { display: none; }
+.selection-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .selection-toolbar.has-selection { padding: 12px 16px; background: var(--selected); border-radius: 8px; }
+.publication-result { min-width: 0; overflow-wrap: anywhere; }
 .product-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; }
 .product-card { box-shadow: none; border-color: var(--border); border-radius: 12px; }
 .product-card:hover:not(:disabled) { box-shadow: none; border-color: var(--subtle); transform: none; }
@@ -232,7 +233,7 @@ footer, footer span { font-size: 12px; color: var(--subtle); letter-spacing: 0; 
   .selection-toolbar { gap: 10px; margin-bottom: 12px; }
   .selection-toolbar.has-selection { padding: 12px; }
   .selection-toolbar > span { font-size: 13px; }
-  .selection-toolbar.has-selection button { width: 100%; }
+  .selection-actions { width: 100%; }
   .card-photo { height: 165px; }
   .card-body { padding: 14px 11px; }
   .card-body h3 { font-size: 15px; }
