@@ -191,6 +191,9 @@ export function createWhatsAppPhotoService({ runtime, media, download, graceMs =
       }
       const caption = typeof message.image.caption === 'string' ? message.image.caption.trim().slice(0, 1024) : '';
       state.batch ??= { id: message.id, questionId: message.id, photos: [] };
+      if (!state.batch.photos.length) {
+        await enqueue(client, eventId('processing', state.batch.id), context.actorId, 'Recibí tu envío. Estoy procesando la carga de fotos…');
+      }
       if (state.batch.photos.length < maxPendingPhotos) {
         state.batch.photos.push({ id: message.id, mediaId: message.image.id, caption, phoneNumberId, sentAt });
         state.batch.photos.sort((first, second) => first.sentAt - second.sentAt);

@@ -14,6 +14,8 @@ import { inspectWhatsAppPhotoSchema, migrateWhatsAppPhotos } from '../server/com
 import { createWhatsAppPhotoService } from '../server/commerce/whatsappPhotoService.js';
 import { startCommerceFixture } from './fullmatch/fixtureRuntime.js';
 
+const processingReply = 'Recibí tu envío. Estoy procesando la carga de fotos…';
+
 test('Meta photo download uses authenticated, bounded downloads from Meta', async () => {
   const env = { META_ACCESS_TOKEN: 'test-token', META_GRAPH_API_VERSION: 'v21.0' };
   const calls = [];
@@ -65,10 +67,14 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
 
   await t.test('three photos with one caption on the last photo save once to the same gallery', async () => {
     assert.equal(await image('group-1'), true);
+    assert.deepEqual(await replies('commerce-photo:processing:group-1'), [processingReply]);
+    assert.deepEqual(await replies('commerce-photo:result:group-1'), []);
     assert.equal(await image('group-2'), true);
     assert.equal(await advance(4_000), false);
     assert.equal(await image('group-3', 'camiseta negra'), true);
     assert.equal(await image('group-1'), true);
+    const { rows: notices } = await query("SELECT reply_text FROM meta_reply_outbox WHERE event_id LIKE 'commerce-photo:processing:group-%'");
+    assert.deepEqual(notices, [{ reply_text: processingReply }]);
     bot = service();
     assert.equal(await advance(5_000), true);
     assert.equal(await bot.processJob(), true);
@@ -227,7 +233,7 @@ test('WhatsApp groups, assigns and recovers photos using PostgreSQL and the Stud
   });
 });
 
-test('signed image webhooks reach the published gallery and album headers receive no reply', async t => {
+test('signed image webhooks send one progress notice before saving the album to the published gallery', async t => {
   const secret = 'whatsapp-photo-integration-test-secret';
   const bytes = await sharp({ create: { width: 32, height: 40, channels: 3, background: 'blue' } }).png().toBuffer();
   const fixture = await startCommerceFixture({ configureApi: async ({ connection, directory }) => {
@@ -283,11 +289,11 @@ test('signed image webhooks reach the published gallery and album headers receiv
   let delivered = [];
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
-    delivered = (await runtime.withClient(client => client.query("SELECT reply_text FROM meta_reply_outbox WHERE status='sent'"))).rows;
-    if (delivered.length) break;
+    delivered = (await runtime.withClient(client => client.query("SELECT reply_text FROM meta_reply_outbox WHERE status='sent' ORDER BY sent_at"))).rows;
+    if (delivered.some(row => row.reply_text === expectedReply)) break;
     await delay(100);
   }
-  assert.deepEqual(delivered.map(row => row.reply_text), [expectedReply]);
+  assert.deepEqual(delivered.map(row => row.reply_text), [processingReply, expectedReply]);
   const { rows: albumClaims } = await runtime.withClient(client => client.query(`SELECT c.status, e.id AS event_id
     FROM meta_message_claims c LEFT JOIN meta_events e ON e.id=c.message_id WHERE c.message_id LIKE 'wamid-album-%'`));
   assert.deepEqual(albumClaims, [{ status: 'completed', event_id: null }, { status: 'completed', event_id: null }]);
