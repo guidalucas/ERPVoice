@@ -48,6 +48,8 @@ try {
   assert.equal(first.headers.get('cache-control'), 'private, no-cache'); assert.ok(etag);
   const meta = await sharp(bytes).metadata(); assert.ok(meta.width <= 960 && meta.height <= 1200);
   const cached = await fetch(detailUrl, { headers: { 'If-None-Match': etag } }); assert.equal(cached.status, 304); assert.equal((await cached.arrayBuffer()).byteLength, 0);
+  assert.match(cached.headers.get('server-timing'), /db;dur=[\d.]+;desc="3 queries"/);
+  assert.doesNotMatch(cached.headers.get('server-timing'), /storage|encode/);
   await sql.query('UPDATE products SET stock_available=0,price=81000 WHERE owner_phone=$1 AND id=ANY($2::text[])', [fixture.owner, original.skuIds]);
   const live = await service.detail(shop, product.slug); assert.equal(live.product.available, false); assert.equal(live.product.priceRange.minAmountMinor, '8100000');
   await sql.query("UPDATE commercial_publications SET status='hidden' WHERE owner_phone=$1 AND commercial_product_id=$2", [fixture.owner, original.id]);

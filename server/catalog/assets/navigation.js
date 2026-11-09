@@ -95,7 +95,18 @@
     url.search = new URLSearchParams(new FormData(form)).toString();
     event.preventDefault(); void navigate(url);
   });
-  addEventListener('popstate', event => { void navigate(new URL(location.href), { pop: true, restore: event.state?.catalogScroll ?? 0 }); });
+  addEventListener('popstate', event => {
+    const url = new URL(location.href);
+    // Native anchors create history entries too. Keep them within the current
+    // document instead of fetching HTML and resetting their scroll to zero.
+    if (key(url) === key(new URL(current))) {
+      current = url.href;
+      if (url.hash) document.getElementById(decodeURIComponent(url.hash.slice(1)))?.scrollIntoView();
+      else scrollTo(0, event.state?.catalogScroll ?? 0);
+      return;
+    }
+    if (eligible(url)) void navigate(url, { pop: true, restore: event.state?.catalogScroll ?? 0 });
+  });
   let scrollScheduled = false;
   addEventListener('scroll', () => {
     if (scrollScheduled) return; scrollScheduled = true;

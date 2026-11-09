@@ -13,6 +13,7 @@ import { variantLabel } from './presentation.js';
 import { readPublicProducts } from './publicProductRepository.js';
 import { createMediaCache } from '../catalog/mediaCache.js';
 import sharp from 'sharp';
+import { measureCatalogPhase } from '../catalog/timing.js';
 
 const catalogDTO = row => row ? { slug: row.slug, publicEnabled: row.public_enabled, revision: Number(row.revision), path: `/c/${row.slug}` } : null;
 const publicationDTO = row => ({ status: row?.status ?? 'hidden', revision: Number(row?.revision ?? 0), publishedAt: row?.published_at?.toISOString() ?? null });
@@ -201,12 +202,12 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
       // Authorize against live publication/readiness BEFORE honoring any cache validator.
       if (typeof ifNoneMatch === 'string' && (ifNoneMatch.trim() === '*' || ifNoneMatch.split(',').some(value => value.trim().replace(/^W\//, '') === etag.replace(/^W\//, '')))) return { etag, notModified: true };
       const bytes = await cachedMedia(JSON.stringify([selected.owner, selected.key, selected.hash, variant, format]), async () => {
-        const source = await storage.get(selected.key);
+        const source = await measureCatalogPhase('storage', () => storage.get(selected.key));
         if (variant !== 'thumbnail' && sha256(source) !== selected.hash) fail('MEDIA_INTEGRITY_ERROR', 'La fotografía no está disponible.', 503);
         let pipeline = sharp(source);
         if (variant === 'detail') pipeline = pipeline.resize({ width: 960, height: 1200, fit: 'inside', withoutEnlargement: true });
-        if (format === 'webp') return pipeline.webp({ quality: 80 }).toBuffer();
-        return variant === 'detail' ? pipeline.jpeg({ quality: 82 }).toBuffer() : source;
+        if (format === 'webp') return measureCatalogPhase('encode', () => pipeline.webp({ quality: 80 }).toBuffer());
+        return variant === 'detail' ? measureCatalogPhase('encode', () => pipeline.jpeg({ quality: 82 }).toBuffer()) : source;
       });
       // Preserve the service's legacy Buffer return value for internal callers.
       return Object.assign(bytes, { etag, mimeType: format === 'webp' ? 'image/webp' : 'image/jpeg' });

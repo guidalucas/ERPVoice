@@ -13,6 +13,8 @@
     "test:commerce:browser": "node scripts/test-commerce-browser.js",
     "test:catalog:order": "node scripts/test-catalog-order.mjs",
     "test:catalog:performance": "node scripts/test-catalog-performance.mjs",
+    "test:catalog:navigation": "node scripts/test-catalog-navigation.mjs",
+    "test:catalog:timing": "node --test scripts/test-catalog-timing.js",
     "measure:catalog": "node scripts/measure-catalog-performance.mjs",
     "test:commerce:minimal-publication": "node scripts/test-catalog-minimal-publication.mjs",
     "test:chat-feedback": "node --test scripts/test-meta-processing-acknowledgement.js scripts/test-universal-meta-operations.js scripts/test-meta-audio-boundary.js",
