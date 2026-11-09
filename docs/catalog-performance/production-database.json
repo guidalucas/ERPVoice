@@ -1,0 +1,8 @@
+{
+  "measuredAt": "2026-11-09T23:05:06.572Z",
+  "vantagePoint": "Developer workstation, not the Render service",
+  "readOnly": true,
+  "roundTripsMs": [],
+  "plans": [],
+  "errorCode": "SELF_SIGNED_CERT_IN_CHAIN"
+}

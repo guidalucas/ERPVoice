@@ -1,0 +1,229 @@
+diff --git a/package.json b/package.json
+index 650756a..2658825 100644
+--- a/package.json
++++ b/package.json
+@@ -15,0 +16,2 @@
++    "test:catalog:navigation": "node scripts/test-catalog-navigation.mjs",
++    "test:catalog:timing": "node --test scripts/test-catalog-timing.js",
+diff --git a/scripts/test-catalog-navigation.mjs b/scripts/test-catalog-navigation.mjs
+new file mode 100644
+index 0000000..051c83c
+--- /dev/null
++++ b/scripts/test-catalog-navigation.mjs
+@@ -0,0 +1,43 @@
++import assert from 'node:assert/strict';
++import express from 'express';
++import { chromium } from 'playwright';
++import { createCatalogAssetHandler } from '../server/catalog/staticAssets.js';
++import { renderCatalogList, renderCatalogProduct } from '../server/catalog/render.js';
++import { catalogThemeCss, defaultAppearance } from '../src/shared/catalogAppearance.js';
++
++// Deterministic navigation tests, without an inventory database or external requests.
++const catalog = { slug: 'navigation-test', brandName: 'Navigation fixture', path: '/c/navigation-test', salesWhatsapp: '59899000088', appearance: defaultAppearance };
++const products = Array.from({ length: 24 }, (_, index) => ({ slug: `item-${index}`, title: `Product ${index}`, path: `${catalog.path}/p/item-${index}`, description: '',
++  available: true, category: 'Fixture', photos: [], sizes: [{ size: 'M', available: true, price: { amountMinor: '10000', currency: 'ARS', fractionDigits: 2 } }],
++  priceRange: { minAmountMinor: '10000', maxAmountMinor: '10000', currency: 'ARS', fractionDigits: 2 } }));
++const app = express();
++for (const name of ['catalog.css', 'templates.css', 'catalog.js']) app.get(`/catalog-assets/${name}`, createCatalogAssetHandler(name));
++app.get('/catalog-assets/:shop/theme.css', (_req, res) => res.type('css').send(catalogThemeCss(defaultAppearance)));
++app.get(catalog.path, (req, res) => res.type('html').send(renderCatalogList({ catalog, items: products, facets: {} }, req.query)));
++app.get(`${catalog.path}/p/:slug`, (req, res) => res.type('html').send(renderCatalogProduct({ catalog, product: products.find(item => item.slug === req.params.slug) })));
++const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
++const base = `http://127.0.0.1:${server.address().port}`;
++let browser;
++try {
++  browser = await chromium.launch({ channel: 'msedge', headless: true });
++  for (const mobile of [false, true]) {
++    const page = await browser.newPage({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 }, isMobile: mobile, hasTouch: mobile });
++    const errors = [], pages = []; page.on('pageerror', error => errors.push(error.message));
++    page.on('request', request => { if (new URL(request.url()).pathname === catalog.path) pages.push(request.url()); });
++    await page.goto(base + catalog.path);
++    const beforeAnchor = pages.length;
++    await page.locator('[data-hero-block=button]').click();
++    await page.waitForURL('**#coleccion'); await page.waitForTimeout(450);
++    assert.ok(await page.evaluate(() => scrollY > 100), 'Hero CTA must leave the collection in view');
++    assert.equal(pages.length, beforeAnchor, 'Hash navigation must not fetch and rebuild the document');
++    await page.goBack(); await page.waitForTimeout(100);
++    assert.equal(pages.length, beforeAnchor, 'Back within document hashes must not fetch');
++    await page.locator('.catalog-card > a').first().click();
++    await page.locator('.public-product-heading').waitFor();
++    await page.locator('a.back').click();
++    await page.locator('.catalog-card').first().waitFor();
++    await page.waitForFunction(() => !document.documentElement.hasAttribute('aria-busy'));
++    assert.deepEqual(errors, []); await page.close();
++  }
++  console.log('PASS desktop/mobile native hash links, hash history and product/back navigation');
++} finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
+diff --git a/scripts/test-catalog-performance.mjs b/scripts/test-catalog-performance.mjs
+index 0e0cdb0..37d979e 100644
+--- a/scripts/test-catalog-performance.mjs
++++ b/scripts/test-catalog-performance.mjs
+@@ -50,0 +51,2 @@ try {
++  assert.match(cached.headers.get('server-timing'), /db;dur=[\d.]+;desc="3 queries"/);
++  assert.doesNotMatch(cached.headers.get('server-timing'), /storage|encode/);
+diff --git a/scripts/test-catalog-timing.js b/scripts/test-catalog-timing.js
+new file mode 100644
+index 0000000..ca3e3c3
+--- /dev/null
++++ b/scripts/test-catalog-timing.js
+@@ -0,0 +1,42 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { catalogTiming, measuredCatalogRuntime, measureCatalogPhase } from '../server/catalog/timing.js';
++
++function response() {
++  const headers = {};
++  return { headers, headersSent: false, setHeader: (name, value) => { headers[name] = value; }, end: value => value };
++}
++const client = { query: async value => value };
++const runtime = { transaction: async (callback, options) => { assert.deepEqual(options, { readOnly: true }); return callback(client); }, withClient: async callback => callback(client) };
++
++test('catalog timing preserves results and records only aggregate phases', async () => {
++  const res = response(), measured = measuredCatalogRuntime(runtime);
++  await catalogTiming({}, res, async () => {
++    const value = await measured.transaction(async db => {
++      assert.equal(await db.query('private SQL / tenant / credential'), 'private SQL / tenant / credential');
++      return measureCatalogPhase('render', () => 'rendered');
++    }, { readOnly: true });
++    assert.equal(res.end(value), 'rendered');
++  });
++  assert.match(res.headers['Server-Timing'], /db;dur=[\d.]+;desc="1 queries"/);
++  for (const phase of ['total', 'db_setup', 'db_finalize', 'render']) assert.match(res.headers['Server-Timing'], new RegExp(`${phase};dur=`));
++  assert.doesNotMatch(res.headers['Server-Timing'], /private|tenant|credential/);
++});
++test('simultaneous requests retain isolated query counts', async () => {
++  const measured = measuredCatalogRuntime(runtime), first = response(), second = response();
++  await Promise.all([first, second].map((res, index) => catalogTiming({}, res, async () => {
++    await measured.withClient(async db => { for (let i = 0; i <= index; i++) await db.query('SELECT fixture'); }); res.end();
++  })));
++  assert.match(first.headers['Server-Timing'], /desc="1 queries"/); assert.match(second.headers['Server-Timing'], /desc="2 queries"/);
++});
++test('errors propagate and requests without SQL do not inherit timings', async () => {
++  assert.throws(() => measureCatalogPhase('render', () => { throw new Error('sync'); }), /sync/);
++  const measured = measuredCatalogRuntime(runtime), failed = response();
++  await catalogTiming({}, failed, async () => {
++    await assert.rejects(measured.transaction(async () => { throw new Error('async'); }, { readOnly: true }), /async/);
++    await assert.rejects(measureCatalogPhase('encode', async () => { throw new Error('encode'); }), /encode/);
++    failed.end();
++  });
++  assert.match(failed.headers['Server-Timing'], /encode;dur=/);
++  const clean = response(); catalogTiming({}, clean, () => clean.end()); assert.doesNotMatch(clean.headers['Server-Timing'], /db|encode/);
++});
+diff --git a/server/catalog/assets/navigation.js b/server/catalog/assets/navigation.js
+index 11d0302..fb447bb 100644
+--- a/server/catalog/assets/navigation.js
++++ b/server/catalog/assets/navigation.js
+@@ -98 +98,12 @@
+-  addEventListener('popstate', event => { void navigate(new URL(location.href), { pop: true, restore: event.state?.catalogScroll ?? 0 }); });
++  addEventListener('popstate', event => {
++    const url = new URL(location.href);
++    // Native anchors create history entries too. Keep them within the current
++    // document instead of fetching HTML and resetting their scroll to zero.
++    if (key(url) === key(new URL(current))) {
++      current = url.href;
++      if (url.hash) document.getElementById(decodeURIComponent(url.hash.slice(1)))?.scrollIntoView();
++      else scrollTo(0, event.state?.catalogScroll ?? 0);
++      return;
++    }
++    if (eligible(url)) void navigate(url, { pop: true, restore: event.state?.catalogScroll ?? 0 });
++  });
+diff --git a/server/catalog/render.js b/server/catalog/render.js
+index 9bda5ae..0db8088 100644
+--- a/server/catalog/render.js
++++ b/server/catalog/render.js
+@@ -19 +19 @@ function layout({ catalog, title, description, path, image, origin = '', content
+-    <body data-catalog="${escape(catalog.slug)}" data-preset="${escape(['editorial', 'technical', 'local'].includes(appearance.preset) ? appearance.preset : 'classic')}"><header class="shop-header"><a class="shop-brand" href="${escape(catalog.path)}">${brandMark(catalog)}<span>${escape(catalog.brandName)}<small>${escape(appearance.tagline)}</small></span></a>${appearance.preset === 'technical' ? `<form class="header-search" method="get" action="${escape(catalog.path)}"><label><span class="sr-only">Buscar en toda la tienda</span><input type="search" name="q" value="${escape(searchQuery)}" placeholder="Buscar en toda la tienda…" maxlength="120"></label><button type="submit">Buscar</button></form>` : ''}<nav aria-label="Navegación del catálogo"><a href="${escape(catalog.path)}">Catálogo</a><a class="shop-cart" href="${escape(catalog.path)}/pedido">Mi pedido <span data-cart-count>0</span></a>${chat ? `<a class="header-chat" href="${escape(chat)}" target="_blank" rel="noopener noreferrer">Pedidos ↗</a>` : ''}</nav></header><main>${content}</main><footer><span>${escape(catalog.brandName)}</span><p>Disponibilidad actualizada desde nuestro inventario. Armá tu pedido y finalizalo por WhatsApp.</p>${chat ? `<a href="${escape(chat)}" target="_blank" rel="noopener noreferrer">Hablemos por WhatsApp ↗</a>` : ''}</footer><script src="/catalog-assets/catalog.js?v=1" defer></script></body></html>`;
++    <body data-catalog="${escape(catalog.slug)}" data-preset="${escape(['editorial', 'technical', 'local'].includes(appearance.preset) ? appearance.preset : 'classic')}"><header class="shop-header"><a class="shop-brand" href="${escape(catalog.path)}">${brandMark(catalog)}<span>${escape(catalog.brandName)}<small>${escape(appearance.tagline)}</small></span></a>${appearance.preset === 'technical' ? `<form class="header-search" method="get" action="${escape(catalog.path)}"><label><span class="sr-only">Buscar en toda la tienda</span><input type="search" name="q" value="${escape(searchQuery)}" placeholder="Buscar en toda la tienda…" maxlength="120"></label><button type="submit">Buscar</button></form>` : ''}<nav aria-label="Navegación del catálogo"><a href="${escape(catalog.path)}">Catálogo</a><a class="shop-cart" href="${escape(catalog.path)}/pedido">Mi pedido <span data-cart-count>0</span></a>${chat ? `<a class="header-chat" href="${escape(chat)}" target="_blank" rel="noopener noreferrer">Pedidos ↗</a>` : ''}</nav></header><main>${content}</main><footer><span>${escape(catalog.brandName)}</span><p>Disponibilidad actualizada desde nuestro inventario. Armá tu pedido y finalizalo por WhatsApp.</p>${chat ? `<a href="${escape(chat)}" target="_blank" rel="noopener noreferrer">Hablemos por WhatsApp ↗</a>` : ''}</footer><script src="/catalog-assets/catalog.js?v=2" defer></script></body></html>`;
+diff --git a/server/catalog/router.js b/server/catalog/router.js
+index f373673..57b3532 100644
+--- a/server/catalog/router.js
++++ b/server/catalog/router.js
+@@ -7,0 +8 @@ import { createCatalogAssetHandler } from './staticAssets.js';
++import { catalogTiming, measuredCatalogRuntime, measureCatalogPhase } from './timing.js';
+@@ -10 +11,3 @@ export function createPublicCatalogRouters(runtime) {
+-  const catalog = createCatalogService(runtime), api = express.Router(), pages = express.Router();
++  const catalog = createCatalogService(measuredCatalogRuntime(runtime)), api = express.Router(), pages = express.Router();
++  api.use(catalogTiming);
++  pages.use((req, res, next) => req.path.startsWith('/c/') || req.path.startsWith('/catalog-assets/') ? catalogTiming(req, res, next) : next());
+@@ -44 +47,2 @@ export function createPublicCatalogRouters(runtime) {
+-    res.type('html').send(renderCatalogList(await catalog.list(req.params.shop, filters), filters, origin));
++    const data = await catalog.list(req.params.shop, filters);
++    res.type('html').send(measureCatalogPhase('render', () => renderCatalogList(data, filters, origin)));
+@@ -47 +51,4 @@ export function createPublicCatalogRouters(runtime) {
+-  pages.get('/c/:shop/p/:slug', async (req, res, next) => { try { res.type('html').send(renderCatalogProduct(await catalog.detail(req.params.shop, req.params.slug), origin)); } catch (error) { next(error); } });
++  pages.get('/c/:shop/p/:slug', async (req, res, next) => { try {
++    const data = await catalog.detail(req.params.shop, req.params.slug);
++    res.type('html').send(measureCatalogPhase('render', () => renderCatalogProduct(data, origin)));
++  } catch (error) { next(error); } });
+diff --git a/server/catalog/timing.js b/server/catalog/timing.js
+new file mode 100644
+index 0000000..8a5cca5
+--- /dev/null
++++ b/server/catalog/timing.js
+@@ -0,0 +1,52 @@
++import { AsyncLocalStorage } from 'node:async_hooks';
++import { performance } from 'node:perf_hooks';
++
++const requests = new AsyncLocalStorage();
++const record = (name, duration) => {
++  const metrics = requests.getStore(); if (metrics) metrics[name] = (metrics[name] || 0) + duration;
++};
++export function measureCatalogPhase(name, callback) {
++  if (!requests.getStore()) return callback();
++  const start = performance.now();
++  try {
++    const value = callback();
++    if (value && typeof value.then === 'function') return Promise.resolve(value).finally(() => record(name, performance.now() - start));
++    record(name, performance.now() - start); return value;
++  } catch (error) { record(name, performance.now() - start); throw error; }
++}
++
++// Aggregate durations only: never SQL, identifiers, URLs, inventory or credentials.
++export function catalogTiming(_req, res, next) {
++  const start = performance.now(), metrics = { queries: 0 };
++  const end = res.end;
++  res.end = function (...args) {
++    if (!res.headersSent) {
++      const entries = [`total;dur=${(performance.now() - start).toFixed(1)}`];
++      for (const name of ['db', 'db_setup', 'db_finalize', 'storage', 'encode', 'render']) if (metrics[name] !== undefined)
++        entries.push(`${name};dur=${metrics[name].toFixed(1)}${name === 'db' ? `;desc="${metrics.queries} queries"` : ''}`);
++      res.setHeader('Server-Timing', entries.join(', '));
++    }
++    return end.apply(this, args);
++  };
++  return requests.run(metrics, next);
++}
++
++export function measuredCatalogRuntime(runtime) {
++  const wrap = method => (callback, ...options) => {
++    if (!requests.getStore()) return runtime[method](callback, ...options);
++    const start = performance.now(); let callbackFinished;
++    return runtime[method](async client => {
++      // For transactions this includes pool acquisition AND BEGIN, not pure pool wait.
++      record('db_setup', performance.now() - start);
++      const measured = new Proxy(client, { get(target, key) {
++        if (key === 'query') return (...args) => {
++          requests.getStore().queries++;
++          return measureCatalogPhase('db', () => target.query(...args));
++        };
++        const value = Reflect.get(target, key, target); return typeof value === 'function' ? value.bind(target) : value;
++      } });
++      try { return await callback(measured); } finally { callbackFinished = performance.now(); }
++    }, ...options).finally(() => { if (callbackFinished !== undefined) record('db_finalize', performance.now() - callbackFinished); });
++  };
++  return { ...runtime, transaction: wrap('transaction'), withClient: wrap('withClient') };
++}
+diff --git a/server/commerce/catalogService.js b/server/commerce/catalogService.js
+index 9133dc1..bac1c73 100644
+--- a/server/commerce/catalogService.js
++++ b/server/commerce/catalogService.js
+@@ -15,0 +16 @@ import sharp from 'sharp';
++import { measureCatalogPhase } from '../catalog/timing.js';
+@@ -204 +205 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
+-        const source = await storage.get(selected.key);
++        const source = await measureCatalogPhase('storage', () => storage.get(selected.key));
+@@ -208,2 +209,2 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
+-        if (format === 'webp') return pipeline.webp({ quality: 80 }).toBuffer();
+-        return variant === 'detail' ? pipeline.jpeg({ quality: 82 }).toBuffer() : source;
++        if (format === 'webp') return measureCatalogPhase('encode', () => pipeline.webp({ quality: 80 }).toBuffer());
++        return variant === 'detail' ? measureCatalogPhase('encode', () => pipeline.jpeg({ quality: 82 }).toBuffer()) : source;

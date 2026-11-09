@@ -1,0 +1,2682 @@
+{
+  "measuredDeployment": "0e069a34020bbca731152208f486a901565aff34",
+  "beforeMeasuredAt": "2026-11-09T22:38:21.969Z",
+  "afterMeasuredAt": "2026-11-09T23:00:22.543Z",
+  "comparison": "One historical observation per device versus median and nearest-rank p95 of three new runs. Small-sample descriptive comparison, not field percentiles.",
+  "conditions": {
+    "desktop": {
+      "width": 1440,
+      "height": 900
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "dpr": 2,
+      "cpuSlowdown": 4,
+      "latencyMs": 80,
+      "downloadBytesPerSecond": 200000,
+      "uploadBytesPerSecond": 100000
+    },
+    "cold": "New browser context, empty browser cache. Server/cache state is uncontrolled; no restart or cache purge.",
+    "warm": "Same browser context; earlier product images and assets may be reused."
+  },
+  "baselineSha256": "bdc942297343772da1558a0a0c18ce0da977d3ad37daa0b7c818a62aaf970f5f",
+  "scenarios": [
+    {
+      "mobile": false,
+      "name": "cold-list",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1625.9556999999986,
+          "p95": 2458.0166000000027
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1656.7668999999987,
+          "p95": 2488.1497999999992
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 669.7080000000001,
+          "p95": 672.663
+        },
+        "requests": {
+          "n": 3,
+          "p50": 7,
+          "p95": 7
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 187399,
+          "p95": 187804
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 669.5,
+          "p95": 672.5999999642372
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 1196,
+          "p95": 1204
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 1600,
+          "p95": 2432
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 8380.3644,
+        "requests": 7,
+        "transferredBytes": 185891,
+        "navigationTtfbMs": 7412.199999988079,
+        "lcp": 8136,
+        "documentFcpMs": 8044
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 80.5980310355001,
+      "ttfbReductionPercent": 90.96478778229032
+    },
+    {
+      "mobile": false,
+      "name": "product-1",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 873.8566999999966,
+          "p95": 879.6143999999999
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 893.867499999993,
+          "p95": 898.6635999999994
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 541.427,
+          "p95": 610.7270000000001
+        },
+        "requests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 31155,
+          "p95": 31156
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 1225.6913999999997,
+        "requests": 7,
+        "transferredBytes": 57165,
+        "navigationTtfbMs": 741.3000000119209
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 28.70499866442754,
+      "ttfbReductionPercent": 26.962498314947624
+    },
+    {
+      "mobile": false,
+      "name": "back-1",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 52.12970000000132,
+          "p95": 53.414199999999255
+        },
+        "imageReadyMs": null,
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 609.01,
+          "p95": 683.843
+        },
+        "requests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 3216,
+          "p95": 3216
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 7294.0957,
+        "requests": 8,
+        "transferredBytes": 118448,
+        "navigationTtfbMs": 6791.800000011921
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 99.28531647864173,
+      "ttfbReductionPercent": 91.03315763127696
+    },
+    {
+      "mobile": false,
+      "name": "product-2",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 849.3450999999986,
+          "p95": 858.8603000000003
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 870.0660999999964,
+          "p95": 879.0640999999996
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 495.839,
+          "p95": 525.2030000000001
+        },
+        "requests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 3966,
+          "p95": 3966
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 1175.1499999999978,
+        "requests": 6,
+        "transferredBytes": 141913,
+        "navigationTtfbMs": 709.5999999642372
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 27.724537293111496,
+      "ttfbReductionPercent": 30.124154449691442
+    },
+    {
+      "mobile": false,
+      "name": "back-2",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 51.53179999999975,
+          "p95": 54.473699999995006
+        },
+        "imageReadyMs": null,
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 639.5989999999999,
+          "p95": 655.1189999999999
+        },
+        "requests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 3216,
+          "p95": 3216
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 11996.8433,
+        "requests": 8,
+        "transferredBytes": 172236,
+        "navigationTtfbMs": 6748.099999964237
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 99.57045533803046,
+      "ttfbReductionPercent": 90.52179131898772
+    },
+    {
+      "mobile": false,
+      "name": "product-3",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 857.7024999999994,
+          "p95": 873.4303
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 878.1162999999942,
+          "p95": 893.4454000000042
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 535.249,
+          "p95": 585.239
+        },
+        "requests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 41345,
+          "p95": 41346
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 1186.111699999994,
+        "requests": 7,
+        "transferredBytes": 88109,
+        "navigationTtfbMs": 740.7000000476837
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 27.687881335290456,
+      "ttfbReductionPercent": 27.73741056223268
+    },
+    {
+      "mobile": false,
+      "name": "back-3",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 47.13000000000466,
+          "p95": 47.831099999995786
+        },
+        "imageReadyMs": null,
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 642.891,
+          "p95": 654.247
+        },
+        "requests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 3216,
+          "p95": 3216
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 7654.1759999999995,
+        "requests": 8,
+        "transferredBytes": 203172,
+        "navigationTtfbMs": 7209.5
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 99.38425769148756,
+      "ttfbReductionPercent": 91.08272418336917
+    },
+    {
+      "mobile": false,
+      "name": "search",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 876.9523000000008,
+          "p95": 879.2114000000001
+        },
+        "imageReadyMs": null,
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 555.664,
+          "p95": 605.12
+        },
+        "requests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 4501,
+          "p95": 4501
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 2337.2782000000007,
+        "requests": 8,
+        "transferredBytes": 3874,
+        "navigationTtfbMs": 1865.6000000238419
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 62.4797638552398,
+      "ttfbReductionPercent": 70.2152658665899
+    },
+    {
+      "mobile": false,
+      "name": "filter-category",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1647.5403999999999,
+          "p95": 1909.7551000000021
+        },
+        "imageReadyMs": null,
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 673.3820000000001,
+          "p95": 675.875
+        },
+        "requests": {
+          "n": 3,
+          "p50": 9,
+          "p95": 9
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 4,
+          "p95": 4
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 16512,
+          "p95": 16512
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 5,
+          "p95": 5
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 673.3999999761581,
+          "p95": 675.7999999523163
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 1080,
+          "p95": 1104
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 1080,
+          "p95": 1104
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 7768.277300000002,
+        "requests": 7,
+        "transferredBytes": 357094,
+        "navigationTtfbMs": 6826.300000011921,
+        "lcp": 7264,
+        "documentFcpMs": 7264
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 78.79143166014427,
+      "ttfbReductionPercent": 90.13547602656162
+    },
+    {
+      "mobile": false,
+      "name": "filter-team",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1322.8905000000013,
+          "p95": 1355.525999999998
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1353.1010999999999,
+          "p95": 1386.8566999999966
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 523.1479999999999,
+          "p95": 524.347
+        },
+        "requests": {
+          "n": 3,
+          "p50": 7,
+          "p95": 7
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 3039,
+          "p95": 3040
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 523.1000000238419,
+          "p95": 524.2999999523163
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 940,
+          "p95": 952
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 940,
+          "p95": 952
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 1866.5741999999955,
+        "requests": 7,
+        "transferredBytes": 171159,
+        "navigationTtfbMs": 570.5,
+        "lcp": 992,
+        "documentFcpMs": 992
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 29.12735534435199,
+      "ttfbReductionPercent": 8.300087642418951
+    },
+    {
+      "mobile": false,
+      "name": "filter-version",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1423.9712,
+          "p95": 1614.9772999999986
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1455.5481999999975,
+          "p95": 1645.0955999999987
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 573.667,
+          "p95": 597.038
+        },
+        "requests": {
+          "n": 3,
+          "p50": 8,
+          "p95": 8
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 38245,
+          "p95": 38245
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 573.6999999880791,
+          "p95": 597
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 980,
+          "p95": 1000
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 1232,
+          "p95": 1552
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 1829.5711999999985,
+        "requests": 8,
+        "transferredBytes": 212992,
+        "navigationTtfbMs": 833.5,
+        "lcp": 2416,
+        "documentFcpMs": 1304
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 22.169129028703495,
+      "ttfbReductionPercent": 31.173725254949
+    },
+    {
+      "mobile": false,
+      "name": "visited-product",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1178.9235999999946,
+          "p95": 1269.2103000000006
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1209.1174000000028,
+          "p95": 1299.4800000000014
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 533.4530000000001,
+          "p95": 535.175
+        },
+        "requests": {
+          "n": 3,
+          "p50": 6,
+          "p95": 6
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 2617,
+          "p95": 2617
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 533.4000000357628,
+          "p95": 535
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 972,
+          "p95": 984
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 972,
+          "p95": 984
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 2054.9354999999996,
+        "requests": 6,
+        "transferredBytes": 57165,
+        "navigationTtfbMs": 794.3000000119209,
+        "lcp": 1232,
+        "documentFcpMs": 1232
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 42.629654312751185,
+      "ttfbReductionPercent": 32.83985899634975
+    },
+    {
+      "mobile": false,
+      "name": "reload-product",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1283.4448000000011,
+          "p95": 1296.9606000000058
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1313.7441,
+          "p95": 1328.371800000008
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 533.267,
+          "p95": 535.499
+        },
+        "requests": {
+          "n": 3,
+          "p50": 6,
+          "p95": 6
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 2617,
+          "p95": 2618
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 533.1999999880791,
+          "p95": 535.5
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 924,
+          "p95": 940
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 924,
+          "p95": 940
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 1653.1223000000027,
+        "requests": 6,
+        "transferredBytes": 57170,
+        "navigationTtfbMs": 810.2999999523163,
+        "lcp": 1248,
+        "documentFcpMs": 1248
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 22.362380569181184,
+      "ttfbReductionPercent": 34.18894236315177
+    },
+    {
+      "mobile": true,
+      "name": "cold-list",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 2513.5469999999914,
+          "p95": 2626.7068
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 2575.5524999999907,
+          "p95": 2688.864100000006
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 724.5550000000001,
+          "p95": 740.037
+        },
+        "requests": {
+          "n": 3,
+          "p50": 8,
+          "p95": 8
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 216532,
+          "p95": 216533
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 709.5999999642372,
+          "p95": 739.8999999761581
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 1440,
+          "p95": 1552
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 2440,
+          "p95": 2564
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 9126.1558,
+        "requests": 8,
+        "transferredBytes": 185469,
+        "navigationTtfbMs": 7388.5,
+        "lcp": 9052,
+        "documentFcpMs": 8132
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 72.45776803415967,
+      "ttfbReductionPercent": 90.19347634837925
+    },
+    {
+      "mobile": true,
+      "name": "product-1",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 905.6463000000076,
+          "p95": 909.8851000000141
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 929.8943999999901,
+          "p95": 940.4818000000087
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 540.582,
+          "p95": 560.646
+        },
+        "requests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 2019,
+          "p95": 2019
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 1386.7683000000106,
+        "requests": 6,
+        "transferredBytes": 88149,
+        "navigationTtfbMs": 767
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 34.69375525817826,
+      "ttfbReductionPercent": 29.519947848761408
+    },
+    {
+      "mobile": true,
+      "name": "back-1",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 93.68920000002254,
+          "p95": 102.76949999999488
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 765.2899000000034,
+          "p95": 786.7563000000082
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 613.896,
+          "p95": 653.1540000000001
+        },
+        "requests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 3216,
+          "p95": 3216
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 7405.324999999997,
+        "requests": 9,
+        "transferredBytes": 244757,
+        "navigationTtfbMs": 6846.900000035763
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 98.73484013193179,
+      "ttfbReductionPercent": 91.0339569732756
+    },
+    {
+      "mobile": true,
+      "name": "product-2",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 861.078600000008,
+          "p95": 880.5989999999874
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 881.9701000000059,
+          "p95": 901.3875999999873
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 542.921,
+          "p95": 548.9300000000001
+        },
+        "requests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 1982,
+          "p95": 1982
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 1289.4167000000016,
+        "requests": 6,
+        "transferredBytes": 57179,
+        "navigationTtfbMs": 736.1999999880791
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 33.21952476650822,
+      "ttfbReductionPercent": 26.25359956414136
+    },
+    {
+      "mobile": true,
+      "name": "back-2",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 85.84979999999632,
+          "p95": 89.28399999999965
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 733.8868000000075,
+          "p95": 856.8604999999952
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 597.4730000000001,
+          "p95": 727.9090000000001
+        },
+        "requests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 3216,
+          "p95": 3216
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 7361.618499999997,
+        "requests": 9,
+        "transferredBytes": 172243,
+        "navigationTtfbMs": 6828.199999988079
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 98.83381894891733,
+      "ttfbReductionPercent": 91.24991945167038
+    },
+    {
+      "mobile": true,
+      "name": "product-3",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 881.0776000000042,
+          "p95": 911.1463999999978
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 902.1741000000038,
+          "p95": 932.043800000014
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 565.836,
+          "p95": 599.126
+        },
+        "requests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 39365,
+          "p95": 39366
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 1199.2051999999967,
+        "requests": 6,
+        "transferredBytes": 129668,
+        "navigationTtfbMs": 699.5
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 26.52820384701412,
+      "ttfbReductionPercent": 19.108506075768407
+    },
+    {
+      "mobile": true,
+      "name": "back-3",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 101.84930000000168,
+          "p95": 109.51350000000093
+        },
+        "imageReadyMs": null,
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 641.441,
+          "p95": 667.875
+        },
+        "requests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 3216,
+          "p95": 3216
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 6761.58159999999,
+        "requests": 9,
+        "transferredBytes": 203170,
+        "navigationTtfbMs": 6141.400000035763
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 98.49370596962105,
+      "ttfbReductionPercent": 89.55545966723768
+    },
+    {
+      "mobile": true,
+      "name": "search",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 925.1117999999988,
+          "p95": 940.8638999999966
+        },
+        "imageReadyMs": null,
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 554.367,
+          "p95": 602.32
+        },
+        "requests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 4499,
+          "p95": 4499
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 2319.7747999999992,
+        "requests": 8,
+        "transferredBytes": 45439,
+        "navigationTtfbMs": 1730.300000011921
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 60.12062032918026,
+      "ttfbReductionPercent": 67.96122059780497
+    },
+    {
+      "mobile": true,
+      "name": "filter-category",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1996.6963999999862,
+          "p95": 2260.332300000009
+        },
+        "imageReadyMs": null,
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 613.19,
+          "p95": 709.5749999999999
+        },
+        "requests": {
+          "n": 3,
+          "p50": 9,
+          "p95": 9
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 4,
+          "p95": 4
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 16511,
+          "p95": 16516
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 5,
+          "p95": 5
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 608.6999999880791,
+          "p95": 692.6000000238419
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 1416,
+          "p95": 1504
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 1416,
+          "p95": 1504
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 8698.1786,
+        "requests": 7,
+        "transferredBytes": 357095,
+        "navigationTtfbMs": 7156.199999988079,
+        "lcp": 8072,
+        "documentFcpMs": 8072
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 77.0446608212898,
+      "ttfbReductionPercent": 91.43134624519966
+    },
+    {
+      "mobile": true,
+      "name": "filter-team",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1446.9745000000112,
+          "p95": 1482.1345000000001
+        },
+        "imageReadyMs": null,
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 536.582,
+          "p95": 551.266
+        },
+        "requests": {
+          "n": 3,
+          "p50": 7,
+          "p95": 7
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 3039,
+          "p95": 3041
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 532.8999999761581,
+          "p95": 547.1999999880791
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 1048,
+          "p95": 1052
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 1048,
+          "p95": 1052
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 2180.7811999999976,
+        "requests": 7,
+        "transferredBytes": 171162,
+        "navigationTtfbMs": 514,
+        "lcp": 968,
+        "documentFcpMs": 968
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 33.64879979706296,
+      "ttfbReductionPercent": -4.393385214007783
+    },
+    {
+      "mobile": true,
+      "name": "filter-version",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1539.1674000000057,
+          "p95": 1562.2256000000052
+        },
+        "imageReadyMs": null,
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 605.917,
+          "p95": 622.237
+        },
+        "requests": {
+          "n": 3,
+          "p50": 8,
+          "p95": 8
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 38242,
+          "p95": 38246
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 602.3000000119209,
+          "p95": 615
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 1080,
+          "p95": 1092
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 1080,
+          "p95": 1092
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 2606.8989,
+        "requests": 8,
+        "transferredBytes": 212998,
+        "navigationTtfbMs": 747.3000000119209,
+        "lcp": 1224,
+        "documentFcpMs": 1224
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 40.957917470447136,
+      "ttfbReductionPercent": 18.91917570047712
+    },
+    {
+      "mobile": true,
+      "name": "visited-product",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1335.8737000000256,
+          "p95": 1379.9207000000024
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1396.7602000000188,
+          "p95": 1441.498700000011
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 538.961,
+          "p95": 562.454
+        },
+        "requests": {
+          "n": 3,
+          "p50": 6,
+          "p95": 6
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 2617,
+          "p95": 2617
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 535.2000000476837,
+          "p95": 545
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 996,
+          "p95": 1032
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 996,
+          "p95": 1032
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 1690.0957000000053,
+        "requests": 6,
+        "transferredBytes": 57168,
+        "navigationTtfbMs": 714.5,
+        "lcp": 1224,
+        "documentFcpMs": 1224
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 20.95869482420307,
+      "ttfbReductionPercent": 24.56808957312806
+    },
+    {
+      "mobile": true,
+      "name": "reload-product",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1375.813399999999,
+          "p95": 1484.9858999999997
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1435.9939999999915,
+          "p95": 1545.9732000000076
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 561.9910000000001,
+          "p95": 566.857
+        },
+        "requests": {
+          "n": 3,
+          "p50": 6,
+          "p95": 6
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 2618,
+          "p95": 2618
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 2,
+          "p95": 2
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 545.3999999761581,
+          "p95": 546.1000000238419
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 1008,
+          "p95": 1020
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 1008,
+          "p95": 1020
+        }
+      },
+      "before": {
+        "n": 1,
+        "visibleMs": 1872.0475999999908,
+        "requests": 6,
+        "transferredBytes": 57165,
+        "navigationTtfbMs": 716.3999999761581,
+        "lcp": 1224,
+        "documentFcpMs": 1224
+      },
+      "samePagePath": true,
+      "visibleReductionPercent": 26.50756316238936,
+      "ttfbReductionPercent": 21.55346175059978
+    }
+  ],
+  "supplements": [
+    {
+      "mobile": false,
+      "name": "warm-list",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1448.529300000002,
+          "p95": 1495.0385999999999
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1478.608100000005,
+          "p95": 1525.714599999992
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 601.244,
+          "p95": 639.6429999999999
+        },
+        "requests": {
+          "n": 3,
+          "p50": 9,
+          "p95": 9
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 4,
+          "p95": 4
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 4802,
+          "p95": 4802
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 5,
+          "p95": 5
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 601.1000000238419,
+          "p95": 639.3999999761581
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 1056,
+          "p95": 1100
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 1420,
+          "p95": 1424
+        }
+      }
+    },
+    {
+      "mobile": false,
+      "name": "image-product",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 865.3934000000008,
+          "p95": 874.037799999991
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1486.140099999997,
+          "p95": 2410.502199999999
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 513.038,
+          "p95": 610.423
+        },
+        "requests": {
+          "n": 3,
+          "p50": 4,
+          "p95": 4
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 251050,
+          "p95": 251051
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      }
+    },
+    {
+      "mobile": false,
+      "name": "image-product-reload",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1261.1283999999941,
+          "p95": 1316.2518999999993
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1312.0132999999987,
+          "p95": 1366.0937000000013
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 512.275,
+          "p95": 538.3539999999999
+        },
+        "requests": {
+          "n": 3,
+          "p50": 9,
+          "p95": 9
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 4,
+          "p95": 4
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 4107,
+          "p95": 4107
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 5,
+          "p95": 5
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 512.1999999880791,
+          "p95": 538.2999999523163
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 920,
+          "p95": 952
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 1108,
+          "p95": 1132
+        }
+      }
+    },
+    {
+      "mobile": false,
+      "name": "image-back",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 864.5622000000003,
+          "p95": 1336.464399999997
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1444.6407999999974,
+          "p95": 1506.6598999999987
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 642.019,
+          "p95": 806.9920000000001
+        },
+        "requests": {
+          "n": 3,
+          "p50": 4,
+          "p95": 4
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 4168,
+          "p95": 4169
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        }
+      }
+    },
+    {
+      "mobile": false,
+      "name": "image-product-warm",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 875.788700000001,
+          "p95": 880.4510999999984
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 895.2235000000001,
+          "p95": 900.3363000000027
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 537.216,
+          "p95": 545.966
+        },
+        "requests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 2519,
+          "p95": 2520
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      }
+    },
+    {
+      "mobile": true,
+      "name": "warm-list",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1517.8006000000023,
+          "p95": 1596.616399999999
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1589.789499999999,
+          "p95": 1657.9800999999861
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 618.1690000000001,
+          "p95": 690.2439999999999
+        },
+        "requests": {
+          "n": 3,
+          "p50": 9,
+          "p95": 9
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 4,
+          "p95": 4
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 4802,
+          "p95": 4802
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 5,
+          "p95": 5
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 603.1000000238419,
+          "p95": 685.5
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 1132,
+          "p95": 1172
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 1424,
+          "p95": 1532
+        }
+      }
+    },
+    {
+      "mobile": true,
+      "name": "image-product",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 904.4016999999876,
+          "p95": 921.9752000000008
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 2463.803800000009,
+          "p95": 2535.561300000001
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 548.072,
+          "p95": 554.801
+        },
+        "requests": {
+          "n": 3,
+          "p50": 4,
+          "p95": 4
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 251049,
+          "p95": 251060
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      }
+    },
+    {
+      "mobile": true,
+      "name": "image-product-reload",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 1323.6579999999958,
+          "p95": 1345.7748000000138
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1405.9768999999942,
+          "p95": 1406.9795999999915
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 522.499,
+          "p95": 523.9720000000001
+        },
+        "requests": {
+          "n": 3,
+          "p50": 9,
+          "p95": 9
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 4,
+          "p95": 4
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 4107,
+          "p95": 4107
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 5,
+          "p95": 5
+        },
+        "documentTtfbMs": {
+          "n": 3,
+          "p50": 508.80000001192093,
+          "p95": 518.1999999880791
+        },
+        "documentFcpMs": {
+          "n": 3,
+          "p50": 980,
+          "p95": 1032
+        },
+        "lcp": {
+          "n": 3,
+          "p50": 1080,
+          "p95": 1140
+        }
+      }
+    },
+    {
+      "mobile": true,
+      "name": "image-back",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 888.4095000000088,
+          "p95": 900.7554999999993
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 1531.7590999999957,
+          "p95": 1538.7111999999906
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 651.264,
+          "p95": 665.917
+        },
+        "requests": {
+          "n": 3,
+          "p50": 4,
+          "p95": 4
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 4167,
+          "p95": 4168
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 3,
+          "p95": 3
+        }
+      }
+    },
+    {
+      "mobile": true,
+      "name": "image-product-warm",
+      "after": {
+        "visibleMs": {
+          "n": 3,
+          "p50": 889.7939999999944,
+          "p95": 900.5141000000003
+        },
+        "imageReadyMs": {
+          "n": 3,
+          "p50": 910.5426000000007,
+          "p95": 921.9537999999884
+        },
+        "navigationTtfbMs": {
+          "n": 3,
+          "p50": 540.5060000000001,
+          "p95": 543.7439999999999
+        },
+        "requests": {
+          "n": 3,
+          "p50": 1,
+          "p95": 1
+        },
+        "documentRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "dataApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "imageApiRequests": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        },
+        "transferredBytes": {
+          "n": 3,
+          "p50": 2519,
+          "p95": 2519
+        },
+        "responses304": {
+          "n": 3,
+          "p50": 0,
+          "p95": 0
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "incompleteRequestRecords": 18,
+  "probes": [
+    {
+      "name": "health",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 192.20300000000134,
+        "p95": 406.2568
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 192.53039999999964,
+        "p95": 409.74699999999996
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 175,
+        "p95": 175
+      },
+      "conditionalTtfbMs": null,
+      "conditionalStatuses": [],
+      "conditionalBytes": null
+    },
+    {
+      "name": "static-js",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 191.0738,
+        "p95": 207.1283000000003
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 195.87300000000005,
+        "p95": 207.8081999999995
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 19992,
+        "p95": 19992
+      },
+      "conditionalTtfbMs": null,
+      "conditionalStatuses": [],
+      "conditionalBytes": null
+    },
+    {
+      "name": "brand-json",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 395.65189999999996,
+        "p95": 434.34879999999976
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 396.49120000000005,
+        "p95": 434.84729999999945
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 622,
+        "p95": 622
+      },
+      "conditionalTtfbMs": null,
+      "conditionalStatuses": [],
+      "conditionalBytes": null
+    },
+    {
+      "name": "list-json",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 677.3417,
+        "p95": 715.0453000000016
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 678.2646,
+        "p95": 715.4128999999994
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 27744,
+        "p95": 27744
+      },
+      "conditionalTtfbMs": null,
+      "conditionalStatuses": [],
+      "conditionalBytes": null
+    },
+    {
+      "name": "list-html",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 624.7538,
+        "p95": 715.3837999999996
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 625.8289,
+        "p95": 715.8241000000016
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 20909,
+        "p95": 20909
+      },
+      "conditionalTtfbMs": null,
+      "conditionalStatuses": [],
+      "conditionalBytes": null
+    },
+    {
+      "name": "detail-json",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 538.324700000001,
+        "p95": 701.8338000000003
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 538.8179,
+        "p95": 702.1240000000034
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 2736,
+        "p95": 2736
+      },
+      "conditionalTtfbMs": null,
+      "conditionalStatuses": [],
+      "conditionalBytes": null
+    },
+    {
+      "name": "logo",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 726.3069,
+        "p95": 731.6293999999998
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 792.6132000000002,
+        "p95": 798.8270000000011
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 53488,
+        "p95": 53488
+      },
+      "width": 400,
+      "height": 400,
+      "format": "png",
+      "conditionalTtfbMs": {
+        "n": 3,
+        "p50": 662.785100000001,
+        "p95": 721.0609000000004
+      },
+      "conditionalStatuses": [
+        304
+      ],
+      "conditionalBytes": {
+        "n": 3,
+        "p50": 0,
+        "p95": 0
+      }
+    },
+    {
+      "name": "cover",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 800.8921000000009,
+        "p95": 830.0581999999995
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 909.4176999999981,
+        "p95": 919.4225999999999
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 113572,
+        "p95": 113572
+      },
+      "width": 1600,
+      "height": 791,
+      "format": "jpeg",
+      "conditionalTtfbMs": {
+        "n": 3,
+        "p50": 784.7249000000002,
+        "p95": 802.3604999999989
+      },
+      "conditionalStatuses": [
+        304
+      ],
+      "conditionalBytes": {
+        "n": 3,
+        "p50": 0,
+        "p95": 0
+      }
+    },
+    {
+      "name": "thumbnail-jpeg",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 541.5673000000024,
+        "p95": 869.2043999999996
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 580.9989999999998,
+        "p95": 908.4409999999998
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 30637,
+        "p95": 30637
+      },
+      "width": 270,
+      "height": 480,
+      "format": "jpeg",
+      "conditionalTtfbMs": {
+        "n": 3,
+        "p50": 535.7694000000001,
+        "p95": 1011.5793000000012
+      },
+      "conditionalStatuses": [
+        304
+      ],
+      "conditionalBytes": {
+        "n": 3,
+        "p50": 0,
+        "p95": 0
+      }
+    },
+    {
+      "name": "thumbnail-webp",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 526.1286,
+        "p95": 613.081000000001
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 562.6480999999985,
+        "p95": 646.1042000000007
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 28750,
+        "p95": 28750
+      },
+      "width": 270,
+      "height": 480,
+      "format": "webp",
+      "conditionalTtfbMs": {
+        "n": 3,
+        "p50": 529.7606000000014,
+        "p95": 536.7252999999982
+      },
+      "conditionalStatuses": [
+        304
+      ],
+      "conditionalBytes": {
+        "n": 3,
+        "p50": 0,
+        "p95": 0
+      }
+    },
+    {
+      "name": "detail-webp",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 583.6124999999993,
+        "p95": 1648.866100000001
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 1242.3698999999979,
+        "p95": 1753.4719000000005
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 187880,
+        "p95": 187880
+      },
+      "width": 675,
+      "height": 1200,
+      "format": "webp",
+      "conditionalTtfbMs": {
+        "n": 3,
+        "p50": 523.7479999999996,
+        "p95": 533.0799999999999
+      },
+      "conditionalStatuses": [
+        304
+      ],
+      "conditionalBytes": {
+        "n": 3,
+        "p50": 0,
+        "p95": 0
+      }
+    },
+    {
+      "name": "master-jpeg",
+      "ttfbMs": {
+        "n": 3,
+        "p50": 534.8735000000015,
+        "p95": 601.6104999999989
+      },
+      "totalMs": {
+        "n": 3,
+        "p50": 690.9291000000012,
+        "p95": 852.8225000000002
+      },
+      "bytes": {
+        "n": 3,
+        "p50": 354060,
+        "p95": 354060
+      },
+      "width": 900,
+      "height": 1600,
+      "format": "jpeg",
+      "conditionalTtfbMs": {
+        "n": 3,
+        "p50": 521.3150999999998,
+        "p95": 540.8955999999962
+      },
+      "conditionalStatuses": [
+        304
+      ],
+      "conditionalBytes": {
+        "n": 3,
+        "p50": 0,
+        "p95": 0
+      }
+    }
+  ]
+}

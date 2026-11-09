@@ -1,6 +1,8 @@
 # Rendimiento del catálogo público — 9 de noviembre de 2026
 
-Cambios implementados y comprobados localmente. Producción fue medida únicamente en lectura; **estos cambios todavía no están desplegados**. No se modificaron inventarios reales, servicios de Render, planes ni costos.
+Estado al cerrar la auditoría inicial: cambios implementados y comprobados localmente, todavía sin confirmar el despliegue. Producción se midió únicamente en lectura. No se modificaron inventarios reales, servicios de Render, planes ni costos.
+
+**Actualización:** la validación posterior confirmó el commit en producción y comparó mediciones públicas reales. Ver [validación de producción](PRODUCTION-VALIDATION.md) y [production-after.json](production-after.json). Ese informe distingue la versión publicada de las correcciones que siguen pendientes de autorización.
 
 ## A. Diagnóstico y arquitectura
 
