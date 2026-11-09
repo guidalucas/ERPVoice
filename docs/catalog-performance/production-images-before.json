@@ -1,0 +1,27 @@
+{
+  "measuredAt": "2026-11-09T22:49:20.514Z",
+  "images": [
+    {
+      "variant": "thumbnail",
+      "status": 200,
+      "bytes": 30637,
+      "width": 270,
+      "height": 480,
+      "format": "jpeg",
+      "cacheControl": "no-store",
+      "etag": "W/\"77ad-TAv3cSfnjoHXswx0dcdzUP8QvsE\"",
+      "totalMs": 1498.0104
+    },
+    {
+      "variant": "master",
+      "status": 200,
+      "bytes": 354060,
+      "width": 900,
+      "height": 1600,
+      "format": "jpeg",
+      "cacheControl": "no-store",
+      "etag": "W/\"5670c-NvhkTEyB7ZEsJHcyEJRQGhnRKLQ\"",
+      "totalMs": 1709.0318999999997
+    }
+  ]
+}

@@ -1,0 +1,3763 @@
+{
+  "label": "before",
+  "measuredAt": "2026-11-09T22:38:06.620Z",
+  "environment": "isolated-local-postgres",
+  "repetitions": 3,
+  "journeys": [
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "cold-list",
+      "visibleMs": 441.6935000000012,
+      "settledMs": 679.6092000000008,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 105863,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 207.9000000357628,
+      "documentFcpMs": 396,
+      "lcp": 436,
+      "longestInteraction": null,
+      "longTasks": 1
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "product-1",
+      "visibleMs": 201.46450000000004,
+      "settledMs": 395.6144999999997,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 20.5,
+      "documentFcpMs": 160,
+      "lcp": 160,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "back-1",
+      "visibleMs": 145.02579999999944,
+      "settledMs": 325.39929999999913,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 28.099999964237213,
+      "documentFcpMs": 104,
+      "lcp": 124,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "product-2",
+      "visibleMs": 119.20030000000042,
+      "settledMs": 289.2373000000007,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 38855,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/barcelona-titular-2025-2f9d02fd5f",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 16.5,
+      "documentFcpMs": 84,
+      "lcp": 92,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "back-2",
+      "visibleMs": 130.16899999999987,
+      "settledMs": 305.2495999999992,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 24.899999976158142,
+      "documentFcpMs": 88,
+      "lcp": 116,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "product-3",
+      "visibleMs": 165.27759999999944,
+      "settledMs": 352.4469000000008,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 37048,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/real-madrid-titular-2025-c91ba6badd",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 25.299999952316284,
+      "documentFcpMs": 104,
+      "lcp": 136,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "back-3",
+      "visibleMs": 143.27600000000166,
+      "settledMs": 335.97789999999986,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 27.200000047683716,
+      "documentFcpMs": 104,
+      "lcp": 136,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "search",
+      "visibleMs": 186.53049999999894,
+      "settledMs": 355.9948999999997,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18469,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 19.69999998807907,
+      "documentFcpMs": 100,
+      "lcp": 120,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "filter-category",
+      "visibleMs": 130.41330000000016,
+      "settledMs": 311.0583999999999,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41002,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 25.5,
+      "documentFcpMs": 84,
+      "lcp": 112,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "filter-team",
+      "visibleMs": 99.20379999999932,
+      "settledMs": 278.1798999999992,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18427,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 14.800000011920929,
+      "documentFcpMs": 64,
+      "lcp": 84,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "filter-version",
+      "visibleMs": 101.46369999999843,
+      "settledMs": 287.6858999999986,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41001,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 17.30000001192093,
+      "documentFcpMs": 64,
+      "lcp": 96,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "visited-product",
+      "visibleMs": 93.65730000000076,
+      "settledMs": 272.7446,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 13.5,
+      "documentFcpMs": 68,
+      "lcp": 76,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "reload-product",
+      "visibleMs": 131.10359999999855,
+      "settledMs": 316.09029999999984,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 16.80000001192093,
+      "documentFcpMs": 72,
+      "lcp": 92,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "cold-list",
+      "visibleMs": 196.16620000000148,
+      "settledMs": 377.3752999999997,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 105317,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 27.80000001192093,
+      "documentFcpMs": 156,
+      "lcp": 188,
+      "longestInteraction": null,
+      "longTasks": 1
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "product-1",
+      "visibleMs": 262.7451000000001,
+      "settledMs": 461.53320000000167,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 25.600000023841858,
+      "documentFcpMs": 180,
+      "lcp": 180,
+      "longestInteraction": null,
+      "longTasks": 1
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "back-1",
+      "visibleMs": 178.32830000000104,
+      "settledMs": 357.53570000000036,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 30.099999964237213,
+      "documentFcpMs": 104,
+      "lcp": 144,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "product-2",
+      "visibleMs": 100.6202000000012,
+      "settledMs": 280.26890000000276,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 38855,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/barcelona-titular-2025-2f9d02fd5f",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 15.5,
+      "documentFcpMs": 76,
+      "lcp": 76,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "back-2",
+      "visibleMs": 170.86709999999948,
+      "settledMs": 354.1144999999997,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 39,
+      "documentFcpMs": 136,
+      "lcp": 184,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "product-3",
+      "visibleMs": 116.43860000000132,
+      "settledMs": 290.14819999999963,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 37048,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/real-madrid-titular-2025-c91ba6badd",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 14.800000011920929,
+      "documentFcpMs": 84,
+      "lcp": 84,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "back-3",
+      "visibleMs": 116.0112999999983,
+      "settledMs": 293.6660000000011,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 17.80000001192093,
+      "documentFcpMs": 64,
+      "lcp": 84,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "search",
+      "visibleMs": 162.44720000000234,
+      "settledMs": 350.33460000000196,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18469,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 16.399999976158142,
+      "documentFcpMs": 80,
+      "lcp": 120,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "filter-category",
+      "visibleMs": 101.81100000000151,
+      "settledMs": 276.71180000000095,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41002,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 19.099999964237213,
+      "documentFcpMs": 68,
+      "lcp": 88,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "filter-team",
+      "visibleMs": 95.14600000000064,
+      "settledMs": 265.58899999999994,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18427,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 14.199999988079071,
+      "documentFcpMs": 60,
+      "lcp": 80,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "filter-version",
+      "visibleMs": 150.54019999999946,
+      "settledMs": 332.08550000000105,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41001,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 26.599999964237213,
+      "documentFcpMs": 96,
+      "lcp": 136,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "visited-product",
+      "visibleMs": 187.30539999999746,
+      "settledMs": 357.3257999999987,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 92.80000001192093,
+      "documentFcpMs": 164,
+      "lcp": 164,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 1,
+      "name": "reload-product",
+      "visibleMs": 80.01559999999881,
+      "settledMs": 257.65629999999874,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 11.400000035762787,
+      "documentFcpMs": 56,
+      "lcp": 56,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "cold-list",
+      "visibleMs": 137.78800000000047,
+      "settledMs": 308.9511999999995,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 105317,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 16,
+      "documentFcpMs": 116,
+      "lcp": 124,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "product-1",
+      "visibleMs": 134.48530000000028,
+      "settledMs": 304.936099999999,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 11.899999976158142,
+      "documentFcpMs": 104,
+      "lcp": 104,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "back-1",
+      "visibleMs": 99.75160000000324,
+      "settledMs": 278.8744000000006,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 16.19999998807907,
+      "documentFcpMs": 68,
+      "lcp": 88,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "product-2",
+      "visibleMs": 100.48779999999897,
+      "settledMs": 270.77709999999934,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 38855,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/barcelona-titular-2025-2f9d02fd5f",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 10.699999988079071,
+      "documentFcpMs": 68,
+      "lcp": 76,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "back-2",
+      "visibleMs": 99.9451999999983,
+      "settledMs": 273.91449999999895,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 15.900000035762787,
+      "documentFcpMs": 64,
+      "lcp": 84,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "product-3",
+      "visibleMs": 105.48839999999836,
+      "settledMs": 280.6359999999986,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 37048,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/real-madrid-titular-2025-c91ba6badd",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 11,
+      "documentFcpMs": 68,
+      "lcp": 68,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "back-3",
+      "visibleMs": 105.41229999999996,
+      "settledMs": 277.2380000000012,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 15.900000035762787,
+      "documentFcpMs": 68,
+      "lcp": 88,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "search",
+      "visibleMs": 117.94889999999941,
+      "settledMs": 295.4353999999985,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18469,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 12.699999988079071,
+      "documentFcpMs": 60,
+      "lcp": 80,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "filter-category",
+      "visibleMs": 92.45330000000104,
+      "settledMs": 263.74619999999777,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41002,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 16.299999952316284,
+      "documentFcpMs": 60,
+      "lcp": 80,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "filter-team",
+      "visibleMs": 78.75339999999778,
+      "settledMs": 246.23370000000068,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18427,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 12.700000047683716,
+      "documentFcpMs": 56,
+      "lcp": 76,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "filter-version",
+      "visibleMs": 92.34379999999874,
+      "settledMs": 270.2446999999993,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41001,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 20.600000023841858,
+      "documentFcpMs": 68,
+      "lcp": 88,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "visited-product",
+      "visibleMs": 82.18789999999717,
+      "settledMs": 251.91949999999997,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 11.899999976158142,
+      "documentFcpMs": 56,
+      "lcp": 56,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 2,
+      "name": "reload-product",
+      "visibleMs": 80.39589999999953,
+      "settledMs": 261.8149000000012,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 11.5,
+      "documentFcpMs": 56,
+      "lcp": 56,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "cold-list",
+      "visibleMs": 905.0999000000011,
+      "settledMs": 1204.8997999999992,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 105317,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80,
+      "documentFcpMs": 780,
+      "lcp": 1040,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "product-1",
+      "visibleMs": 599.9698000000026,
+      "settledMs": 812.3481000000029,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 528,
+      "lcp": 560,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "back-1",
+      "visibleMs": 427.33699999999953,
+      "settledMs": 799.6617000000006,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.19999998807907,
+      "documentFcpMs": 340,
+      "lcp": 592,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "product-2",
+      "visibleMs": 321.0542999999998,
+      "settledMs": 609.7232000000004,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 38855,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/barcelona-titular-2025-2f9d02fd5f",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 296,
+      "lcp": 436,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "back-2",
+      "visibleMs": 348.66089999999895,
+      "settledMs": 763.8735000000015,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 304,
+      "lcp": 576,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "product-3",
+      "visibleMs": 344.73029999999926,
+      "settledMs": 633.9205000000002,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 37048,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/real-madrid-titular-2025-c91ba6badd",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.09999996423721,
+      "documentFcpMs": 304,
+      "lcp": 444,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "back-3",
+      "visibleMs": 371.7472000000016,
+      "settledMs": 765.8073000000004,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.19999998807907,
+      "documentFcpMs": 312,
+      "lcp": 560,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "search",
+      "visibleMs": 397.5007000000005,
+      "settledMs": 692.6983,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18469,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80,
+      "documentFcpMs": 308,
+      "lcp": 456,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "filter-category",
+      "visibleMs": 472.1188000000002,
+      "settledMs": 793.7246000000014,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41002,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.19999998807907,
+      "documentFcpMs": 352,
+      "lcp": 352,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "filter-team",
+      "visibleMs": 499.1144999999997,
+      "settledMs": 707.7567999999992,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18427,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 328,
+      "lcp": 328,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "filter-version",
+      "visibleMs": 420.16549999999916,
+      "settledMs": 735.5600000000013,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41001,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 296,
+      "lcp": 296,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "visited-product",
+      "visibleMs": 504.24779999999737,
+      "settledMs": 700.1180999999997,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 300,
+      "lcp": 440,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "reload-product",
+      "visibleMs": 474.6201000000001,
+      "settledMs": 686.168700000002,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 288,
+      "lcp": 460,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "cold-list",
+      "visibleMs": 1082.0120000000024,
+      "settledMs": 1309.3680000000022,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 105317,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 876,
+      "lcp": 1148,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "product-1",
+      "visibleMs": 604.2514999999985,
+      "settledMs": 809.4124000000011,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.09999996423721,
+      "documentFcpMs": 528,
+      "lcp": 548,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "back-1",
+      "visibleMs": 357.96480000000156,
+      "settledMs": 768.9995999999956,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.09999996423721,
+      "documentFcpMs": 304,
+      "lcp": 584,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "product-2",
+      "visibleMs": 352.22299999999814,
+      "settledMs": 653.4441999999981,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 38855,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/barcelona-titular-2025-2f9d02fd5f",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.09999996423721,
+      "documentFcpMs": 300,
+      "lcp": 460,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "back-2",
+      "visibleMs": 412.2328999999954,
+      "settledMs": 789.3490999999995,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.09999996423721,
+      "documentFcpMs": 324,
+      "lcp": 584,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "product-3",
+      "visibleMs": 335.0514000000039,
+      "settledMs": 636.1180999999997,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 37048,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/real-madrid-titular-2025-c91ba6badd",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.19999998807907,
+      "documentFcpMs": 300,
+      "lcp": 448,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "back-3",
+      "visibleMs": 343.58520000000135,
+      "settledMs": 742.7716,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80,
+      "documentFcpMs": 304,
+      "lcp": 564,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "search",
+      "visibleMs": 378.0852999999988,
+      "settledMs": 680.1510999999955,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18469,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 304,
+      "lcp": 456,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "filter-category",
+      "visibleMs": 383.71130000000267,
+      "settledMs": 699.6972000000023,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41002,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80,
+      "documentFcpMs": 288,
+      "lcp": 288,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "filter-team",
+      "visibleMs": 373.5823999999993,
+      "settledMs": 589.6408999999985,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18427,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80,
+      "documentFcpMs": 288,
+      "lcp": 288,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "filter-version",
+      "visibleMs": 383.88270000000193,
+      "settledMs": 727.9971000000005,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41001,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 300,
+      "lcp": 300,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "visited-product",
+      "visibleMs": 496.3297999999995,
+      "settledMs": 696.5025999999998,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.09999996423721,
+      "documentFcpMs": 280,
+      "lcp": 432,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 1,
+      "name": "reload-product",
+      "visibleMs": 469.7897000000012,
+      "settledMs": 666.1410000000033,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.09999996423721,
+      "documentFcpMs": 264,
+      "lcp": 416,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "cold-list",
+      "visibleMs": 915.718200000003,
+      "settledMs": 1252.2050000000017,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 105317,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.19999998807907,
+      "documentFcpMs": 820,
+      "lcp": 1068,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "product-1",
+      "visibleMs": 482.80860000000393,
+      "settledMs": 688.0201000000015,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 424,
+      "lcp": 444,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "back-1",
+      "visibleMs": 331.9979999999996,
+      "settledMs": 741.899900000004,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 292,
+      "lcp": 560,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "product-2",
+      "visibleMs": 308.9478999999992,
+      "settledMs": 611.8829000000042,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 38855,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/barcelona-titular-2025-2f9d02fd5f",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 276,
+      "lcp": 444,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "back-2",
+      "visibleMs": 338.7393000000011,
+      "settledMs": 746.4760999999999,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 296,
+      "lcp": 556,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "product-3",
+      "visibleMs": 309.64940000000206,
+      "settledMs": 621.3877999999968,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 37048,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/real-madrid-titular-2025-c91ba6badd",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 296,
+      "lcp": 444,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "back-3",
+      "visibleMs": 328.19230000000243,
+      "settledMs": 746.6881999999969,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 40834,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.09999996423721,
+      "documentFcpMs": 296,
+      "lcp": 568,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "search",
+      "visibleMs": 380.07219999999506,
+      "settledMs": 670.9631000000008,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18469,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 308,
+      "lcp": 456,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "filter-category",
+      "visibleMs": 355.3527999999933,
+      "settledMs": 711.9569999999949,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41002,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 280,
+      "lcp": 280,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "filter-team",
+      "visibleMs": 403.7241999999969,
+      "settledMs": 621.0424999999959,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 18427,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80.19999998807907,
+      "documentFcpMs": 320,
+      "lcp": 320,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "filter-version",
+      "visibleMs": 442.73099999999977,
+      "settledMs": 729.7674000000043,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 41001,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/barcelona-titular-2025-2f9d02fd5f/images/a33b9e3d-2ff8-413e-91e2-fb644eb53ff0",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/real-madrid-titular-2025-c91ba6badd/images/1fca0bd8-8872-4008-bfdd-ceb0368c5571",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 80,
+      "documentFcpMs": 316,
+      "lcp": 316,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "visited-product",
+      "visibleMs": 503.2270999999964,
+      "settledMs": 718.0808999999936,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.09999996423721,
+      "documentFcpMs": 288,
+      "lcp": 436,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 2,
+      "name": "reload-product",
+      "visibleMs": 534.5782000000036,
+      "settledMs": 738.8304000000062,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 36494,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-demo/p/argentina-titular-2025-da8eef4f81",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-demo/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-demo/products/argentina-titular-2025-da8eef4f81/images/1a37e15c-e5b1-40cd-a2ac-55c53cff8592",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 80.10000002384186,
+      "documentFcpMs": 288,
+      "lcp": 448,
+      "longestInteraction": null,
+      "longTasks": 0
+    }
+  ],
+  "database": [
+    {
+      "run": 0,
+      "name": "list-3",
+      "queryCount": 15,
+      "dbMs": 19.218600000014703,
+      "totalMs": 38.19789999999921
+    },
+    {
+      "run": 0,
+      "name": "detail",
+      "queryCount": 6,
+      "dbMs": 5.142100000004575,
+      "totalMs": 6.683100000002014
+    },
+    {
+      "run": 1,
+      "name": "list-3",
+      "queryCount": 15,
+      "dbMs": 11.34490000000369,
+      "totalMs": 13.88799999999901
+    },
+    {
+      "run": 1,
+      "name": "detail",
+      "queryCount": 6,
+      "dbMs": 3.6163000000015018,
+      "totalMs": 4.565199999997276
+    },
+    {
+      "run": 2,
+      "name": "list-3",
+      "queryCount": 15,
+      "dbMs": 10.322400000004563,
+      "totalMs": 12.428599999999278
+    },
+    {
+      "run": 2,
+      "name": "detail",
+      "queryCount": 6,
+      "dbMs": 3.5381000000124914,
+      "totalMs": 4.544800000003306
+    }
+  ],
+  "queryPlan": [
+    {
+      "QUERY PLAN": [
+        {
+          "Plan": {
+            "Node Type": "Limit",
+            "Parallel Aware": false,
+            "Async Capable": false,
+            "Startup Cost": 0.29,
+            "Total Cost": 16.34,
+            "Plan Rows": 1,
+            "Plan Width": 48,
+            "Actual Startup Time": 0.147,
+            "Actual Total Time": 0.153,
+            "Actual Rows": 3,
+            "Actual Loops": 1,
+            "Disabled": false,
+            "Shared Hit Blocks": 8,
+            "Shared Read Blocks": 0,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0,
+            "Plans": [
+              {
+                "Node Type": "Nested Loop",
+                "Parent Relationship": "Outer",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Join Type": "Inner",
+                "Startup Cost": 0.29,
+                "Total Cost": 16.34,
+                "Plan Rows": 1,
+                "Plan Width": 48,
+                "Actual Startup Time": 0.146,
+                "Actual Total Time": 0.152,
+                "Actual Rows": 3,
+                "Actual Loops": 1,
+                "Disabled": false,
+                "Inner Unique": true,
+                "Join Filter": "(s.commercial_product_id = p.id)",
+                "Rows Removed by Join Filter": 3,
+                "Shared Hit Blocks": 8,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Index Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Scan Direction": "Forward",
+                    "Index Name": "commercial_products_owner_phone_slug_key",
+                    "Relation Name": "commercial_products",
+                    "Alias": "p",
+                    "Startup Cost": 0.14,
+                    "Total Cost": 8.16,
+                    "Plan Rows": 1,
+                    "Plan Width": 80,
+                    "Actual Startup Time": 0.012,
+                    "Actual Total Time": 0.013,
+                    "Actual Rows": 3,
+                    "Actual Loops": 1,
+                    "Disabled": false,
+                    "Index Cond": "(owner_phone = '59899000088'::text)",
+                    "Rows Removed by Index Recheck": 0,
+                    "Filter": "(status = 'ready'::text)",
+                    "Rows Removed by Filter": 0,
+                    "Index Searches": 1,
+                    "Shared Hit Blocks": 2,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  },
+                  {
+                    "Node Type": "Index Only Scan",
+                    "Parent Relationship": "Inner",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Scan Direction": "Forward",
+                    "Index Name": "idx_commercial_publications_visible",
+                    "Relation Name": "commercial_publications",
+                    "Alias": "s",
+                    "Startup Cost": 0.14,
+                    "Total Cost": 8.16,
+                    "Plan Rows": 1,
+                    "Plan Width": 48,
+                    "Actual Startup Time": 0.045,
+                    "Actual Total Time": 0.045,
+                    "Actual Rows": 2,
+                    "Actual Loops": 3,
+                    "Disabled": false,
+                    "Index Cond": "(owner_phone = '59899000088'::text)",
+                    "Rows Removed by Index Recheck": 0,
+                    "Heap Fetches": 6,
+                    "Index Searches": 3,
+                    "Shared Hit Blocks": 6,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              }
+            ]
+          },
+          "Planning": {
+            "Shared Hit Blocks": 375,
+            "Shared Read Blocks": 0,
+            "Shared Dirtied Blocks": 0,
+            "Shared Written Blocks": 0,
+            "Local Hit Blocks": 0,
+            "Local Read Blocks": 0,
+            "Local Dirtied Blocks": 0,
+            "Local Written Blocks": 0,
+            "Temp Read Blocks": 0,
+            "Temp Written Blocks": 0
+          },
+          "Planning Time": 1.726,
+          "Triggers": [],
+          "Execution Time": 0.179
+        }
+      ]
+    }
+  ]
+}

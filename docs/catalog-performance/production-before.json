@@ -1,0 +1,1229 @@
+{
+  "label": "production-before",
+  "measuredAt": "2026-11-09T22:38:21.969Z",
+  "environment": "production-read-only",
+  "repetitions": 1,
+  "journeys": [
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "cold-list",
+      "visibleMs": 8380.3644,
+      "settledMs": 8559.3133,
+      "requests": 7,
+      "documentRequests": 1,
+      "transferredBytes": 185891,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 7412.199999988079,
+      "documentFcpMs": 8044,
+      "lcp": 8136,
+      "longestInteraction": null,
+      "longTasks": 1
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "product-1",
+      "visibleMs": 1225.6913999999997,
+      "settledMs": 1791.8376000000007,
+      "requests": 7,
+      "documentRequests": 1,
+      "transferredBytes": 57165,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas/p/argentina-2024-titular-version-jugador-2d2e7b12f2",
+          "type": "document"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 741.3000000119209,
+      "documentFcpMs": 1212,
+      "lcp": 1212,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "back-1",
+      "visibleMs": 7294.0957,
+      "settledMs": 7968.879599999998,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 118448,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 6791.800000011921,
+      "documentFcpMs": 7288,
+      "lcp": 7808,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "product-2",
+      "visibleMs": 1175.1499999999978,
+      "settledMs": 1664.2979999999989,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 141913,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas/p/argentina-suplente-2025-version-jugador-13ba4cbdb5",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 709.5999999642372,
+      "documentFcpMs": 1152,
+      "lcp": 1152,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "back-2",
+      "visibleMs": 11996.8433,
+      "settledMs": 12166.8649,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 172236,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 6748.099999964237,
+      "documentFcpMs": 12004,
+      "lcp": 12004,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "product-3",
+      "visibleMs": 1186.111699999994,
+      "settledMs": 1573.1607999999978,
+      "requests": 7,
+      "documentRequests": 1,
+      "transferredBytes": 88109,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas/p/argentina-titular-2025-version-jugador-cd55f02326",
+          "type": "document"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2026-9b2d6807c7/images/4ae1e2d2-7416-43ff-abed-f8cd8f3f7d44",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 740.7000000476837,
+      "documentFcpMs": 1176,
+      "lcp": 1176,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "back-3",
+      "visibleMs": 7654.1759999999995,
+      "settledMs": 8916.210599999999,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 203172,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 7209.5,
+      "documentFcpMs": 7648,
+      "lcp": 8756,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "search",
+      "visibleMs": 2337.2782000000007,
+      "settledMs": 2506.148399999998,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 3874,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/camiseta-del-barcelona-mangas-largas-version-jugador-titular-2025-4bac89f49c/images/d7077416-6c50-416d-8d62-3ac99c9cd69d",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 1865.6000000238419,
+      "documentFcpMs": 2308,
+      "lcp": 2308,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "filter-category",
+      "visibleMs": 7768.277300000002,
+      "settledMs": 7941.320599999999,
+      "requests": 7,
+      "documentRequests": 1,
+      "transferredBytes": 357094,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 6826.300000011921,
+      "documentFcpMs": 7264,
+      "lcp": 7264,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "filter-team",
+      "visibleMs": 1866.5741999999955,
+      "settledMs": 2047.0786999999982,
+      "requests": 7,
+      "documentRequests": 1,
+      "transferredBytes": 171159,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 570.5,
+      "documentFcpMs": 992,
+      "lcp": 992,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "filter-version",
+      "visibleMs": 1829.5711999999985,
+      "settledMs": 2564.864299999994,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 212992,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/inter-titular-2025-version-jugador-4d97e824af/images/29f8dfaa-cb99-4a36-aa3e-b4da67bd2963",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 833.5,
+      "documentFcpMs": 1304,
+      "lcp": 2416,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "visited-product",
+      "visibleMs": 2054.9354999999996,
+      "settledMs": 2231.508399999999,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 57165,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas/p/argentina-2024-titular-version-jugador-2d2e7b12f2",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 794.3000000119209,
+      "documentFcpMs": 1232,
+      "lcp": 1232,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "name": "reload-product",
+      "visibleMs": 1653.1223000000027,
+      "settledMs": 1821.7927000000054,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 57170,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas/p/argentina-2024-titular-version-jugador-2d2e7b12f2",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 810.2999999523163,
+      "documentFcpMs": 1248,
+      "lcp": 1248,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "cold-list",
+      "visibleMs": 9126.1558,
+      "settledMs": 9333.341300000007,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 185469,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 7388.5,
+      "documentFcpMs": 8132,
+      "lcp": 9052,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "product-1",
+      "visibleMs": 1386.7683000000106,
+      "settledMs": 1831.2446000000054,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 88149,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas/p/argentina-2024-titular-version-jugador-2d2e7b12f2",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 767,
+      "documentFcpMs": 1340,
+      "lcp": 1340,
+      "longestInteraction": null,
+      "longTasks": 1
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "back-1",
+      "visibleMs": 7405.324999999997,
+      "settledMs": 8817.629700000005,
+      "requests": 9,
+      "documentRequests": 1,
+      "transferredBytes": 244757,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2026-9b2d6807c7/images/4ae1e2d2-7416-43ff-abed-f8cd8f3f7d44",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 6846.900000035763,
+      "documentFcpMs": 7364,
+      "lcp": 8632,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "product-2",
+      "visibleMs": 1289.4167000000016,
+      "settledMs": 2029.3687000000064,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 57179,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas/p/argentina-suplente-2025-version-jugador-13ba4cbdb5",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 736.1999999880791,
+      "documentFcpMs": 1232,
+      "lcp": 1232,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "back-2",
+      "visibleMs": 7361.618499999997,
+      "settledMs": 8651.667799999996,
+      "requests": 9,
+      "documentRequests": 1,
+      "transferredBytes": 172243,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2026-9b2d6807c7/images/4ae1e2d2-7416-43ff-abed-f8cd8f3f7d44",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 6828.199999988079,
+      "documentFcpMs": 7336,
+      "lcp": 8488,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "product-3",
+      "visibleMs": 1199.2051999999967,
+      "settledMs": 1896.1650000000081,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 129668,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas/p/argentina-titular-2025-version-jugador-cd55f02326",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 699.5,
+      "documentFcpMs": 1164,
+      "lcp": 1164,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "back-3",
+      "visibleMs": 6761.58159999999,
+      "settledMs": 8030.1814999999915,
+      "requests": 9,
+      "documentRequests": 1,
+      "transferredBytes": 203170,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2026-9b2d6807c7/images/4ae1e2d2-7416-43ff-abed-f8cd8f3f7d44",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 6141.400000035763,
+      "documentFcpMs": 6724,
+      "lcp": 7864,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "search",
+      "visibleMs": 2319.7747999999992,
+      "settledMs": 2538.121800000008,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 45439,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/camiseta-del-barcelona-mangas-largas-version-jugador-titular-2025-4bac89f49c/images/d7077416-6c50-416d-8d62-3ac99c9cd69d",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 1730.300000011921,
+      "documentFcpMs": 2216,
+      "lcp": 2216,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "filter-category",
+      "visibleMs": 8698.1786,
+      "settledMs": 8897.110700000005,
+      "requests": 7,
+      "documentRequests": 1,
+      "transferredBytes": 357095,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 7156.199999988079,
+      "documentFcpMs": 8072,
+      "lcp": 8072,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "filter-team",
+      "visibleMs": 2180.7811999999976,
+      "settledMs": 2393.7341999999917,
+      "requests": 7,
+      "documentRequests": 1,
+      "transferredBytes": 171162,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 514,
+      "documentFcpMs": 968,
+      "lcp": 968,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "filter-version",
+      "visibleMs": 2606.8989,
+      "settledMs": 2807.1296,
+      "requests": 8,
+      "documentRequests": 1,
+      "transferredBytes": 212998,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/a3ec2429-070e-464e-851c-81632ebbccb5",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/products/inter-titular-2025-version-jugador-4d97e824af/images/29f8dfaa-cb99-4a36-aa3e-b4da67bd2963",
+          "type": "image"
+        }
+      ],
+      "documentTtfbMs": 747.3000000119209,
+      "documentFcpMs": 1224,
+      "lcp": 1224,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "visited-product",
+      "visibleMs": 1690.0957000000053,
+      "settledMs": 1897.7649999999994,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 57168,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas/p/argentina-2024-titular-version-jugador-2d2e7b12f2",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 714.5,
+      "documentFcpMs": 1224,
+      "lcp": 1224,
+      "longestInteraction": null,
+      "longTasks": 0
+    },
+    {
+      "mobile": true,
+      "run": 0,
+      "name": "reload-product",
+      "visibleMs": 1872.0475999999908,
+      "settledMs": 2086.431199999992,
+      "requests": 6,
+      "documentRequests": 1,
+      "transferredBytes": 57165,
+      "cachedResponses": 0,
+      "paths": [
+        {
+          "path": "/c/fullmatch-casacas/p/argentina-2024-titular-version-jugador-2d2e7b12f2",
+          "type": "document"
+        },
+        {
+          "path": "/catalog-assets/catalog.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/templates.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/catalog-assets/fullmatch-casacas/theme.css",
+          "type": "stylesheet"
+        },
+        {
+          "path": "/api/catalog/v1/fullmatch-casacas/brand-assets/f10da194-778e-4a61-9431-28fac54c07f6",
+          "type": "image"
+        },
+        {
+          "path": "/catalog-assets/cart.js",
+          "type": "script"
+        }
+      ],
+      "documentTtfbMs": 716.3999999761581,
+      "documentFcpMs": 1224,
+      "lcp": 1224,
+      "longestInteraction": null,
+      "longTasks": 0
+    }
+  ],
+  "database": []
+}

@@ -1,9 +1,14 @@
 (() => {
   'use strict';
+  let dispose;
+  function initialize() {
+  dispose?.();
+  const lifetime = new AbortController();
   const shop = document.body.dataset.catalog;
   if (!shop || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(shop)) return;
   const key = `fullmatch.inquiry.${shop}`, isInquiry = Boolean(document.getElementById('inquiry-lines'));
   let cart = read(), quote = null, generation = 0, busy = false;
+  dispose = () => { generation++; lifetime.abort(); };
   function read() {
     try {
       const raw = localStorage.getItem(key); if (!raw || raw.length > 20_000) return [];
@@ -65,7 +70,7 @@
     busy = true; quote = null; controls(); message('Revisando precios y disponibilidad…');
     try {
       const response = await fetch(`/api/catalog/v1/${shop}/inquiry-preview`, { method: 'POST', credentials: 'omit', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: cart, previousFingerprint: previous }), signal: AbortSignal.timeout(15_000) });
+        body: JSON.stringify({ items: cart, previousFingerprint: previous }), signal: AbortSignal.any([lifetime.signal, AbortSignal.timeout(15_000)]) });
       const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || 'No pude revisar el pedido.');
       if (attempt !== generation) return null; quote = result; render(result);
       message(result.changed ? 'Cambiaron los datos de tu pedido. Revisá los importes actuales y volvé a confirmar.' : !result.canContact ? 'Hay productos, variantes o cantidades que necesitan revisión.' : 'Tu pedido está listo para finalizar por WhatsApp.');
@@ -96,9 +101,9 @@
   let currentImage = 0;
   function showImage(link) {
     if (!mainImage) return;
-    mainImage.src = link.href; mainImage.alt = link.dataset.imageAlt;
+    mainImage.src = link.dataset.imageSrc || link.href; mainImage.alt = link.dataset.imageAlt;
     if (zoom) zoom.href = link.href;
-    if (dialog) { dialog.querySelector('img').src = link.href; dialog.querySelector('img').alt = mainImage.alt; }
+    if (dialog) { if (dialog.open) dialog.querySelector('img').src = link.href; dialog.querySelector('img').alt = mainImage.alt; }
     for (const item of thumbnails) { if (item === link) item.setAttribute('aria-current', 'true'); else item.removeAttribute('aria-current'); }
     currentImage = thumbnails.indexOf(link);
     for (const status of document.querySelectorAll('[data-gallery-status]')) status.textContent = `Foto ${currentImage + 1} de ${thumbnails.length}`;
@@ -115,8 +120,8 @@
       if (next !== null) { event.preventDefault(); showImage(thumbnails[next]); thumbnails[next].focus(); }
     });
   });
-  if (zoom && typeof dialog?.showModal === 'function') zoom.addEventListener('click', event => { event.preventDefault(); dialog.showModal(); });
-  addEventListener('storage', event => { if (event.key === key) { cart = read(); quote = null; updateCount(); if (isInquiry) void refresh(false); } });
+  if (zoom && typeof dialog?.showModal === 'function') zoom.addEventListener('click', event => { event.preventDefault(); dialog.querySelector('img').src = zoom.href; dialog.showModal(); });
+  addEventListener('storage', event => { if (event.key === key) { cart = read(); quote = null; updateCount(); if (isInquiry) void refresh(false); } }, { signal: lifetime.signal });
   for (const form of document.querySelectorAll('[data-add-inquiry]')) form.addEventListener('submit', event => {
     event.preventDefault(); const status = form.querySelector('[data-inquiry-status]'), variant = (form.dataset.variantLabel || 'Presentación').toLocaleLowerCase('es');
     try {
@@ -140,4 +145,7 @@
     });
     void refresh(false);
   }
+  }
+  addEventListener('catalog:navigated', initialize);
+  initialize();
 })();

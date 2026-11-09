@@ -37,7 +37,9 @@ export async function runCatalogHttpChecks({ sql, check, request, req, product, 
     for (const field of ['owner_phone', 'ownerPhone', 'stockAvailable', 'stockReserved', 'skuId', 'identityFingerprint', 'revision', 'master_key', 'clients', 'transactions', 'pedidos']) assert.ok(!result.text.includes(`"${field}"`), field);
     assert.ok(!result.text.includes(owner)); assert.ok(!result.text.includes(sku.id));
     const photo = await get(photoPath()); assert.equal(photo.status, 200, photo.text); assert.equal((await sharp(photo.buffer).metadata()).format, 'jpeg');
-    assert.equal(photo.headers['cache-control'], 'no-store'); assert.equal(result.headers['set-cookie'], undefined);
+    assert.equal(photo.headers['cache-control'], 'private, no-cache'); assert.ok(photo.headers.etag); assert.equal(result.headers['set-cookie'], undefined);
+    const revalidated = await request(photoPath(), { method: 'GET', auth: false, headers: { 'If-None-Match': photo.headers.etag } });
+    assert.equal(revalidated.status, 304); assert.equal(revalidated.buffer.length, 0);
     assert.equal((await get(`${base}/products/${current.slug}/images/${randomUUID()}`)).status, 404);
   });
   await run('hide/disable revoke JSON, HTML and images immediately; receipt replay does not republish', async () => {
