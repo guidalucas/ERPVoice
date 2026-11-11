@@ -1,0 +1,996 @@
+{
+  "before": "6444d97a0a6e6598b3aa23d1bc6e72d853ab4afb",
+  "after": "7c6955e76f74d4ba1a02fff3571c9c00d625a2a6",
+  "beforeSamples": 108,
+  "afterSamples": 108,
+  "browser": [
+    {
+      "mobile": false,
+      "name": "cold-list",
+      "before": {
+        "visibleMs": 1639.118,
+        "navigationTtfbMs": 660.8950000000001,
+        "imageReadyMs": 1679.6743999999999,
+        "lcp": 1612,
+        "requests": 7,
+        "imageApiRequests": 2,
+        "transferredBytes": 187836
+      },
+      "after": {
+        "visibleMs": 1557.6309999999976,
+        "navigationTtfbMs": 604.3290000000001,
+        "imageReadyMs": 1588.8172999999988,
+        "lcp": 1532,
+        "requests": 7,
+        "imageApiRequests": 2,
+        "transferredBytes": 187830
+      }
+    },
+    {
+      "mobile": false,
+      "name": "product-1",
+      "before": {
+        "visibleMs": 878.3454999999994,
+        "navigationTtfbMs": 507.864,
+        "imageReadyMs": 898.4475999999995,
+        "lcp": 1612,
+        "requests": 2,
+        "imageApiRequests": 1,
+        "transferredBytes": 31329
+      },
+      "after": {
+        "visibleMs": 369.84729999999763,
+        "navigationTtfbMs": 259.525,
+        "imageReadyMs": 395.08929999999964,
+        "lcp": 1532,
+        "requests": 2,
+        "imageApiRequests": 1,
+        "transferredBytes": 2114
+      }
+    },
+    {
+      "mobile": false,
+      "name": "back-1",
+      "before": {
+        "visibleMs": 48.52700000000186,
+        "navigationTtfbMs": 597.112,
+        "imageReadyMs": null,
+        "lcp": 1612,
+        "requests": 2,
+        "imageApiRequests": 0,
+        "transferredBytes": 3310
+      },
+      "after": {
+        "visibleMs": 54.64719999999943,
+        "navigationTtfbMs": 609.916,
+        "imageReadyMs": null,
+        "lcp": 1532,
+        "requests": 2,
+        "imageApiRequests": 0,
+        "transferredBytes": 32512
+      }
+    },
+    {
+      "mobile": false,
+      "name": "product-2",
+      "before": {
+        "visibleMs": 862.5849000000017,
+        "navigationTtfbMs": 489.678,
+        "imageReadyMs": 882.5224999999991,
+        "lcp": 1612,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 4155
+      },
+      "after": {
+        "visibleMs": 348.6531000000032,
+        "navigationTtfbMs": 252.363,
+        "imageReadyMs": 368.981200000002,
+        "lcp": 1532,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 4149
+      }
+    },
+    {
+      "mobile": false,
+      "name": "back-2",
+      "before": {
+        "visibleMs": 54.33139999999912,
+        "navigationTtfbMs": 602.8549999999999,
+        "imageReadyMs": null,
+        "lcp": 1612,
+        "requests": 2,
+        "imageApiRequests": 0,
+        "transferredBytes": 3310
+      },
+      "after": {
+        "visibleMs": 50.60199999999895,
+        "navigationTtfbMs": 621.01,
+        "imageReadyMs": null,
+        "lcp": 1532,
+        "requests": 2,
+        "imageApiRequests": 0,
+        "transferredBytes": 3311
+      }
+    },
+    {
+      "mobile": false,
+      "name": "product-3",
+      "before": {
+        "visibleMs": 859.0199000000002,
+        "navigationTtfbMs": 527.0980000000001,
+        "imageReadyMs": 878.8026,
+        "lcp": 1612,
+        "requests": 2,
+        "imageApiRequests": 1,
+        "transferredBytes": 41621
+      },
+      "after": {
+        "visibleMs": 354.5083000000004,
+        "navigationTtfbMs": 253.86599999999999,
+        "imageReadyMs": 374.8668000000007,
+        "lcp": 1532,
+        "requests": 2,
+        "imageApiRequests": 1,
+        "transferredBytes": 41618
+      }
+    },
+    {
+      "mobile": false,
+      "name": "back-3",
+      "before": {
+        "visibleMs": 51.611900000003516,
+        "navigationTtfbMs": 661.854,
+        "imageReadyMs": null,
+        "lcp": 1612,
+        "requests": 2,
+        "imageApiRequests": 0,
+        "transferredBytes": 3310
+      },
+      "after": {
+        "visibleMs": 53.88509999999951,
+        "navigationTtfbMs": 600.078,
+        "imageReadyMs": null,
+        "lcp": 1532,
+        "requests": 2,
+        "imageApiRequests": 0,
+        "transferredBytes": 3311
+      }
+    },
+    {
+      "mobile": false,
+      "name": "search",
+      "before": {
+        "visibleMs": 892.0538000000015,
+        "navigationTtfbMs": 593.55,
+        "imageReadyMs": null,
+        "lcp": 1612,
+        "requests": 2,
+        "imageApiRequests": 1,
+        "transferredBytes": 4689
+      },
+      "after": {
+        "visibleMs": 875.5409999999974,
+        "navigationTtfbMs": 544.611,
+        "imageReadyMs": null,
+        "lcp": 1532,
+        "requests": 2,
+        "imageApiRequests": 1,
+        "transferredBytes": 16441
+      }
+    },
+    {
+      "mobile": false,
+      "name": "filter-category",
+      "before": {
+        "visibleMs": 1888.2122999999992,
+        "navigationTtfbMs": 666.7360000000001,
+        "imageReadyMs": null,
+        "lcp": 1116,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 17082
+      },
+      "after": {
+        "visibleMs": 1447.1715000000004,
+        "navigationTtfbMs": 638.566,
+        "imageReadyMs": null,
+        "lcp": 1044,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 5316
+      }
+    },
+    {
+      "mobile": false,
+      "name": "filter-team",
+      "before": {
+        "visibleMs": 1322.1707999999999,
+        "navigationTtfbMs": 523.554,
+        "imageReadyMs": 1352.5598000000027,
+        "lcp": 944,
+        "requests": 7,
+        "imageApiRequests": 2,
+        "transferredBytes": 3370
+      },
+      "after": {
+        "visibleMs": 1264.7302,
+        "navigationTtfbMs": 496.786,
+        "imageReadyMs": 1304.8523999999998,
+        "lcp": 892,
+        "requests": 7,
+        "imageApiRequests": 2,
+        "transferredBytes": 3371
+      }
+    },
+    {
+      "mobile": false,
+      "name": "filter-version",
+      "before": {
+        "visibleMs": 1531.9341999999997,
+        "navigationTtfbMs": 538.554,
+        "imageReadyMs": 1562.688900000001,
+        "lcp": 1320,
+        "requests": 8,
+        "imageApiRequests": 3,
+        "transferredBytes": 38660
+      },
+      "after": {
+        "visibleMs": 1402.2165999999997,
+        "navigationTtfbMs": 551.4129999999999,
+        "imageReadyMs": 1432.4916999999987,
+        "lcp": 1048,
+        "requests": 8,
+        "imageApiRequests": 3,
+        "transferredBytes": 38654
+      }
+    },
+    {
+      "mobile": false,
+      "name": "visited-product",
+      "before": {
+        "visibleMs": 1226.3933999999936,
+        "navigationTtfbMs": 512.095,
+        "imageReadyMs": 1256.9281999999948,
+        "lcp": 944,
+        "requests": 6,
+        "imageApiRequests": 1,
+        "transferredBytes": 2871
+      },
+      "after": {
+        "visibleMs": 888.608699999997,
+        "navigationTtfbMs": 256.672,
+        "imageReadyMs": 918.6520000000019,
+        "lcp": 656,
+        "requests": 6,
+        "imageApiRequests": 1,
+        "transferredBytes": 2868
+      }
+    },
+    {
+      "mobile": false,
+      "name": "reload-product",
+      "before": {
+        "visibleMs": 1226.144100000005,
+        "navigationTtfbMs": 517.077,
+        "imageReadyMs": 1256.7320000000036,
+        "lcp": 932,
+        "requests": 6,
+        "imageApiRequests": 1,
+        "transferredBytes": 2872
+      },
+      "after": {
+        "visibleMs": 944.8845999999976,
+        "navigationTtfbMs": 256.854,
+        "imageReadyMs": 975.158199999998,
+        "lcp": 672,
+        "requests": 6,
+        "imageApiRequests": 1,
+        "transferredBytes": 2869
+      }
+    },
+    {
+      "mobile": false,
+      "name": "warm-list",
+      "before": {
+        "visibleMs": 1419.3666999999987,
+        "navigationTtfbMs": 581.349,
+        "imageReadyMs": 1449.654599999998,
+        "lcp": 1396,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 5293
+      },
+      "after": {
+        "visibleMs": 1406.047400000003,
+        "navigationTtfbMs": 591.3380000000001,
+        "imageReadyMs": 1436.3811999999998,
+        "lcp": 1368,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 5285
+      }
+    },
+    {
+      "mobile": false,
+      "name": "image-product",
+      "before": {
+        "visibleMs": 873.3385999999882,
+        "navigationTtfbMs": 532.4879999999999,
+        "imageReadyMs": 1323.5157999999938,
+        "lcp": 1396,
+        "requests": 4,
+        "imageApiRequests": 3,
+        "transferredBytes": 251390
+      },
+      "after": {
+        "visibleMs": 364.84850000000006,
+        "navigationTtfbMs": 254.378,
+        "imageReadyMs": 825.475400000003,
+        "lcp": 1368,
+        "requests": 4,
+        "imageApiRequests": 3,
+        "transferredBytes": 254606
+      }
+    },
+    {
+      "mobile": false,
+      "name": "image-product-reload",
+      "before": {
+        "visibleMs": 1298.7741000000024,
+        "navigationTtfbMs": 531.54,
+        "imageReadyMs": 1349.2046000000046,
+        "lcp": 1056,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 4593
+      },
+      "after": {
+        "visibleMs": 974.7955000000002,
+        "navigationTtfbMs": 257.32000000000005,
+        "imageReadyMs": 1025.2468999999983,
+        "lcp": 664,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 4582
+      }
+    },
+    {
+      "mobile": false,
+      "name": "image-back",
+      "before": {
+        "visibleMs": 856.7899999999936,
+        "navigationTtfbMs": 672.835,
+        "imageReadyMs": 1378.6539999999986,
+        "lcp": 1056,
+        "requests": 4,
+        "imageApiRequests": 3,
+        "transferredBytes": 4499
+      },
+      "after": {
+        "visibleMs": 862.2307999999975,
+        "navigationTtfbMs": 614.534,
+        "imageReadyMs": 1403.5573000000004,
+        "lcp": 664,
+        "requests": 4,
+        "imageApiRequests": 3,
+        "transferredBytes": 4495
+      }
+    },
+    {
+      "mobile": false,
+      "name": "image-product-warm",
+      "before": {
+        "visibleMs": 874.0676000000021,
+        "navigationTtfbMs": 523.9209999999999,
+        "imageReadyMs": 894.3606,
+        "lcp": 1056,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 2611
+      },
+      "after": {
+        "visibleMs": 364.17999999999665,
+        "navigationTtfbMs": 254.983,
+        "imageReadyMs": 384.47679999999673,
+        "lcp": 664,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 2608
+      }
+    },
+    {
+      "mobile": true,
+      "name": "cold-list",
+      "before": {
+        "visibleMs": 2471.054099999994,
+        "navigationTtfbMs": 582.202,
+        "imageReadyMs": 2533.4033999999956,
+        "lcp": 2396,
+        "requests": 8,
+        "imageApiRequests": 3,
+        "transferredBytes": 217049
+      },
+      "after": {
+        "visibleMs": 2487.5181999999913,
+        "navigationTtfbMs": 627.2769999999999,
+        "imageReadyMs": 2548.5114999999932,
+        "lcp": 2404,
+        "requests": 8,
+        "imageApiRequests": 3,
+        "transferredBytes": 217053
+      }
+    },
+    {
+      "mobile": true,
+      "name": "product-1",
+      "before": {
+        "visibleMs": 896.376500000013,
+        "navigationTtfbMs": 535.326,
+        "imageReadyMs": 926.9775000000081,
+        "lcp": 2396,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 2116
+      },
+      "after": {
+        "visibleMs": 509.3173000000097,
+        "navigationTtfbMs": 259.433,
+        "imageReadyMs": 540.1292000000103,
+        "lcp": 2404,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 2113
+      }
+    },
+    {
+      "mobile": true,
+      "name": "back-1",
+      "before": {
+        "visibleMs": 91.96749999999884,
+        "navigationTtfbMs": 626.667,
+        "imageReadyMs": 772.289499999999,
+        "lcp": 2396,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 3310
+      },
+      "after": {
+        "visibleMs": 95.4716000000044,
+        "navigationTtfbMs": 680.2130000000001,
+        "imageReadyMs": 816.5528999999951,
+        "lcp": 2404,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 3310
+      }
+    },
+    {
+      "mobile": true,
+      "name": "product-2",
+      "before": {
+        "visibleMs": 888.8384000000078,
+        "navigationTtfbMs": 528.2180000000001,
+        "imageReadyMs": 909.3856000000087,
+        "lcp": 2396,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 2074
+      },
+      "after": {
+        "visibleMs": 375.2814999999973,
+        "navigationTtfbMs": 266.467,
+        "imageReadyMs": 396.0756999999867,
+        "lcp": 2404,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 2071
+      }
+    },
+    {
+      "mobile": true,
+      "name": "back-2",
+      "before": {
+        "visibleMs": 83.55980000000272,
+        "navigationTtfbMs": 671.371,
+        "imageReadyMs": 804.1686000000045,
+        "lcp": 2396,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 3310
+      },
+      "after": {
+        "visibleMs": 83.55290000000969,
+        "navigationTtfbMs": 626.1809999999999,
+        "imageReadyMs": 763.9340999999986,
+        "lcp": 2404,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 3310
+      }
+    },
+    {
+      "mobile": true,
+      "name": "product-3",
+      "before": {
+        "visibleMs": 884.9615000000049,
+        "navigationTtfbMs": 511.527,
+        "imageReadyMs": 905.7695000000094,
+        "lcp": 2396,
+        "requests": 2,
+        "imageApiRequests": 1,
+        "transferredBytes": 39540
+      },
+      "after": {
+        "visibleMs": 372.9801999999909,
+        "navigationTtfbMs": 264.962,
+        "imageReadyMs": 393.72649999998976,
+        "lcp": 2404,
+        "requests": 2,
+        "imageApiRequests": 1,
+        "transferredBytes": 39537
+      }
+    },
+    {
+      "mobile": true,
+      "name": "back-3",
+      "before": {
+        "visibleMs": 83.0685000000085,
+        "navigationTtfbMs": 668.211,
+        "imageReadyMs": null,
+        "lcp": 2396,
+        "requests": 2,
+        "imageApiRequests": 0,
+        "transferredBytes": 3311
+      },
+      "after": {
+        "visibleMs": 84.08759999999893,
+        "navigationTtfbMs": 621.1890000000001,
+        "imageReadyMs": null,
+        "lcp": 2404,
+        "requests": 2,
+        "imageApiRequests": 0,
+        "transferredBytes": 3310
+      }
+    },
+    {
+      "mobile": true,
+      "name": "search",
+      "before": {
+        "visibleMs": 933.5662000000011,
+        "navigationTtfbMs": 600.919,
+        "imageReadyMs": null,
+        "lcp": 2396,
+        "requests": 2,
+        "imageApiRequests": 1,
+        "transferredBytes": 4689
+      },
+      "after": {
+        "visibleMs": 931.5794000000024,
+        "navigationTtfbMs": 592.5079999999999,
+        "imageReadyMs": null,
+        "lcp": 2404,
+        "requests": 2,
+        "imageApiRequests": 1,
+        "transferredBytes": 16444
+      }
+    },
+    {
+      "mobile": true,
+      "name": "filter-category",
+      "before": {
+        "visibleMs": 1550.1928999999946,
+        "navigationTtfbMs": 605.869,
+        "imageReadyMs": null,
+        "lcp": 1124,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 17079
+      },
+      "after": {
+        "visibleMs": 1488.940100000007,
+        "navigationTtfbMs": 626.017,
+        "imageReadyMs": null,
+        "lcp": 1116,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 5314
+      }
+    },
+    {
+      "mobile": true,
+      "name": "filter-team",
+      "before": {
+        "visibleMs": 1431.5690000000031,
+        "navigationTtfbMs": 504.993,
+        "imageReadyMs": null,
+        "lcp": 988,
+        "requests": 7,
+        "imageApiRequests": 2,
+        "transferredBytes": 3371
+      },
+      "after": {
+        "visibleMs": 1351.5198999999993,
+        "navigationTtfbMs": 519.643,
+        "imageReadyMs": null,
+        "lcp": 976,
+        "requests": 7,
+        "imageApiRequests": 2,
+        "transferredBytes": 3372
+      }
+    },
+    {
+      "mobile": true,
+      "name": "filter-version",
+      "before": {
+        "visibleMs": 1502.700800000006,
+        "navigationTtfbMs": 613.949,
+        "imageReadyMs": null,
+        "lcp": 1072,
+        "requests": 8,
+        "imageApiRequests": 3,
+        "transferredBytes": 38656
+      },
+      "after": {
+        "visibleMs": 1432.0604000000021,
+        "navigationTtfbMs": 547.135,
+        "imageReadyMs": null,
+        "lcp": 1048,
+        "requests": 8,
+        "imageApiRequests": 3,
+        "transferredBytes": 38652
+      }
+    },
+    {
+      "mobile": true,
+      "name": "visited-product",
+      "before": {
+        "visibleMs": 1291.116399999999,
+        "navigationTtfbMs": 504.656,
+        "imageReadyMs": 1352.2325999999885,
+        "lcp": 964,
+        "requests": 6,
+        "imageApiRequests": 1,
+        "transferredBytes": 2872
+      },
+      "after": {
+        "visibleMs": 1058.9222000000009,
+        "navigationTtfbMs": 269.15500000000003,
+        "imageReadyMs": 1120.3675999999978,
+        "lcp": 724,
+        "requests": 6,
+        "imageApiRequests": 1,
+        "transferredBytes": 2869
+      }
+    },
+    {
+      "mobile": true,
+      "name": "reload-product",
+      "before": {
+        "visibleMs": 1266.1347999999998,
+        "navigationTtfbMs": 500.874,
+        "imageReadyMs": 1327.2127000000037,
+        "lcp": 948,
+        "requests": 6,
+        "imageApiRequests": 1,
+        "transferredBytes": 2872
+      },
+      "after": {
+        "visibleMs": 1111.7891999999993,
+        "navigationTtfbMs": 268.794,
+        "imageReadyMs": 1172.5273000000016,
+        "lcp": 716,
+        "requests": 6,
+        "imageApiRequests": 1,
+        "transferredBytes": 2869
+      }
+    },
+    {
+      "mobile": true,
+      "name": "warm-list",
+      "before": {
+        "visibleMs": 1491.1684999999998,
+        "navigationTtfbMs": 613.209,
+        "imageReadyMs": 1552.8917000000074,
+        "lcp": 1380,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 5290
+      },
+      "after": {
+        "visibleMs": 1638.3349000000017,
+        "navigationTtfbMs": 608.892,
+        "imageReadyMs": 1699.4468999999954,
+        "lcp": 1564,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 5285
+      }
+    },
+    {
+      "mobile": true,
+      "name": "image-product",
+      "before": {
+        "visibleMs": 903.8311000000103,
+        "navigationTtfbMs": 515.36,
+        "imageReadyMs": 2417.1682,
+        "lcp": 1380,
+        "requests": 4,
+        "imageApiRequests": 3,
+        "transferredBytes": 251389
+      },
+      "after": {
+        "visibleMs": 387.0011000000086,
+        "navigationTtfbMs": 260.799,
+        "imageReadyMs": 1937.7964000000065,
+        "lcp": 1564,
+        "requests": 4,
+        "imageApiRequests": 3,
+        "transferredBytes": 254592
+      }
+    },
+    {
+      "mobile": true,
+      "name": "image-product-reload",
+      "before": {
+        "visibleMs": 1343.29859999998,
+        "navigationTtfbMs": 539.179,
+        "imageReadyMs": 1424.56289999999,
+        "lcp": 1108,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 4594
+      },
+      "after": {
+        "visibleMs": 1074.2123999999894,
+        "navigationTtfbMs": 309.33700000000005,
+        "imageReadyMs": 1155.5834000000032,
+        "lcp": 748,
+        "requests": 9,
+        "imageApiRequests": 4,
+        "transferredBytes": 4582
+      }
+    },
+    {
+      "mobile": true,
+      "name": "image-back",
+      "before": {
+        "visibleMs": 888.4106000000029,
+        "navigationTtfbMs": 611.67,
+        "imageReadyMs": 1437.108200000017,
+        "lcp": 1108,
+        "requests": 4,
+        "imageApiRequests": 3,
+        "transferredBytes": 4500
+      },
+      "after": {
+        "visibleMs": 892.5803000000014,
+        "navigationTtfbMs": 603.476,
+        "imageReadyMs": 1462.793399999995,
+        "lcp": 748,
+        "requests": 4,
+        "imageApiRequests": 3,
+        "transferredBytes": 4494
+      }
+    },
+    {
+      "mobile": true,
+      "name": "image-product-warm",
+      "before": {
+        "visibleMs": 881.8083999999799,
+        "navigationTtfbMs": 506.93199999999996,
+        "imageReadyMs": 902.9051999999792,
+        "lcp": 1108,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 2611
+      },
+      "after": {
+        "visibleMs": 382.469299999997,
+        "navigationTtfbMs": 264.961,
+        "imageReadyMs": 413.35349999999744,
+        "lcp": 748,
+        "requests": 1,
+        "imageApiRequests": 0,
+        "transferredBytes": 2608
+      }
+    }
+  ],
+  "probes": [
+    {
+      "name": "list-json",
+      "before": {
+        "n": 3,
+        "ttfbMs": 659.785100000001,
+        "internalMs": 468.6,
+        "queries": 4,
+        "bytes": 27744,
+        "conditionalTtfbMs": null,
+        "conditionalStatuses": []
+      },
+      "after": {
+        "n": 3,
+        "ttfbMs": 652.7805000000001,
+        "internalMs": 456.3,
+        "queries": 4,
+        "bytes": 27744,
+        "conditionalTtfbMs": null,
+        "conditionalStatuses": []
+      }
+    },
+    {
+      "name": "detail-json",
+      "before": {
+        "n": 3,
+        "ttfbMs": 511.4454999999998,
+        "internalMs": 310.9,
+        "queries": 3,
+        "bytes": 2736,
+        "conditionalTtfbMs": null,
+        "conditionalStatuses": []
+      },
+      "after": {
+        "n": 3,
+        "ttfbMs": 255.12309999999889,
+        "internalMs": 68,
+        "queries": 1,
+        "bytes": 2736,
+        "conditionalTtfbMs": null,
+        "conditionalStatuses": []
+      }
+    },
+    {
+      "name": "detail-webp",
+      "before": {
+        "n": 3,
+        "ttfbMs": 526.976999999999,
+        "internalMs": 332.9,
+        "queries": 3,
+        "bytes": 187880,
+        "conditionalTtfbMs": 531.7498999999989,
+        "conditionalStatuses": [
+          304,
+          304,
+          304
+        ]
+      },
+      "after": {
+        "n": 3,
+        "ttfbMs": 261.79269999999997,
+        "internalMs": 66.8,
+        "queries": 1,
+        "bytes": 191094,
+        "conditionalTtfbMs": 256.4471999999996,
+        "conditionalStatuses": [
+          304,
+          304,
+          304
+        ]
+      }
+    },
+    {
+      "name": "master-jpeg",
+      "before": {
+        "n": 3,
+        "ttfbMs": 572.4598000000005,
+        "internalMs": 334.2,
+        "queries": 3,
+        "bytes": 354060,
+        "conditionalTtfbMs": 577.1054000000004,
+        "conditionalStatuses": [
+          304,
+          304,
+          304
+        ]
+      },
+      "after": {
+        "n": 3,
+        "ttfbMs": 278.97160000000076,
+        "internalMs": 67.9,
+        "queries": 1,
+        "bytes": 354060,
+        "conditionalTtfbMs": 256.50610000000233,
+        "conditionalStatuses": [
+          304,
+          304,
+          304
+        ]
+      }
+    }
+  ],
+  "coldSample": {
+    "measuredAt": "2026-11-11T13:22:25.861Z",
+    "deployment": "7c6955e76f74d4ba1a02fff3571c9c00d625a2a6",
+    "original": {
+      "mobile": false,
+      "run": 0,
+      "scenario": "image-product",
+      "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2",
+      "query": "?variant=detail&format=webp",
+      "phases": {
+        "total": 1662.1,
+        "db": 202.5,
+        "db_setup": 66.8,
+        "db_finalize": 67.1,
+        "storage": 187.1,
+        "encode": 1137.3
+      }
+    },
+    "samples": [
+      {
+        "name": "detail",
+        "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15",
+        "status": 200,
+        "ttfbMs": 255.08310000000006,
+        "bodyBytes": 2736,
+        "totalMs": 258.81819999999993,
+        "etag": "W/\"ab0-O78UgmYeM2gI+DfQEWzW4t9yV3o\"",
+        "serverTiming": "total;dur=67.3, db;dur=66.1;desc=\"1 queries\", db_setup;dur=0.1, db_finalize;dur=0.0",
+        "queries": 1,
+        "phases": {
+          "total": 67.3,
+          "db": 66.1,
+          "db_setup": 0.1,
+          "db_finalize": 0
+        }
+      },
+      {
+        "name": "first-image",
+        "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2?variant=detail&format=webp",
+        "status": 200,
+        "ttfbMs": 2004.0242999999998,
+        "bodyBytes": 191094,
+        "totalMs": 2150.6399,
+        "etag": "W/\"936dee1e54974e591c1531f846bb4f0fff3a6fe3137047883ef279d0e0361444\"",
+        "serverTiming": "total;dur=1809.0, db;dur=62.9;desc=\"1 queries\", db_setup;dur=0.1, db_finalize;dur=0.0, storage;dur=845.5, encode;dur=897.0",
+        "queries": 1,
+        "phases": {
+          "total": 1809,
+          "db": 62.9,
+          "db_setup": 0.1,
+          "db_finalize": 0,
+          "storage": 845.5,
+          "encode": 897
+        }
+      },
+      {
+        "name": "repeat-image",
+        "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2?variant=detail&format=webp",
+        "status": 200,
+        "ttfbMs": 294.6579999999999,
+        "bodyBytes": 191094,
+        "totalMs": 579.0575999999996,
+        "etag": "W/\"936dee1e54974e591c1531f846bb4f0fff3a6fe3137047883ef279d0e0361444\"",
+        "serverTiming": "total;dur=68.9, db;dur=67.8;desc=\"1 queries\", db_setup;dur=0.1, db_finalize;dur=0.0",
+        "queries": 1,
+        "phases": {
+          "total": 68.9,
+          "db": 67.8,
+          "db_setup": 0.1,
+          "db_finalize": 0
+        }
+      },
+      {
+        "name": "conditional-image",
+        "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2?variant=detail&format=webp",
+        "status": 304,
+        "ttfbMs": 261.2597000000005,
+        "bodyBytes": 0,
+        "totalMs": 261.41210000000046,
+        "etag": "W/\"936dee1e54974e591c1531f846bb4f0fff3a6fe3137047883ef279d0e0361444\"",
+        "serverTiming": "total;dur=68.5, db;dur=67.4;desc=\"1 queries\", db_setup;dur=0.1, db_finalize;dur=0.1",
+        "queries": 1,
+        "phases": {
+          "total": 68.5,
+          "db": 67.4,
+          "db_setup": 0.1,
+          "db_finalize": 0.1
+        }
+      }
+    ],
+    "deploymentAfter": "7c6955e76f74d4ba1a02fff3571c9c00d625a2a6"
+  },
+  "httpErrors": 0,
+  "samePhotoInProbes": true
+}

@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { record, uuid, integer, text, denseArray } from './validation.js';
 import { fail } from './errors.js';
 import { executeCommerceCommand, requireCommerceAccess } from './operationRepository.js';
+import { assertCommerceMembership, authorizeCommerce } from './authorization.js';
 import { requireProduct, readProductDetail } from './productRepository.js';
 import { inspectCommerceSchema } from './schemaInspection.js';
 import { createMediaStorage } from './mediaStorage.js';
 import { MAX_IMAGE_BYTES, processCommercialImage, sha256 } from './imageProcessor.js';
+import { createMediaCache } from '../catalog/mediaCache.js';
 
 const expected = (row, revision) => {
   if (Number(row.revision) !== integer(revision, 1)) fail('REVISION_CONFLICT', 'La ficha cambió. Actualizá antes de guardar.', 409, { currentRevision: Number(row.revision) });
@@ -21,6 +23,8 @@ const touch = (client, context, id, invalidate = false) => client.query(`UPDATE 
 
 export function createCommerceMediaService(runtime, storage = createMediaStorage()) {
   let processing = 0;
+  let contentReady;
+  const cachedThumbnail = createMediaCache({ maxBytes: 16 * 1024 * 1024 });
   const withSlot = async callback => {
     if (processing >= 2) fail('IMAGE_PROCESSOR_BUSY', 'Hay otras fotos en proceso. Reintentá en unos segundos.', 429);
     processing++;
@@ -140,15 +144,23 @@ export function createCommerceMediaService(runtime, storage = createMediaStorage
     },
     content: async (context, productId, imageId, variant = 'master') => {
       uuid(productId); uuid(imageId); if (!['master', 'thumbnail'].includes(variant)) fail('INVALID_COMMAND', 'Versión de foto inválida.', 400);
-      await ensure();
-      const selected = await runtime.transaction(async client => {
-        await requireCommerceAccess(client, context, 'commerce:read');
-        const row = (await client.query("SELECT master_key,thumbnail_key,master_sha256 FROM commercial_product_images WHERE owner_phone=$1 AND commercial_product_id=$2 AND id=$3 AND status='ready'", [context.businessId, productId, imageId])).rows[0];
-        if (!row) fail('RESOURCE_NOT_FOUND', 'No encontré la foto.', 404);
-        return { key: variant === 'thumbnail' ? row.thumbnail_key : row.master_key, expectedHash: variant === 'master' ? row.master_sha256 : null };
-      }, { readOnly: true });
-      const bytes = await storage.get(selected.key);
-      if (selected.expectedHash && sha256(bytes) !== selected.expectedHash) fail('MEDIA_INTEGRITY_ERROR', 'La foto guardada no coincide con su registro. Revisá el almacenamiento.', 503);
+      authorizeCommerce(context, { enabled: true });
+      contentReady ??= ensure().catch(error => { contentReady = undefined; throw error; });
+      await contentReady;
+      const row = await runtime.withClient(async client => (await client.query(`SELECT m.tenant_phone,m.role,p.enabled,
+          i.master_key,i.thumbnail_key,i.master_sha256
+        FROM (SELECT $1::text AS owner_phone) scope
+        LEFT JOIN business_members m ON m.member_phone=$2
+        LEFT JOIN commerce_profiles p ON p.owner_phone=scope.owner_phone
+        LEFT JOIN commercial_product_images i ON i.owner_phone=scope.owner_phone AND i.commercial_product_id=$3 AND i.id=$4 AND i.status='ready'`,
+      [context.businessId, context.actorId, productId, imageId])).rows[0]);
+      assertCommerceMembership(context, row.tenant_phone === null ? null : row);
+      authorizeCommerce(context, { enabled: row.enabled === true });
+      if (!row.master_key) fail('RESOURCE_NOT_FOUND', 'No encontré la foto.', 404);
+      // The permission and image state above are checked even when the bytes are cached.
+      if (variant === 'thumbnail') return cachedThumbnail(`${context.businessId}/${row.thumbnail_key}`, () => storage.get(row.thumbnail_key));
+      const bytes = await storage.get(row.master_key);
+      if (sha256(bytes) !== row.master_sha256) fail('MEDIA_INTEGRITY_ERROR', 'La foto guardada no coincide con su registro. Revisá el almacenamiento.', 503);
       return bytes;
     },
     update: async (context, productId, imageId, input) => {

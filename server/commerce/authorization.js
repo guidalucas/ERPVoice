@@ -16,6 +16,10 @@ export function authorizeCommerce(context, { enabled, permission = 'commerce:rea
 export async function requireCommerceIdentity(client, context, { permission, lock = false } = {}) {
   authorizeCommerce(context, { enabled: true, permission });
   const membership = (await client.query(`SELECT tenant_phone,role FROM business_members WHERE member_phone=$1${lock ? ' FOR SHARE' : ''}`, [context.actorId])).rows[0];
+  assertCommerceMembership(context, membership);
+}
+
+export function assertCommerceMembership(context, membership) {
   const allowed = context.role === 'admin'
     ? membership?.tenant_phone === context.businessId && membership.role === 'admin'
     : !membership || membership.tenant_phone === context.businessId;

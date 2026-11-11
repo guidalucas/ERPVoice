@@ -5,6 +5,7 @@ import { inventoryPriceToMoney } from '../inventoryMoneyPolicy.js';
 import { normalizeCommercialProduct, commercialIdentityKey, commercialSlug } from './productIdentity.js';
 import { record, uuid, integer, denseArray, text } from './validation.js';
 import { readProfile, readMoneyPolicy, requireProduct, readProductDetail, rowToCommercialProduct, insertProduct, updateProduct } from './productRepository.js';
+import { readProductDetails, readProductSnapshot } from './productReadModel.js';
 import { executeCommerceCommand, requireCommerceAccess } from './operationRepository.js';
 import { inspectCommerceSchema } from './schemaInspection.js';
 import { fail } from './errors.js';
@@ -69,6 +70,11 @@ export function createCommerceProductService(runtime) {
     await ensureReady();
     return runtime.transaction(async client => { await requireCommerceAccess(client, context, 'commerce:read'); return callback(client); }, { readOnly: true, repeatableRead: true });
   };
+  const detail = async (client, owner, id) => {
+    const product = await readProductSnapshot(client, owner, uuid(id));
+    if (!product) fail('RESOURCE_NOT_FOUND', 'No encontré la ficha comercial.', 404);
+    return { ...product, readAt: new Date().toISOString() };
+  };
   const mutate = async (context, meta, apply) => {
     await ensureReady();
     try { return await executeCommerceCommand(runtime, context, meta, apply); }
@@ -79,10 +85,10 @@ export function createCommerceProductService(runtime) {
     }
   };
   return {
-    detail: (context, id) => read(context, client => readProductDetail(client, context.businessId, uuid(id))),
+    detail: (context, id) => read(context, client => detail(client, context.businessId, id)),
     availability: (context, id) => read(context, async client => {
-      const detail = await readProductDetail(client, context.businessId, uuid(id));
-      return Object.fromEntries(['revision', 'variants', 'availableQuantity', 'availability', 'priceRange', 'readiness', 'moneyPolicyRevision', 'readAt'].map(key => [key, detail[key]]));
+      const product = await detail(client, context.businessId, id);
+      return Object.fromEntries(['revision', 'variants', 'availableQuantity', 'availability', 'priceRange', 'readiness', 'moneyPolicyRevision', 'readAt'].map(key => [key, product[key]]));
     }),
     moneyReview: (context, query = {}) => read(context, async client => {
       const data = record(query, ['cursor']);
@@ -236,13 +242,15 @@ export function createCommerceProductService(runtime) {
         filters.push(cursor.at, cursor.id); conditions.push(`(p.updated_at,p.id)<($${filters.length - 1}::timestamptz,$${filters.length}::uuid)`);
       }
       filters.push(limit + 1);
-      const rows = (await client.query(`SELECT p.id,to_char(p.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at,${publicationStatus} AS publication_status,
+      const rows = (await client.query(`SELECT p.*,to_char(p.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at,${publicationStatus} AS publication_status,
         ${hasPublications ? 'COALESCE(s.revision,0)' : '0'} AS publication_revision FROM commercial_products p
         ${hasPublications ? 'LEFT JOIN commercial_publications s ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id' : ''}
         WHERE ${conditions.join(' AND ')} ORDER BY p.updated_at DESC,p.id DESC LIMIT $${filters.length}`, filters)).rows;
       const visible = rows.slice(0, limit), last = visible.at(-1);
-      return { items: await Promise.all(visible.map(async row => ({ ...await readProductDetail(client, context.businessId, row.id),
-        publication: { status: row.publication_status, revision: Number(row.publication_revision) } }))),
+      const products = await readProductDetails(client, context.businessId, visible);
+      const readAt = new Date().toISOString();
+      return { items: products.map((product, index) => ({ ...product, readAt,
+        publication: { status: visible[index].publication_status, revision: Number(visible[index].publication_revision) } })),
         nextCursor: rows.length > limit ? Buffer.from(JSON.stringify({ at: last.cursor_at, id: last.id })).toString('base64url') : null };
     }),
     candidates: (context, query = {}) => read(context, async client => {
@@ -276,12 +284,13 @@ export function createCommerceProductService(runtime) {
           stockReserved: product.stockReserved, price: money };
       }), nextCursor: pageKeys.length > limit ? pageKeys[limit - 1] : null };
     }),
-    summary: context => read(context, async client => ({
-      products: (await client.query('SELECT status,count(*)::int AS count FROM commercial_products WHERE owner_phone=$1 GROUP BY status', [context.businessId])).rows,
-      withoutPhotos: (await client.query(`SELECT count(*)::int AS count FROM commercial_products p WHERE p.owner_phone=$1 AND p.status<>'archived'
-        AND NOT EXISTS(SELECT 1 FROM commercial_product_images i WHERE i.owner_phone=p.owner_phone AND i.commercial_product_id=p.id AND i.status='ready')`, [context.businessId])).rows[0].count,
-      unlinkedSkus: (await client.query(`SELECT count(*)::int AS count FROM products p WHERE ${pendingSkuCondition}`, [context.businessId])).rows[0].count,
-    })),
+    summary: context => read(context, async client => (await client.query(`SELECT
+      COALESCE((SELECT jsonb_agg(to_jsonb(s)) FROM (
+        SELECT status,count(*)::int AS count FROM commercial_products WHERE owner_phone=$1 GROUP BY status
+      ) s),'[]'::jsonb) AS products,
+      (SELECT count(*)::int FROM commercial_products p WHERE p.owner_phone=$1 AND p.status<>'archived'
+        AND NOT EXISTS(SELECT 1 FROM commercial_product_images i WHERE i.owner_phone=p.owner_phone AND i.commercial_product_id=p.id AND i.status='ready')) AS "withoutPhotos",
+      (SELECT count(*)::int FROM products p WHERE ${pendingSkuCondition}) AS "unlinkedSkus"`, [context.businessId])).rows[0]),
     updateProfile: async (context, input) => {
       const data = record(input, ['operationId', 'expectedRevision', 'brandName', 'salesWhatsapp', 'appearance']);
       const command = { operationId: uuid(data.operationId), expectedRevision: integer(data.expectedRevision, 1),

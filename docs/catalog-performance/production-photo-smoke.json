@@ -1,0 +1,92 @@
+{
+  "measuredAt": "2026-11-11T13:22:25.861Z",
+  "deployment": "7c6955e76f74d4ba1a02fff3571c9c00d625a2a6",
+  "original": {
+    "mobile": false,
+    "run": 0,
+    "scenario": "image-product",
+    "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2",
+    "query": "?variant=detail&format=webp",
+    "phases": {
+      "total": 1662.1,
+      "db": 202.5,
+      "db_setup": 66.8,
+      "db_finalize": 67.1,
+      "storage": 187.1,
+      "encode": 1137.3
+    }
+  },
+  "samples": [
+    {
+      "name": "detail",
+      "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15",
+      "status": 200,
+      "ttfbMs": 255.08310000000006,
+      "bodyBytes": 2736,
+      "totalMs": 258.81819999999993,
+      "etag": "W/\"ab0-O78UgmYeM2gI+DfQEWzW4t9yV3o\"",
+      "serverTiming": "total;dur=67.3, db;dur=66.1;desc=\"1 queries\", db_setup;dur=0.1, db_finalize;dur=0.0",
+      "queries": 1,
+      "phases": {
+        "total": 67.3,
+        "db": 66.1,
+        "db_setup": 0.1,
+        "db_finalize": 0
+      }
+    },
+    {
+      "name": "first-image",
+      "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2?variant=detail&format=webp",
+      "status": 200,
+      "ttfbMs": 2004.0242999999998,
+      "bodyBytes": 191094,
+      "totalMs": 2150.6399,
+      "etag": "W/\"936dee1e54974e591c1531f846bb4f0fff3a6fe3137047883ef279d0e0361444\"",
+      "serverTiming": "total;dur=1809.0, db;dur=62.9;desc=\"1 queries\", db_setup;dur=0.1, db_finalize;dur=0.0, storage;dur=845.5, encode;dur=897.0",
+      "queries": 1,
+      "phases": {
+        "total": 1809,
+        "db": 62.9,
+        "db_setup": 0.1,
+        "db_finalize": 0,
+        "storage": 845.5,
+        "encode": 897
+      }
+    },
+    {
+      "name": "repeat-image",
+      "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2?variant=detail&format=webp",
+      "status": 200,
+      "ttfbMs": 294.6579999999999,
+      "bodyBytes": 191094,
+      "totalMs": 579.0575999999996,
+      "etag": "W/\"936dee1e54974e591c1531f846bb4f0fff3a6fe3137047883ef279d0e0361444\"",
+      "serverTiming": "total;dur=68.9, db;dur=67.8;desc=\"1 queries\", db_setup;dur=0.1, db_finalize;dur=0.0",
+      "queries": 1,
+      "phases": {
+        "total": 68.9,
+        "db": 67.8,
+        "db_setup": 0.1,
+        "db_finalize": 0
+      }
+    },
+    {
+      "name": "conditional-image",
+      "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2?variant=detail&format=webp",
+      "status": 304,
+      "ttfbMs": 261.2597000000005,
+      "bodyBytes": 0,
+      "totalMs": 261.41210000000046,
+      "etag": "W/\"936dee1e54974e591c1531f846bb4f0fff3a6fe3137047883ef279d0e0361444\"",
+      "serverTiming": "total;dur=68.5, db;dur=67.4;desc=\"1 queries\", db_setup;dur=0.1, db_finalize;dur=0.1",
+      "queries": 1,
+      "phases": {
+        "total": 68.5,
+        "db": 67.4,
+        "db_setup": 0.1,
+        "db_finalize": 0.1
+      }
+    }
+  ],
+  "deploymentAfter": "7c6955e76f74d4ba1a02fff3571c9c00d625a2a6"
+}

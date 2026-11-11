@@ -8,7 +8,7 @@ import { Client } from 'pg';
 import { startCommerceFixture } from './fullmatch/fixtureRuntime.js';
 
 const output = path.resolve('.fullmatch-runtime/browser'); await fs.mkdir(output, { recursive: true });
-const fixture = await startCommerceFixture(); let browser;
+const fixture = await startCommerceFixture({ studioBuild: true }); let browser;
 let checks = 0;
 const check = async (label, callback) => { await callback(); checks++; console.log(`PASS Studio browser: ${label}`); };
 try {
@@ -92,6 +92,7 @@ try {
     await page.getByLabel('Subir fotografías', { exact: true }).setInputFiles({ name: 'fixture-boca.png', mimeType: 'image/png', buffer: photo });
     await page.getByText('Foto procesada y guardada.', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Preparar ficha', exact: true }).click();
+    await page.getByRole('button', { name: 'Sí, confirmar cambio', exact: true }).click();
     await page.getByText('Ficha preparada para generar contenido.', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Generar historia ↗' }).click();
     await page.getByLabel('Plantilla', { exact: true }).selectOption('arrival');
@@ -115,7 +116,7 @@ try {
     await publicPage.screenshot({ path: path.join(output, 'catalog-desktop.png'), fullPage: true });
     await publicPage.getByRole('searchbox', { name: 'Buscar productos', exact: true }).fill('Argentina');
     await Promise.all([publicPage.waitForURL(/q=Argentina/), publicPage.getByRole('button', { name: 'Buscar', exact: true }).click()]);
-    assert.equal(await publicPage.locator('.catalog-card').count(), 1);
+    await publicPage.waitForFunction(() => document.querySelectorAll('.catalog-card').length === 1);
     await publicPage.getByRole('heading', { name: 'Argentina titular 2025', exact: true }).click();
     await publicPage.getByRole('heading', { name: 'Argentina titular 2025', exact: true, level: 1 }).waitFor();
     productUrl = publicPage.url(); productPhoto = await publicPage.locator('.main-photo img').getAttribute('src');

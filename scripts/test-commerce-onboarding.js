@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import { chromium } from 'playwright';
 import { startCommerceFixture } from './fullmatch/fixtureRuntime.js';
 
-const fixture = await startCommerceFixture(), sql = new Client({ connectionString: fixture.connection });
+const fixture = await startCommerceFixture({ studioBuild: true }), sql = new Client({ connectionString: fixture.connection });
 let browser, page, checks = 0;
 const check = async (name, run) => { await run(); console.log(`PASS self-service: ${name}`); checks++; };
 const [first, second, racing] = fixture.freshOwners;

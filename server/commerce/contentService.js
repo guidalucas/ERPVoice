@@ -35,18 +35,27 @@ export function createContentService(runtime) {
       await ensure();
       return runtime.transaction(async client => {
         await requireCommerceAccess(client, context, 'commerce:story');
-        const rows = (await client.query(`SELECT o.operation_id,o.created_at,o.result_json->'result' AS snapshot,e.result_json->'result' AS last_export
-          FROM commercial_operations o LEFT JOIN LATERAL (SELECT result_json FROM commercial_operations e
+        const rows = (await client.query(`WITH page AS (
+            SELECT o.owner_phone,o.operation_id,o.created_at,o.result_json->'result' AS snapshot
+            FROM commercial_operations o
+            WHERE o.owner_phone=$1 AND o.operation_type='story.prepare' AND ($2::timestamptz IS NULL OR (o.created_at,o.operation_id)<($2::timestamptz,$3::uuid))
+            ORDER BY o.created_at DESC,o.operation_id DESC LIMIT $4
+          )
+          SELECT o.operation_id,to_char(o.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at,
+            o.snapshot->>'snapshotId' AS snapshot_id,o.snapshot->>'createdAt' AS prepared_at,o.snapshot->>'expiresAt' AS expires_at,
+            o.snapshot#>>'{content,productId}' AS product_id,o.snapshot#>>'{content,title}' AS title,
+            o.snapshot#>>'{content,settings,templateId}' AS template_id,o.snapshot#>>'{content,imageId}' AS image_id,
+            o.snapshot#>>'{content,imageAlt}' AS image_alt,e.result_json->'result' AS last_export
+          FROM page o LEFT JOIN LATERAL (SELECT result_json FROM commercial_operations e
             WHERE e.owner_phone=o.owner_phone AND e.entity_id=o.operation_id AND e.operation_type='story.export_event'
             ORDER BY e.created_at DESC,e.operation_id DESC LIMIT 1) e ON true
-          WHERE o.owner_phone=$1 AND o.operation_type='story.prepare' AND ($2::timestamptz IS NULL OR (o.created_at,o.operation_id)<($2::timestamptz,$3::uuid))
-          ORDER BY o.created_at DESC,o.operation_id DESC LIMIT $4`, [context.businessId, cursor?.at ?? null, cursor?.id ?? null, limit + 1])).rows;
+          ORDER BY o.created_at DESC,o.operation_id DESC`, [context.businessId, cursor?.at ?? null, cursor?.id ?? null, limit + 1])).rows;
         const batch = rows.slice(0, limit), last = batch.at(-1);
-        return { items: batch.map(row => ({ snapshotId: row.snapshot.snapshotId, productId: row.snapshot.content.productId, title: row.snapshot.content.title,
-          templateId: row.snapshot.content.settings.templateId, imageId: row.snapshot.content.imageId, imageAlt: row.snapshot.content.imageAlt,
-          preparedAt: row.snapshot.createdAt, expiresAt: row.snapshot.expiresAt, expired: Date.parse(row.snapshot.expiresAt) <= Date.now(),
+        return { items: batch.map(row => ({ snapshotId: row.snapshot_id, productId: row.product_id, title: row.title,
+          templateId: row.template_id, imageId: row.image_id, imageAlt: row.image_alt,
+          preparedAt: row.prepared_at, expiresAt: row.expires_at, expired: Date.parse(row.expires_at) <= Date.now(),
           lastExport: row.last_export ? { kind: row.last_export.kind, filename: row.last_export.filename, mimeType: row.last_export.mimeType, sizeBytes: row.last_export.sizeBytes, reportedAt: row.last_export.reportedAt } : null })),
-        nextCursor: rows.length > limit ? Buffer.from(JSON.stringify({ at: last.created_at.toISOString(), id: last.operation_id })).toString('base64url') : null };
+        nextCursor: rows.length > limit ? Buffer.from(JSON.stringify({ at: last.cursor_at, id: last.operation_id })).toString('base64url') : null };
       }, { readOnly: true, repeatableRead: true });
     },
   };

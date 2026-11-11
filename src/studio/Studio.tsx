@@ -17,6 +17,7 @@ import { ExistingProductPicker } from './ExistingProductPicker';
 import { AppearanceFields, BrandImage } from './Branding';
 import { StockyLogo } from '../components/brand/StockyLogo';
 import { ThemeToggle } from '../components/dashboard/ThemeToggle';
+import { useNearViewport } from './useNearViewport';
 
 const message = (error: unknown) => error instanceof Error ? error.message : 'No pude completar la operación.';
 const statusLabel = { draft: 'Borrador', ready: 'Preparada', archived: 'Archivada' };
@@ -40,15 +41,18 @@ function PreparationBlockers({ product, onTab }: { product: Product; onTab: (tab
     : <a href="/?section=productos">{blockerLabels[code] ?? code} ↗</a>}</li>)}</ul>;
 }
 
-export function PrivatePhoto({ product, imageId, thumbnail = true }: { product: Product; imageId?: string | null; thumbnail?: boolean }) {
+export function PrivatePhoto({ product, imageId, thumbnail = true, lazy = false }: {
+  product: Product; imageId?: string | null; thumbnail?: boolean; lazy?: boolean;
+}) {
   const [url, setUrl] = useState(''), [failed, setFailed] = useState(false);
+  const { placeholder, shouldLoad } = useNearViewport<HTMLDivElement>(lazy && Boolean(imageId));
   useEffect(() => {
-    setUrl(''); setFailed(false); if (!imageId) return;
+    setUrl(''); setFailed(false); if (!imageId || !shouldLoad) return;
     let active = true, objectUrl = '';
     imageBlob(product.id, imageId, thumbnail).then(blob => { if (active) { objectUrl = URL.createObjectURL(blob); setUrl(objectUrl); } }).catch(() => { if (active) setFailed(true); });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [product.id, imageId, thumbnail, product.revision]);
-  return url ? <img src={url} alt={product.images.find(image => image.id === imageId)?.altText || product.title}/> : <div className="photo-empty"><span className="shirt">◇</span><small>{failed ? 'Foto no disponible' : imageId ? 'Cargando foto…' : 'Fotografía pendiente'}</small></div>;
+  }, [product.id, imageId, thumbnail, product.revision, shouldLoad]);
+  return url ? <img src={url} alt={product.images.find(image => image.id === imageId)?.altText || product.title} decoding="async"/> : <div ref={placeholder} className="photo-empty"><span className="shirt">◇</span><small>{failed ? 'Foto no disponible' : imageId ? 'Cargando foto…' : 'Fotografía pendiente'}</small></div>;
 }
 
 function Login() {
@@ -288,12 +292,12 @@ function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: 
     {publicationResult && <Notice><div className="publication-result"><p>{publicationResult.text}</p>
       {publicationResult.failures?.length ? <ul>{publicationResult.failures.map((failure, index) => <li key={index}>{failure}</li>)}</ul> : null}
     </div></Notice>}
-    <div className="product-grid" aria-busy={busy}>{products.map(product => {
+    <div className="product-grid" aria-busy={busy}>{products.map((product, index) => {
       const variants = product.variants.filter(variant => variant.active);
       const showVariants = variants.length > 1 || variants.some(variant => (variant.label || variant.size || variant.name).trim().toLocaleLowerCase('es') !== product.title.trim().toLocaleLowerCase('es'));
       return <div className="selectable-product" key={product.id}>
         <label className="product-selector"><input type="checkbox" aria-label={`Seleccionar ${product.title}`} checked={selection.includes(product.id)} disabled={working || (!canPublish(product) && !product.readiness.canGenerateStory)} onChange={event => setSelection(current => event.target.checked ? [...current, product.id] : current.filter(id => id !== product.id))}/><span className="sr-only">Seleccionar producto</span></label>
-        <button className="product-card" disabled={Boolean(publicationProgress)} onClick={() => onOpen(product.id, showMissingPhotos && applied.photos === 'missing' ? 'photos' : 'details')}><div className={`card-photo ${!product.coverImageId ? 'without-photo' : ''}`}><PrivatePhoto product={product} imageId={product.coverImageId}/><span className={`status ${product.status}`}>{isPublished(product) ? 'Publicada' : statusLabel[product.status]}</span></div>
+        <button className="product-card" disabled={Boolean(publicationProgress)} onClick={() => onOpen(product.id, showMissingPhotos && applied.photos === 'missing' ? 'photos' : 'details')}><div className={`card-photo ${!product.coverImageId ? 'without-photo' : ''}`}><PrivatePhoto product={product} imageId={product.coverImageId} lazy={index >= 3}/><span className={`status ${product.status}`}>{isPublished(product) ? 'Publicada' : statusLabel[product.status]}</span></div>
           <div className="card-body"><small>{product.teamName || 'Producto comercial'} <span aria-hidden="true">↗</span></small><h3>{product.title}</h3>
             {[product.season, product.versionKey === 'player' ? 'Jugador' : product.versionKey === 'fan' ? 'Hincha' : ''].some(Boolean) && <p>{[product.season, product.versionKey === 'player' ? 'Jugador' : product.versionKey === 'fan' ? 'Hincha' : ''].filter(Boolean).join(' · ')}</p>}
             <div className="card-bottom"><strong>{priceLabel(product)}</strong><span>{product.availableQuantity ?? '—'} disponibles</span></div>

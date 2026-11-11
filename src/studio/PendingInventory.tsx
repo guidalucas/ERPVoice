@@ -33,7 +33,7 @@ function PendingProduct({ items, selectedIds, busy, onSelect }: {
       </button>
     </div>
     <div id={detailsId} hidden={!expanded} className="pending-product-variants">
-      {items.map(item => <label className="pending-variant" key={item.skuId}>
+      {expanded && items.map(item => <label className="pending-variant" key={item.skuId}>
         <input type="checkbox" aria-label={`Seleccionar ${item.name} ${item.size || item.label || item.skuId}`} disabled={busy || (selectedIds.size >= selectionLimit && !selectedIds.has(item.skuId))}
           checked={selectedIds.has(item.skuId)} onChange={event => onSelect([item], event.target.checked)}/>
         <span className="size-tag">{item.size || item.label || item.productModel || item.name}</span>
@@ -71,19 +71,27 @@ export function PendingInventory({ onCreate, onLink, onPhotos }: {
     const ids = new Set(variants.map(item => item.skuId));
     setSelected(rows => checked ? [...rows, ...additions] : rows.filter(item => !ids.has(item.skuId)));
   };
-  const generation = useRef(0);
+  const request = useRef<AbortController | null>(null);
   const load = async (next?: string, search = q) => {
-    const current = ++generation.current; setBusy(true); setError('');
-    try { const result = await query<{ items: Candidate[]; nextCursor: string | null }>(`/inventory-candidates?${new URLSearchParams({ q: search, grouped: 'true', ...(next ? { cursor: next } : {}) })}`);
-      if (current !== generation.current) return;
+    request.current?.abort();
+    const attempt = new AbortController();
+    request.current = attempt;
+    setBusy(true); setError('');
+    try { const result = await query<{ items: Candidate[]; nextCursor: string | null }>(`/inventory-candidates?${new URLSearchParams({ q: search, grouped: 'true', ...(next ? { cursor: next } : {}) })}`, attempt.signal);
+      if (attempt.signal.aborted) return;
       setItems(rows => next ? [...rows, ...result.items] : result.items); setCursor(result.nextCursor);
       // A new search requires reviewing the selection again.
       if (!next) { setSelected([]); setSelectionError(''); setChoosing(false); }
-    } catch (cause) { if (current === generation.current) setError(cause instanceof Error ? cause.message : 'No pude cargar las variantes.'); }
-    finally { if (current === generation.current) setBusy(false); }
+    } catch (cause) { if (!attempt.signal.aborted) setError(cause instanceof Error ? cause.message : 'No pude cargar las variantes.'); }
+    finally { if (!attempt.signal.aborted) { request.current = null; setBusy(false); } }
   };
   const latestLoad = useRef(load); latestLoad.current = load;
-  useEffect(() => { void latestLoad.current(); const focus = () => { if (!document.hidden && !syncInProgress.current) void latestLoad.current(); }; addEventListener('focus', focus); return () => { generation.current++; removeEventListener('focus', focus); }; }, []);
+  useEffect(() => {
+    void latestLoad.current();
+    const focus = () => { if (!document.hidden && !syncInProgress.current && !request.current) void latestLoad.current(); };
+    addEventListener('focus', focus);
+    return () => { request.current?.abort(); removeEventListener('focus', focus); };
+  }, []);
   const sync = async () => {
     if (working || syncInProgress.current) return;
     syncInProgress.current = true;

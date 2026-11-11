@@ -1,0 +1,1081 @@
+{
+  "deployment": "6444d97a0a6e6598b3aa23d1bc6e72d853ab4afb",
+  "sameDeploymentThroughout": true,
+  "samples": 108,
+  "scenarios": [
+    {
+      "mobile": false,
+      "name": "cold-list",
+      "visibleMs": {
+        "n": 3,
+        "p50": 1639.118,
+        "min": 1630.3688999999977,
+        "max": 2140.339700000004
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 1679.6743999999999,
+        "min": 1670.7775999999976,
+        "max": 2171.1254000000044
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 660.8950000000001,
+        "min": 607.157,
+        "max": 668.317
+      },
+      "lcp": {
+        "n": 3,
+        "p50": 1612,
+        "min": 1608,
+        "max": 2124
+      }
+    },
+    {
+      "mobile": false,
+      "name": "product-1",
+      "visibleMs": {
+        "n": 3,
+        "p50": 878.3454999999994,
+        "min": 859.4072999999989,
+        "max": 900.3209000000006
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 898.4475999999995,
+        "min": 878.6546999999991,
+        "max": 920.7290000000003
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 507.864,
+        "min": 483.19300000000004,
+        "max": 525.877
+      }
+    },
+    {
+      "mobile": false,
+      "name": "product-2",
+      "visibleMs": {
+        "n": 3,
+        "p50": 862.5849000000017,
+        "min": 847.747500000005,
+        "max": 865.7230000000009
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 882.5224999999991,
+        "min": 867.0957000000053,
+        "max": 886.0856000000003
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 489.678,
+        "min": 479.462,
+        "max": 529.2769999999999
+      }
+    },
+    {
+      "mobile": false,
+      "name": "product-3",
+      "visibleMs": {
+        "n": 3,
+        "p50": 859.0199000000002,
+        "min": 847.1900999999998,
+        "max": 861.9247000000032
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 878.8026,
+        "min": 866.3515000000043,
+        "max": 881.5552000000025
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 527.0980000000001,
+        "min": 524.9250000000001,
+        "max": 540.758
+      }
+    },
+    {
+      "mobile": false,
+      "name": "back-1",
+      "visibleMs": {
+        "n": 3,
+        "p50": 48.52700000000186,
+        "min": 46.510199999996985,
+        "max": 55.70759999999973
+      },
+      "imageReadyMs": null,
+      "ttfbMs": {
+        "n": 3,
+        "p50": 597.112,
+        "min": 576.405,
+        "max": 604.5360000000001
+      }
+    },
+    {
+      "mobile": false,
+      "name": "warm-list",
+      "visibleMs": {
+        "n": 3,
+        "p50": 1419.3666999999987,
+        "min": 1381.985099999998,
+        "max": 1606.5987000000023
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 1449.654599999998,
+        "min": 1412.732100000001,
+        "max": 1636.9370000000054
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 581.349,
+        "min": 543.757,
+        "max": 729.355
+      }
+    },
+    {
+      "mobile": false,
+      "name": "image-product",
+      "visibleMs": {
+        "n": 3,
+        "p50": 873.3385999999882,
+        "min": 866.5499000000018,
+        "max": 878.4674999999988
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 1323.5157999999938,
+        "min": 1299.783199999998,
+        "max": 2636.069800000001
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 532.4879999999999,
+        "min": 514.456,
+        "max": 532.609
+      }
+    },
+    {
+      "mobile": false,
+      "name": "image-product-warm",
+      "visibleMs": {
+        "n": 3,
+        "p50": 874.0676000000021,
+        "min": 867.4829000000027,
+        "max": 879.9750999999997
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 894.3606,
+        "min": 887.9012000000075,
+        "max": 900.3580999999976
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 523.9209999999999,
+        "min": 481.805,
+        "max": 527.525
+      }
+    },
+    {
+      "mobile": false,
+      "name": "image-product-reload",
+      "visibleMs": {
+        "n": 3,
+        "p50": 1298.7741000000024,
+        "min": 1288.4161999999924,
+        "max": 1348.1476000000002
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 1349.2046000000046,
+        "min": 1338.5485000000044,
+        "max": 1398.8122000000003
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 531.54,
+        "min": 523.448,
+        "max": 580.639
+      }
+    },
+    {
+      "mobile": true,
+      "name": "cold-list",
+      "visibleMs": {
+        "n": 3,
+        "p50": 2471.054099999994,
+        "min": 2422.625199999995,
+        "max": 2557.6995999999926
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 2533.4033999999956,
+        "min": 2485.145199999999,
+        "max": 2620.0332999999955
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 582.202,
+        "min": 574.439,
+        "max": 664.59
+      },
+      "lcp": {
+        "n": 3,
+        "p50": 2396,
+        "min": 2348,
+        "max": 2484
+      }
+    },
+    {
+      "mobile": true,
+      "name": "product-1",
+      "visibleMs": {
+        "n": 3,
+        "p50": 896.376500000013,
+        "min": 892.6548000000184,
+        "max": 907.8877000000066
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 926.9775000000081,
+        "min": 913.2406999999948,
+        "max": 928.2940999999992
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 535.326,
+        "min": 481.78900000000004,
+        "max": 537.6289999999999
+      }
+    },
+    {
+      "mobile": true,
+      "name": "product-2",
+      "visibleMs": {
+        "n": 3,
+        "p50": 888.8384000000078,
+        "min": 883.2385000000068,
+        "max": 890.5666999999958
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 909.3856000000087,
+        "min": 904.2605999999942,
+        "max": 911.1024999999936
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 528.2180000000001,
+        "min": 517.1080000000001,
+        "max": 542.7629999999999
+      }
+    },
+    {
+      "mobile": true,
+      "name": "product-3",
+      "visibleMs": {
+        "n": 3,
+        "p50": 884.9615000000049,
+        "min": 866.2023000000045,
+        "max": 892.6208000000042
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 905.7695000000094,
+        "min": 887.2097000000067,
+        "max": 913.4382999999943
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 511.527,
+        "min": 490.798,
+        "max": 545.237
+      }
+    },
+    {
+      "mobile": true,
+      "name": "back-1",
+      "visibleMs": {
+        "n": 3,
+        "p50": 91.96749999999884,
+        "min": 91.74700000000303,
+        "max": 99.75199999999313
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 772.289499999999,
+        "min": 742.4604000000108,
+        "max": 920.3956999999937
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 626.667,
+        "min": 605.25,
+        "max": 776.362
+      }
+    },
+    {
+      "mobile": true,
+      "name": "warm-list",
+      "visibleMs": {
+        "n": 3,
+        "p50": 1491.1684999999998,
+        "min": 1465.2559000000183,
+        "max": 1507.3319999999949
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 1552.8917000000074,
+        "min": 1536.1186000000162,
+        "max": 1568.8826999999874
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 613.209,
+        "min": 608.2520000000001,
+        "max": 663.01
+      }
+    },
+    {
+      "mobile": true,
+      "name": "image-product",
+      "visibleMs": {
+        "n": 3,
+        "p50": 903.8311000000103,
+        "min": 899.8524000000034,
+        "max": 926.2940999999992
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 2417.1682,
+        "min": 2370.694300000003,
+        "max": 2445.051800000001
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 515.36,
+        "min": 486.649,
+        "max": 521.155
+      }
+    },
+    {
+      "mobile": true,
+      "name": "image-product-warm",
+      "visibleMs": {
+        "n": 3,
+        "p50": 881.8083999999799,
+        "min": 879.3725999999879,
+        "max": 892.459600000002
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 902.9051999999792,
+        "min": 901.1239999999962,
+        "max": 913.5310000000027
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 506.93199999999996,
+        "min": 486.738,
+        "max": 596.922
+      }
+    },
+    {
+      "mobile": true,
+      "name": "image-product-reload",
+      "visibleMs": {
+        "n": 3,
+        "p50": 1343.29859999998,
+        "min": 1272.317900000009,
+        "max": 1391.3634999999922
+      },
+      "imageReadyMs": {
+        "n": 3,
+        "p50": 1424.56289999999,
+        "min": 1353.3974000000017,
+        "max": 1452.5720000000001
+      },
+      "ttfbMs": {
+        "n": 3,
+        "p50": 539.179,
+        "min": 487.627,
+        "max": 548.2230000000001
+      }
+    }
+  ],
+  "phases": [
+    {
+      "name": "list",
+      "metrics": {
+        "total": {
+          "n": 6,
+          "p50": 405.8,
+          "min": 375.5,
+          "max": 474.2
+        },
+        "db": {
+          "n": 6,
+          "p50": 289.2,
+          "min": 251,
+          "max": 337.2
+        },
+        "db_setup": {
+          "n": 6,
+          "p50": 66.2,
+          "min": 57.3,
+          "max": 67.3
+        },
+        "db_finalize": {
+          "n": 6,
+          "p50": 66.1,
+          "min": 57.1,
+          "max": 66.3
+        },
+        "storage": null,
+        "encode": null,
+        "render": {
+          "n": 6,
+          "p50": 0.4,
+          "min": 0.2,
+          "max": 0.4
+        }
+      }
+    },
+    {
+      "name": "product-html",
+      "metrics": {
+        "total": {
+          "n": 48,
+          "p50": 319,
+          "min": 288.1,
+          "max": 339.5
+        },
+        "db": {
+          "n": 48,
+          "p50": 192.4,
+          "min": 173,
+          "max": 204.6
+        },
+        "db_setup": {
+          "n": 48,
+          "p50": 62.9,
+          "min": 56.9,
+          "max": 67.3
+        },
+        "db_finalize": {
+          "n": 48,
+          "p50": 63.2,
+          "min": 56.9,
+          "max": 67.3
+        },
+        "storage": null,
+        "encode": null,
+        "render": {
+          "n": 48,
+          "p50": 0.1,
+          "min": 0.1,
+          "max": 0.4
+        }
+      }
+    },
+    {
+      "name": "product-image",
+      "metrics": {
+        "total": {
+          "n": 90,
+          "p50": 332.3,
+          "min": 287.6,
+          "max": 1662.1
+        },
+        "db": {
+          "n": 90,
+          "p50": 199.5,
+          "min": 173.1,
+          "max": 205.3
+        },
+        "db_setup": {
+          "n": 90,
+          "p50": 65.8,
+          "min": 56.9,
+          "max": 611.6
+        },
+        "db_finalize": {
+          "n": 90,
+          "p50": 65.7,
+          "min": 56.8,
+          "max": 67.1
+        },
+        "storage": {
+          "n": 5,
+          "p50": 213,
+          "min": 55.5,
+          "max": 268.2
+        },
+        "encode": {
+          "n": 3,
+          "p50": 138.6,
+          "min": 111,
+          "max": 1137.3
+        },
+        "render": null
+      }
+    },
+    {
+      "name": "brand-image",
+      "metrics": {
+        "total": {
+          "n": 84,
+          "p50": 522.9,
+          "min": 334.8,
+          "max": 1048.7
+        },
+        "db": {
+          "n": 84,
+          "p50": 393.1,
+          "min": 202.3,
+          "max": 509.7
+        },
+        "db_setup": {
+          "n": 84,
+          "p50": 64.1,
+          "min": 57,
+          "max": 538.8
+        },
+        "db_finalize": {
+          "n": 84,
+          "p50": 62.6,
+          "min": 56.8,
+          "max": 99.7
+        },
+        "storage": null,
+        "encode": null,
+        "render": null
+      }
+    }
+  ],
+  "processing": [
+    {
+      "mobile": false,
+      "run": 0,
+      "scenario": "product-3",
+      "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2026-9b2d6807c7/images/4ae1e2d2-7416-43ff-abed-f8cd8f3f7d44",
+      "query": "?variant=thumbnail&format=webp",
+      "phases": {
+        "total": 723.7,
+        "db": 190.9,
+        "db_setup": 62.4,
+        "db_finalize": 62.7,
+        "storage": 268.2,
+        "encode": 138.6
+      }
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "scenario": "filter-version",
+      "path": "/api/catalog/v1/fullmatch-casacas/products/inter-titular-2025-version-jugador-4d97e824af/images/29f8dfaa-cb99-4a36-aa3e-b4da67bd2963",
+      "query": "?variant=thumbnail&format=webp",
+      "phases": {
+        "total": 683.4,
+        "db": 202.8,
+        "db_setup": 66.7,
+        "db_finalize": 67,
+        "storage": 234.4,
+        "encode": 111
+      }
+    },
+    {
+      "mobile": false,
+      "run": 0,
+      "scenario": "image-product",
+      "path": "/api/catalog/v1/fullmatch-casacas/products/boca-titular-2025-version-jugador-7d6b0a5d15/images/7e0e83ec-82f8-43be-8c2d-2f473e04dae2",
+      "query": "?variant=detail&format=webp",
+      "phases": {
+        "total": 1662.1,
+        "db": 202.5,
+        "db_setup": 66.8,
+        "db_finalize": 67.1,
+        "storage": 187.1,
+        "encode": 1137.3
+      }
+    }
+  ],
+  "probes": [
+    {
+      "name": "health",
+      "run": 0,
+      "status": 200,
+      "phases": {}
+    },
+    {
+      "name": "static-js",
+      "run": 0,
+      "status": 200,
+      "phases": {
+        "total": 0.3
+      }
+    },
+    {
+      "name": "brand-json",
+      "run": 0,
+      "status": 200,
+      "phases": {
+        "total": 185.6,
+        "db": 62.1,
+        "db_setup": 61.5,
+        "db_finalize": 61.6
+      }
+    },
+    {
+      "name": "list-json",
+      "run": 0,
+      "status": 200,
+      "phases": {
+        "total": 438.8,
+        "db": 311.9,
+        "db_setup": 61.8,
+        "db_finalize": 62
+      }
+    },
+    {
+      "name": "list-html",
+      "run": 0,
+      "status": 200,
+      "phases": {
+        "total": 438.1,
+        "db": 311.9,
+        "db_setup": 61.4,
+        "db_finalize": 61.8,
+        "render": 0.3
+      }
+    },
+    {
+      "name": "detail-json",
+      "run": 0,
+      "status": 200,
+      "phases": {
+        "total": 310.9,
+        "db": 186.9,
+        "db_setup": 61.6,
+        "db_finalize": 61.6
+      }
+    },
+    {
+      "name": "logo",
+      "run": 0,
+      "status": 200,
+      "phases": {
+        "total": 489.9,
+        "db": 366.3,
+        "db_setup": 61.8,
+        "db_finalize": 61.5
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 679.0657000000006,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "cover",
+      "run": 0,
+      "status": 200,
+      "phases": {
+        "total": 548.2,
+        "db": 424.8,
+        "db_setup": 61.5,
+        "db_finalize": 61.5
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 559.1660000000002,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "thumbnail-jpeg",
+      "run": 0,
+      "status": 200,
+      "phases": {
+        "total": 311,
+        "db": 187.5,
+        "db_setup": 61.5,
+        "db_finalize": 61.5
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 505.2599,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "thumbnail-webp",
+      "run": 0,
+      "status": 200,
+      "phases": {
+        "total": 311.6,
+        "db": 187.4,
+        "db_setup": 61.9,
+        "db_finalize": 61.6
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 532.3062,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "detail-webp",
+      "run": 0,
+      "status": 200,
+      "phases": {
+        "total": 332.9,
+        "db": 200.3,
+        "db_setup": 65.9,
+        "db_finalize": 66.1
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 531.7498999999989,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "master-jpeg",
+      "run": 0,
+      "status": 200,
+      "phases": {
+        "total": 649.3,
+        "db": 187.1,
+        "db_setup": 61.3,
+        "db_finalize": 61.4,
+        "storage": 338.4
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 519.2248999999993,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "health",
+      "run": 1,
+      "status": 200,
+      "phases": {}
+    },
+    {
+      "name": "static-js",
+      "run": 1,
+      "status": 200,
+      "phases": {
+        "total": 0.2
+      }
+    },
+    {
+      "name": "brand-json",
+      "run": 1,
+      "status": 200,
+      "phases": {
+        "total": 186.1,
+        "db": 62,
+        "db_setup": 61.7,
+        "db_finalize": 62.1
+      }
+    },
+    {
+      "name": "list-json",
+      "run": 1,
+      "status": 200,
+      "phases": {
+        "total": 469.6,
+        "db": 334.6,
+        "db_setup": 66.1,
+        "db_finalize": 66.1
+      }
+    },
+    {
+      "name": "list-html",
+      "run": 1,
+      "status": 200,
+      "phases": {
+        "total": 437.7,
+        "db": 311.9,
+        "db_setup": 61.8,
+        "db_finalize": 61.5,
+        "render": 0.2
+      }
+    },
+    {
+      "name": "detail-json",
+      "run": 1,
+      "status": 200,
+      "phases": {
+        "total": 310.6,
+        "db": 186.9,
+        "db_setup": 61.7,
+        "db_finalize": 61.4
+      }
+    },
+    {
+      "name": "logo",
+      "run": 1,
+      "status": 200,
+      "phases": {
+        "total": 487.8,
+        "db": 364.3,
+        "db_setup": 61.5,
+        "db_finalize": 61.6
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 559.5895999999993,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "cover",
+      "run": 1,
+      "status": 200,
+      "phases": {
+        "total": 370.1,
+        "db": 246.6,
+        "db_setup": 61.7,
+        "db_finalize": 61.4
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 733.3790000000008,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "thumbnail-jpeg",
+      "run": 1,
+      "status": 200,
+      "phases": {
+        "total": 414.9,
+        "db": 200.5,
+        "db_setup": 147.7,
+        "db_finalize": 65.9
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 523.6451000000015,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "thumbnail-webp",
+      "run": 1,
+      "status": 200,
+      "phases": {
+        "total": 333.6,
+        "db": 200.8,
+        "db_setup": 65.9,
+        "db_finalize": 66.3
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 520.0226000000002,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "detail-webp",
+      "run": 1,
+      "status": 200,
+      "phases": {
+        "total": 329.6,
+        "db": 198.3,
+        "db_setup": 65.2,
+        "db_finalize": 65.4
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 566.9027999999998,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "master-jpeg",
+      "run": 1,
+      "status": 200,
+      "phases": {
+        "total": 329.7,
+        "db": 198.4,
+        "db_setup": 65.5,
+        "db_finalize": 65.3
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 577.1054000000004,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "health",
+      "run": 2,
+      "status": 200,
+      "phases": {}
+    },
+    {
+      "name": "static-js",
+      "run": 2,
+      "status": 200,
+      "phases": {
+        "total": 0.5
+      }
+    },
+    {
+      "name": "brand-json",
+      "run": 2,
+      "status": 200,
+      "phases": {
+        "total": 196.9,
+        "db": 65.4,
+        "db_setup": 66.1,
+        "db_finalize": 65
+      }
+    },
+    {
+      "name": "list-json",
+      "run": 2,
+      "status": 200,
+      "phases": {
+        "total": 468.6,
+        "db": 334,
+        "db_setup": 66.1,
+        "db_finalize": 66.1
+      }
+    },
+    {
+      "name": "list-html",
+      "run": 2,
+      "status": 200,
+      "phases": {
+        "total": 404.8,
+        "db": 270.3,
+        "db_setup": 66.4,
+        "db_finalize": 65.9,
+        "render": 0.4
+      }
+    },
+    {
+      "name": "detail-json",
+      "run": 2,
+      "status": 200,
+      "phases": {
+        "total": 333,
+        "db": 200.5,
+        "db_setup": 66,
+        "db_finalize": 65.9
+      }
+    },
+    {
+      "name": "logo",
+      "run": 2,
+      "status": 200,
+      "phases": {
+        "total": 518.1,
+        "db": 386.9,
+        "db_setup": 65.4,
+        "db_finalize": 65.3
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 587.6848999999966,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "cover",
+      "run": 2,
+      "status": 200,
+      "phases": {
+        "total": 454.9,
+        "db": 323.9,
+        "db_setup": 65.5,
+        "db_finalize": 65.1
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 584.3881000000001,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "thumbnail-jpeg",
+      "run": 2,
+      "status": 200,
+      "phases": {
+        "total": 333.2,
+        "db": 200.3,
+        "db_setup": 66.1,
+        "db_finalize": 66.1
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 521.2458999999981,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "thumbnail-webp",
+      "run": 2,
+      "status": 200,
+      "phases": {
+        "total": 333.3,
+        "db": 200.4,
+        "db_setup": 66.2,
+        "db_finalize": 66
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 521.1219999999994,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "detail-webp",
+      "run": 2,
+      "status": 200,
+      "phases": {
+        "total": 334.1,
+        "db": 201.2,
+        "db_setup": 66.2,
+        "db_finalize": 66.2
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 527.6877999999997,
+        "bytes": 0
+      }
+    },
+    {
+      "name": "master-jpeg",
+      "run": 2,
+      "status": 200,
+      "phases": {
+        "total": 334.2,
+        "db": 201.1,
+        "db_setup": 66.1,
+        "db_finalize": 66.2
+      },
+      "conditional": {
+        "status": 304,
+        "ttfbMs": 579.7465999999986,
+        "bytes": 0
+      }
+    }
+  ],
+  "limitations": [
+    "db includes client-observed round trips, not only SQL execution",
+    "db_setup includes client acquisition and BEGIN, not only pool wait",
+    "encode includes Sharp decoding, resizing, encoding and native queue waits",
+    "samples are small and the server cache was not forcibly cleared"
+  ]
+}

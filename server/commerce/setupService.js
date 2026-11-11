@@ -10,10 +10,18 @@ import { appearanceOf } from './appearance.js';
 // Activation only writes business configuration. DDL and inventory corrections
 // belong to their explicit migration and reviewed inventory-operation flows.
 export function createCommerceSetupService(runtime) {
+  let schemaReady;
+  const checkSchema = async client => {
+    if (!(await inspectCommerceSchema(client)).ready) fail('COMMERCE_SCHEMA_NOT_READY', 'El servicio comercial necesita una actualización del administrador. Tu negocio no necesita ejecutar scripts.', 503);
+  };
   const access = async (client, context, ownerOnly = false) => {
     if (ownerOnly && (context.role !== 'owner' || context.actorId !== context.businessId)) fail('COMMERCE_FORBIDDEN', 'Solo el dueño puede activar el negocio y confirmar su moneda.', 403);
     await requireCommerceIdentity(client, context, { permission: 'commerce:settings', lock: ownerOnly });
-    if (!(await inspectCommerceSchema(client)).ready) fail('COMMERCE_SCHEMA_NOT_READY', 'El servicio comercial necesita una actualización del administrador. Tu negocio no necesita ejecutar scripts.', 503);
+    if (ownerOnly) await checkSchema(client);
+    else {
+      schemaReady ??= checkSchema(client).catch(error => { schemaReady = undefined; throw error; });
+      await schemaReady;
+    }
   };
   const status = async (client, context) => {
     const profile = await readProfile(client, context.businessId), moneyPolicy = await readMoneyPolicy(client, context.businessId);

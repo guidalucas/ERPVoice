@@ -5,20 +5,31 @@ const prefix = '/api/commerce/v1';
 export class StudioError extends Error {
   constructor(public code: string, message: string, public status: number) { super(message); }
 }
+function requestSignal(caller?: AbortSignal | null) {
+  const timeout = AbortSignal.timeout(30_000);
+  if (!caller) return timeout;
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([caller, timeout]);
+  if (caller.aborted) return caller;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  caller.addEventListener('abort', abort, { once: true, signal: controller.signal });
+  timeout.addEventListener('abort', abort, { once: true, signal: controller.signal });
+  return controller.signal;
+}
 export async function studioFetch(route: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers), token = getAuthToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
   let response: Response;
-  try { response = await fetch(`${base}${prefix}${route}`, { ...options, headers, cache: 'no-store', signal: options.signal ?? AbortSignal.timeout(30_000) }); }
+  try { response = await fetch(`${base}${prefix}${route}`, { ...options, headers, cache: 'no-store', signal: requestSignal(options.signal) }); }
   catch { throw new StudioError('NETWORK_ERROR', 'No pude confirmar la operación. Conservé el intento para recuperarlo.', 0); }
-  if (response.status === 401) clearAuthSession();
+  if (response.status === 401 && getAuthToken() === token) clearAuthSession();
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new StudioError(data.error?.code ?? 'COMMERCE_UNAVAILABLE', typeof data.error?.message === 'string' ? data.error.message : 'No pude completar la operación. Reintentá.', response.status);
   }
   return response;
 }
-export async function query<T>(route: string): Promise<T> { return (await studioFetch(route)).json(); }
+export async function query<T>(route: string, signal?: AbortSignal): Promise<T> { return (await studioFetch(route, { signal })).json(); }
 type Pending = { operationId: string; route: string; method: string; body: Record<string, unknown>; at: string };
 const pendingKey = () => `fullmatch.pending.${getAuthSession()?.phoneNumber ?? 'none'}`;
 export function pendingOperations(): Pending[] {
@@ -69,7 +80,18 @@ export async function recoverOperation<T>(id: string): Promise<T> {
   const receipt = await query<Receipt<T>>(`/operations/${id}`); if (pending) settleOperation(pending); else forgetOperation(id); return receipt.result;
 }
 export const imageRoute = (productId: string, imageId: string, thumbnail = false) => `/products/${productId}/images/${imageId}/content${thumbnail ? '?variant=thumbnail' : ''}`;
-export async function imageBlob(productId: string, imageId: string, thumbnail = false) { return (await studioFetch(imageRoute(productId, imageId, thumbnail))).blob(); }
+const pendingThumbnails = new Map<string, Promise<Blob>>();
+export async function imageBlob(productId: string, imageId: string, thumbnail = false) {
+  const route = imageRoute(productId, imageId, thumbnail), token = getAuthToken();
+  const load = () => studioFetch(route).then(response => response.blob());
+  if (!thumbnail || !token) return load();
+  const key = `${token}:${route}`;
+  const pending = pendingThumbnails.get(key);
+  if (pending) return pending;
+  const request = load().finally(() => pendingThumbnails.delete(key));
+  pendingThumbnails.set(key, request);
+  return request;
+}
 export async function uploadPhoto(productId: string, imageId: string, file: File) {
   return (await studioFetch(imageRoute(productId, imageId), { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })).json();
 }

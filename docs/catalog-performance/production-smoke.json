@@ -1,0 +1,22 @@
+{
+  "measuredAt": "2026-11-10T01:26:49.609Z",
+  "deployment": "6444d97a0a6e6598b3aa23d1bc6e72d853ab4afb",
+  "checks": [
+    {
+      "mobile": false,
+      "script": "/catalog-assets/catalog.js?v=2",
+      "serverTiming": "total;dur=966.5, db;dur=698.4;desc=\"9 queries\", db_setup;dur=66.6, db_finalize;dur=66.1, render;dur=1.7",
+      "anchor": "not-configured",
+      "softNavigation": "passed",
+      "errors": []
+    },
+    {
+      "mobile": true,
+      "script": "/catalog-assets/catalog.js?v=2",
+      "serverTiming": "total;dur=462.2, db;dur=328.9;desc=\"4 queries\", db_setup;dur=64.9, db_finalize;dur=64.8, render;dur=0.4",
+      "anchor": "not-configured",
+      "softNavigation": "passed",
+      "errors": []
+    }
+  ]
+}

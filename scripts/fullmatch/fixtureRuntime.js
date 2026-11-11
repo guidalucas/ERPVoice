@@ -19,7 +19,7 @@ const waitFor = async (url, child) => {
     if (ok) return; await new Promise(resolve => setTimeout(resolve, 100));
   } throw new Error('FIXTURE_STARTUP_TIMEOUT');
 };
-export async function startCommerceFixture({ configureApi } = {}) {
+export async function startCommerceFixture({ configureApi, studioBuild = false } = {}) {
   const tempParent = await fs.realpath(os.tmpdir()), directory = await fs.mkdtemp(path.join(tempParent, 'fullmatch-fixture-'));
   const dbDirectory = path.join(directory, 'pg'), pgPort = await freePort(), apiPort = await freePort(), vitePort = await freePort();
   const password = randomBytes(20).toString('hex'), dbName = `fullmatch_fixture_${randomBytes(6).toString('hex')}`;
@@ -63,8 +63,20 @@ export async function startCommerceFixture({ configureApi } = {}) {
     const metadata = JSON.parse(await fs.readFile(manifest, 'utf8'));
     const apiEnv = await configureApi?.({ connection, directory });
     const api = launch(path.join(repo, 'server/index.js'), [], { ...env, ...apiEnv, STOCKY_SCHEMA_MODE: 'verify' }); await waitFor(`http://127.0.0.1:${apiPort}/api/health`, api);
-    const frontend = launch(path.join(repo, 'node_modules/vite/bin/vite.js'), ['--config', path.join(repo, 'vite.studio.config.ts'), '--port', String(vitePort)], {
-      ...process.env, NODE_ENV: 'development', VITE_API_PROXY_TARGET: `http://127.0.0.1:${apiPort}` }, repo);
+    const vite = path.join(repo, 'node_modules/vite/bin/vite.js');
+    const viteArgs = ['--config', path.join(repo, 'vite.studio.config.ts')];
+    const frontendEnv = { ...process.env, NODE_ENV: 'development', VITE_API_PROXY_TARGET: `http://127.0.0.1:${apiPort}` };
+    let frontend;
+    if (studioBuild) {
+      const out = path.join(directory, 'dist-studio');
+      const buildEnv = { ...frontendEnv, NODE_ENV: 'production', VITE_API_BASE: `http://127.0.0.1:${apiPort}` };
+      const build = launch(vite, ['build', ...viteArgs, '--outDir', out], buildEnv, repo);
+      const code = await new Promise((resolve, reject) => { build.once('close', resolve); build.once('error', reject); });
+      if (code !== 0) throw new Error('FIXTURE_STUDIO_BUILD_FAILED');
+      frontend = launch(vite, ['preview', ...viteArgs, '--outDir', out, '--host', '127.0.0.1', '--port', String(vitePort), '--strictPort'], buildEnv, repo);
+    } else {
+      frontend = launch(vite, [...viteArgs, '--port', String(vitePort)], frontendEnv, repo);
+    }
     await waitFor(`http://127.0.0.1:${vitePort}/studio.html`, frontend);
     return { ...metadata, url: `http://127.0.0.1:${vitePort}/studio.html`, apiUrl: `http://127.0.0.1:${apiPort}`, connection, stop };
   } catch (error) { await stop(); throw error; }
