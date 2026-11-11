@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { measureCatalogPhase } from './catalog/timing.js';
 
 /** Connection/transaction primitives only: never bootstraps schemas or normalizes tenants. */
 export function createDatabaseRuntime({ connectionString, ssl = false, poolFactory = options => new Pool(options) }) {
@@ -11,7 +12,7 @@ export function createDatabaseRuntime({ connectionString, ssl = false, poolFacto
     return pool;
   };
   const withClient = async callback => {
-    const client = await getPool().connect();
+    const client = await measureCatalogPhase('pool', () => getPool().connect());
     try { return await callback(client); } finally { client.release(); }
   };
   const transaction = async (callback, { readOnly = false, repeatableRead = false } = {}) => withClient(async client => {

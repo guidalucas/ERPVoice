@@ -1,5 +1,5 @@
 import { useConfirm } from '../components/ui/ConfirmationProvider';
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useAuth } from '../store/AuthStore';
 import { createWhatsAppLogin, pollWhatsAppLogin, type WhatsAppLoginChallenge } from '../services/authService';
 import { command, imageBlob, pendingOperations, query, recoverOperation, retryOperation, studioFetch, StudioError, uploadPhoto } from './api';
@@ -83,6 +83,8 @@ export function Studio() {
   const { session, isBootstrapping, logout } = useAuth();
   const [view, setView] = useState<View>('products'), [profile, setProfile] = useState<Profile | null>(null), [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null), [creating, setCreating] = useState(false), [version, setVersion] = useState(0);
+  const [catalogVersion, setCatalogVersion] = useState(0);
+  const [listVersion, setListVersion] = useState(0);
   const [initialStep, setInitialStep] = useState<ProductStep>('details');
   const [completion, setCompletion] = useState('');
   const [showMissingPhotos, setShowMissingPhotos] = useState(false);
@@ -90,6 +92,23 @@ export function Studio() {
   const [initialCandidates, setInitialCandidates] = useState<Candidate[]>([]);
   const [setupVersion, setSetupVersion] = useState(0);
   const [setup, setSetup] = useState<SetupStatus | null>(null), [setupLoading, setSetupLoading] = useState(true);
+  const listVisible = Boolean(session && setup?.enabled && !setupLoading && !setup.needsSetup
+    && !session.needsOnboarding && !session.pendingInvite && !isBootstrapping
+    && view === 'products' && !selectedId && !creating && !batchOpen);
+  const visitedProducts = useRef(false), listScroll = useRef(0);
+  const wasListVisible = useRef(false);
+  useLayoutEffect(() => {
+    if (listVisible) {
+      visitedProducts.current = true;
+      window.scrollTo({ top: listScroll.current, behavior: 'instant' });
+      const saveScroll = () => { listScroll.current = window.scrollY; };
+      addEventListener('scroll', saveScroll, { passive: true });
+      wasListVisible.current = true;
+      return () => removeEventListener('scroll', saveScroll);
+    }
+    if (wasListVisible.current) window.scrollTo({ top: 0, behavior: 'instant' });
+    wasListVisible.current = false;
+  }, [listVisible]);
   useEffect(() => {
     let active = true; setSetupLoading(true); setError(''); setSetup(null); setProfile(null);
     if (!session || !['owner', 'admin'].includes(session.role)) { setSetupLoading(false); return; }
@@ -108,8 +127,18 @@ export function Studio() {
   if (!setup || !setup.enabled && setup.profile) return <AccessFrame><main className="onboarding panel"><h1>No pude abrir Studio</h1><Notice action={<button onClick={() => setSetupVersion(value => value + 1)}>Reintentar</button>}>{error || 'El acceso comercial está deshabilitado. Contactá al administrador.'}</Notice><a href="/">Volver a Stocky</a><button onClick={logout}>Cerrar sesión</button></main></AccessFrame>;
   if (setup.needsSetup || session.needsOnboarding) return session.role === 'admin' ? <AccessFrame><main className="onboarding panel"><h1>Falta preparar el negocio</h1><p>El dueño debe completar la configuración inicial y confirmar la moneda antes de usar Studio.</p><a href="/">Volver a Stocky</a></main></AccessFrame> : <AccessFrame><BusinessOnboarding key={session.phoneNumber + setupVersion} status={setup} onDone={() => setSetupVersion(value => value + 1)} onRefresh={() => setSetupVersion(value => value + 1)}/></AccessFrame>;
   const open = (id: string, step: ProductStep = 'details') => { setCompletion(''); setInitialStep(step); setCreating(false); setView('products'); location.hash = `/products/${id}`; setSelectedId(id); };
-  const close = () => { setCompletion(''); setInitialStep('details'); location.hash = '/products'; setSelectedId(null); setCreating(false); setInitialCandidates([]); setBatchOpen(false); setVersion(value => value + 1); };
-  const navigate = (next: View) => { close(); setShowMissingPhotos(false); setView(next); };
+  const close = () => { setCompletion(''); setInitialStep('details'); location.hash = '/products'; setSelectedId(null); setCreating(false); setInitialCandidates([]); setBatchOpen(false); };
+  const navigate = (next: View) => {
+    close();
+    if (view === 'settings' && next !== 'settings') setCatalogVersion(value => value + 1);
+    setView(next);
+  };
+  const openMissingPhotos = () => {
+    listScroll.current = 0;
+    setShowMissingPhotos(true);
+    setListVersion(value => value + 1);
+    navigate('products');
+  };
   const resumeBatch = () => { setSelectedId(null); setCreating(false); setBatchOpen(true); location.hash = '/batch'; };
   const startBatch = async (ids: string[]) => {
     if (readBatchJob()?.items.some(item => item.request) && !await confirm({ title: '¿Crear un lote nuevo con esta selección?', description: 'Se reemplazará el lote guardado.', action: 'crear lote', destructive: true })) return;
@@ -117,13 +146,17 @@ export function Studio() {
   };
   return <div className="studio-shell"><aside className="sidebar"><Brand/><p className="nav-caption">TU ESPACIO COMERCIAL</p><nav aria-label="Navegación de Studio">
     {([['products', '01', 'Productos'], ['pending', '02', 'Pendientes'], ['library', '03', 'Biblioteca'], ['settings', '04', 'Configuración']] as const).map(([id, number, label]) => <button key={id} className={view === id ? 'active' : ''} onClick={() => navigate(id)}><span>{number}</span>{label}<b>↗</b></button>)}
-    </nav><div className="sidebar-bottom"><span className="connection-dot"/> Conectado con Stocky<p>El stock y los precios se mantienen en tu inventario.</p><button onClick={() => navigate('recovery')}>Recuperar intentos</button><a href="/?section=productos">Abrir Stocky ↗</a><CatalogShortcut refreshKey={version} onConfigure={() => navigate('settings')}/><button onClick={logout}>Cerrar sesión</button></div></aside>
+    </nav><div className="sidebar-bottom"><span className="connection-dot"/> Conectado con Stocky<p>El stock y los precios se mantienen en tu inventario.</p><button onClick={() => navigate('recovery')}>Recuperar intentos</button><a href="/?section=productos">Abrir Stocky ↗</a><CatalogShortcut refreshKey={catalogVersion} onConfigure={() => navigate('settings')}/><button onClick={logout}>Cerrar sesión</button></div></aside>
     <main className="workspace"><header className="topbar"><span className="workspace-label"><a href="/">Stocky</a><span aria-hidden="true"> / </span>Studio</span><span className="account"><span className="avatar">{profile?.appearance?.logoId ? <BrandImage id={profile.appearance.logoId} alt={profile.brandName}/> : brandInitials(profile?.brandName ?? 'Stocky')}</span><span className="account-name">{profile?.brandName ?? 'Tu negocio'}</span></span><div className="studio-tools"><ThemeToggle/><details className="mobile-session"><summary>Cuenta</summary><div><button onClick={() => navigate('recovery')}>Recuperar intentos</button><button onClick={logout}>Cerrar sesión</button></div></details></div></header>
       {error && <Notice action={<button onClick={() => { setError(''); setVersion(value => value + 1); }}>Reintentar</button>}>{error}</Notice>}
       {completion && !selectedId && !creating && <Notice>{completion}</Notice>}
+      {(listVisible || visitedProducts.current) && <div hidden={!listVisible}>
+        <ProductList key={`${session.phoneNumber}:${session.tenantPhone}:${listVersion}`} active={listVisible} refreshVersion={version}
+          profile={profile} showMissingPhotos={showMissingPhotos} onOpen={open} onCreate={() => { setInitialCandidates([]); setCreating(true); }} onBatch={startBatch}/>
+      </div>}
       {batchOpen ? <BatchStudio onBack={close}/> : selectedId || creating ? <ProductEditor key={selectedId ?? 'new'} id={selectedId} initialStep={creating ? 'details' : initialStep} initialCandidates={initialCandidates} onClose={close} onAttach={id => open(id, 'variants')} onPublished={() => { close(); setCompletion('Ficha finalizada y publicada en el catálogo.'); }} onCreated={(id, step) => { setInitialCandidates([]); open(id, step); }}/>
-        : view === 'products' ? <ProductList profile={profile} key={version} showMissingPhotos={showMissingPhotos} onOpen={open} onCreate={() => { setInitialCandidates([]); setCreating(true); }} onBatch={startBatch}/>
-        : view === 'pending' ? <PendingInventory onCreate={items => { setInitialCandidates(items); setView('products'); setCreating(true); }} onLink={(id, items) => { setInitialCandidates(items); open(id); }} onPhotos={() => { navigate('products'); setShowMissingPhotos(true); }}/>
+        : view === 'products' ? null
+        : view === 'pending' ? <PendingInventory onCreate={items => { setInitialCandidates(items); setView('products'); setCreating(true); }} onLink={(id, items) => { setInitialCandidates(items); open(id); }} onPhotos={openMissingPhotos}/>
         : view === 'library' ? <ContentLibrary onOpen={open} onResumeBatch={resumeBatch}/> : view === 'settings' ? profile && <><Settings profile={profile} onSaved={setProfile}/><MoneyReview/></> : <Recovery onRecovered={() => setVersion(value => value + 1)}/>}
       <footer>STOCKY STUDIO <span>Una ficha. Todas tus posibilidades.</span></footer>
     </main></div>;
@@ -142,7 +175,8 @@ function readProductPage(filters: typeof emptyProductFilters, cursor?: string, l
   return query<ProductPage>(`/products?${params}`);
 }
 
-function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: {
+function ProductList({ active, refreshVersion, profile, showMissingPhotos, onOpen, onCreate, onBatch }: {
+  active: boolean; refreshVersion: number;
   profile: Profile | null; showMissingPhotos: boolean; onOpen: (id: string, step?: ProductStep) => void; onCreate: () => void; onBatch: (ids: string[]) => void;
 }) {
   const [filters, setFilters] = useState({ ...emptyProductFilters, photos: showMissingPhotos ? 'missing' : '' }), [applied, setApplied] = useState(filters);
@@ -154,13 +188,30 @@ function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: 
   const [summary, setSummary] = useState<{ products: { status: string; count: number }[]; unlinkedSkus: number; withoutPhotos: number } | null>(null);
   const confirm = useConfirm();
   const mounted = useRef(false), publicationRunning = useRef(false);
+  const visibility = useRef({ active, generation: 0 });
+  useLayoutEffect(() => {
+    visibility.current = { active, generation: visibility.current.generation + 1 };
+    if (!active) setPublicationResult(null);
+  }, [active]);
   const readGeneration = useRef(0);
+  const reading = useRef(false), loaded = useRef(false);
   const refreshSummary = () => void query<typeof summary>('/summary').then(value => { if (mounted.current) setSummary(value); }).catch(() => {});
-  const load = async (next?: string, values = applied) => {
-    const generation = ++readGeneration.current; setBusy(true); setError('');
+  const load = async (next?: string, values = applied, background = false) => {
+    const generation = ++readGeneration.current;
+    reading.current = true;
+    if (!background) { setBusy(true); setError(''); }
     try {
-      const result = await readProductPage(values, next);
+      let result = await readProductPage(values, next);
+      if (background) {
+        // Keep the loaded range and rebuild its cursors against the current order.
+        while (result.nextCursor && result.items.length < products.length && generation === readGeneration.current) {
+          const page = await readProductPage(values, result.nextCursor);
+          result = { items: [...result.items, ...page.items], nextCursor: page.nextCursor };
+        }
+      }
       if (generation !== readGeneration.current) return;
+      loaded.current = true;
+      setError('');
       setProducts(current => next ? [...current, ...result.items] : result.items);
       if (!next) {
         const selectableIds = new Set(result.items.filter(product => canPublish(product) || product.readiness.canGenerateStory).map(product => product.id));
@@ -168,16 +219,25 @@ function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: 
       }
       setCursor(result.nextCursor); setApplied(values);
       if (result.items.some(product => product.teamKey)) setHasSports(true);
-    } catch (cause) { if (generation === readGeneration.current) setError(message(cause)); }
-    finally { if (generation === readGeneration.current) setBusy(false); }
+    } catch (cause) { if (!background && generation === readGeneration.current) setError(message(cause)); }
+    finally { if (generation === readGeneration.current) { reading.current = false; setBusy(false); } }
   };
   const listLoad = useRef(load); listLoad.current = load;
   useEffect(() => {
     mounted.current = true;
-    const refresh = () => { if (!document.hidden && !publicationRunning.current) { void listLoad.current(); refreshSummary(); } };
-    refresh(); addEventListener('focus', refresh);
-    return () => { mounted.current = false; readGeneration.current++; removeEventListener('focus', refresh); };
+    return () => { mounted.current = false; readGeneration.current++; reading.current = false; };
   }, []);
+  useEffect(() => {
+    if (!active) return;
+    const refresh = () => {
+      if (document.hidden || publicationRunning.current || reading.current) return;
+      void listLoad.current(undefined, undefined, loaded.current);
+      refreshSummary();
+    };
+    refresh();
+    addEventListener('focus', refresh);
+    return () => removeEventListener('focus', refresh);
+  }, [active, refreshVersion]);
   const change = (key: keyof typeof filters, value: string) => setFilters(current => ({ ...current, [key]: value }));
   const applyFilters = (values: typeof filters) => { setSelection([]); void load(undefined, values); };
   const clear = () => { setFilters(emptyProductFilters); applyFilters(emptyProductFilters); };
@@ -190,12 +250,14 @@ function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: 
 
   const publish = async (all: boolean) => {
     if (busy || publicationRunning.current) return;
+    const generation = visibility.current.generation;
+    const isCurrent = () => mounted.current && visibility.current.generation === generation;
     publicationRunning.current = true;
     setPublicationProgress('Consultando fichas para publicar…');
     setPublicationResult(null);
     try {
       const catalog = await query<Catalog | null>('/catalog');
-      if (!mounted.current) return;
+      if (!isCurrent()) return;
       if (!catalog) throw new Error('Configurá el catálogo en Configuración antes de publicar fichas.');
 
       let candidates = selectedToPublish;
@@ -204,7 +266,7 @@ function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: 
         let next: string | undefined;
         do {
           const page = await readProductPage(applied, next, 50);
-          if (!mounted.current) return;
+          if (!isCurrent()) return;
           for (const product of page.items.filter(canPublish)) matches.set(product.id, product);
           next = page.nextCursor ?? undefined;
         } while (next);
@@ -216,8 +278,8 @@ function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: 
       }
       const count = candidates.length === 1 ? '1 ficha' : `${candidates.length} fichas`;
       const scope = all ? filtered ? 'Se incluyen todas las fichas aptas de los resultados filtrados.' : 'Se incluyen todas las fichas aptas de la colección.' : '';
-      const visibility = catalog.publicEnabled ? 'Tus clientes podrán verlas en el catálogo público.' : 'Tus clientes podrán verlas cuando habilites el catálogo público.';
-      if (!await confirm({ title: `¿Publicar ${count} en el catálogo?`, description: [scope, visibility].filter(Boolean).join(' '), action: 'publicar' }) || !mounted.current) return;
+      const visibilityMessage = catalog.publicEnabled ? 'Tus clientes podrán verlas en el catálogo público.' : 'Tus clientes podrán verlas cuando habilites el catálogo público.';
+      if (!await confirm({ title: `¿Publicar ${count} en el catálogo?`, description: [scope, visibilityMessage].filter(Boolean).join(' '), action: 'publicar' }) || !isCurrent()) return;
 
       const published = new Set<string>(), failures: string[] = [];
       let remaining = 0;
@@ -233,9 +295,9 @@ function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: 
             break;
           }
         }
-        if (!mounted.current) return;
+        if (!isCurrent()) return;
       }
-      if (!mounted.current) return;
+      if (!isCurrent()) return;
       setSelection(current => current.filter(id => !published.has(id)));
       const completed = published.size === 1 ? '1 ficha publicada.' : `${published.size} fichas publicadas.`;
       const incomplete = failures.length === 1 ? ' No se pudo confirmar 1 publicación.' : failures.length ? ` No se pudieron confirmar ${failures.length} publicaciones.` : '';
@@ -244,10 +306,16 @@ function ProductList({ profile, showMissingPhotos, onOpen, onCreate, onBatch }: 
       refreshSummary();
       await load();
     } catch (cause) {
-      if (mounted.current) setPublicationResult({ text: message(cause) });
+      if (isCurrent()) setPublicationResult({ text: message(cause) });
     } finally {
       publicationRunning.current = false;
-      if (mounted.current) setPublicationProgress('');
+      if (mounted.current) {
+        setPublicationProgress('');
+        if (!isCurrent() && visibility.current.active && !reading.current) {
+          void listLoad.current(undefined, undefined, loaded.current);
+          refreshSummary();
+        }
+      }
     }
   };
   return <section className="product-list">

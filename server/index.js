@@ -14,6 +14,7 @@ import { createWhatsAppPhotoService } from './commerce/whatsappPhotoService.js';
 import { downloadWhatsAppPhoto } from './commerce/whatsappPhotoDownload.js';
 import { inspectWhatsAppPhotoSchema } from './commerce/whatsappPhotoMigration.js';
 import { createPublicCatalogRouters } from './catalog/router.js';
+import { catalogTiming, measuredCatalogRuntime, measureCatalogPhase } from './catalog/timing.js';
 import {
   createProductRecord,
   createProductModelRecords,
@@ -267,7 +268,7 @@ const authenticateRequest = async (req, res, next) => {
   }
 
   try {
-    const access = await resolveBusinessAccess(payload.phoneNumber);
+    const access = await measureCatalogPhase('auth', () => resolveBusinessAccess(payload.phoneNumber));
     req.auth = {
       ...payload,
       phoneNumber: access.actorId,
@@ -333,7 +334,10 @@ app.use((error, req, res, next) => {
 
 const recentEvents = [];
 
-app.use('/api/commerce/v1', authenticateRequest, createCommerceRouter({ runtime: stockyDatabaseRuntime, media: commerceMedia,
+const studioReadTiming = (req, res, next) => req.method === 'GET'
+  && /^\/(setup|products(?:\/[a-f0-9-]{36})?|summary|inventory-candidates|content-library)\/?$/.test(req.path)
+  ? catalogTiming(req, res, next) : next();
+app.use('/api/commerce/v1', studioReadTiming, authenticateRequest, createCommerceRouter({ runtime: measuredCatalogRuntime(stockyDatabaseRuntime), media: commerceMedia,
   contextOf: req => ({ businessId: tenantPhoneOf(req), actorId: authPhoneOf(req),
     role: req.auth?.role }) }));
 const publicCatalog = createPublicCatalogRouters(stockyDatabaseRuntime);
@@ -461,10 +465,10 @@ app.get('/api/auth/dev-status', (_req, res) => {
   });
 });
 
-app.get('/api/auth/me', authenticateRequest, async (req, res) => {
+app.get('/api/auth/me', catalogTiming, authenticateRequest, async (req, res) => {
   try {
     const phoneNumber = String(req.auth?.phoneNumber ?? '').trim();
-    const profile = await getAuthUserProfile(phoneNumber);
+    const profile = await measureCatalogPhase('auth_profile', () => getAuthUserProfile(phoneNumber));
     res.json(profile);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : String(error) });

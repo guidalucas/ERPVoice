@@ -276,7 +276,7 @@ try {
       await publicPage.setViewportSize({ width: 390, height: 844 });
       assert.equal(await publicPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       await publicPage.screenshot({ path: path.join(output, 'inquiry-mobile.png'), fullPage: true });
-      await publicPage.getByRole('button', { name: 'Retirar', exact: true }).click(); await publicPage.getByRole('button', { name: 'Sí, retirar', exact: true }).click();
+      await publicPage.getByRole('button', { name: 'Retirar', exact: true }).click();
       await publicPage.getByRole('heading', { name: 'Tu pedido está esperando un producto.', exact: true }).waitFor();
       assert.equal(await publicPage.locator('[data-cart-count]').textContent(), '0');
       assert.equal(await publicPage.evaluate(() => JSON.parse(localStorage.getItem('fullmatch.inquiry.other-demo'))[0].quantity), 7);

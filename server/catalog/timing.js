@@ -22,7 +22,7 @@ export function catalogTiming(_req, res, next) {
   res.end = function (...args) {
     if (!res.headersSent) {
       const entries = [`total;dur=${(performance.now() - start).toFixed(1)}`];
-      for (const name of ['db', 'db_setup', 'db_finalize', 'storage', 'encode', 'render']) if (metrics[name] !== undefined)
+      for (const name of ['auth', 'auth_profile', 'pool', 'db', 'db_setup', 'db_finalize', 'storage', 'encode', 'render']) if (metrics[name] !== undefined)
         entries.push(`${name};dur=${metrics[name].toFixed(1)}${name === 'db' ? `;desc="${metrics.queries} queries"` : ''}`);
       res.setHeader('Server-Timing', entries.join(', '));
     }
