@@ -11,8 +11,12 @@ import { createMediaCache } from '../server/catalog/mediaCache.js';
 
 const fixture = await startCommerceFixture(), sql = new Client({ connectionString: fixture.connection });
 const runtime = createDatabaseRuntime({ connectionString: fixture.connection });
-let browser, queries = 0;
-const measured = { ...runtime, transaction: (callback, options) => runtime.transaction(client => callback({ query: (...args) => { queries++; return client.query(...args); } }), options) };
+let browser, queries = 0, transactions = 0;
+const countQueries = callback => client => callback({ query: (...args) => { queries++; return client.query(...args); } });
+const measured = { ...runtime, withClient: callback => runtime.withClient(countQueries(callback)), transaction: (callback, options) => {
+  transactions++;
+  return runtime.transaction(countQueries(callback), options);
+} };
 const service = createCatalogService(measured);
 const shop = 'fullmatch-demo', base = `${fixture.apiUrl}/api/catalog/v1/${shop}`;
 try {
@@ -33,28 +37,38 @@ try {
     await sql.query(`INSERT INTO commercial_publications(owner_phone,commercial_product_id,status,updated_by,reason,published_at) VALUES($1,$2,'published',$1,'Isolated performance fixture',NOW())`, [fixture.owner, id]);
   }
   queries = 0; assert.equal((await service.list(shop)).items.length, 24); assert.equal(queries, 4);
-  queries = 0; await service.detail(shop, product.slug); assert.equal(queries, 3);
+  queries = 0; transactions = 0;
+  assert.deepEqual(await service.detail(shop, product.slug), { catalog: listing.catalog, product });
+  assert.equal(queries, 1); assert.equal(transactions, 0);
   const paginated = await service.list(shop, { limit: '1' });
   assert.equal(paginated.items.length, 1); assert.ok(paginated.nextCursor);
   assert.notEqual((await service.list(shop, { limit: '1', cursor: paginated.nextCursor })).items[0].slug, paginated.items[0].slug);
   assert.equal((await service.list(shop, { q: '%' })).items.length, 0);
   assert.equal((await service.list(shop, { team: 'argentina', version: 'player', category: 'Camiseta' })).items.length, 1);
   assert.equal((await service.detail(shop, 'performance-0')).product.photos.length, 0);
-  console.log('PASS bounded queries: 4 SELECTs for both 3 and 24 products; detail 3; DTO/readiness parity');
+  console.log('PASS bounded queries: 4 SELECTs for both 3 and 24 products; detail 1 without an explicit transaction; DTO/readiness parity');
 
   const image = product.photos[0], detailUrl = fixture.apiUrl + image.detailUrl;
   const first = await fetch(detailUrl), bytes = Buffer.from(await first.arrayBuffer()), etag = first.headers.get('etag');
   assert.equal(first.status, 200); assert.equal(first.headers.get('content-type'), 'image/webp');
   assert.equal(first.headers.get('cache-control'), 'private, no-cache'); assert.ok(etag);
   const meta = await sharp(bytes).metadata(); assert.ok(meta.width <= 960 && meta.height <= 1200);
+  const reused = await fetch(detailUrl);
+  assert.equal(reused.status, 200);
+  assert.deepEqual(Buffer.from(await reused.arrayBuffer()), bytes);
+  assert.doesNotMatch(reused.headers.get('server-timing'), /storage|encode/);
   const cached = await fetch(detailUrl, { headers: { 'If-None-Match': etag } }); assert.equal(cached.status, 304); assert.equal((await cached.arrayBuffer()).byteLength, 0);
-  assert.match(cached.headers.get('server-timing'), /db;dur=[\d.]+;desc="3 queries"/);
+  assert.match(cached.headers.get('server-timing'), /db;dur=[\d.]+;desc="1 queries"/);
   assert.doesNotMatch(cached.headers.get('server-timing'), /storage|encode/);
   await sql.query('UPDATE products SET stock_available=0,price=81000 WHERE owner_phone=$1 AND id=ANY($2::text[])', [fixture.owner, original.skuIds]);
   const live = await service.detail(shop, product.slug); assert.equal(live.product.available, false); assert.equal(live.product.priceRange.minAmountMinor, '8100000');
   await sql.query("UPDATE commercial_publications SET status='hidden' WHERE owner_phone=$1 AND commercial_product_id=$2", [fixture.owner, original.id]);
   assert.equal((await fetch(detailUrl, { headers: { 'If-None-Match': etag } })).status, 404);
+  assert.equal((await fetch(detailUrl)).status, 404);
   await sql.query("UPDATE commercial_publications SET status='published' WHERE owner_phone=$1 AND commercial_product_id=$2", [fixture.owner, original.id]);
+  await sql.query('UPDATE commerce_catalogs SET public_enabled=false WHERE owner_phone=$1', [fixture.owner]);
+  assert.equal((await fetch(detailUrl, { headers: { 'If-None-Match': etag } })).status, 404);
+  await sql.query('UPDATE commerce_catalogs SET public_enabled=true WHERE owner_phone=$1', [fixture.owner]);
   await sql.query("UPDATE products SET price_currency='XXX' WHERE owner_phone=$1 AND id=$2", [fixture.owner, original.skuIds[0]]);
   assert.equal((await fetch(detailUrl, { headers: { 'If-None-Match': etag } })).status, 404);
   await sql.query("UPDATE products SET stock_available=2,price_currency='ARS' WHERE owner_phone=$1 AND id=ANY($2::text[])", [fixture.owner, original.skuIds]);

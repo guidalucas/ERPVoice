@@ -134,10 +134,12 @@ try {
   if (fixture) {
     const runtime = createDatabaseRuntime({ connectionString: fixture.connection });
     let count = 0, dbMs = 0;
-    const instrumented = { ...runtime, transaction: (callback, options) => runtime.transaction(client => callback({ query: async (...params) => {
+    const countQueryTime = callback => client => callback({ query: async (...params) => {
       count++; const start = performance.now();
       try { return await client.query(...params); } finally { dbMs += performance.now() - start; }
-    } }), options) };
+    } });
+    const instrumented = { ...runtime, withClient: callback => runtime.withClient(countQueryTime(callback)),
+      transaction: (callback, options) => runtime.transaction(countQueryTime(callback), options) };
     const service = createCatalogService(instrumented);
     await service.brand(shop); // schema check is intentionally excluded from steady-state counts
     for (let run = 0; run < repetitions; run++) {

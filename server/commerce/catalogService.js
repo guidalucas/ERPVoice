@@ -10,7 +10,7 @@ import { operationRequestDigest } from '../operationHash.js';
 import { formatMoneyAmount } from './moneyPresentation.js';
 import { appearanceOf, requireAppearanceSchema } from './appearance.js';
 import { variantLabel } from './presentation.js';
-import { readPublicProducts } from './publicProductRepository.js';
+import { publicCatalogSelect, readPublicProducts, readPublicProductSnapshot } from './publicProductRepository.js';
 import { createMediaCache } from '../catalog/mediaCache.js';
 import sharp from 'sharp';
 import { measureCatalogPhase } from '../catalog/timing.js';
@@ -43,7 +43,8 @@ const publicVariantTitle = product => {
 };
 
 export function createCatalogService(runtime, storage = createMediaStorage()) {
-  const cachedMedia = createMediaCache();
+  // Object keys and checksums identify immutable bytes. Publication is checked on every read.
+  const cachedMedia = createMediaCache({ ttlMs: 60 * 60 * 1000 });
   let initialized;
   const ensure = async () => {
     initialized ??= runtime.withClient(async client => { if (!(await inspectCatalogSchema(client)).ready) fail('CATALOG_SCHEMA_NOT_READY', 'La preparación del catálogo está pendiente.', 503); })
@@ -58,17 +59,23 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
   };
   const requireCatalog = async (client, shop) => {
     slug(shop);
-    const row = (await client.query(`SELECT c.owner_phone,c.slug,p.brand_name,p.brand_preset,p.sales_whatsapp,p.revision,to_jsonb(p)->'appearance' AS appearance
-      FROM commerce_catalogs c JOIN commerce_profiles p ON p.owner_phone=c.owner_phone
-      WHERE c.slug=$1 AND c.public_enabled=true AND p.enabled=true AND p.sales_whatsapp IS NOT NULL`, [shop])).rows[0];
+    const row = (await client.query(publicCatalogSelect, [shop])).rows[0];
     if (!row) notFound(); return row;
   };
   const publicRead = async (shop, callback) => { await ensure(); return runtime.transaction(async client => callback(client, await requireCatalog(client, shop)), { readOnly: true, repeatableRead: true }); };
-  const publicProduct = async (client, catalog, productSlug, options) => {
+  const productSnapshot = async (shop, productSlug, options) => {
+    slug(shop);
+    slug(productSlug);
+    await ensure();
+    const snapshot = await runtime.withClient(client => readPublicProductSnapshot(client, shop, productSlug, options));
+    if (!snapshot?.product.readiness.canPrepare) notFound();
+    return snapshot;
+  };
+  const publicProduct = async (client, catalog, productSlug) => {
     slug(productSlug);
     const row = (await client.query(`SELECT p.* FROM commercial_products p JOIN commercial_publications s
       ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id WHERE p.owner_phone=$1 AND p.slug=$2 AND p.status='ready' AND s.status='published'`, [catalog.owner_phone, productSlug])).rows[0];
-    if (!row) notFound(); const [detail] = await readPublicProducts(client, catalog.owner_phone, [row], options);
+    if (!row) notFound(); const [detail] = await readPublicProducts(client, catalog.owner_phone, [row]);
     if (!detail.readiness.canPrepare) notFound(); return detail;
   };
   const publicBrand = row => ({ slug: row.slug, brandName: row.brand_name, brandPreset: row.brand_preset, salesWhatsapp: row.sales_whatsapp,
@@ -161,7 +168,10 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
           quotedAt: new Date().toISOString(), contactUrl: contactText ? `https://wa.me/${brand.salesWhatsapp}?text=${encodeURIComponent(contactText)}` : null };
       });
     },
-    detail: (shop, productSlug) => publicRead(shop, async (client, catalog) => ({ catalog: publicBrand(catalog), product: publicProductProjection(await publicProduct(client, catalog, productSlug), shop) })),
+    detail: async (shop, productSlug) => {
+      const { catalog, product } = await productSnapshot(shop, productSlug);
+      return { catalog: publicBrand(catalog), product: publicProductProjection(product, shop) };
+    },
     list: (shop, query = {}) => publicRead(shop, async (client, catalog) => {
       const data = record(query, ['q', 'category', 'variant', 'team', 'season', 'version', 'sleeve', 'kit', 'cursor', 'limit']);
       const limit = data.limit === undefined ? 24 : Number(data.limit); if (!Number.isSafeInteger(limit) || limit < 1 || limit > 48) fail('INVALID_COMMAND', 'Límite de catálogo inválido.', 400);
@@ -191,22 +201,23 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
     }),
     image: async (shop, productSlug, imageId, variant = 'master', format = 'jpeg', ifNoneMatch = null) => {
       uuid(imageId); if (!['master', 'thumbnail', 'detail'].includes(variant) || !['jpeg', 'webp'].includes(format)) notFound();
-      const selected = await publicRead(shop, async (client, catalog) => {
-        const product = await publicProduct(client, catalog, productSlug, { mediaKeys: true });
-        const image = product.images.find(image => image.id === imageId && image.status === 'ready');
-        if (!image) notFound();
-        return { key: variant === 'thumbnail' ? image.thumbnailKey : image.masterKey, hash: image.masterSha256, owner: catalog.owner_phone };
-      });
+      const { catalog, product } = await productSnapshot(shop, productSlug, { mediaKeys: true });
+      const image = product.images.find(image => image.id === imageId && image.status === 'ready');
+      if (!image) notFound();
+      const key = variant === 'thumbnail' ? image.thumbnailKey : image.masterKey;
+      const hash = image.masterSha256;
       if (!storage.configured) fail('MEDIA_NOT_CONFIGURED', 'La fotografía no está disponible.', 503);
-      const etag = `W/"${sha256(Buffer.from(JSON.stringify([selected.owner, selected.key, selected.hash, variant, format, 1])))}"`;
+      const detailWebp = variant === 'detail' && format === 'webp';
+      const representation = JSON.stringify([catalog.owner_phone, key, hash, variant, format, detailWebp ? 2 : 1]);
+      const etag = `W/"${sha256(Buffer.from(representation))}"`;
       // Authorize against live publication/readiness BEFORE honoring any cache validator.
       if (typeof ifNoneMatch === 'string' && (ifNoneMatch.trim() === '*' || ifNoneMatch.split(',').some(value => value.trim().replace(/^W\//, '') === etag.replace(/^W\//, '')))) return { etag, notModified: true };
-      const bytes = await cachedMedia(JSON.stringify([selected.owner, selected.key, selected.hash, variant, format]), async () => {
-        const source = await measureCatalogPhase('storage', () => storage.get(selected.key));
-        if (variant !== 'thumbnail' && sha256(source) !== selected.hash) fail('MEDIA_INTEGRITY_ERROR', 'La fotografía no está disponible.', 503);
+      const bytes = await cachedMedia(representation, async () => {
+        const source = await measureCatalogPhase('storage', () => storage.get(key));
+        if (variant !== 'thumbnail' && sha256(source) !== hash) fail('MEDIA_INTEGRITY_ERROR', 'La fotografía no está disponible.', 503);
         let pipeline = sharp(source);
         if (variant === 'detail') pipeline = pipeline.resize({ width: 960, height: 1200, fit: 'inside', withoutEnlargement: true });
-        if (format === 'webp') return measureCatalogPhase('encode', () => pipeline.webp({ quality: 80 }).toBuffer());
+        if (format === 'webp') return measureCatalogPhase('encode', () => pipeline.webp({ quality: 80, effort: detailWebp ? 2 : 4 }).toBuffer());
         return variant === 'detail' ? measureCatalogPhase('encode', () => pipeline.jpeg({ quality: 82 }).toBuffer()) : source;
       });
       // Preserve the service's legacy Buffer return value for internal callers.

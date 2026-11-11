@@ -1,0 +1,239 @@
+{
+  "baseline": "6444d97",
+  "environment": "disposable local PostgreSQL",
+  "runs": 5,
+  "scenarios": [
+    {
+      "version": "before",
+      "name": "detail",
+      "roundTripDelayMs": 0,
+      "sqlCommands": 5,
+      "medianMs": 8.023699999999735,
+      "samples": [
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 9.94919999999911
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 7.6807000000007974
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 10.036099999999351
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 8.023699999999735
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 7.783900000000358
+        }
+      ]
+    },
+    {
+      "version": "before",
+      "name": "image-304",
+      "roundTripDelayMs": 0,
+      "sqlCommands": 5,
+      "medianMs": 7.2995000000009895,
+      "samples": [
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 8.796200000000681
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 6.940199999999095
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 7.40099999999984
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 5.657999999999447
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 7.2995000000009895
+        }
+      ]
+    },
+    {
+      "version": "after",
+      "name": "detail",
+      "roundTripDelayMs": 0,
+      "sqlCommands": 1,
+      "medianMs": 3.051499999999578,
+      "samples": [
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 2.897500000000946
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 2.9086999999999534
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 3.051499999999578
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 3.07129999999961
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 3.172500000000582
+        }
+      ]
+    },
+    {
+      "version": "after",
+      "name": "image-304",
+      "roundTripDelayMs": 0,
+      "sqlCommands": 1,
+      "medianMs": 4.453199999999924,
+      "samples": [
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 4.171800000000076
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 5.954799999999523
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 4.453199999999924
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 5.026799999999639
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 3.706000000000131
+        }
+      ]
+    },
+    {
+      "version": "before",
+      "name": "detail",
+      "roundTripDelayMs": 60,
+      "sqlCommands": 5,
+      "medianMs": 311.55339999999705,
+      "samples": [
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 326.26200000000244
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 311.0227999999988
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 327.3065000000024
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 311.55339999999705
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 309.479800000001
+        }
+      ]
+    },
+    {
+      "version": "before",
+      "name": "image-304",
+      "roundTripDelayMs": 60,
+      "sqlCommands": 5,
+      "medianMs": 310.47060000000056,
+      "samples": [
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 309.9964
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 310.47060000000056
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 309.8745999999992
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 311.60589999999866
+        },
+        {
+          "sqlCommands": 5,
+          "elapsedMs": 326.28659999999945
+        }
+      ]
+    },
+    {
+      "version": "after",
+      "name": "detail",
+      "roundTripDelayMs": 60,
+      "sqlCommands": 1,
+      "medianMs": 76.78020000000106,
+      "samples": [
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 64.33109999999942
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 75.96360000000277
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 77.3231999999989
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 76.78020000000106
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 77.68770000000222
+        }
+      ]
+    },
+    {
+      "version": "after",
+      "name": "image-304",
+      "roundTripDelayMs": 60,
+      "sqlCommands": 1,
+      "medianMs": 77.5589,
+      "samples": [
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 77.5589
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 77.45030000000042
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 78.58880000000136
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 76.90949999999793
+        },
+        {
+          "sqlCommands": 1,
+          "elapsedMs": 77.65090000000055
+        }
+      ]
+    }
+  ]
+}
