@@ -90,7 +90,7 @@ try {
         const plain = await (await fetch(`${fixture.apiUrl}/api/catalog/v1/${shop.slug}/products/${shop.products[1].slug}`)).json();
         await page.goto(fixture.apiUrl + plain.product.path);
         await page.locator('.no-product-photo').waitFor();
-        assert.ok((await page.locator('.main-photo').boundingBox()).height <= 180);
+        assert.equal(await page.locator('.main-photo').count(), 0);
         assert.equal(await page.locator('[data-add-inquiry] select').count(), 1);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         await page.screenshot({ path: path.join(output, `${shop.preset}-${viewport.width}-without-photo.png`), fullPage: true });
@@ -116,7 +116,7 @@ try {
     const bytes = await fs.readFile(await (await download).path()); const metadata = await sharp(bytes).metadata(); assert.equal(metadata.width, 1080); assert.equal(metadata.height, 1920);
     await fs.writeFile(path.join(output, `${shop.preset}-story.png`), bytes);
     const snapshot = (await sql.query("SELECT result_json FROM commercial_operations WHERE owner_phone=$1 AND operation_type='story.prepare' ORDER BY created_at DESC LIMIT 1", [shop.owner])).rows[0].result_json.result;
-    assert.equal(snapshot.rendererVersion, 5);
+    assert.equal(snapshot.rendererVersion, 6);
     if (shop.category) assert.equal(snapshot.content.variantLabel, 'PRESENTACIONES DISPONIBLES');
     // Historical v4 snapshots still revalidate against their original projection.
     if (shop.preset === 'editorial') {

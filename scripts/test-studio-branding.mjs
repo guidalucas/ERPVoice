@@ -209,9 +209,10 @@ try {
   const metadata = await sharp(image).metadata(); assert.equal(metadata.width, 1080); assert.equal(metadata.height, 1920);
   const pixel = async (x, y) => [...await sharp(image).extract({ left: x, top: y, width: 1, height: 1 }).removeAlpha().raw().toBuffer()];
   assert.deepEqual(await pixel(10, 1900), [18, 52, 86]);
-  assert.deepEqual(await pixel(110, 110), [18, 171, 52]);
+  assert.deepEqual(await pixel(110, 186), [18, 171, 52]);
   const snapshot = (await sql.query("SELECT result_json FROM commercial_operations WHERE operation_type='story.prepare' ORDER BY created_at DESC LIMIT 1")).rows[0].result_json.result;
-  assert.equal(snapshot.rendererVersion, 5);
+  assert.equal(snapshot.rendererVersion, 6);
+  assert.equal(snapshot.content.settings.zoom, 1.1);
   assert.equal((await api(fixture, prefix + `/story-snapshots/${snapshot.snapshotId}/validate`, 'POST', {})).valid, true);
   const latest = await api(fixture, prefix + '/profile');
   await api(fixture, prefix + '/profile', 'PUT', { operationId: randomUUID(), expectedRevision: latest.revision, brandName: latest.brandName, salesWhatsapp: latest.salesWhatsapp,

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { zipSync } from 'fflate';
 import { batchKey, createBatchJob, readBatchJob, saveBatchJob, type BatchJob, type BatchOptions, type BatchItem } from './batchJob';
 import { commandWithId, imageBlob, query, studioFetch } from './api';
-import { renderStory, type StorySettings, type StorySnapshot } from './storyRenderer';
+import { DEFAULT_STORY_ZOOM, renderStory, type StorySettings, type StorySnapshot } from './storyRenderer';
 import { PromotionFields, defaultPromotion } from './PromotionFields';
 import { reportExport } from './exportEvents';
 import type { Product } from './types';
@@ -42,7 +42,7 @@ export function BatchStudio({ onBack }: { onBack: () => void }) {
             if (working.options.templateId === 'last_unit' && product.availableQuantity !== 1) variants = variants.filter(variant => variant.stockAvailable === 1).slice(0, 1);
             if (!variants.length) throw new Error('Esta ficha no tiene una última unidad disponible.');
             const settings: StorySettings = { templateId: working.options.templateId, templateVersion: 1, imageId: image.id, expectedImageRevision: image.revision,
-              skuIds: variants.map(variant => variant.skuId), showPrice: working.options.showPrice, fit: 'contain', zoom: 1, focalX: image.focalX, focalY: image.focalY,
+              skuIds: variants.map(variant => variant.skuId), showPrice: working.options.showPrice, fit: 'contain', zoom: DEFAULT_STORY_ZOOM, focalX: image.focalX, focalY: image.focalY,
               caption: '', cta: 'Consultas al MD', promotion: working.options.promotion ?? null };
             item.title = product.title; item.request = { expectedProductRevision: product.revision, settings };
             persist(working); // Durable operation/request before any command can reach the backend.

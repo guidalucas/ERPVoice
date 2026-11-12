@@ -22,15 +22,27 @@ try {
   await page.evaluate(async () => {
     await import('/src/studio/studio.css');
     await import('/src/studio/refinements.css');
-    const { renderStory } = await import('/src/studio/storyRenderer.ts');
+    const { DEFAULT_STORY_ZOOM, renderStory } = await import('/src/studio/storyRenderer.ts');
     window.renderTemplate = renderStory;
+    window.defaultStoryZoom = DEFAULT_STORY_ZOOM;
     document.body.replaceChildren();
     const remove = Element.prototype.remove;
     Element.prototype.remove = function () {
       const template = this.querySelector('.st');
-      if (template) window.lastTemplate = {
-        html: template.outerHTML,
-      };
+      if (template) {
+        const bounds = template.getBoundingClientRect();
+        const rect = selector => template.querySelector(selector).getBoundingClientRect();
+        const ribbon = template.querySelector('.st-ribbon');
+        window.lastTemplate = {
+          html: template.outerHTML,
+          titleTop: rect('.st-title').top - bounds.top,
+          badgeTop: rect('.st-badge').top - bounds.top,
+          footerBottom: rect('.st-foot').bottom - bounds.top,
+          photoHeight: rect('.st-shot').height,
+          ctaTop: rect('.st-cta').top - bounds.top,
+          ribbonColor: ribbon && getComputedStyle(ribbon).backgroundColor,
+        };
+      }
       return remove.call(this);
     };
   });
@@ -38,7 +50,7 @@ try {
   const logo = await sharp({ create: { width: 120, height: 120, channels: 3, background: '#12ab34' } }).png().toBuffer();
   await page.route('**/api/commerce/v1/brand-assets/test-logo', route => route.fulfill({ status: 200, contentType: 'image/png', body: logo }));
   const snapshot = {
-    snapshotId: 'renderer-test', schemaVersion: 1, rendererVersion: 4, width: 1080, height: 1920,
+    snapshotId: 'renderer-test', schemaVersion: 1, rendererVersion: 6, width: 1080, height: 1920,
     createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3600000).toISOString(),
     content: {
       productId: 'product-test', title: 'Argentina titular 2025', teamName: 'Argentina', season: '2025', versionKey: 'player',
@@ -47,7 +59,7 @@ try {
       variants: ['M', 'L', 'XL'].map(size => ({ skuId: size, size, stockAvailable: 1, price: { amountMinor: '7000000', currency: 'ARS', fractionDigits: 2 } })),
       price: { minAmountMinor: '7000000', maxAmountMinor: '7000000', currency: 'ARS', fractionDigits: 2 },
       settings: { templateId: 'available', templateVersion: 1, imageId: 'photo-test', expectedImageRevision: 1, skuIds: ['M', 'L', 'XL'],
-        showPrice: true, fit: 'contain', zoom: 1, focalX: .5, focalY: .5, caption: '', cta: '' },
+        showPrice: true, fit: 'contain', zoom: await page.evaluate(() => window.defaultStoryZoom), focalX: .5, focalY: .5, caption: '', cta: '' },
     },
   };
   const render = async (current, name, format = 'png') => {
@@ -74,7 +86,19 @@ try {
     if (templateId === 'promo') current.content.promotion = { percentage: 15, minAmountMinor: '5950000', maxAmountMinor: '5950000',
       startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 3600000).toISOString(), timeZone: 'America/Montevideo', label: 'PROMOCIÓN' };
     const bytes = await render(current, templateId);
-    assert.ok((await page.evaluate(() => window.lastTemplate.html)).includes('Consultas al MD'));
+    const template = await page.evaluate(() => window.lastTemplate);
+    assert.ok(template.html.includes('Consultas al MD'));
+    assert.equal(template.photoHeight, 1540);
+    assert.equal(template.badgeTop, 138);
+    if (templateId === 'available') {
+      assert.ok(template.titleTop >= 1280, 'Short stories use more of the space below the photo');
+      assert.ok(template.footerBottom <= 1752, 'Short stories leave room below for Instagram controls');
+    }
+    if (templateId === 'last_unit') {
+      assert.equal(template.ribbonColor, 'rgb(197, 29, 22)');
+      assert.deepEqual(await pixel(bytes, 540, 5), [197, 29, 22]);
+      assert.deepEqual(await pixel(bytes, 540, Math.ceil(template.ctaTop) + 10), [197, 29, 22]);
+    }
     if (templateId === 'promo') {
       await page.evaluate(async photo => {
         document.body.insertAdjacentHTML('beforeend', window.lastTemplate.html);
@@ -113,14 +137,26 @@ try {
   const branded = structuredClone(snapshot);
   branded.content.appearance = { ...branded.content.appearance, primaryColor: '#ffffff', accentColor: '#ffff00', logoId: 'test-logo' };
   const brandedBytes = await render(branded, 'light-brand-logo');
-  assert.deepEqual(await pixel(brandedBytes, 110, 110), [18, 171, 52]);
+  assert.deepEqual(await pixel(brandedBytes, 110, 186), [18, 171, 52]);
   assert.deepEqual(await pixel(brandedBytes, 10, 1900), [255, 255, 255]);
   for (let version = 1; version <= 3; version++) {
     const legacy = structuredClone(snapshot); legacy.rendererVersion = version;
     const bytes = await render(legacy, `legacy-v${version}`);
     assert.deepEqual(await pixel(bytes, 10, 10), [0, 26, 77], 'Legacy snapshots retain their original layout');
   }
-  console.log('PASS branded logo, light colors and legacy renderer versions 1–3');
+  for (const version of [4, 5]) {
+    const legacy = structuredClone(snapshot);
+    legacy.rendererVersion = version;
+    legacy.content.settings.templateId = 'last_unit';
+    legacy.content.settings.zoom = 1;
+    await render(legacy, `legacy-v${version}`);
+    const template = await page.evaluate(() => window.lastTemplate);
+    assert.equal(template.titleTop, 1210);
+    assert.equal(template.badgeTop, 62);
+    assert.equal(template.photoHeight, 1300);
+    assert.equal(template.ribbonColor, 'rgb(255, 45, 85)');
+  }
+  console.log('PASS branded logo, light colors and legacy renderer versions 1–5');
 
   const rejected = structuredClone(snapshot); rejected.content.settings.cta = 'X'.repeat(500);
   await assert.rejects(render(rejected, 'must-not-export'), /El texto no entra en la plantilla/);

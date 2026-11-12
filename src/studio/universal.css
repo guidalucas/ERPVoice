@@ -144,7 +144,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .template-mini { height: 96px; display: block; border-radius: 4px; overflow: hidden; position: relative; }
 .template-mini img { display: block; height: 100%; width: 100%; object-fit: contain; background: #edf0f4; }
 .template-mini > span { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; background: inherit; color: inherit; padding: 4px; font-size: 11px; }
-.template-last_unit > span { background: #9d1734; color: white; }
+.template-last_unit > span { background: #c51d16; color: white; }
 .template-arrival > span { top: 0; bottom: auto; }
 .template-promo > span { top: 6px; left: auto; right: 6px; bottom: auto; width: 32px; border-radius: 50%; }
 .template-promo > span { font-size: 18px; font-weight: 700; }

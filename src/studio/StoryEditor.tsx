@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { command, imageBlob, query, studioFetch } from './api';
-import { renderStory, type StorySettings, type StorySnapshot } from './storyRenderer';
+import { DEFAULT_STORY_ZOOM, renderStory, type StorySettings, type StorySnapshot } from './storyRenderer';
 import { textOnColor, type Product, type Profile } from './types';
 import { reportExport } from './exportEvents';
 import { PromotionFields, defaultPromotion } from './PromotionFields';
@@ -10,7 +10,7 @@ export function StoryEditor({ product, onBack }: { product: Product; onBack: () 
   const canvasRef = useRef<HTMLCanvasElement>(null), selectedImage = product.images.find(image => image.id === product.coverImageId)!;
   const [settings, setSettings] = useState<StorySettings>({ templateId: 'available', templateVersion: 1, imageId: selectedImage.id,
     expectedImageRevision: selectedImage.revision, skuIds: product.variants.filter(item => item.active && item.identityReviewed && (item.stockAvailable ?? 0) > 0).map(item => item.skuId),
-    showPrice: true, fit: 'contain', zoom: 1, focalX: selectedImage.focalX, focalY: selectedImage.focalY, caption: '', cta: 'Consultas al MD' });
+    showPrice: true, fit: 'contain', zoom: DEFAULT_STORY_ZOOM, focalX: selectedImage.focalX, focalY: selectedImage.focalY, caption: '', cta: 'Consultas al MD' });
   const [format, setFormat] = useState<'png' | 'jpeg'>('png'), [snapshot, setSnapshot] = useState<StorySnapshot | null>(null), [blob, setBlob] = useState<Blob | null>(null);
   const [generatedKey, setGeneratedKey] = useState(''), [previewExpanded, setPreviewExpanded] = useState(false), [thumbnail, setThumbnail] = useState('');
   const [profile, setProfile] = useState<Profile | null>(null);

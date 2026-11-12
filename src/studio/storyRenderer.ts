@@ -16,7 +16,7 @@ export type StorySnapshot = { snapshotId: string; schemaVersion: number; rendere
     price: { currency: string; fractionDigits: number; minAmountMinor: string; maxAmountMinor: string };
     promotion?: (Promotion & { minAmountMinor: string; maxAmountMinor: string }) | null; settings: StorySettings } };
 
-const STAGE_H = 1300;
+export const DEFAULT_STORY_ZOOM = 1.1;
 const esc = (value: string) => value.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
 const overflowMessage = 'El texto no entra en la plantilla. Acortá el título o el mensaje y volvé a generar.';
 
@@ -32,23 +32,29 @@ function fitText(element: HTMLElement, minSize: number, maxHeight = Infinity) {
 /** HTML/CSS en un nodo fuera de pantalla → imagen 1080×1920. La foto usa los píxeles reales y el mismo encuadre (fit, zoom, focal) que antes. */
 export async function renderStory(canvas: HTMLCanvasElement, snapshot: StorySnapshot, photo: Blob, format: 'png' | 'jpeg') {
   if ([1, 2, 3].includes(snapshot.rendererVersion)) return renderLegacyStory(canvas, snapshot, photo, format);
-  if (![4, 5].includes(snapshot.rendererVersion) || snapshot.width !== 1080 || snapshot.height !== 1920) throw new Error('Actualizá Studio para usar esta versión de historia.');
+  if (![4, 5, 6].includes(snapshot.rendererVersion) || snapshot.width !== 1080 || snapshot.height !== 1920) throw new Error('Actualizá Studio para usar esta versión de historia.');
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Este navegador no permite renderizar la historia.');
   const content = snapshot.content, settings = content.settings, promo = content.promotion, appearance = content.appearance;
-  const primary = appearance?.primaryColor ?? '#001A4D', accent = settings.templateId === 'last_unit' ? '#ff2d55' : appearance?.accentColor ?? '#FF6A00';
+  const refreshedLayout = snapshot.rendererVersion >= 6;
+  const stageHeight = refreshedLayout ? 1400 : 1300;
+  const primary = appearance?.primaryColor ?? '#001A4D';
+  const accent = settings.templateId === 'last_unit'
+    ? (refreshedLayout ? '#c51d16' : '#ff2d55')
+    : appearance?.accentColor ?? '#FF6A00';
   const ink = textOnColor(primary), accentInk = textOnColor(accent);
   const bitmap = await createImageBitmap(photo), urls: string[] = [], holder = document.createElement('div'), node = document.createElement('div');
   try {
     const url = (blob: Blob) => { const value = URL.createObjectURL(blob); urls.push(value); return value; };
-    const scale = (settings.fit === 'cover' ? Math.max(1080 / bitmap.width, STAGE_H / bitmap.height) : Math.min(1080 / bitmap.width, STAGE_H / bitmap.height)) * settings.zoom;
-    const width = bitmap.width * scale, height = bitmap.height * scale, left = (1080 - width) * settings.focalX, top = (STAGE_H - height) * settings.focalY;
+    const scale = (settings.fit === 'cover' ? Math.max(1080 / bitmap.width, stageHeight / bitmap.height) : Math.min(1080 / bitmap.width, stageHeight / bitmap.height)) * settings.zoom;
+    const width = bitmap.width * scale, height = bitmap.height * scale, left = (1080 - width) * settings.focalX, top = (stageHeight - height) * settings.focalY;
     const logo = appearance?.logoId ? url(await (await studioFetch(`/brand-assets/${appearance.logoId}`)).blob()) : null;
     const money = (amountMinor: string) => moneyLabel({ amountMinor, currency: content.price.currency, fractionDigits: content.price.fractionDigits });
     const range = promo ?? content.price, from = range.minAmountMinor !== range.maxAmountMinor;
     const until = promo ? new Intl.DateTimeFormat('es', { timeZone: promo.timeZone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date(promo.endsAt)) : '';
     const initials = appearance || snapshot.rendererVersion >= 5 ? brandInitials(content.brandName) : 'FM';
-    node.className = `st st-${esc(settings.templateId)}`;
+    node.className = `st st-${esc(settings.templateId)}${refreshedLayout ? ' st-v6' : ''}`;
+    node.style.setProperty('--stage-height', `${stageHeight}px`);
     ([['--primary', primary], ['--accent', accent], ['--ink', ink], ['--accent-ink', accentInk]] as const).forEach(([key, value]) => node.style.setProperty(key, value));
     node.innerHTML = `
       <div class="st-stage"><img class="st-shot" alt="" src="${url(photo)}" style="width:${width}px;height:${height}px;left:${left}px;top:${top}px">
