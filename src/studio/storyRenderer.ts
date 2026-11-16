@@ -30,7 +30,8 @@ function fitText(element: HTMLElement, minSize: number, maxHeight = Infinity) {
 }
 
 /** HTML/CSS en un nodo fuera de pantalla → imagen 1080×1920. La foto usa los píxeles reales y el mismo encuadre (fit, zoom, focal) que antes. */
-export async function renderStory(canvas: HTMLCanvasElement, snapshot: StorySnapshot, photo: Blob, format: 'png' | 'jpeg') {
+export async function renderStory(canvas: HTMLCanvasElement, snapshot: StorySnapshot, photo: Blob, format: 'png' | 'jpeg',
+  loadLogo = async (id: string) => (await studioFetch(`/brand-assets/${id}`)).blob()) {
   if ([1, 2, 3].includes(snapshot.rendererVersion)) return renderLegacyStory(canvas, snapshot, photo, format);
   if (![4, 5, 6].includes(snapshot.rendererVersion) || snapshot.width !== 1080 || snapshot.height !== 1920) throw new Error('Actualizá Studio para usar esta versión de historia.');
   const ctx = canvas.getContext('2d');
@@ -48,7 +49,7 @@ export async function renderStory(canvas: HTMLCanvasElement, snapshot: StorySnap
     const url = (blob: Blob) => { const value = URL.createObjectURL(blob); urls.push(value); return value; };
     const scale = (settings.fit === 'cover' ? Math.max(1080 / bitmap.width, stageHeight / bitmap.height) : Math.min(1080 / bitmap.width, stageHeight / bitmap.height)) * settings.zoom;
     const width = bitmap.width * scale, height = bitmap.height * scale, left = (1080 - width) * settings.focalX, top = (stageHeight - height) * settings.focalY;
-    const logo = appearance?.logoId ? url(await (await studioFetch(`/brand-assets/${appearance.logoId}`)).blob()) : null;
+    const logo = appearance?.logoId ? url(await loadLogo(appearance.logoId)) : null;
     const money = (amountMinor: string) => moneyLabel({ amountMinor, currency: content.price.currency, fractionDigits: content.price.fractionDigits });
     const range = promo ?? content.price, from = range.minAmountMinor !== range.maxAmountMinor;
     const until = promo ? new Intl.DateTimeFormat('es', { timeZone: promo.timeZone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }).format(new Date(promo.endsAt)) : '';

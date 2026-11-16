@@ -23,7 +23,7 @@ const settingsOf = input => {
 };
 
 /** Explicit semantic projection: revisions alone neither prove nor disprove freshness. */
-async function storyContent(client, context, productId, settings, { checkImageRevision = false, includeAppearance = true, universal = true } = {}) {
+export async function storyContent(client, context, productId, settings, { checkImageRevision = false, includeAppearance = true, universal = true } = {}) {
   const detail = await readProductDetail(client, context.businessId, productId);
   if (!detail.readiness.canGenerateStory) fail('STORY_PRODUCT_NOT_READY', 'Revisá la ficha, las fotos y el stock antes de generar la historia.', 422, { blockers: detail.readiness.blockers });
   const photo = detail.images.find(image => image.id === settings.imageId && image.status === 'ready');
@@ -67,6 +67,26 @@ async function storyContent(client, context, productId, settings, { checkImageRe
     settings: { ...settings, expectedImageRevision: undefined } };
 }
 
+export function createStorySnapshot(snapshotId, content) {
+  const now = Date.now();
+  return { snapshotId, schemaVersion: 1, rendererVersion: 6, width: 1080, height: 1920,
+    createdAt: new Date(now).toISOString(), expiresAt: new Date(Math.min(now + 86_400_000, content.promotion ? Date.parse(content.promotion.endsAt) : Infinity)).toISOString(),
+    content, contentFingerprint: operationRequestDigest(content) };
+}
+
+export async function validateStorySnapshot(client, context, snapshot) {
+  const checkedAt = new Date().toISOString();
+  if (Date.parse(snapshot.expiresAt) <= Date.now()) return { valid: false, reasons: ['SNAPSHOT_EXPIRED'], checkedAt };
+  try {
+    const current = await storyContent(client, context, snapshot.content.productId, { ...snapshot.content.settings, expectedImageRevision: 1 }, { includeAppearance: snapshot.rendererVersion >= 3, universal: snapshot.rendererVersion >= 5 });
+    const valid = operationRequestDigest(current) === snapshot.contentFingerprint;
+    return { valid, reasons: valid ? [] : ['COMMERCIAL_CONTENT_CHANGED'], checkedAt };
+  } catch (error) {
+    if (error?.code && Number(error.status) >= 400 && Number(error.status) < 500) return { valid: false, reasons: [error.code], checkedAt };
+    throw error;
+  }
+}
+
 export function createCommerceStoryService(runtime) {
   const readSnapshot = async (client, context, id) => {
     const row = (await client.query("SELECT result_json FROM commercial_operations WHERE owner_phone=$1 AND operation_id=$2 AND operation_type='story.prepare'", [context.businessId, uuid(id)])).rows[0];
@@ -86,24 +106,10 @@ export function createCommerceStoryService(runtime) {
         const detail = await readProductDetail(client, context.businessId, productId);
         if (detail.revision !== command.expectedProductRevision) fail('REVISION_CONFLICT', 'La ficha cambió. Actualizá la previsualización.', 409);
         const content = await storyContent(client, context, productId, command.settings, { checkImageRevision: true });
-        const now = Date.now();
-        return { snapshotId: data.operationId, schemaVersion: 1, rendererVersion: 6, width: 1080, height: 1920,
-          createdAt: new Date(now).toISOString(), expiresAt: new Date(Math.min(now + 86_400_000, content.promotion ? Date.parse(content.promotion.endsAt) : Infinity)).toISOString(),
-          content, contentFingerprint: operationRequestDigest(content) };
+        return createStorySnapshot(data.operationId, content);
       });
     },
     recover: (context, id) => read(context, client => readSnapshot(client, context, id)),
-    validate: (context, id) => read(context, async client => {
-      const snapshot = await readSnapshot(client, context, id), checkedAt = new Date().toISOString();
-      if (Date.parse(snapshot.expiresAt) <= Date.now()) return { valid: false, reasons: ['SNAPSHOT_EXPIRED'], checkedAt };
-      try {
-        const current = await storyContent(client, context, snapshot.content.productId, { ...snapshot.content.settings, expectedImageRevision: 1 }, { includeAppearance: snapshot.rendererVersion >= 3, universal: snapshot.rendererVersion >= 5 });
-        const valid = operationRequestDigest(current) === snapshot.contentFingerprint;
-        return { valid, reasons: valid ? [] : ['COMMERCIAL_CONTENT_CHANGED'], checkedAt };
-      } catch (error) {
-        if (error?.code && Number(error.status) >= 400 && Number(error.status) < 500) return { valid: false, reasons: [error.code], checkedAt };
-        throw error;
-      }
-    }),
+    validate: (context, id) => read(context, async client => validateStorySnapshot(client, context, await readSnapshot(client, context, id))),
   };
 }

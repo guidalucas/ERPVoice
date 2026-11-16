@@ -14,7 +14,8 @@ Las imágenes admiten JPG, PNG y WebP de hasta 12 MB y 32 megapíxeles. El servi
 
 Son cinco diseños programados, no diseños descargados de un proveedor ni generados con IA:
 
-- `server/commerce/storyService.js`: identifica las plantillas, define encabezados y valida stock, precios, promociones y la afirmación de última unidad.
+- `server/commerce/storyService.js` identifica las plantillas, define encabezados y valida stock, precios, promociones y la afirmación de última unidad.
+- [Historias automáticas](./fullmatch/INSTAGRAM_AUTO_STORIES.md) reutiliza los snapshots y el renderizador de Studio con la plantilla Stock disponible.
 - `src/studio/storyRenderer.ts`: compone foto, logo, títulos, precio y CTA en HTML/CSS y los exporta a Canvas de 1080 × 1920. Exporta PNG/JPG. Las plantillas comparten la composición base y varían encabezados, colores y detalles.
 - `src/studio/StoryEditor.tsx` y `BatchStudio.tsx`: controles de edición, selección y generación.
 - `server/catalog/render.js` y `server/catalog/assets/catalog.css`: página pública generada con HTML/CSS. Es independiente del renderizador de historias.

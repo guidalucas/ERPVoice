@@ -191,6 +191,7 @@ footer, footer span { font-size: 12px; color: var(--subtle); letter-spacing: 0; 
 }
 @media (max-width: 780px) {
   .sidebar { border-right: 0; border-bottom: 1px solid var(--border); padding: 16px 20px; }
+  .sidebar nav { flex-wrap: wrap; }
   .sidebar nav button { font-size: 13px; min-height: 44px; }
   .workspace { padding: 0 20px; }
   .topbar { height: 64px; margin-bottom: 18px; padding-right: 86px; }
