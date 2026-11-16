@@ -30,14 +30,24 @@ export function createCommerceRouter({ runtime, contextOf, autoStories, media = 
   const handle = (callback, status = 200) => async (req, res, next) => {
     try { res.status(status).json(await callback(req)); } catch (error) { next(error); }
   };
+  const automaticStoriesAvailable = context => autoStories?.isAvailableFor(context) === true;
   if (autoStories) {
+    router.use('/automatic-stories', (req, _res, next) => {
+      if (!automaticStoriesAvailable(req.commerceContext)) {
+        return next(new CommerceError('AUTO_STORY_NOT_AVAILABLE', 'La sección Historias automáticas todavía no está disponible para este comercio.', 403));
+      }
+      next();
+    });
     router.get('/automatic-stories', handle(req => autoStories.status(req.commerceContext)));
     router.put('/automatic-stories', handle(req => autoStories.configure(req.commerceContext, req.body)));
     router.post('/automatic-stories/simulate', handle(req => autoStories.simulate(req.commerceContext)));
     router.get('/automatic-stories/products/:id', handle(req => autoStories.productPreference(req.commerceContext, uuid(req.params.id))));
     router.put('/automatic-stories/products/:id', handle(req => autoStories.productPreference(req.commerceContext, uuid(req.params.id), req.body?.enabled)));
   }
-  router.get('/setup', handle(req => setup.status(req.commerceContext)));
+  router.get('/setup', handle(async req => ({
+    ...await setup.status(req.commerceContext),
+    automaticStoriesAvailable: automaticStoriesAvailable(req.commerceContext),
+  })));
   router.get('/money-policy', handle(req => runtime.withClient(async client => {
     const exists = (await client.query("SELECT to_regclass('public.inventory_money_policies') AS name")).rows[0].name;
     return { moneyPolicy: exists ? await readMoneyPolicy(client, req.commerceContext.businessId) : null };

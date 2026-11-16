@@ -88,11 +88,26 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
       { headers: { ...headers, 'Content-Type': 'application/json' }, method, body: body === undefined ? undefined : JSON.stringify(body) });
     assert.equal((await privateRequest('', { Authorization: `Bearer ${fixture.member.token}` })).status, 403);
     const foreign = fixture.freshOwners[0];
-    await sql("INSERT INTO commerce_profiles(owner_phone,id,brand_name,enabled,created_by) VALUES ($1,$2,'Other business',true,$1)", [foreign.owner, randomUUID()]);
     const otherAuth = { Authorization: `Bearer ${foreign.token}` };
-    assert.equal((await (await privateRequest('/simulate', otherAuth, 'POST')).json()).code, 'NO_ELIGIBLE_PRODUCT');
-    assert.equal((await privateRequest(`/products/${fixture.products[0].id}`, otherAuth)).status, 404);
-    assert.equal((await privateRequest('', otherAuth, 'PUT', { enabled: true, verifyBusiness: true })).status, 409);
+    const setupOther = (path, body) => fetch(fixture.apiUrl + path, {
+      method: 'POST', headers: { ...otherAuth, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    assert.equal((await setupOther('/api/business-profile', { businessName: 'Other business', businessCategory: 'indumentaria' })).status, 200);
+    assert.equal((await setupOther('/api/commerce/v1/setup', { operationId: randomUUID(), expectedProfileRevision: 0,
+      expectedPolicyRevision: 0, brandName: 'Other business', salesWhatsapp: null, currency: 'ARS', confirmedMajorInteger: true })).status, 200);
+    const setup = async headers => (await fetch(fixture.apiUrl + '/api/commerce/v1/setup', { headers })).json();
+    assert.equal((await setup(auth)).automaticStoriesAvailable, true);
+    assert.equal((await setup(otherAuth)).automaticStoriesAvailable, false);
+    const preferencePath = `/products/${fixture.products[0].id}`;
+    for (const response of await Promise.all([
+      privateRequest('', otherAuth), privateRequest('/simulate', otherAuth, 'POST'),
+      privateRequest('', otherAuth, 'PUT', { enabled: true, verifyBusiness: true }),
+      privateRequest(preferencePath, otherAuth), privateRequest(preferencePath, otherAuth, 'PUT', { enabled: false }),
+    ])) {
+      assert.equal(response.status, 403);
+      assert.equal((await response.json()).error.code, 'AUTO_STORY_NOT_AVAILABLE');
+    }
+    assert.deepEqual(await (await privateRequest(preferencePath)).json(), { enabled: true });
     await assert.rejects(createRunnerClient(origin, randomBytes(32))('/simulate'), { message: 'AUTO_STORY_UNAUTHENTICATED' });
     const path = routes.runnerPath + '/simulate', time = String(Date.now()), nonce = randomUUID();
     const replay = () => fetch(origin + path, { method: 'POST', headers: { 'x-stocky-time': time, 'x-stocky-nonce': nonce,
@@ -121,6 +136,15 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
       localStorage.setItem('erpvoice.auth.token', token);
       localStorage.setItem('erpvoice.auth.phoneNumber', owner);
     }, { token: fixture.token, owner });
+    const otherPage = await browser.newPage();
+    await otherPage.addInitScript(({ token, owner }) => {
+      localStorage.setItem('erpvoice.auth.token', token);
+      localStorage.setItem('erpvoice.auth.phoneNumber', owner);
+    }, foreign);
+    await otherPage.goto(fixture.url);
+    await otherPage.getByRole('heading', { name: 'Productos comerciales' }).waitFor();
+    assert.equal(await otherPage.getByRole('button', { name: 'Historias automáticas' }).count(), 0);
+    await otherPage.close();
     await page.goto(fixture.url);
     await page.getByRole('button', { name: 'Historias automáticas' }).click();
     await page.getByRole('button', { name: 'Simular historia' }).click();
@@ -220,8 +244,7 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
     await sql("UPDATE commerce_auto_story_jobs SET jpeg_expires_at=now()-interval '1 minute' WHERE id=$1", [replacement.id]);
     await worker('/claim');
     assert.equal((await sql('SELECT jpeg FROM commerce_auto_story_jobs WHERE id=$1', [replacement.id])).rows[0].jpeg, null);
-    const foreignStatus = await (await privateRequest('', otherAuth)).json();
-    assert.deepEqual(foreignStatus.history, []);
+    assert.equal((await privateRequest('', otherAuth)).status, 403);
 
     await pastDay();
     await sql("UPDATE products SET stock_available=0 WHERE owner_phone=$1", [owner]);
