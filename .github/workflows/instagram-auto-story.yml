@@ -21,6 +21,9 @@ jobs:
   story:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment:
+      name: Production
+      deployment: false
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v6

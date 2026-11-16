@@ -63,7 +63,7 @@ Meta documenta JPEG y descarga pública, `media_type=STORIES`, creación del con
 
 ## GitHub Actions, prueba y primer envío
 
-1. En GitHub, entrá a **Settings → Secrets and variables → Actions**. Creá la variable `AUTO_STORY_API_ORIGIN` con el origen HTTPS del backend y el secreto `AUTO_STORY_RUNNER_KEY` con la misma clave que usa Stocky. El workflow debe estar en la rama predeterminada `main`.
+1. En GitHub, entrá a **Settings → Environments → Production**. El job usa las variables y los secretos de ese entorno con `deployment: false`. Creá la variable `AUTO_STORY_API_ORIGIN` con el origen HTTPS del backend y el secreto `AUTO_STORY_RUNNER_KEY` con la misma clave que usa Stocky. El workflow debe estar en la rama predeterminada `main`.
 2. Aplicá la migración y desplegá el backend y Studio mediante el proceso habitual cuando lo autorices. Con la publicación desactivada, probá **Simular historia** en Studio. Verificá nombre, precio, talles, portada y marca.
 3. En **Actions → Instagram automatic story → Run workflow**, elegí `main` y dejá `dry_run` marcado. El resumen debe mostrar `simulated`. `NO_ELIGIBLE_PRODUCT` indica que ninguna ficha cumplió los criterios.
 4. Para un primer envío real, elegí un horario entre las ejecuciones previstas y autorizalo expresamente. Verificá la cuenta, activá la automatización en Studio y ejecutá el workflow con `dry_run` desmarcado. Comprobá el historial y el Instagram del comercio. Si la prueba debe terminar con un solo envío, desactivá la automatización desde Studio al confirmar el resultado.
