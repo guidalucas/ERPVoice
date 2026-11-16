@@ -5,7 +5,6 @@ import { readCommerceMigration } from '../server/commerce/migrationSource.js';
 let client;
 try {
   const apply = process.argv.includes('--apply');
-  const { version, sql, checksum, acceptedChecksums } = await readCommerceMigration(6);
   client = new Client(databaseTarget(process.env, { allowRemote: process.argv.includes('--allow-remote-database') }));
   await client.connect();
   await client.query(apply ? 'BEGIN' : 'BEGIN READ ONLY');
@@ -15,14 +14,20 @@ try {
   if (apply && (!ledger || !(await client.query('SELECT 1 FROM commerce_schema_migrations WHERE version=5')).rowCount)) {
     throw new Error('COMMERCE_UNIVERSAL_REQUIRED');
   }
-  const previous = ledger && (await client.query('SELECT checksum FROM commerce_schema_migrations WHERE version=$1', [version])).rows[0];
-  if (previous && !acceptedChecksums.includes(previous.checksum)) throw new Error('MIGRATION_CHECKSUM_MISMATCH');
-  if (apply && !previous) {
-    await client.query(sql);
-    await client.query('INSERT INTO commerce_schema_migrations(version,checksum) VALUES($1,$2)', [version, checksum]);
+  let ready = true, changed = false;
+  for (const version of [6, 7]) {
+    const { sql, checksum, acceptedChecksums } = await readCommerceMigration(version);
+    const previous = ledger && (await client.query('SELECT checksum FROM commerce_schema_migrations WHERE version=$1', [version])).rows[0];
+    if (previous && !acceptedChecksums.includes(previous.checksum)) throw new Error('MIGRATION_CHECKSUM_MISMATCH');
+    if (!previous && apply) {
+      await client.query(sql);
+      await client.query('INSERT INTO commerce_schema_migrations(version,checksum) VALUES($1,$2)', [version, checksum]);
+      changed = true;
+    }
+    if (!previous && !apply) ready = false;
   }
   await client.query('COMMIT');
-  console.log(JSON.stringify({ ready: Boolean(previous || apply), changed: apply && !previous, version }));
+  console.log(JSON.stringify({ ready, changed, version: 7 }));
 } catch (error) {
   console.error(/^[A-Z_]+$/.test(error.message) ? error.message : 'AUTO_STORY_MIGRATION_FAILED');
   process.exitCode = 1;

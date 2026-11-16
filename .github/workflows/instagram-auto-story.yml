@@ -2,7 +2,10 @@ name: Instagram automatic story
 
 on:
   schedule:
-    - cron: '17 12,15,19,23 * * *'
+    - cron: '17 12 * * *'
+    - cron: '17 15 * * *'
+    - cron: '17 19 * * *'
+    - cron: '17 23 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -11,6 +14,7 @@ on:
         default: true
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -35,11 +39,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - name: Identificar la ventana original
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
+        id: window
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          created_at="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq '.created_at')"
+          echo "created_at=$created_at" >> "$GITHUB_OUTPUT"
       - name: Generar historia
         env:
           AUTO_STORY_API_ORIGIN: ${{ vars.AUTO_STORY_API_ORIGIN }}
           AUTO_STORY_RUNNER_KEY: ${{ secrets.AUTO_STORY_RUNNER_KEY }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          AUTO_STORY_RUN_CREATED_AT: ${{ steps.window.outputs.created_at }}
+          AUTO_STORY_RUN_SCHEDULE: ${{ github.event.schedule }}
         run: |
           if [[ "$DRY_RUN" == "true" ]]; then
             node scripts/instagram-auto-story.mjs --dry-run

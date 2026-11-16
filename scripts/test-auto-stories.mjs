@@ -4,9 +4,9 @@ import { test } from 'node:test';
 import sharp from 'sharp';
 import { validateStoryJpeg, temporaryStoryUrl, validMediaSignature } from '../server/commerce/autoStoryMedia.js';
 import { assertSignedRunner, digest, requestMessage, signature, sealToken, unsealToken } from '../server/commerce/autoStorySecurity.js';
-import { businessDate, nextStoryAttempt } from '../server/commerce/autoStoryService.js';
+import { businessDate, nextStoryAttempt, storyWindow } from '../server/commerce/autoStoryService.js';
 import { createInstagramStoryPublisher } from '../server/commerce/instagramStoryPublisher.js';
-import { waitForApi } from './instagram-auto-story.mjs';
+import { originalClaimTime, waitForApi } from './instagram-auto-story.mjs';
 
 test('commercial day and the four UTC opportunities use Argentina time', () => {
   const at = value => Date.parse(value);
@@ -14,6 +14,15 @@ test('commercial day and the four UTC opportunities use Argentina time', () => {
   assert.equal(businessDate(at('2026-11-16T03:00:00Z')), '2026-11-16');
   assert.equal(nextStoryAttempt(at('2026-11-16T16:00:00Z')), '2026-11-16T19:17:00.000Z');
   assert.equal(nextStoryAttempt(at('2026-11-16T23:17:00Z')), '2026-11-17T12:17:00.000Z');
+  assert.deepEqual(['12:17', '15:17', '19:17', '23:17'].map(time => storyWindow(at(`2026-11-16T${time}:00Z`))), [1, 2, 3, 4]);
+  assert.equal(storyWindow(at('2026-11-17T02:59:59Z')), 4);
+  assert.equal(storyWindow(at('2026-11-17T03:00:00Z')), 1);
+});
+
+test('a delayed Actions run keeps the original cron window across UTC midnight', () => {
+  assert.equal(originalClaimTime('2026-11-17T00:05:00Z', '17 23 * * *'), Date.parse('2026-11-16T23:17:00Z'));
+  assert.equal(originalClaimTime('2026-11-16T16:12:00Z', '17 12 * * *'), Date.parse('2026-11-16T12:17:00Z'));
+  assert.equal(originalClaimTime('2026-11-16T16:12:00Z'), Date.parse('2026-11-16T16:12:00Z'));
 });
 
 test('worker signature binds HTTP verb, path and exact bytes, expires and authenticates the nonce', () => {
