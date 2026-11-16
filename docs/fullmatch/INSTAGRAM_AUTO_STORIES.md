@@ -35,7 +35,7 @@ La migración crea `commerce_auto_story_settings`, `commerce_auto_story_jobs` y 
 
 ## Configuración del backend
 
-El MVP admite una cuenta programada por despliegue. Los snapshots, la simulación, las preferencias de producto y el historial se consultan con el alcance del comercio autenticado. El ejecutor tiene un único comercio asociado del lado del servidor.
+El MVP habilita la sección Historias automáticas, su simulación y las preferencias de producto solo para el comercio identificado por `AUTO_STORY_OWNER`. El generador manual de historias sigue disponible en los demás comercios habilitados para Studio.
 
 | Variable en el backend | Uso |
 | --- | --- |

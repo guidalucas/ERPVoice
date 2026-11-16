@@ -124,6 +124,7 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
   });
 
   return {
+    isAvailableFor: context => Boolean(config.owner && config.owner === context.businessId),
     consumeNonce: async nonce => transaction(async client => {
       await client.query('DELETE FROM commerce_auto_story_requests WHERE owner_phone=$1 AND expires_at<=now()', [config.owner]);
       await client.query('UPDATE commerce_auto_story_jobs SET jpeg=NULL WHERE owner_phone=$1 AND jpeg IS NOT NULL AND jpeg_expires_at<=now()', [config.owner]);

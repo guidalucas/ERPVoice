@@ -5,7 +5,7 @@ import { useAuth } from '../store/AuthStore';
 import { command, pendingOperations, retryOperation } from './api';
 import type { Profile } from './types';
 
-export type SetupStatus = { enabled: boolean; needsSetup: boolean; profile: Profile | null; moneyPolicy: Profile['moneyPolicy'] };
+export type SetupStatus = { enabled: boolean; automaticStoriesAvailable: boolean; needsSetup: boolean; profile: Profile | null; moneyPolicy: Profile['moneyPolicy'] };
 
 export function BusinessOnboarding({ status, onDone, onRefresh }: { status: SetupStatus; onDone: () => void; onRefresh: () => void }) {
   const { session, completeOnboarding, logout } = useAuth();
