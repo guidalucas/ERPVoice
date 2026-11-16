@@ -1,0 +1,45 @@
+name: Instagram automatic story
+
+on:
+  schedule:
+    - cron: '17 12,15,19,23 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Renderizar una historia sin publicarla
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: instagram-auto-story
+  cancel-in-progress: false
+
+jobs:
+  story:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Generar historia
+        env:
+          AUTO_STORY_API_ORIGIN: ${{ vars.AUTO_STORY_API_ORIGIN }}
+          AUTO_STORY_RUNNER_KEY: ${{ secrets.AUTO_STORY_RUNNER_KEY }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          if [[ "$DRY_RUN" == "true" ]]; then
+            node scripts/instagram-auto-story.mjs --dry-run
+          else
+            node scripts/instagram-auto-story.mjs
+          fi

@@ -8,6 +8,7 @@ import { acknowledgeMetaMessages } from './metaProcessingAcknowledgement.js';
 import { operationErrorMessage } from './interpretationRecovery.js';
 import { universalOperationDetail } from './universalMetaOperations.js';
 import { requireReviewedUpdateSelection } from './inventorySelections.js';
+import { createAutoStoryRoutes } from './commerce/autoStoryRoutes.js';
 import { createCommerceRouter } from './commerce/router.js';
 import { createCommerceMediaService } from './commerce/mediaService.js';
 import { createWhatsAppPhotoService } from './commerce/whatsappPhotoService.js';
@@ -317,6 +318,10 @@ app.use((req, res, next) => {
   next();
 });
 
+const autoStories = createAutoStoryRoutes(stockyDatabaseRuntime, commerceMedia);
+app.use(autoStories.runnerPath, autoStories.runner);
+app.use(autoStories.mediaPath, autoStories.signedMedia);
+
 app.use('/api/meta-webhook', express.json({
   inflate: false,
   verify: (req, _res, body) => { req.rawBody = Buffer.from(body); },
@@ -337,7 +342,7 @@ const recentEvents = [];
 const studioReadTiming = (req, res, next) => req.method === 'GET'
   && /^\/(setup|products(?:\/[a-f0-9-]{36})?|summary|inventory-candidates|content-library)\/?$/.test(req.path)
   ? catalogTiming(req, res, next) : next();
-app.use('/api/commerce/v1', studioReadTiming, authenticateRequest, createCommerceRouter({ runtime: measuredCatalogRuntime(stockyDatabaseRuntime), media: commerceMedia,
+app.use('/api/commerce/v1', studioReadTiming, authenticateRequest, createCommerceRouter({ runtime: measuredCatalogRuntime(stockyDatabaseRuntime), media: commerceMedia, autoStories: autoStories.service,
   contextOf: req => ({ businessId: tenantPhoneOf(req), actorId: authPhoneOf(req),
     role: req.auth?.role }) }));
 const publicCatalog = createPublicCatalogRouters(stockyDatabaseRuntime);

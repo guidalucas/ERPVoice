@@ -1,4 +1,6 @@
-# Instagram — preparación deshabilitada
+# Instagram — investigación inicial
+
+La implementación de historias automáticas y el procedimiento de activación están en [Historias automáticas de Stocky](./INSTAGRAM_AUTO_STORIES.md). Esta página conserva la investigación original.
 
 Revisión: 20/10/2026. Solo investigación de documentación oficial. No se conectó una cuenta, no se solicitaron tokens y no se crearon contenedores ni publicaciones.
 

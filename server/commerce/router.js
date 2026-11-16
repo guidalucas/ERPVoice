@@ -1,5 +1,6 @@
 import express from 'express';
 import { randomUUID } from 'node:crypto';
+import { uuid } from './validation.js';
 import { CommerceError } from './errors.js';
 import { createCommerceProductService } from './productService.js';
 import { createCommerceMediaService } from './mediaService.js';
@@ -12,7 +13,7 @@ import { readMoneyPolicy } from './productRepository.js';
 import { createBrandAssetService } from './appearance.js';
 
 /** Authentication middleware must be mounted before this private router. */
-export function createCommerceRouter({ runtime, contextOf, media = createCommerceMediaService(runtime) }) {
+export function createCommerceRouter({ runtime, contextOf, autoStories, media = createCommerceMediaService(runtime) }) {
   const router = express.Router(), products = createCommerceProductService(runtime);
   const stories = createCommerceStoryService(runtime);
   const catalog = createCatalogService(runtime);
@@ -29,6 +30,13 @@ export function createCommerceRouter({ runtime, contextOf, media = createCommerc
   const handle = (callback, status = 200) => async (req, res, next) => {
     try { res.status(status).json(await callback(req)); } catch (error) { next(error); }
   };
+  if (autoStories) {
+    router.get('/automatic-stories', handle(req => autoStories.status(req.commerceContext)));
+    router.put('/automatic-stories', handle(req => autoStories.configure(req.commerceContext, req.body)));
+    router.post('/automatic-stories/simulate', handle(req => autoStories.simulate(req.commerceContext)));
+    router.get('/automatic-stories/products/:id', handle(req => autoStories.productPreference(req.commerceContext, uuid(req.params.id))));
+    router.put('/automatic-stories/products/:id', handle(req => autoStories.productPreference(req.commerceContext, uuid(req.params.id), req.body?.enabled)));
+  }
   router.get('/setup', handle(req => setup.status(req.commerceContext)));
   router.get('/money-policy', handle(req => runtime.withClient(async client => {
     const exists = (await client.query("SELECT to_regclass('public.inventory_money_policies') AS name")).rows[0].name;
