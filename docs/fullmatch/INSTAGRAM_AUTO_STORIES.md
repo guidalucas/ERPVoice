@@ -69,7 +69,17 @@ Meta documenta JPEG y descarga pública, `media_type=STORIES`, creación del con
 2. Aplicá la migración y desplegá el backend y Studio mediante el proceso habitual cuando lo autorices. Con la publicación desactivada, probá **Simular historia** en Studio. Verificá nombre, precio, talles, portada y marca.
 3. En **Actions → Instagram automatic story → Run workflow**, elegí `main` y dejá `dry_run` marcado. El resumen debe mostrar `simulated`. `NO_ELIGIBLE_PRODUCT` indica que ninguna ficha cumplió los criterios.
 4. Para un primer envío real, elegí un horario entre las ejecuciones previstas y autorizalo expresamente. Verificá la cuenta, activá la automatización en Studio y ejecutá el workflow con `dry_run` desmarcado. Comprobá el historial y el Instagram del comercio. Si la prueba debe terminar con un solo envío, desactivá la automatización desde Studio al confirmar el resultado.
-5. Las ventanas empiezan a las 09:17, 12:17, 16:17 y 20:17 de Argentina. Cada una tiene dos ejecuciones de respaldo a los minutos :37 y :57. PostgreSQL limita la publicación a una historia por ventana. Una publicación manual desde Actions ocupa la ventana del momento en que se solicitó. Antes de las 09:17, ocupa la primera del día. GitHub puede demorar u omitir ejecuciones y deshabilitar el cron de un repositorio público luego de 60 días sin actividad. El runner espera y reintenta el arranque del backend y descarta las ejecuciones que llegan después del cierre de su ventana. [Eventos schedule de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+5. Supabase Cron dispara el workflow por API a las 09:17, 12:17, 16:17 y 20:17 de Argentina. Cada ventana tiene reintentos a los minutos :37 y :57. PostgreSQL limita la publicación a una historia por ventana. El campo `scheduled_at` conserva el inicio de la ventana aunque GitHub demore la ejecución. Una ejecución manual que deja ese campo vacío usa la hora en que se solicitó. El runner espera el arranque del backend y descarta los trabajos cuya ventana cerró.
+
+## Configurar Supabase Cron
+
+El comando de configuración usa el destino explícito `COMMERCE_DATABASE_URL`. Para Supabase agregá `--allow-remote-database` y usá la cadena de confianza TLS habitual del proyecto.
+
+1. Ejecutá `node scripts/configure-instagram-story-cron.mjs --apply --allow-remote-database`. Instala `pg_cron`, `pg_net` y el esquema privado `stocky_automation`. Crea los cuatro trabajos de publicación desactivados y un trabajo que conserva las respuestas HTTP cada cinco minutos.
+2. Creá un token fine-grained de GitHub limitado a `guidalucas/ERPVoice`, con permiso `Actions: Read and write`. Guardalo en Supabase Vault con el nombre `stocky_instagram_actions_token`. El token debe renovarse antes de su vencimiento.
+3. Integrá el workflow con el input `scheduled_at` en `main`. Ejecutá `node scripts/configure-instagram-story-cron.mjs --simulate --allow-remote-database`. Verificá la respuesta HTTP 204 y el resultado `simulated` en Actions.
+4. Ejecutá `node scripts/configure-instagram-story-cron.mjs --activate --allow-remote-database` para activar los horarios. El comando verifica que exista el secreto y que `main` incluya el input. `--pause` desactiva los cuatro horarios.
+5. Ejecutá el comando sin ninguna acción para consultar horarios, activación y las últimas solicitudes. `stocky_automation.instagram_story_dispatches` guarda la hora solicitada, el identificador de pg_net y la respuesta HTTP. Un HTTP 204 confirma que GitHub recibió el disparo. El resultado de publicación se consulta en Actions y en el historial de Stocky.
 
 ## Operación
 

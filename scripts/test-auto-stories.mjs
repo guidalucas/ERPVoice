@@ -27,6 +27,18 @@ test('a delayed Actions run keeps the original cron window across UTC midnight',
   assert.equal(originalClaimTime('2026-11-17T00:05:00Z', '17,37,57 23 * * *'), Date.parse('2026-11-16T23:17:00Z'));
 });
 
+test('Supabase dispatch preserves the requested window when GitHub accepts a delayed request', () => {
+  assert.equal(originalClaimTime('2026-11-17T00:05:00Z', '', '2026-11-16T23:17:00Z'),
+    Date.parse('2026-11-16T23:17:00Z'));
+  assert.equal(originalClaimTime('2026-11-17T19:40:00Z', '', '2026-11-17T15:17:00Z'),
+    Date.parse('2026-11-17T15:17:00Z'));
+  for (const value of ['invalid', '2026-02-30T12:17:00Z', '2026-11-17T13:17:00Z',
+    '2026-11-17T12:37:00Z', '2026-11-18T12:17:00Z']) {
+    assert.throws(() => originalClaimTime('2026-11-17T19:40:00Z', '', value),
+      { message: 'RUNNER_CONFIGURATION_INVALID' });
+  }
+});
+
 test('worker signature binds HTTP verb, path and exact bytes, expires and authenticates the nonce', () => {
   const key = randomBytes(32), now = Date.now(), nonce = randomUUID(), originalUrl = '/jobs/id/jpeg', method = 'PUT';
   const body = Buffer.from('exact bytes'), time = String(now);

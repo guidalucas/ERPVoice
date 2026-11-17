@@ -8,9 +8,18 @@ import { digest, requestMessage, signature } from '../server/commerce/autoStoryS
 
 const namespace = '/api/internal/instagram-auto-story/v1';
 const empty = Buffer.alloc(0);
-export function originalClaimTime(createdAt, schedule) {
+export function originalClaimTime(createdAt, schedule, scheduledAt) {
   const created = Date.parse(createdAt);
   if (!Number.isFinite(created)) throw new Error('RUNNER_CONFIGURATION_INVALID');
+  if (scheduledAt) {
+    const requested = Date.parse(scheduledAt);
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:17:00Z$/.test(scheduledAt) ||
+      !Number.isFinite(requested) || new Date(requested).toISOString() !== scheduledAt.replace('Z', '.000Z') ||
+      ![12, 15, 19, 23].includes(new Date(requested).getUTCHours()) || requested > created) {
+      throw new Error('RUNNER_CONFIGURATION_INVALID');
+    }
+    return requested;
+  }
   if (!schedule) return created;
   const hour = /^17(?:,37,57)? (12|15|19|23) \* \* \*$/.exec(schedule)?.[1];
   if (!hour) throw new Error('RUNNER_CONFIGURATION_INVALID');
@@ -80,7 +89,8 @@ async function run() {
   }
   const dryRun = process.argv.includes('--dry-run');
   const at = process.env.GITHUB_ACTIONS === 'true' && !dryRun
-    ? originalClaimTime(process.env.AUTO_STORY_RUN_CREATED_AT, process.env.AUTO_STORY_RUN_SCHEDULE) : undefined;
+    ? originalClaimTime(process.env.AUTO_STORY_RUN_CREATED_AT, process.env.AUTO_STORY_RUN_SCHEDULE,
+      process.env.AUTO_STORY_SCHEDULED_AT) : undefined;
   const request = createRunnerClient(api.origin, Buffer.from(process.env.AUTO_STORY_RUNNER_KEY, 'hex'));
   await waitForApi(api.origin);
   let job = await request(dryRun ? '/simulate' : at === undefined ? '/claim' : `/claim?at=${at}`);
