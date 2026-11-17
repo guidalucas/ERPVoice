@@ -75,7 +75,10 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
     return Buffer.from(await response.arrayBuffer());
   } };
   const app = express();
-  const routes = createAutoStoryRoutes(runtime, media, config, { meta });
+  const firstWindow = new Date(Date.now() - 2 * 86_400_000).setUTCHours(12, 17, 0, 0);
+  const windowStarts = [0, 3, 7, 11, 24].map(hours => firstWindow + hours * 3_600_000);
+  let current = firstWindow + 60_000;
+  const routes = createAutoStoryRoutes(runtime, media, config, { meta, now: () => current });
   app.use(routes.runnerPath, routes.runner);
   app.use(routes.mediaPath, routes.signedMedia);
   try {
@@ -162,9 +165,6 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
 
     await routes.service.configure(context, { enabled: false, verifyBusiness: true });
     await routes.service.configure(context, { enabled: true });
-    const pastDay = () => sql(`UPDATE commerce_auto_story_jobs SET business_date=(SELECT min(business_date)-1 FROM commerce_auto_story_jobs),
-      published_at=published_at-interval '1 day'
-      WHERE status='published' AND (published_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date=(now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`);
     const claim = async () => {
       const job = await worker('/claim');
       assert.equal(job.status, 'rendering', JSON.stringify(job));
@@ -193,7 +193,8 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
 
     const used = new Set([first.snapshot.content.productId]);
     for (let i = 0; i < 2; i++) {
-      await pastDay();
+      current = windowStarts[i + 1] + 60_000;
+      assert.equal((await worker(`/claim?at=${windowStarts[i]}`)).code, 'STORY_WINDOW_CLOSED');
       const job = await claim();
       assert.ok(!used.has(job.snapshot.content.productId));
       used.add(job.snapshot.content.productId);
@@ -201,7 +202,7 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
       assert.equal((await advance(job)).status, 'published');
     }
     assert.equal(used.size, 3);
-    await pastDay();
+    current = windowStarts[3] + 60_000;
     const changed = await claim();
     assert.ok(used.has(changed.snapshot.content.productId));
     await upload(changed);
@@ -229,7 +230,7 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
     await assert.rejects(worker(`/jobs/${invalid.id}/jpeg`, 'PUT', Buffer.from('invalid')), { message: 'AUTO_STORY_INVALID_JPEG' });
     assert.equal(publishCalls, 3);
     const abandoned = await claim();
-    await sql("UPDATE commerce_auto_story_jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [abandoned.id]);
+    await sql('UPDATE commerce_auto_story_jobs SET lease_until=$2 WHERE id=$1', [abandoned.id, new Date(current - 1000)]);
     const replacement = await claim();
     assert.notEqual(replacement.id, abandoned.id);
     await upload(replacement);
@@ -241,12 +242,17 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
     assert.equal((await worker('/claim')).status, 'published');
     assert.equal((await worker('/claim')).code, 'ALREADY_PUBLISHED');
     assert.equal(publishCalls, 4);
+    const published = (await sql(`SELECT business_date::text, publication_window FROM commerce_auto_story_jobs
+      WHERE status='published' ORDER BY publication_window`)).rows;
+    assert.deepEqual(published.map(job => job.publication_window), [1, 2, 3, 4]);
+    assert.equal(new Set(published.map(job => job.business_date)).size, 1);
     await sql("UPDATE commerce_auto_story_jobs SET jpeg_expires_at=now()-interval '1 minute' WHERE id=$1", [replacement.id]);
     await worker('/claim');
     assert.equal((await sql('SELECT jpeg FROM commerce_auto_story_jobs WHERE id=$1', [replacement.id])).rows[0].jpeg, null);
     assert.equal((await privateRequest('', otherAuth)).status, 403);
 
-    await pastDay();
+    current = windowStarts[4] + 60_000;
+    assert.equal((await worker(`/claim?at=${windowStarts[3]}`)).code, 'STORY_WINDOW_CLOSED');
     await sql("UPDATE products SET stock_available=0 WHERE owner_phone=$1", [owner]);
     assert.equal((await worker('/claim')).code, 'NO_ELIGIBLE_PRODUCT');
     assert.equal(publishCalls, 4);

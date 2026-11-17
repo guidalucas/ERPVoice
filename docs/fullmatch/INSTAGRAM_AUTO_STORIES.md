@@ -8,14 +8,14 @@ La selección usa las fichas listas con portada disponible y al menos un SKU act
 
 El runner devuelve un JPG de 1080 × 1920. Stocky verifica los bytes decodificados y revalida precio, stock, foto y demás datos comerciales antes de preparar el contenedor y de nuevo antes de publicar. PostgreSQL conserva el JPG temporalmente. Meta lo obtiene por HTTPS mediante una firma que autoriza un archivo durante una hora. El runner limpia archivos vencidos, incluso en días sin publicaciones. El historial y los snapshots se conservan. Mantené la ruta `/api/instagram-story-media/*` fuera de los logs que registren la URL completa.
 
-La configuración se bloquea por comercio mientras se reclama el trabajo o se autoriza el envío. Hay un único trabajo activo por comercio y una restricción de publicación confirmada por fecha comercial, comercio y cuenta. Un intento interrumpido antes de publicar puede recuperarse tras vencer el lease. Si se pierde el resultado de `media_publish`, solo se consulta el contenedor. `PUBLISHED` confirma el envío, `EXPIRED` o `ERROR` permiten un nuevo intento. Cualquier otro resultado deja el trabajo en `unknown` y bloquea nuevos envíos hasta resolverlo.
+La configuración se bloquea por comercio mientras se reclama el trabajo o se autoriza el envío. Hay un único trabajo activo por comercio y hasta una publicación confirmada por ventana, fecha comercial, comercio y cuenta. Un intento interrumpido antes de publicar puede recuperarse tras vencer el lease si su ventana sigue abierta. Si se pierde el resultado de `media_publish`, solo se consulta el contenedor. `PUBLISHED` confirma el envío, `EXPIRED` o `ERROR` permiten un nuevo intento. Cualquier otro resultado deja el trabajo en `unknown` y bloquea nuevos envíos hasta resolverlo.
 
 El modo de prueba de Actions y la simulación en Studio generan un JPG sin crear contenedores ni alterar el historial o la rotación. El exportador manual sigue usando el mismo renderizador y la autenticación de Studio.
 
 ## Archivos de la implementación
 
 - Workflow y runner. `.github/workflows/instagram-auto-story.yml`, `scripts/instagram-auto-story.mjs`, `scripts/auto-story-render.html`.
-- Base de datos. `server/migrations/commerce/006_automatic_stories.sql`, `server/commerce/migrationSource.js`, `scripts/migrate-commerce-auto-stories.js`.
+- Base de datos. `server/migrations/commerce/006_automatic_stories.sql`, `server/migrations/commerce/007_automatic_story_windows.sql`, `server/commerce/migrationSource.js`, `scripts/migrate-commerce-auto-stories.js`.
 - Backend. `server/commerce/autoStoryService.js`, `autoStorySelection.js`, `autoStoryRoutes.js`, `autoStorySecurity.js`, `autoStoryMedia.js` e `instagramStoryPublisher.js` dentro de `server/commerce`. Integración en `server/index.js`, `server/commerce/router.js` y `server/commerce/storyService.js`.
 - Studio. `src/studio/AutomaticStories.tsx`, `autoStoryRender.ts`, `Studio.tsx`, `storyRenderer.ts` y `universal.css` dentro de `src/studio`.
 - Pruebas y comandos. `scripts/test-auto-stories.mjs`, `scripts/test-auto-stories-e2e.mjs` y `package.json`.
@@ -23,7 +23,7 @@ El modo de prueba de Actions y la simulación en Studio generan un JPG sin crear
 
 ## Migración
 
-Aplicá la migración 006 después de la 005, usando el procedimiento de base comercial existente y el destino explícito en `COMMERCE_DATABASE_URL`. Ejecutá desde un entorno de mantenimiento autorizado. Para un destino remoto, agregá `-- --allow-remote-database` a cada comando.
+Aplicá las migraciones de historias después de la 005 y antes de desplegar el backend que publica por ventana. El comando aplica la 006 y la 007 en orden y conserva las ya registradas. Usá el destino explícito en `COMMERCE_DATABASE_URL` desde un entorno de mantenimiento autorizado. Para un destino remoto, agregá `-- --allow-remote-database` a cada comando.
 
 ```sh
 npm run commerce:auto-stories:schema:check
@@ -32,6 +32,7 @@ npm run commerce:auto-stories:schema:check
 ```
 
 La migración crea `commerce_auto_story_settings`, `commerce_auto_story_jobs` y `commerce_auto_story_requests`, y agrega `commercial_products.auto_story_enabled`. Las fichas existentes quedan incluidas si cumplen las reglas. Cada comercio empieza con la automatización desactivada.
+La 007 asigna los intentos existentes a la ventana correspondiente a la hora en que se reclamaron y conserva el historial.
 
 ## Configuración del backend
 
@@ -59,7 +60,7 @@ Generá las claves por separado en un entorno seguro. Para un dry-run de Actions
 5. En Studio, entrá como propietario y abrí **Historias automáticas**. Confirmá el tipo de cuenta y autorizá su conexión. **Verificar conexión** consulta la identidad y tipo Business que devuelve Meta y el endpoint de cuota de publicación. Comprobá que el usuario mostrado sea el de FullMatch. La publicación sigue desactivada hasta usar **Autorizar y activar publicación automática**.
 6. Stocky intenta renovar el token cuando quedan menos de siete días y hay un trabajo que publicar. Guarda la renovación cifrada en PostgreSQL. Para un token expirado o revocado, generá otro, reemplazá el token y vencimiento en el backend y verificá de nuevo desde Studio. El endpoint de renovación requiere un token válido de al menos 24 horas. [Renovación del token](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login#refresh-a-long-lived-token).
 
-Meta documenta JPEG y descarga pública, `media_type=STORIES`, creación del contenedor, consulta de estado y `media_publish`. La guía de publicación menciona 100 publicaciones por API en una ventana móvil de 24 horas y la referencia de cuota muestra 50. Stocky usa el valor que devuelve `config.quota_total` para la cuenta y aplica su propio límite de una historia diaria. [Referencia de cuota de Meta](https://developers.facebook.com/documentation/instagram-platform/instagram-graph-api/reference/ig-user/content_publishing_limit). Verificá la aceptación de la imagen vertical y el permiso efectivo en la cuenta real durante el primer intento controlado. [Meta Content Publishing](https://developers.facebook.com/documentation/instagram-platform/content-publishing).
+Meta documenta JPEG y descarga pública, `media_type=STORIES`, creación del contenedor, consulta de estado y `media_publish`. La guía de publicación menciona 100 publicaciones por API en una ventana móvil de 24 horas y la referencia de cuota muestra 50. Stocky usa el valor que devuelve `config.quota_total` para la cuenta y aplica su propio límite de una historia por ventana. [Referencia de cuota de Meta](https://developers.facebook.com/documentation/instagram-platform/instagram-graph-api/reference/ig-user/content_publishing_limit). Verificá la aceptación de la imagen vertical y el permiso efectivo en la cuenta real durante el primer intento controlado. [Meta Content Publishing](https://developers.facebook.com/documentation/instagram-platform/content-publishing).
 
 ## GitHub Actions, prueba y primer envío
 
@@ -67,7 +68,7 @@ Meta documenta JPEG y descarga pública, `media_type=STORIES`, creación del con
 2. Aplicá la migración y desplegá el backend y Studio mediante el proceso habitual cuando lo autorices. Con la publicación desactivada, probá **Simular historia** en Studio. Verificá nombre, precio, talles, portada y marca.
 3. En **Actions → Instagram automatic story → Run workflow**, elegí `main` y dejá `dry_run` marcado. El resumen debe mostrar `simulated`. `NO_ELIGIBLE_PRODUCT` indica que ninguna ficha cumplió los criterios.
 4. Para un primer envío real, elegí un horario entre las ejecuciones previstas y autorizalo expresamente. Verificá la cuenta, activá la automatización en Studio y ejecutá el workflow con `dry_run` desmarcado. Comprobá el historial y el Instagram del comercio. Si la prueba debe terminar con un solo envío, desactivá la automatización desde Studio al confirmar el resultado.
-5. El cron `17 12,15,19,23 * * *` ofrece cuatro oportunidades a las 09:17, 12:17, 16:17 y 20:17 de Argentina. GitHub puede demorar u omitir ejecuciones. En un repositorio público también puede deshabilitarlas luego de 60 días sin actividad. El runner espera y reintenta el arranque del backend. Verificá que el plan y la cuota de Actions del repositorio cubran el uso previsto. [Eventos schedule de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+5. Los cuatro cron inician sus ventanas a las 09:17, 12:17, 16:17 y 20:17 de Argentina. Una publicación manual desde Actions ocupa la ventana del momento en que se solicitó. Antes de las 09:17, ocupa la primera del día. GitHub puede demorar u omitir ejecuciones. Si la ejecución llega cuando su ventana ya cerró, el runner la omite. En un repositorio público GitHub también puede deshabilitar el cron luego de 60 días sin actividad. El runner espera y reintenta el arranque del backend. Verificá que el plan y la cuota de Actions del repositorio cubran el uso previsto. [Eventos schedule de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
 ## Operación
 

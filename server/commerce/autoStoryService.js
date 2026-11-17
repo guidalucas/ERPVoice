@@ -19,6 +19,17 @@ export function nextStoryAttempt(now) {
   const times = [12, 15, 19, 23, 36].map(hour => day + (hour * 60 + 17) * 60_000);
   return new Date(times.find(time => time > now)).toISOString();
 }
+const windowClock = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'America/Argentina/Buenos_Aires', hourCycle: 'h23', hour: '2-digit', minute: '2-digit',
+});
+export function storyWindow(now) {
+  const time = windowClock.format(now);
+  if (time >= '20:17') return 4;
+  if (time >= '16:17') return 3;
+  if (time >= '12:17') return 2;
+  return 1;
+}
+const isCurrentWindow = (job, time) => job.business_date === businessDate(time) && job.publication_window === storyWindow(time);
 const publicError = error => {
   const code = error?.status >= 400 && error?.status < 500 ? error.code : error?.message;
   return typeof code === 'string' && /^[A-Z][A-Z_]{2,70}$/.test(code) ? code : 'AUTO_STORY_FAILED';
@@ -134,7 +145,7 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
     }),
     status: context => transaction(async client => {
       await requireCommerceAccess(client, context, 'commerce:story');
-      const present = await client.query("SELECT 1 FROM commerce_schema_migrations WHERE version=6");
+      const present = await client.query("SELECT 1 FROM commerce_schema_migrations WHERE version=7");
       if (!present.rowCount) return { ready: false, enabled: false, connection: 'not_configured', history: [], lastPublished: null };
       const row = await readSettings(client, context.businessId);
       const columns = "id,status,error_code,product_id,business_date::text,created_at,published_at,media_id,snapshot#>>'{content,title}' AS title";
@@ -196,14 +207,22 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
       }, true);
       return preview(context, selection);
     },
-    async claim() {
+    async claim(requestedTime) {
       const owner = worker.businessId;
       const result = await transaction(async client => {
         await requireCommerceAccess(client, worker, 'commerce:story');
+        if (!(await client.query('SELECT 1 FROM commerce_schema_migrations WHERE version=7')).rowCount) {
+          fail('AUTO_STORY_MIGRATION_REQUIRED', 'Falta aplicar la migración de ventanas de publicación.', 503);
+        }
         await ensureSettings(client, owner);
         const row = await readSettings(client, owner, true);
-        const day = businessDate(now());
-        const job = (await client.query(`SELECT id,status,instagram_id,container_id,business_date::text,lease_until,
+        const time = now();
+        const day = businessDate(time);
+        const window = storyWindow(time);
+        if (requestedTime !== undefined && (requestedTime > time || businessDate(requestedTime) !== day || storyWindow(requestedTime) !== window)) {
+          return { status: 'skipped', code: 'STORY_WINDOW_CLOSED' };
+        }
+        const job = (await client.query(`SELECT id,status,instagram_id,container_id,business_date::text,publication_window,lease_until,
           jpeg_expires_at FROM commerce_auto_story_jobs WHERE owner_phone=$1 AND status IN ${active}`, [owner])).rows[0];
         if (job?.status === 'unknown') return { reconcile: job };
         if (job?.status === 'publishing') {
@@ -212,7 +231,7 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
             ? { reconcile: job } : { status: 'busy' };
         }
         if (job) {
-          if (job.business_date === day && job.instagram_id === row.instagram_id &&
+          if (isCurrentWindow(job, time) && job.instagram_id === row.instagram_id &&
             (+job.lease_until > now() || job.status === 'ready' && +job.jpeg_expires_at > now())) {
             if (job.status === 'ready' && row.enabled && connection(owner, row) === 'connected') return { status: 'ready', id: job.id };
             return { status: 'busy' };
@@ -224,15 +243,15 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
         if (connected !== 'connected') return { status: 'skipped', code: `META_${connected.toUpperCase()}` };
         if ((await client.query(`
           SELECT 1 FROM commerce_auto_story_jobs WHERE owner_phone=$1 AND instagram_id=$2 AND status='published'
-          AND (business_date=$3 OR (published_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date=$3)
-        `, [owner, row.instagram_id, day])).rowCount) return { status: 'skipped', code: 'ALREADY_PUBLISHED' };
+          AND business_date=$3 AND publication_window=$4
+        `, [owner, row.instagram_id, day, window])).rowCount) return { status: 'skipped', code: 'ALREADY_PUBLISHED' };
         const id = randomUUID();
         const selection = await selectAutoStory(client, worker, id, row.instagram_id);
         await client.query(`INSERT INTO commerce_auto_story_jobs
-          (id,owner_phone,instagram_id,business_date,product_id,cycle,snapshot,status,error_code,lease_until)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now()+interval '10 minutes')`, [id, owner, row.instagram_id, day,
+          (id,owner_phone,instagram_id,business_date,product_id,cycle,snapshot,status,error_code,lease_until,created_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now()+interval '10 minutes',$10)`, [id, owner, row.instagram_id, day,
           selection?.snapshot.content.productId ?? null, selection?.cycle ?? null, selection?.snapshot ?? null,
-          selection ? 'rendering' : 'skipped', selection ? null : 'NO_ELIGIBLE_PRODUCT']);
+          selection ? 'rendering' : 'skipped', selection ? null : 'NO_ELIGIBLE_PRODUCT', new Date(time)]);
         return { selection };
       });
       if (result.reconcile) return reconcile(owner, result.reconcile);
@@ -263,13 +282,13 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
       const start = await transaction(async client => {
         await requireCommerceAccess(client, worker, 'commerce:story');
         const row = await readSettings(client, owner, true);
-        const job = (await client.query(`SELECT id,status,instagram_id,business_date::text,container_id,snapshot,
+        const job = (await client.query(`SELECT id,status,instagram_id,business_date::text,publication_window,container_id,snapshot,
           jpeg_expires_at FROM commerce_auto_story_jobs WHERE owner_phone=$1 AND id=$2 FOR UPDATE`, [owner, id])).rows[0];
         if (!job) fail('RESOURCE_NOT_FOUND', 'No encontré el intento.', 404);
         if (job.status !== 'ready') return { status: job.status };
-        const day = businessDate(now());
+        const time = now();
         if (!row?.enabled || row.instagram_id !== job.instagram_id || connection(owner, row) !== 'connected'
-          || job.business_date !== day || businessDate(now() + 30_000) !== day || +job.jpeg_expires_at <= now()) {
+          || !isCurrentWindow(job, time) || !isCurrentWindow(job, time + 30_000) || +job.jpeg_expires_at <= time) {
           await jobState(client, owner, id, 'ready', 'failed', 'JOB_NO_LONGER_ELIGIBLE');
           return { status: 'failed', code: 'JOB_NO_LONGER_ELIGIBLE' };
         }
@@ -301,7 +320,7 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
           await requireCommerceAccess(client, worker, 'commerce:story');
           const row = await readSettings(client, owner, true);
           if (!row?.enabled || row.instagram_id !== job.instagram_id || connection(owner, row) !== 'connected'
-            || businessDate(now() + 30_000) !== job.business_date) throw new Error('JOB_NO_LONGER_ELIGIBLE');
+            || !isCurrentWindow(job, now() + 30_000)) throw new Error('JOB_NO_LONGER_ELIGIBLE');
           await revalidateAutoStory(client, worker, job.snapshot);
           return (await client.query(`UPDATE commerce_auto_story_jobs SET status='publishing',lease_until=now()+interval '3 minutes',updated_at=now()
             WHERE owner_phone=$1 AND id=$2 AND status='creating' AND lease_until>now()`, [owner, id])).rowCount > 0;

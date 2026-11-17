@@ -22,7 +22,14 @@ export function createAutoStoryRoutes(runtime, media, config = readAutoStoryConf
     }
     catch (error) { next(error); }
   };
-  runner.post('/claim', authorize, handle(() => service.claim()));
+  runner.post('/claim', authorize, handle(req => {
+    const at = req.query.at;
+    if (at === undefined) return service.claim();
+    if (typeof at !== 'string' || !/^\d{13}$/.test(at)) {
+      throw new CommerceError('INVALID_COMMAND', 'Horario de ejecución inválido.', 400);
+    }
+    return service.claim(Number(at));
+  }));
   runner.post('/simulate', authorize, handle(() => service.simulate({ actorId: config.owner, businessId: config.owner, role: 'owner' })));
   const verifyUploadHeaders = (req, _res, next) => {
     try {

@@ -57,7 +57,7 @@ export function AutomaticStories({ owner, onOpen }: { owner: boolean; onOpen: (i
       <div className="panel">
         <p>Instagram · {connections[settings.connection]} {settings.instagramUsername && <small>@{settings.instagramUsername}</small>}</p>
         <p>Automatización · {settings.enabled ? 'Activada' : 'Desactivada'}</p>
-        {settings.nextAttempt && <p>Próximo intento previsto · {date(settings.nextAttempt)} (Argentina)</p>}
+        {settings.nextAttempt && <p>Próxima ventana de publicación · {date(settings.nextAttempt)} (Argentina)</p>}
         {owner && settings.connection !== 'not_configured' && settings.connection !== 'connected' && <>
           <label><input type="checkbox" checked={verify} onChange={event => setVerify(event.target.checked)}/> Confirmo que la cuenta configurada es Business y autorizo su conexión.</label>
           <button type="button" disabled={busy || !verify} onClick={() => void run(() => configure(false, true))}>Verificar conexión</button>
