@@ -2,10 +2,11 @@ name: Instagram automatic story
 
 on:
   schedule:
-    - cron: '17 12 * * *'
-    - cron: '17 15 * * *'
-    - cron: '17 19 * * *'
-    - cron: '17 23 * * *'
+    # Keep each window identifiable even when GitHub queues a run late.
+    - cron: '17,37,57 12 * * *'
+    - cron: '17,37,57 15 * * *'
+    - cron: '17,37,57 19 * * *'
+    - cron: '17,37,57 23 * * *'
   workflow_dispatch:
     inputs:
       dry_run:

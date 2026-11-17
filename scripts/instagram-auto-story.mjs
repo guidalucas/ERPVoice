@@ -12,7 +12,7 @@ export function originalClaimTime(createdAt, schedule) {
   const created = Date.parse(createdAt);
   if (!Number.isFinite(created)) throw new Error('RUNNER_CONFIGURATION_INVALID');
   if (!schedule) return created;
-  const hour = /^17 (12|15|19|23) \* \* \*$/.exec(schedule)?.[1];
+  const hour = /^17(?:,37,57)? (12|15|19|23) \* \* \*$/.exec(schedule)?.[1];
   if (!hour) throw new Error('RUNNER_CONFIGURATION_INVALID');
   const scheduled = new Date(created).setUTCHours(Number(hour), 17, 0, 0);
   return scheduled <= created ? scheduled : scheduled - 86_400_000;

@@ -23,7 +23,7 @@ El modo de prueba de Actions y la simulación en Studio generan un JPG sin crear
 
 ## Migración
 
-Aplicá las migraciones de historias después de la 005 y antes de desplegar el backend que publica por ventana. El comando aplica la 006 y la 007 en orden y conserva las ya registradas. Usá el destino explícito en `COMMERCE_DATABASE_URL` desde un entorno de mantenimiento autorizado. Para un destino remoto, agregá `-- --allow-remote-database` a cada comando.
+Aplicá las migraciones de historias después de la 005. El comando aplica de la 006 a la 008 en orden y conserva las ya registradas. El backend requiere la 007 para publicar por ventana. La 008 habilita el registro de ventanas omitidas y puede aplicarse después de desplegar el backend. Usá el destino explícito en `COMMERCE_DATABASE_URL` desde un entorno de mantenimiento autorizado. Para un destino remoto, agregá `-- --allow-remote-database` a cada comando.
 
 ```sh
 npm run commerce:auto-stories:schema:check
@@ -33,6 +33,7 @@ npm run commerce:auto-stories:schema:check
 
 La migración crea `commerce_auto_story_settings`, `commerce_auto_story_jobs` y `commerce_auto_story_requests`, y agrega `commercial_products.auto_story_enabled`. Las fichas existentes quedan incluidas si cumplen las reglas. Cada comercio empieza con la automatización desactivada.
 La 007 asigna los intentos existentes a la ventana correspondiente a la hora en que se reclamaron y conserva el historial.
+La 008 guarda desde cuándo está activada la automatización. Para configuraciones que ya estaban activadas toma como referencia la última autorización registrada.
 
 ## Configuración del backend
 
@@ -68,10 +69,11 @@ Meta documenta JPEG y descarga pública, `media_type=STORIES`, creación del con
 2. Aplicá la migración y desplegá el backend y Studio mediante el proceso habitual cuando lo autorices. Con la publicación desactivada, probá **Simular historia** en Studio. Verificá nombre, precio, talles, portada y marca.
 3. En **Actions → Instagram automatic story → Run workflow**, elegí `main` y dejá `dry_run` marcado. El resumen debe mostrar `simulated`. `NO_ELIGIBLE_PRODUCT` indica que ninguna ficha cumplió los criterios.
 4. Para un primer envío real, elegí un horario entre las ejecuciones previstas y autorizalo expresamente. Verificá la cuenta, activá la automatización en Studio y ejecutá el workflow con `dry_run` desmarcado. Comprobá el historial y el Instagram del comercio. Si la prueba debe terminar con un solo envío, desactivá la automatización desde Studio al confirmar el resultado.
-5. Los cuatro cron inician sus ventanas a las 09:17, 12:17, 16:17 y 20:17 de Argentina. Una publicación manual desde Actions ocupa la ventana del momento en que se solicitó. Antes de las 09:17, ocupa la primera del día. GitHub puede demorar u omitir ejecuciones. Si la ejecución llega cuando su ventana ya cerró, el runner la omite. En un repositorio público GitHub también puede deshabilitar el cron luego de 60 días sin actividad. El runner espera y reintenta el arranque del backend. Verificá que el plan y la cuota de Actions del repositorio cubran el uso previsto. [Eventos schedule de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+5. Las ventanas empiezan a las 09:17, 12:17, 16:17 y 20:17 de Argentina. Cada una tiene dos ejecuciones de respaldo a los minutos :37 y :57. PostgreSQL limita la publicación a una historia por ventana. Una publicación manual desde Actions ocupa la ventana del momento en que se solicitó. Antes de las 09:17, ocupa la primera del día. GitHub puede demorar u omitir ejecuciones y deshabilitar el cron de un repositorio público luego de 60 días sin actividad. El runner espera y reintenta el arranque del backend y descarta las ejecuciones que llegan después del cierre de su ventana. [Eventos schedule de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
 ## Operación
 
+- **Ventana sin registro:** al recibir otra ejecución o consultar el historial, Stocky guarda como omitidas las ventanas cerradas de los últimos siete días en las que la automatización estaba activada y no hay intento registrado. La fila muestra la hora de inicio de la ventana.
 - **Resultado incierto:** las ejecuciones siguientes consultan el mismo contenedor, aun con la automatización desactivada. Si el contenedor queda indeterminado tras recuperar la conexión, revisá el historial de Instagram y Meta. Conservá el bloqueo hasta contar con confirmación externa inequívoca. Si Meta ya no puede exponer el estado del contenedor, la resolución documentada requiere intervención de un operador de la base sobre el trabajo concreto y registro de la evidencia disponible. No borres el trabajo.
 - **JPG temporal:** una URL deja de responder al vencer la hora, aunque el backend haya estado suspendido. La limpieza física ocurre al volver a ejecutar la automatización. Si el workflow queda deshabilitado durante un período prolongado, se pueden limpiar los bytes con `UPDATE commerce_auto_story_jobs SET jpeg=NULL WHERE jpeg IS NOT NULL AND jpeg_expires_at<=now();`.
 - **Metadatos de confirmación:** si se perdió la respuesta de publicación y Meta confirma por estado `PUBLISHED`, el historial puede carecer del identificador de la historia. La confirmación conserva el ID del contenedor y bloquea duplicados.

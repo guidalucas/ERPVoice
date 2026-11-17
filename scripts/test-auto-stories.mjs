@@ -23,6 +23,8 @@ test('a delayed Actions run keeps the original cron window across UTC midnight',
   assert.equal(originalClaimTime('2026-11-17T00:05:00Z', '17 23 * * *'), Date.parse('2026-11-16T23:17:00Z'));
   assert.equal(originalClaimTime('2026-11-16T16:12:00Z', '17 12 * * *'), Date.parse('2026-11-16T12:17:00Z'));
   assert.equal(originalClaimTime('2026-11-16T16:12:00Z'), Date.parse('2026-11-16T16:12:00Z'));
+  assert.equal(originalClaimTime('2026-11-17T12:38:00Z', '17,37,57 12 * * *'), Date.parse('2026-11-17T12:17:00Z'));
+  assert.equal(originalClaimTime('2026-11-17T00:05:00Z', '17,37,57 23 * * *'), Date.parse('2026-11-16T23:17:00Z'));
 });
 
 test('worker signature binds HTTP verb, path and exact bytes, expires and authenticates the nonce', () => {
