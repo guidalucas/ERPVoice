@@ -78,7 +78,8 @@ export function AutomaticStories({ owner, onOpen }: { owner: boolean; onOpen: (i
         {settings.history.length ? <ul>{settings.history.map(attempt => <li key={attempt.id}>
           {date(attempt.created_at)} · {states[attempt.status]}
           {attempt.product_id && <> · <button type="button" onClick={() => onOpen(attempt.product_id!)}>{attempt.title}</button></>}
-          {attempt.error_code && <> · <code>{attempt.error_code}</code></>}
+          {attempt.error_code === 'STORY_NO_ATTEMPT_RECORDED' ? ' · No se registró ningún intento en esta ventana.'
+            : attempt.error_code && <> · <code>{attempt.error_code}</code></>}
         </li>)}</ul> : <p>Todavía no hay intentos programados.</p>}
       </div>
     </>}

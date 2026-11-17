@@ -30,6 +30,31 @@ export function storyWindow(now) {
   return 1;
 }
 const isCurrentWindow = (job, time) => job.business_date === businessDate(time) && job.publication_window === storyWindow(time);
+const missedWindowLookback = 7 * 86_400_000;
+async function recordMissedWindows(client, settings, time) {
+  if (!settings?.enabled || !settings.enabled_at) return;
+  const starts = [], dates = [], windows = [];
+  const firstCheck = Math.max(+settings.enabled_at, time - missedWindowLookback);
+  for (let start = Date.parse(nextStoryAttempt(firstCheck - 1)); start < time;
+    start = Date.parse(nextStoryAttempt(start))) {
+    const slot = { business_date: businessDate(start), publication_window: storyWindow(start) };
+    if (isCurrentWindow(slot, time)) break;
+    starts.push(new Date(start));
+    dates.push(slot.business_date);
+    windows.push(slot.publication_window);
+  }
+  if (!starts.length) return;
+  // The caller locks settings so status refreshes and claims cannot insert the same omission.
+  await client.query(`
+    INSERT INTO commerce_auto_story_jobs (id,owner_phone,instagram_id,business_date,created_at,status,error_code)
+    SELECT gen_random_uuid(),$1,$2,slot.business_date,slot.starts_at,'skipped','STORY_NO_ATTEMPT_RECORDED'
+    FROM unnest($3::timestamptz[],$4::date[],$5::smallint[]) AS slot(starts_at,business_date,publication_window)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM commerce_auto_story_jobs
+      WHERE owner_phone=$1 AND instagram_id=$2 AND business_date=slot.business_date
+        AND publication_window=slot.publication_window
+    )`, [settings.owner_phone, settings.instagram_id, starts, dates, windows]);
+}
 const publicError = error => {
   const code = error?.status >= 400 && error?.status < 500 ? error.code : error?.message;
   return typeof code === 'string' && /^[A-Z][A-Z_]{2,70}$/.test(code) ? code : 'AUTO_STORY_FAILED';
@@ -147,12 +172,14 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
       await requireCommerceAccess(client, context, 'commerce:story');
       const present = await client.query("SELECT 1 FROM commerce_schema_migrations WHERE version=7");
       if (!present.rowCount) return { ready: false, enabled: false, connection: 'not_configured', history: [], lastPublished: null };
-      const row = await readSettings(client, context.businessId);
+      const row = await readSettings(client, context.businessId, true);
+      const time = now();
+      await recordMissedWindows(client, row, time);
       const columns = "id,status,error_code,product_id,business_date::text,created_at,published_at,media_id,snapshot#>>'{content,title}' AS title";
       const history = (await client.query(`SELECT ${columns} FROM commerce_auto_story_jobs WHERE owner_phone=$1 ORDER BY created_at DESC LIMIT 30`, [context.businessId])).rows;
       const lastPublished = (await client.query(`SELECT ${columns} FROM commerce_auto_story_jobs WHERE owner_phone=$1 AND status='published' ORDER BY published_at DESC LIMIT 1`, [context.businessId])).rows[0] ?? null;
       return { ready: true, enabled: row?.enabled ?? false, connection: connection(context.businessId, row),
-        instagramId: row?.instagram_id, instagramUsername: row?.instagram_username, nextAttempt: row?.enabled ? nextStoryAttempt(now()) : null, history, lastPublished };
+        instagramId: row?.instagram_id, instagramUsername: row?.instagram_username, nextAttempt: row?.enabled ? nextStoryAttempt(time) : null, history, lastPublished };
     }),
     configure: async (context, input) => {
       requireOwner(context);
@@ -164,6 +191,8 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
           await requireCommerceAccess(client, context, 'commerce:settings');
           await ensureSettings(client, owner);
           const row = await readSettings(client, owner, true);
+          const time = now();
+          await recordMissedWindows(client, row, time);
           if (verifyBusiness && config.liveReady && config.owner === owner) {
             const current = currentCredentials(row);
             if (current.expires <= now()) throw new Error('META_TOKEN_EXPIRED');
@@ -177,8 +206,18 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
               authorization_at=now(),token_expires_at=$3,refreshed_token=CASE WHEN token_source=$4 THEN refreshed_token ELSE NULL END,
               token_source=$4,instagram_username=$5 WHERE owner_phone=$1`, [owner, account.id, new Date(current.expires), tokenSource(), account.username]);
           }
-          if (enabled && (connection(owner, await readSettings(client, owner)) !== 'connected')) fail('META_CONNECTION_REQUIRED', 'Primero verificá y autorizá una cuenta Business de Instagram.', 409);
-          await client.query('UPDATE commerce_auto_story_settings SET enabled=$2 WHERE owner_phone=$1', [owner, enabled]);
+          let enabledAt = null;
+          if (enabled) {
+            const current = await readSettings(client, owner);
+            if (connection(owner, current) !== 'connected') fail('META_CONNECTION_REQUIRED', 'Primero verificá y autorizá una cuenta Business de Instagram.', 409);
+            enabledAt = row.enabled && row.instagram_id === current.instagram_id ? row.enabled_at : new Date(time);
+          }
+          // Keep publishing available while the history migration rolls out.
+          if (Object.hasOwn(row, 'enabled_at')) {
+            await client.query('UPDATE commerce_auto_story_settings SET enabled=$2,enabled_at=$3 WHERE owner_phone=$1', [owner, enabled, enabledAt]);
+          } else {
+            await client.query('UPDATE commerce_auto_story_settings SET enabled=$2 WHERE owner_phone=$1', [owner, enabled]);
+          }
           return { enabled };
         });
       } catch (error) {
@@ -217,6 +256,7 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
         await ensureSettings(client, owner);
         const row = await readSettings(client, owner, true);
         const time = now();
+        await recordMissedWindows(client, row, time);
         const day = businessDate(time);
         const window = storyWindow(time);
         if (requestedTime !== undefined && (requestedTime > time || businessDate(requestedTime) !== day || storyWindow(requestedTime) !== window)) {

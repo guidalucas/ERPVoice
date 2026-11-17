@@ -175,7 +175,10 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
       return worker(`/jobs/${job.id}/jpeg`, 'PUT', bytes);
     };
     const advance = job => worker(`/jobs/${job.id}/advance`);
-    const choices = await Promise.all(Array.from({ length: 4 }, () => worker('/claim')));
+    // The first cron never ran. A delayed backup can still claim that window.
+    current = firstWindow + 21 * 60_000;
+    const backupClaim = `/claim?at=${firstWindow}`;
+    const choices = await Promise.all(Array.from({ length: 4 }, () => worker(backupClaim)));
     const first = choices.find(job => job.status === 'rendering');
     assert.ok(first);
     assert.equal(choices.filter(job => job.status === 'rendering').length, 1);
@@ -189,7 +192,7 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
     assert.ok(publishes.some(attempt => attempt.status === 'published'));
     assert.equal(publishCalls, 1);
     assert.equal((await fetch(origin + signedImage.pathname.replace(/\/[a-f0-9]{64}\.jpg$/, '/' + '0'.repeat(64) + '.jpg'))).status, 404);
-    for (let i = 0; i < 4; i++) assert.equal((await worker('/claim')).code, 'ALREADY_PUBLISHED');
+    assert.equal((await worker(backupClaim)).code, 'ALREADY_PUBLISHED');
 
     const used = new Set([first.snapshot.content.productId]);
     for (let i = 0; i < 2; i++) {
@@ -265,6 +268,26 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
     await upload(revoked);
     assert.equal((await advance(revoked)).code, 'META_TOKEN_REVOKED');
     assert.equal((await routes.service.status(context)).connection, 'revoked');
+    assert.equal(publishCalls, 4);
+
+    const missedWindow = windowStarts[4] + 3 * 3_600_000;
+    current = missedWindow + 60_000;
+    assert.ok(!(await routes.service.status(context)).history.some(job => job.error_code === 'STORY_NO_ATTEMPT_RECORDED'));
+    current += 4 * 3_600_000;
+    const missed = await Promise.all([routes.service.status(context), routes.service.status(context), worker('/claim')]);
+    for (const { history } of missed.slice(0, 2)) {
+      const omissions = history.filter(job => job.error_code === 'STORY_NO_ATTEMPT_RECORDED');
+      assert.equal(omissions.length, 1);
+      assert.equal(omissions[0].status, 'skipped');
+      assert.equal(+omissions[0].created_at, missedWindow);
+    }
+    assert.equal((await sql("SELECT count(*)::int FROM commerce_auto_story_jobs WHERE error_code='STORY_NO_ATTEMPT_RECORDED'")).rows[0].count, 1);
+
+    await routes.service.configure(context, { enabled: false });
+    current += 24 * 3_600_000;
+    failAuthorization = false;
+    await routes.service.configure(context, { enabled: true, verifyBusiness: true });
+    assert.equal((await routes.service.status(context)).history.filter(job => job.error_code === 'STORY_NO_ATTEMPT_RECORDED').length, 1);
     assert.equal(publishCalls, 4);
   } finally {
     await browser?.close();
