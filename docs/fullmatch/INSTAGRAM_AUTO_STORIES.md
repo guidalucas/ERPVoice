@@ -73,13 +73,13 @@ Meta documenta JPEG y descarga pública, `media_type=STORIES`, creación del con
 
 ## Configurar Supabase Cron
 
-El comando de configuración usa el destino explícito `COMMERCE_DATABASE_URL`. Para Supabase agregá `--allow-remote-database` y usá la cadena de confianza TLS habitual del proyecto.
+El comando de configuración usa el destino explícito `COMMERCE_DATABASE_URL`. Para Supabase agregá `--allow-remote-database` y usá la cadena de confianza TLS habitual del proyecto. En Windows, si GitHub requiere los certificados del sistema, iniciá Node con `--use-system-ca`.
 
 1. Ejecutá `node scripts/configure-instagram-story-cron.mjs --apply --allow-remote-database`. Instala `pg_cron`, `pg_net` y el esquema privado `stocky_automation`. Crea los cuatro trabajos de publicación desactivados y un trabajo que conserva las respuestas HTTP cada cinco minutos.
 2. Creá un token fine-grained de GitHub limitado a `guidalucas/ERPVoice`, con permiso `Actions: Read and write`. Guardalo en Supabase Vault con el nombre `stocky_instagram_actions_token`. El token debe renovarse antes de su vencimiento.
-3. Integrá el workflow con el input `scheduled_at` en `main`. Ejecutá `node scripts/configure-instagram-story-cron.mjs --simulate --allow-remote-database`. Verificá la respuesta HTTP 204 y el resultado `simulated` en Actions.
+3. Integrá el workflow con el input `scheduled_at` en `main`. Ejecutá `node scripts/configure-instagram-story-cron.mjs --simulate --allow-remote-database`. Verificá una respuesta HTTP 200 o 204 y el resultado `simulated` en Actions.
 4. Ejecutá `node scripts/configure-instagram-story-cron.mjs --activate --allow-remote-database` para activar los horarios. El comando verifica que exista el secreto y que `main` incluya el input. `--pause` desactiva los cuatro horarios.
-5. Ejecutá el comando sin ninguna acción para consultar horarios, activación y las últimas solicitudes. `stocky_automation.instagram_story_dispatches` guarda la hora solicitada, el identificador de pg_net y la respuesta HTTP. Un HTTP 204 confirma que GitHub recibió el disparo. El resultado de publicación se consulta en Actions y en el historial de Stocky.
+5. Ejecutá el comando sin ninguna acción para consultar horarios, activación y las últimas solicitudes. `stocky_automation.instagram_story_dispatches` guarda la hora solicitada, el identificador de pg_net y la respuesta HTTP. Un HTTP 200 o 204 confirma que GitHub recibió el disparo. El resultado de publicación se consulta en Actions y en el historial de Stocky.
 
 ## Operación
 
