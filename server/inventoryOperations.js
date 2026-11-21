@@ -65,7 +65,7 @@ function normalizePlan(input) {
   result.actions = Array.from({ length: actions.length }, (_, index) => {
     const descriptor = Object.getOwnPropertyDescriptor(actions, String(index));
     if (!descriptor || !own(descriptor, 'value')) invalid('actions must contain data properties');
-    const action = record(descriptor.value, ['itemId', 'type', 'target', 'quantity', 'price', 'salePrice', 'balances', 'changes', 'reason', 'initialStock'], 'action');
+    const action = record(descriptor.value, ['itemId', 'type', 'target', 'quantity', 'price', 'salePrice', 'balances', 'changes', 'reason', 'initialStock', 'reactivate'], 'action');
     if (!['stock.receive', 'stock.sell', 'stock.reserve', 'stock.withdraw', 'stock.adjust', 'sku.update', 'sku.deactivate', 'sku.create'].includes(action.type)) fail('UNSUPPORTED_OPERATION', `Unsupported operation: ${String(action.type)}`);
     const updating = ['stock.adjust', 'sku.update', 'sku.deactivate'].includes(action.type);
     const itemId = text(action.itemId, 'itemId');
@@ -93,12 +93,21 @@ function normalizePlan(input) {
     if (action.type === 'sku.create') {
       if (['quantity', 'salePrice', 'balances', 'changes'].some((key) => own(action, key))) invalid('El alta de un producto no puede incluir campos de otras operaciones.');
       const initial = record(action.initialStock, ['available', 'reserved'], 'initialStock');
+      let reactivate;
+      if (own(action, 'reactivate')) {
+        const reference = record(action.reactivate, ['skuId', 'expectedRevision', 'expectedFingerprint'], 'reactivate');
+        reactivate = { skuId: text(reference.skuId, 'reactivate.skuId'),
+          expectedRevision: integer(reference.expectedRevision, 'reactivate.expectedRevision'),
+          expectedFingerprint: text(reference.expectedFingerprint, 'reactivate.expectedFingerprint') };
+      }
       return { itemId, type: action.type, target: normalizedTarget,
         initialStock: { available: integer(initial.available, 'initialStock.available'), reserved: integer(initial.reserved, 'initialStock.reserved') },
         reason: text(action.reason, 'reason'),
         ...(own(action, 'price') ? { price: catalogPrice(action.price, ['initialize']) } : {}),
+        ...(reactivate ? { reactivate } : {}),
       };
     }
+    if (own(action, 'reactivate')) invalid('La reactivación solo corresponde a un alta confirmada.');
     if (own(action, 'initialStock')) invalid('Las existencias iniciales solo corresponden al alta de un producto.');
     if (updating) {
       if (normalizedTarget.kind !== 'created' && !own(normalizedTarget, 'expectedRevision')) invalid('Updates require expectedRevision');
@@ -174,6 +183,7 @@ export function validateOperationPlan(plan, context) {
     const permission = { 'stock.receive': 'inventory:receive', 'stock.sell': 'inventory:sell', 'stock.reserve': 'inventory:reserve', 'stock.withdraw': 'inventory:withdraw', 'stock.adjust': 'inventory:adjust', 'sku.update': 'inventory:update', 'sku.deactivate': 'inventory:deactivate', 'sku.create': 'inventory:create' }[action.type];
     if (![...context.permissions].includes(permission)) fail('FORBIDDEN', `${permission} permission is required`);
     if (action.type === 'sku.create' && action.initialStock.reserved > 0 && ![...context.permissions].includes('inventory:reserve')) fail('FORBIDDEN', 'inventory:reserve permission is required for initial reservations');
+    if (action.reactivate && ![...context.permissions].includes('inventory:update')) fail('FORBIDDEN', 'inventory:update permission is required to reactivate a product');
   }
   return normalized;
 }
@@ -226,7 +236,7 @@ export function planInventoryOperation(input, products, { createId, familySchema
   const originalFingerprints = new Map([...byId].map(([id, product]) => [id, inventoryProductFingerprint(product)]));
   const items = [], movements = [], createdProducts = new Map();
   for (const action of plan.actions) {
-    let product, created = false;
+    let product, created = false, reactivated = false;
     if (action.target.kind === 'created') {
       product = createdProducts.get(action.target.itemId);
       if (!product) invalid('No se resolvió el producto creado en este lote.');
@@ -238,26 +248,49 @@ export function planInventoryOperation(input, products, { createId, familySchema
     } else {
       const identity = productIdentity(action.target.sku);
       const identical = [...byId.values()].filter((entry) => productIdentity(entry) === identity);
-      if (action.type === 'sku.create' && identical.some((entry) => (entry.status ?? 'active') !== 'active')) fail('SKU_INACTIVE', 'Ya existe un producto desactivado con esa identidad; no creé otro producto.');
-      if (identical.length) fail('DUPLICATE_SKU_IDENTITY', `El producto «${action.target.sku.name}»${action.target.sku.size ? ` (variante ${action.target.sku.size})` : ''} ya existe. No apliqué cambios. Volvé a enviar el ingreso con la cantidad total que querés sumar a ese producto.`);
-      if (typeof createId !== 'function') invalid('No se pudo generar un código para el producto nuevo.');
-      const id = text(createId(), 'código del producto creado');
-      if (byId.has(id)) fail('DUPLICATE_SKU_ID', 'El código generado para el producto ya existe.');
-      product = { ...action.target.sku, attributes: JSON.parse(JSON.stringify(action.target.sku.attributes)), id, status: 'active', stockAvailable: 0, stockReserved: 0, price: 0, priceCurrency: 'XXX' };
-      byId.set(id, product); created = true;
+      const inactive = identical.filter((entry) => entry.status === 'inactive');
+      if (action.reactivate) {
+        // Reactivation requires the exact reviewed SKU; creating never restores
+        // an archived product implicitly or resets its balances/history.
+        product = byId.get(action.reactivate.skuId);
+        if (!product || identical.length !== 1 || identical[0].id !== product.id || product.status !== 'inactive') fail('REVISION_MISMATCH', 'El producto desactivado cambió. Revisá el alta nuevamente.');
+        if ((product.revision ?? 0) !== action.reactivate.expectedRevision || inventoryProductFingerprint(product) !== action.reactivate.expectedFingerprint) fail('REVISION_MISMATCH', 'El producto desactivado cambió desde la revisión.');
+        reactivated = true;
+      } else if (action.type === 'sku.create' && inactive.length) {
+        const entry = inactive[0];
+        fail('SKU_INACTIVE', 'Ya existe un producto desactivado con esa identidad; no creé otro producto.', identical.length === 1 ? {
+          inactiveProduct: { id: entry.id, name: entry.name, size: entry.size ?? null, status: 'inactive',
+            revision: entry.revision ?? 0, identityFingerprint: inventoryProductFingerprint(entry),
+            stockAvailable: entry.stockAvailable, stockReserved: entry.stockReserved, price: entry.price,
+            priceCurrency: entry.priceCurrency ?? 'XXX' },
+        } : {});
+      }
+      if (!reactivated && identical.length) fail('DUPLICATE_SKU_IDENTITY', `El producto «${action.target.sku.name}»${action.target.sku.size ? ` (variante ${action.target.sku.size})` : ''} ya existe. No apliqué cambios. Volvé a enviar el ingreso con la cantidad total que querés sumar a ese producto.`);
+      if (!reactivated) {
+        if (typeof createId !== 'function') invalid('No se pudo generar un código para el producto nuevo.');
+        const id = text(createId(), 'código del producto creado');
+        if (byId.has(id)) fail('DUPLICATE_SKU_ID', 'El código generado para el producto ya existe.');
+        product = { ...action.target.sku, attributes: JSON.parse(JSON.stringify(action.target.sku.attributes)), id, status: 'active', stockAvailable: 0, stockReserved: 0, price: 0, priceCurrency: 'XXX' };
+        byId.set(id, product); created = true;
+      }
       createdProducts.set(action.itemId, product);
     }
-    if ((product.status ?? 'active') !== 'active') fail('SKU_INACTIVE', 'El producto está desactivado; no se puede modificar su stock.');
+    if (!reactivated && (product.status ?? 'active') !== 'active') fail('SKU_INACTIVE', 'El producto está desactivado; no se puede modificar su stock.');
     if (action.type!=='sku.update') domain(()=>validateProductFamily(product,familySchemas));
     const unit = domain(() => normalizeUnit(product.unit ?? 'unit'));
     if (action.type === 'sku.create') {
-      Object.assign(product, { stockAvailable: action.initialStock.available, stockReserved: action.initialStock.reserved,
-        price: action.price?.amount ?? 0, priceCurrency: action.price?.currency ?? 'XXX', revision: 0 });
+      const available = reactivated ? integer(product.stockAvailable, 'stockAvailable') : 0;
+      const reserved = reactivated ? integer(product.stockReserved, 'stockReserved') : 0;
+      const nextAvailable = available + action.initialStock.available, nextReserved = reserved + action.initialStock.reserved;
+      if (!Number.isSafeInteger(nextAvailable) || !Number.isSafeInteger(nextReserved)) fail('STOCK_OVERFLOW', 'Operation exceeds safe stock range');
+      Object.assign(product, { status: 'active', stockAvailable: nextAvailable, stockReserved: nextReserved,
+        price: action.price?.amount ?? (reactivated ? product.price : 0), priceCurrency: action.price?.currency ?? (reactivated ? product.priceCurrency : 'XXX'), revision: reactivated ? product.revision : 0 });
       changed.set(product.id, product);
       items.push({ itemId: action.itemId, type: action.type, skuId: product.id, status: 'active', reason: action.reason,
         initialStock: { ...action.initialStock }, stockAvailable: product.stockAvailable, stockReserved: product.stockReserved,
-        price: product.price, currency: product.priceCurrency, unit, created: true });
-      movements.push({ itemId: action.itemId, skuId: product.id, deltaAvailable: product.stockAvailable, deltaReserved: product.stockReserved, unit });
+        price: product.price, currency: product.priceCurrency, unit, created: !reactivated,
+        ...(reactivated ? { reactivated: true } : {}) });
+      movements.push({ itemId: action.itemId, skuId: product.id, deltaAvailable: action.initialStock.available, deltaReserved: action.initialStock.reserved, unit });
       continue;
     }
     if (action.type === 'sku.deactivate') {

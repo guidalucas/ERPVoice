@@ -26,6 +26,7 @@ export const inventoryResultActions = (result, originalActions = []) => result.i
   if (item.type === 'sku.create') {
     delete action.qty;
     Object.assign(action, { stockAvailable: item.stockAvailable, stockReserved: item.stockReserved, reason: item.reason, revision: item.revision });
+    if (item.reactivated) action.reactivated = true;
     return action;
   }
   if (item.type === 'stock.sell' || item.type === 'stock.reserve') action.salePriceKnown = item.price !== null && item.price !== undefined;
@@ -46,7 +47,7 @@ export const inventoryResultActions = (result, originalActions = []) => result.i
 });
 
 export const inventoryResultReply = (result) => result.items.map((item) => {
-  if (item.type === 'sku.create') return `Producto creado: ${item.skuName ?? item.skuId}${item.size ? ` (${item.size})` : ''}. Disponible: ${item.stockAvailable}; reservado: ${item.stockReserved}; precio: ${item.currency} ${item.price}.`;
+  if (item.type === 'sku.create') return `Producto ${item.reactivated ? 'reactivado' : 'creado'}: ${item.skuName ?? item.skuId}${item.size ? ` (${item.size})` : ''}. Disponible: ${item.stockAvailable}; reservado: ${item.stockReserved}; precio: ${item.currency} ${item.price}.`;
   if (item.type === 'sku.deactivate') return `Producto desactivado: ${item.skuName ?? item.skuId}${item.size ? ` (${item.size})` : ''}. Stock conservado: ${item.stockAvailable}; reservado: ${item.stockReserved}. Historial conservado.`;
   if (item.type === 'stock.adjust' || item.type === 'sku.update') {
     const changes = item.changes ? ` Cambios: ${Object.entries(item.changes).map(([key,value]) => `${key}=${JSON.stringify(value)}`).join(', ')}.` : '';

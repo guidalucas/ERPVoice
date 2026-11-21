@@ -35,17 +35,18 @@ const createAction = (input, reason, index) => {
   if (Object.hasOwn(input,'family')) sku.family=input.family;
   for (const field of ['productType', 'productModel', 'size']) if (metadata[field] != null && metadata[field] !== '') sku[field] = metadata[field];
   return { itemId: `create-${index + 1}`, type: 'sku.create', target: { kind: 'new', sku }, reason,
+    ...(Object.hasOwn(input, 'reactivate') ? { reactivate: input.reactivate } : {}),
     initialStock: { available: openingNumber(input, 'stockAvailable'), reserved: openingNumber(input, 'stockReserved') },
     price: { amount: openingNumber(input, 'price'), currency: Object.hasOwn(input, 'priceCurrency') ? input.priceCurrency : 'XXX', policy: 'initialize' } };
 };
 
 /** Legacy endpoint adaptation only. Core validation, IDs and persistence remain universal. */
 export function productCreationToPlan(input, businessId, options = {}, model = false) {
-  const productFields = ['name', 'productType', 'productModel', 'size', 'stockAvailable', 'stockReserved', 'price', 'priceCurrency', 'unit', 'attributes', 'family','operationId', 'reason'];
+  const productFields = ['name', 'productType', 'productModel', 'size', 'stockAvailable', 'stockReserved', 'price', 'priceCurrency', 'unit', 'attributes', 'family','operationId', 'reason', 'reactivate'];
   const data = fields(input, model ? ['name', 'productType', 'productModel', 'variants', 'unit', 'attributes', 'family','priceCurrency', 'operationId', 'reason'] : productFields, 'product creation');
   const operationId = options.operationId ?? data.operationId;
   if (typeof operationId !== 'string' || !operationId.trim()) throw new InventoryOperationError('OPERATION_ID_REQUIRED', 'El alta necesita un ID estable para poder reintentarse.');
-  const reason = options.reason ?? data.reason ?? (model ? 'Alta de variantes de modelo' : 'Alta manual de producto');
+  const reason = options.reason ?? data.reason ?? (model ? 'Alta de variantes de modelo' : data.reactivate ? 'Reactivación de producto confirmada desde inventario' : 'Alta manual de producto');
   let actions;
   if (model) {
     const productType = text(data.productType, 'productType'), productModel = text(data.productModel, 'productModel');

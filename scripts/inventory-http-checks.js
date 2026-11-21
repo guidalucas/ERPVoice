@@ -824,6 +824,29 @@ export async function runInventoryHttpChecks({ db, sql, check }) {
       const changed = await request(`/api/products/${single}`, { method: 'DELETE', body: { selectionId: one.json.selectionId, digest: one.json.digest } });
       assert.equal(changed.status, 200); assert.equal(changed.json.operationResult.items[0].skuId, single);
     });
+    await run('creation offers a reviewed inactive product and explicit reactivation keeps its identity and stock', async () => {
+      const input = { name: 'Camiseta Reactivación HTTP', productType: 'Camiseta', productModel: 'Reactivación HTTP', size: 'L', stockAvailable: 3, price: 65000, priceCurrency: 'UYU', operationId: 'http-reactivate-original' };
+      const original = await request('/api/products', { body: input });
+      assert.equal(original.status, 201);
+      const id = original.json.id;
+      const preview = await request('/api/inventory/selections', { body: { requestId: 'http-reactivate-archive', selector: { kind: 'ids', skuIds: [id] }, mutation: { type: 'sku.deactivate', reason: 'Baja para probar reactivación' } } });
+      assert.equal((await request(`/api/products/${id}`, { method: 'DELETE', body: { selectionId: preview.json.selectionId, digest: preview.json.digest } })).status, 200);
+      const blocked = await request('/api/products', { body: { ...input, operationId: 'http-reactivate-review', stockAvailable: 1 } });
+      assert.equal(blocked.status, 409); assert.equal(blocked.json.code, 'SKU_INACTIVE');
+      const inactive = blocked.json.inactiveProduct;
+      assert.equal(inactive.id, id); assert.equal(inactive.stockAvailable, 3); assert.equal(inactive.status, 'inactive');
+      assert.equal((await ledger('product-create:http-reactivate-review')).length, 0);
+      const restore = { ...input, operationId: 'http-reactivate-confirm', stockAvailable: 1,
+        reactivate: { skuId: id, expectedRevision: inactive.revision, expectedFingerprint: inactive.identityFingerprint } };
+      const stale = await request('/api/products', { body: { ...restore, operationId: 'http-reactivate-stale', reactivate: { ...restore.reactivate, expectedRevision: 0 } } });
+      assert.equal(stale.status, 409); assert.equal(stale.json.code, 'REVISION_MISMATCH');
+      const restored = await request('/api/products', { body: restore });
+      assert.equal(restored.status, 201); assert.equal(restored.json.id, id); assert.equal(restored.json.stockAvailable, 4); assert.equal(restored.json.status, 'active');
+      assert.deepEqual((await request('/api/products', { body: restore })).json, restored.json);
+      assert.equal((await ledger('product-create:http-reactivate-confirm')).length, 1);
+      assert.equal(Number((await stock(id))[0].stock_available), 4);
+      assert.ok((await request('/api/state', { method: 'GET' })).json.products.some(product => product.id === id));
+    });
     await run('signed WhatsApp refuses old deactivation codes and applies only a universal reviewed draft',async()=>{
       const product=await createHttpFixtureProduct({name:'Baja universal HTTP',stockAvailable:4},owner);
       const pending=await legacySelection('http-meta-archive-old-preview',product);

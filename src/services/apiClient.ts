@@ -66,7 +66,12 @@ export const requestJson = async <T>(path: string, init?: RequestInit): Promise<
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw Object.assign(new Error(parseErrorBody(errorText, response.status)), { status: response.status });
+    let details: { code?: unknown; inactiveProduct?: unknown } = {};
+    try {
+      const body = JSON.parse(errorText);
+      if (body && typeof body === 'object') details = { code: body.code, inactiveProduct: body.inactiveProduct };
+    } catch { /* Plain text errors have no structured details. */ }
+    throw Object.assign(new Error(parseErrorBody(errorText, response.status)), { status: response.status, ...details });
   }
 
   if (response.status === 204) {

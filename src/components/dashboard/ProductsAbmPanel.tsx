@@ -57,6 +57,19 @@ type ProductGroup = {
   products: ProductRow[];
 };
 
+type InactiveProduct = ProductRow & { status: 'inactive'; revision: number; identityFingerprint: string; priceCurrency: string };
+
+const inactiveProductFromError = (error: unknown): InactiveProduct | null => {
+  if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'SKU_INACTIVE' || !('inactiveProduct' in error)) return null;
+  const product = error.inactiveProduct as InactiveProduct | undefined;
+  return product && product.status === 'inactive' && typeof product.id === 'string' && Boolean(product.id.trim())
+    && typeof product.name === 'string' && typeof product.identityFingerprint === 'string' && Boolean(product.identityFingerprint.trim())
+    && (product.size === null || product.size === undefined || typeof product.size === 'string')
+    && typeof product.priceCurrency === 'string' && /^[A-Z]{3}$/.test(product.priceCurrency)
+    && [product.revision, product.stockAvailable, product.stockReserved, product.price].every(value => Number.isSafeInteger(value) && value >= 0)
+    ? product : null;
+};
+
 type InventoryGrouping = 'model' | 'size' | 'productType' | 'none';
 type InventoryGridRow = { kind: 'model'; group: ProductGroup } | { kind: 'product'; product: ProductRow };
 const UNDEFINED_FILTER_VALUE = '__undefined__';
@@ -220,6 +233,7 @@ function ProductFormModal({
   showReserved,
   requireVariant,
   error,
+  inactiveProduct,
 }: {
   currency: string | null;
   title: string;
@@ -235,6 +249,7 @@ function ProductFormModal({
   showReserved: boolean;
   requireVariant: boolean;
   error: string | null;
+  inactiveProduct: InactiveProduct | null;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" role="presentation">
@@ -297,6 +312,12 @@ function ProductFormModal({
 
         </fieldset>
         </form>
+        {inactiveProduct && <div role="status" className="mt-4 space-y-2 rounded-xl border border-[color:var(--border)] bg-[color:var(--surface)] p-4 text-sm">
+          <p className="font-semibold">{inactiveProduct.name}{inactiveProduct.size ? ` · ${preset.variantLabel || 'Variante'} ${inactiveProduct.size}` : ''} ya existe y está desactivado.</p>
+          <p>Podés reactivarlo conservando su historial. Tiene {inactiveProduct.stockAvailable} disponibles y {inactiveProduct.stockReserved} reservados.</p>
+          <p>Vas a sumar {draft.stockAvailable || '0'} al stock disponible{Number(draft.stockReserved) > 0 ? ` y ${draft.stockReserved} al reservado` : ''}. Quedará con <strong>{inactiveProduct.stockAvailable + Number(draft.stockAvailable)} disponibles y {inactiveProduct.stockReserved + Number(draft.stockReserved)} reservados</strong>.</p>
+          <p>Precio al reactivar: {formatCurrency(Number(draft.price))} {currency || inactiveProduct.priceCurrency}.</p>
+        </div>}
         {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-sm text-rose-600 dark:text-rose-300">{error}</p>}
 
         <div className="mt-6 flex items-center justify-end gap-3">
@@ -304,7 +325,7 @@ function ProductFormModal({
             No, cancelar
           </button>
           <button type="submit" form="product-form" disabled={submitting} className="erp-button-primary">
-            {submitting ? 'Guardando...' : `Sí, ${submitLabel.charAt(0).toLowerCase() + submitLabel.slice(1)}`}
+            {submitting ? 'Guardando...' : inactiveProduct ? `Sí, reactivar ${preset.useVariants ? getVariantWord(preset) : 'producto'}` : `Sí, ${submitLabel.charAt(0).toLowerCase() + submitLabel.slice(1)}`}
           </button>
         </div>
       </div>
@@ -508,6 +529,7 @@ export function ProductsAbmPanel({
   const modelRequest = useRef<InventorySelectionRequest | null>(null);
   const modelRefreshRequestNeeded = useRef(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [inactiveProduct, setInactiveProduct] = useState<InactiveProduct | null>(null);
   const [deactivation, setDeactivation] = useState<{ ids: string[]; items: ProductRow[]; single: boolean } | null>(null);
   const deactivationBusy = useRef(false);
   const [deactivationPreview, setDeactivationPreview] = useState<InventorySelectionPreview | null>(null);
@@ -698,6 +720,7 @@ export function ProductsAbmPanel({
   const openCreateForm = () => {
     if (formBusy.current) return;
     createOperation.current = null;
+    setInactiveProduct(null);
     setEditingProductId(null);
     setAddingToGroup(null);
     setFormError(null);
@@ -769,6 +792,7 @@ export function ProductsAbmPanel({
   const openEditForm = (product: ProductRow) => {
     if (formBusy.current) return;
     createOperation.current = null;
+    setInactiveProduct(null);
     setEditSnapshot({ ...product });
     editOperation.current = null;
     setEditingProductId(product.id);
@@ -781,6 +805,7 @@ export function ProductsAbmPanel({
   const openAddVariantForm = (group: ProductGroup) => {
     if (formBusy.current) return;
     createOperation.current = null;
+    setInactiveProduct(null);
     const reference = group.products[0];
     if (!reference) return;
     setEditingProductId(null);
@@ -855,7 +880,8 @@ export function ProductsAbmPanel({
 
   const handleSubmit = async () => {
     if (formBusy.current) return;
-    const createKey = JSON.stringify(draft);
+    const reactivate = inactiveProduct ? { skuId: inactiveProduct.id, expectedRevision: inactiveProduct.revision, expectedFingerprint: inactiveProduct.identityFingerprint } : undefined;
+    const createKey = JSON.stringify({ draft, reactivate });
     const retry = createOperation.current?.kind === 'sku' && createOperation.current.key === createKey;
     if (editingProductId && (!editSnapshot || !Number.isSafeInteger(editSnapshot.revision) || (editSnapshot.revision ?? -1) < 0)) {
       setFormError('Falta la revisión del producto. Actualizá la página y volvé a abrir el formulario. Tu borrador se conserva.');
@@ -901,6 +927,7 @@ export function ProductsAbmPanel({
       const retryEdit = Boolean(editingProductId && editOperation.current?.key === editKey);
       const policy = retry || retryEdit ? null : await fetchBusinessMoneyPolicy();
       const payload = {
+        ...(reactivate && !editingProductId ? { reactivate } : {}),
         name: editingProductId && !draft.name.trim()
           ? editSnapshot?.name ?? buildProductName(draft)
           : buildProductName(draft),
@@ -910,7 +937,7 @@ export function ProductsAbmPanel({
         stockAvailable: quantities[0],
         stockReserved: quantities[1],
         price: quantities[2],
-        ...(policy ? { priceCurrency: policy.currency } : {}),
+        ...(policy ? { priceCurrency: policy.currency } : inactiveProduct ? { priceCurrency: inactiveProduct.priceCurrency } : {}),
       };
 
       if (editingProductId) {
@@ -939,6 +966,19 @@ export function ProductsAbmPanel({
       setIsFormOpen(false);
       if (addingToGroup) setExpandedGroups((current) => ({ ...current, [addingToGroup.key]: true }));
     } catch (error) {
+      const inactive = !editingProductId ? inactiveProductFromError(error) : null;
+      if (inactive) {
+        setInactiveProduct(inactive);
+        createOperation.current = null;
+        setFormError(null);
+        return;
+      }
+      if (reactivate && error && typeof error === 'object' && 'code' in error && ['REVISION_MISMATCH', 'SKU_FINGERPRINT_MISMATCH', 'CONCURRENT_INVENTORY_CHANGE'].includes(String(error.code))) {
+        setInactiveProduct(null);
+        createOperation.current = null;
+        setFormError('El producto cambió desde la revisión. Tu borrador se conserva. Volvé a enviar el alta para revisar su estado actual.');
+        return;
+      }
       setFormError(editingProductId && error instanceof Error && 'status' in error && error.status === 409
         ? 'El producto cambió desde que abriste el formulario. Tu borrador se conserva. Actualizá la página y volvé a abrir el producto para revisar los valores antes de guardar.'
         : error instanceof Error ? error.message : 'No se pudo guardar el producto.');
@@ -1106,7 +1146,7 @@ export function ProductsAbmPanel({
             draft={draft}
             variants={newVariants}
             preset={preset}
-            onDraftChange={(nextDraft) => { if (formBusy.current) return; createOperation.current = null; setDraft(nextDraft); setFormError(null); }}
+            onDraftChange={(nextDraft) => { if (formBusy.current) return; createOperation.current = null; setInactiveProduct(null); setDraft(nextDraft); setFormError(null); }}
             onVariantsChange={(nextVariants) => { if (formBusy.current) return; createOperation.current = null; setNewVariants(nextVariants); setFormError(null); }}
             onClose={() => { if (!formBusy.current) setIsFormOpen(false); }}
             onSubmit={handleCreateModel}
@@ -1127,7 +1167,7 @@ export function ProductsAbmPanel({
               : editingProductId && preset.useVariants ? `Modelo: ${[draft.productType, draft.productModel].filter(Boolean).join(' ') || draft.name}. Acá editás solo este ${variantWord}.`
               : preset.useVariants && !editingProductId ? `Cargá el modelo y su primer ${variantWord}. Si ya existe, agregá el ${variantWord} desde su tarjeta.` : undefined}
             draft={draft}
-            onDraftChange={(nextDraft) => { if (formBusy.current) return; createOperation.current = null; setDraft(nextDraft); setFormError(null); }}
+            onDraftChange={(nextDraft) => { if (formBusy.current) return; createOperation.current = null; setInactiveProduct(null); setDraft(nextDraft); setFormError(null); }}
             onClose={() => { if (!formBusy.current) setIsFormOpen(false); }}
             onSubmit={handleSubmit}
             submitLabel={editingProductId ? 'Guardar cambios' : addingToGroup ? `Agregar ${variantWord}` : preset.useVariants ? 'Crear modelo' : 'Crear producto'}
@@ -1137,6 +1177,7 @@ export function ProductsAbmPanel({
             showReserved={Boolean(editingProductId) || !preset.useVariants}
             requireVariant={preset.useVariants && !editingProductId}
             error={formError}
+            inactiveProduct={inactiveProduct}
           />
         )}
 

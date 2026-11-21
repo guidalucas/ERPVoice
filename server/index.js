@@ -654,7 +654,9 @@ app.post('/api/products', authenticateRequest, async (req, res) => {
     res.status(201).json(product);
   } catch (error) {
     const status = ['OPERATION_ID_REQUIRED', 'INVALID_OPERATION_PLAN'].includes(error.code) ? 400 : error.name === 'InventoryOperationError' ? 409 : 500;
-    res.status(status).json({ error: operationErrorMessage(error), code: error.code });
+    const inactiveProduct = error.code === 'SKU_INACTIVE' ? error.details?.inactiveProduct : null;
+    res.status(status).json({ error: inactiveProduct ? 'No pude completar el alta porque este producto ya existe y está desactivado. Probá: revisá el stock conservado y confirmá si querés reactivarlo.' : operationErrorMessage(error),
+      code: error.code, ...(inactiveProduct ? { inactiveProduct } : {}) });
   }
 });
 

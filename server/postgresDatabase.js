@@ -1282,7 +1282,7 @@ const withTransaction = async (callback) => {
 export const createProductRecord = async (productInput, ownerPhone = DEFAULT_OWNER_PHONE, options = {}) => {
   const businessId = normalizeOwnerPhone(ownerPhone);
   const result = await executeInventoryOperation(productCreationToPlan(productInput, businessId, options), {
-    businessId, actorId: options.actorId ?? businessId, permissions: ['inventory:create', 'inventory:reserve'],
+    businessId, actorId: options.actorId ?? businessId, permissions: ['inventory:create', 'inventory:reserve', 'inventory:update'],
   });
   return result.items[0].product;
 };

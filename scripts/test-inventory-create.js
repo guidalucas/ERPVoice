@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { InventoryOperationError, validateOperationPlan, planInventoryOperation, operationDigest } from '../server/inventoryOperations.js';
+import { InventoryOperationError, validateOperationPlan, planInventoryOperation, operationDigest, inventoryProductFingerprint } from '../server/inventoryOperations.js';
 import { productCreationToPlan } from '../server/productCreationAdapter.js';
 import { confirmedStockActionsToPlan, bindStockConsumptionAction, resolvedStockBatchToPlan } from '../server/stockOperationAdapter.js';
 
@@ -117,4 +117,45 @@ test('creation participates atomically in mixed operations and initial stock aff
   fail(() => execute(plan([action(), { ...sell, quantity: { value: 10, unit: 'box' } }]), [existing]), 'INSUFFICIENT_STOCK');
   assert.equal(JSON.stringify(existing), before);
   assert.notEqual(operationDigest(plan()), operationDigest(plan([action({ initialStock: { available: 1, reserved: 0 } })])));
+});
+
+test('an inactive creation conflict exposes a review snapshot and never reactivates implicitly', () => {
+  const archived = { ...action().target.sku, id: 'archived', status: 'inactive', revision: 4, stockAvailable: 3, stockReserved: 1, price: 90, priceCurrency: 'UYU' };
+  const before = structuredClone(archived);
+  assert.throws(() => execute(plan(), [archived]), error => {
+    assert.equal(error.code, 'SKU_INACTIVE');
+    assert.deepEqual(error.details.inactiveProduct, { id: archived.id, name: archived.name, size: null, status: 'inactive', revision: 4,
+      identityFingerprint: inventoryProductFingerprint(archived), stockAvailable: 3, stockReserved: 1, price: 90, priceCurrency: 'UYU' });
+    return true;
+  });
+  assert.deepEqual(archived, before);
+});
+
+test('explicit reactivation preserves SKU identity, revision and balances, auditing only the added stock', () => {
+  const archived = { ...action().target.sku, id: 'archived', status: 'inactive', revision: 4, stockAvailable: 3, stockReserved: 1, price: 90, priceCurrency: 'UYU' };
+  const reactivate = { skuId: archived.id, expectedRevision: 4, expectedFingerprint: inventoryProductFingerprint(archived) };
+  const input = plan([action({ reactivate, initialStock: { available: 2, reserved: 0 }, price: { amount: 100, currency: 'UYU', policy: 'initialize' } })]);
+  const permissions = { ...context, permissions: [...context.permissions, 'inventory:update'] };
+  validateOperationPlan(input, permissions);
+  const effect = execute(input, [archived]);
+  assert.deepEqual([effect.changedProducts[0].id, effect.changedProducts[0].revision, effect.changedProducts[0].status,
+    effect.changedProducts[0].stockAvailable, effect.changedProducts[0].stockReserved, effect.changedProducts[0].price], ['archived', 4, 'active', 5, 1, 100]);
+  assert.deepEqual([effect.items[0].created, effect.items[0].reactivated], [false, true]);
+  assert.deepEqual(effect.movements.map(m => [m.deltaAvailable, m.deltaReserved]), [[2, 0]]);
+  assert.equal(archived.status, 'inactive');
+  fail(() => validateOperationPlan(input, context), 'FORBIDDEN');
+  for (const changed of [{ ...archived, revision: 5 }, { ...archived, status: 'active' }, { ...archived, name: 'Other SKU' }]) {
+    fail(() => execute(input, [changed]), 'REVISION_MISMATCH');
+  }
+  fail(() => execute(plan([action({ reactivate: { ...reactivate, expectedFingerprint: 'changed' } })]), [archived]), 'REVISION_MISMATCH');
+  fail(() => execute(input, []), 'REVISION_MISMATCH');
+  for (const invalid of [{ skuId: 'archived' }, { ...reactivate, expectedRevision: -1 }, { ...reactivate, confirmed: true }]) {
+    fail(() => validateOperationPlan(plan([action({ reactivate: invalid })]), permissions));
+  }
+  assert.notEqual(operationDigest(input), operationDigest(plan([action()])));
+  const zero = execute(plan([action({ reactivate })]), [archived]);
+  assert.deepEqual([zero.changedProducts[0].stockAvailable, zero.changedProducts[0].stockReserved], [3, 1]);
+  assert.deepEqual(zero.movements.map(m => [m.deltaAvailable, m.deltaReserved]), [[0, 0]]);
+  const overflow = { ...archived, stockAvailable: Number.MAX_SAFE_INTEGER };
+  fail(() => execute(plan([action({ initialStock: { available: 1, reserved: 0 }, reactivate: { ...reactivate, expectedFingerprint: inventoryProductFingerprint(overflow) } })]), [overflow]), 'STOCK_OVERFLOW');
 });

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { chromium } from 'playwright';
 import ts from 'typescript';
@@ -41,6 +41,7 @@ assert.equal(diagnostics.length, 0, ts.formatDiagnosticsWithColorAndContext(diag
 const browser = await chromium.launch(process.platform === 'win32' ? { channel: 'msedge', headless: true } : { headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const products = [];
+const inactiveProducts = [];
 const attempts = [];
 const receipts = new Map();
 let category = 'general';
@@ -74,6 +75,20 @@ await page.route('**/api/**', async (route) => {
     }
     if (mode === 'conflict') return json({ error: 'Ya existe un SKU con esa identidad.' }, 409);
     if (mode === 'hold') await new Promise((resolve) => { releaseRequest = resolve; });
+    const inactive = inactiveProducts.find(product => product.name === input.name && product.size === input.size);
+    if (inactive && !input.reactivate) return json({ error: 'El talle ya existe y está desactivado.', code: 'SKU_INACTIVE', inactiveProduct: inactive }, 409);
+    if (input.reactivate) {
+      if (!inactive || input.reactivate.skuId !== inactive.id || input.reactivate.expectedRevision !== inactive.revision) return json({ error: 'El producto cambió.', code: 'REVISION_MISMATCH' }, 409);
+      assert.equal(input.reactivate.expectedFingerprint, inactive.identityFingerprint);
+      const restored = { ...inactive, status: 'active', stockAvailable: inactive.stockAvailable + input.stockAvailable,
+        stockReserved: inactive.stockReserved + input.stockReserved, price: input.price, revision: inactive.revision + 1 };
+      inactiveProducts.splice(inactiveProducts.indexOf(inactive), 1);
+      products.push(restored);
+      receipts.set(input.operationId, { request: { path, input }, result: structuredClone(restored) });
+      if (mode === 'lost') { mode = 'ok'; return json({ error: 'Resultado incierto. Reintentá.' }, 503); }
+      if (mode === 'refresh') { mode = 'ok'; failNextRefresh = true; }
+      return json(restored, 201);
+    }
     const variants = path.endsWith('/model') ? input.variants : [input];
     const result = variants.map((variant) => ({ id: `created-${products.length + 1}`, name: input.name || `${input.productType} ${input.productModel}`, productType: input.productType, productModel: input.productModel, size: variant.size ?? null, stockAvailable: variant.stockAvailable, stockReserved: variant.stockReserved ?? 0, price: variant.price, revision: 0, identityFingerprint: 'created-fingerprint', unit: 'unit', priceCurrency: 'XXX' }));
     // Assign distinct IDs for the members of a model batch.
@@ -205,5 +220,64 @@ try {
   assert.equal(await dialog.getByRole('button', { name: 'Cerrar modal' }).isDisabled(), true);
   releaseRequest();
   await dialog.waitFor({ state: 'hidden' });
-  console.log('Inventory creation UI passed in Edge: zero stock, atomic variants, applied503 stable retry, failed refresh + hydrated duplicate, changed draft, 409, cancel, and in-flight controls.');
+
+  for (const failure of ['ok', 'lost', 'refresh', 'stale', 'edit', 'cancel']) {
+    moneyCurrency = failure === 'ok' ? null : 'ARS';
+    const size = `Restore-${failure}`;
+    const archived = { ...products.find(product => product.productModel === 'Creación'), id: `archived-${failure}`, size,
+      status: 'inactive', revision: 4, identityFingerprint: `inactive-${failure}`, stockAvailable: 3, stockReserved: 0, priceCurrency: 'ARS' };
+    inactiveProducts.push(archived);
+    await page.getByRole('button', { name: 'Agregar talle a Camiseta Creación' }).click();
+    dialog = page.getByRole('dialog', { name: 'Agregar talle', exact: true });
+    await dialog.getByLabel('Talle', { exact: true }).fill(size);
+    await dialog.getByLabel('Stock Disponible', { exact: true }).fill('1');
+    mode = 'ok';
+    const start = attempts.length;
+    await dialog.getByRole('button', { name: 'Sí, agregar talle', exact: true }).click();
+    await dialog.getByRole('status').getByText(/4 disponibles y 0 reservados/).waitFor();
+    if (failure === 'ok' && process.env.INVENTORY_CREATE_SCREENSHOT_DIR) {
+      const screenshotDirectory = resolve(process.env.INVENTORY_CREATE_SCREENSHOT_DIR);
+      await mkdir(screenshotDirectory, { recursive: true });
+      await page.screenshot({ path: resolve(screenshotDirectory, 'reactivate-desktop.png') });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.screenshot({ path: resolve(screenshotDirectory, 'reactivate-mobile.png') });
+      assert.ok(await dialog.getByRole('button', { name: 'Sí, reactivar talle' }).isVisible());
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+    assert.equal(attempts[start].input.reactivate, undefined);
+    assert.ok(!products.some(product => product.id === archived.id), 'Review must not reactivate');
+    if (failure === 'cancel') {
+      await dialog.getByRole('button', { name: 'No, cancelar', exact: true }).click();
+      assert.equal(attempts.length, start + 1);
+      continue;
+    }
+    if (failure === 'edit') {
+      await dialog.getByLabel('Stock Disponible', { exact: true }).fill('2');
+      assert.equal(await dialog.getByRole('button', { name: 'Sí, reactivar talle', exact: true }).count(), 0);
+      await dialog.getByRole('button', { name: 'Sí, agregar talle', exact: true }).click();
+      await dialog.getByRole('status').getByText(/5 disponibles y 0 reservados/).waitFor();
+    }
+    if (failure === 'stale') archived.revision += 1;
+    mode = failure;
+    await dialog.getByRole('button', { name: 'Sí, reactivar talle', exact: true }).click();
+    if (failure === 'stale') {
+      await dialog.getByRole('alert').getByText(/El producto cambió desde la revisión/).waitFor();
+      assert.equal(await dialog.getByLabel('Stock Disponible').inputValue(), '1');
+      await dialog.getByRole('button', { name: 'Sí, agregar talle', exact: true }).click();
+      await dialog.getByRole('button', { name: 'Sí, reactivar talle', exact: true }).click();
+    }
+    if (['lost', 'refresh'].includes(failure)) {
+      await dialog.getByRole('alert').waitFor();
+      await dialog.getByRole('button', { name: 'Sí, reactivar talle', exact: true }).click();
+      assert.deepEqual(attempts[start + 1], attempts[start + 2]);
+    }
+    await dialog.waitFor({ state: 'hidden' });
+    const restored = products.filter(product => product.id === archived.id);
+    assert.equal(restored.length, 1);
+    assert.equal(restored[0].stockAvailable, failure === 'edit' ? 5 : 4);
+    assert.notEqual(attempts[start].input.operationId, attempts[start + 1].input.operationId);
+    assert.equal(attempts.at(-1).input.priceCurrency, 'ARS', 'Reactivation must preserve the reviewed currency without a business policy');
+  }
+  console.log('Inventory creation UI passed in Edge: zero stock, atomic variants, stable retries, failed refresh, changed draft, 409, cancel, in-flight controls, and explicit reactivation with stale review and no duplicate stock.');
 } finally { await browser.close(); }

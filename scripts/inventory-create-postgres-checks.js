@@ -118,5 +118,32 @@ export async function runInventoryCreateChecks({ db, sql, check }) {
     } finally { await sql.query('DROP TRIGGER create_movement_failure ON inventory_movements; DROP FUNCTION create_movement_failure()'); }
     assert.equal((await db.createProductModelRecords(input, a, options('rollback-model'))).length, 2);
   });
+  await run('reviewed reactivation preserves history and SKU, sums stock once, and rejects stale or foreign references', async () => {
+    const input = product('Create reactivation shirt', { productType: 'Camiseta', productModel: 'Reactivation', size: 'L', stockAvailable: 3, price: 100, priceCurrency: 'UYU' });
+    const original = await db.createProductRecord(input, a, options('reactivate-original'));
+    await execute('reactivate-archive', [{ itemId: 'archive', type: 'sku.deactivate', target: { kind: 'existing', skuId: original.id, expectedRevision: original.revision }, reason: 'Baja de prueba' }]);
+    let snapshot;
+    await assert.rejects(db.createProductRecord({ ...input, stockAvailable: 1 }, a, options('reactivate-review')), error => {
+      assert.equal(error.code, 'SKU_INACTIVE'); snapshot = error.details.inactiveProduct; return true;
+    });
+    const restore = { ...input, stockAvailable: 1, price: 120, reactivate: { skuId: snapshot.id, expectedRevision: snapshot.revision, expectedFingerprint: snapshot.identityFingerprint } };
+    const before = await ledger();
+    await assert.rejects(db.createProductRecord({ ...restore, reactivate: { ...restore.reactivate, expectedRevision: snapshot.revision - 1 } }, a, options('reactivate-stale')), { code: 'REVISION_MISMATCH' });
+    await assert.rejects(db.createProductRecord(restore, b, options('reactivate-foreign')), { code: 'REVISION_MISMATCH' });
+    assert.deepEqual(await ledger(), before);
+    const results = await Promise.all([db.createProductRecord(restore, a, options('reactivate-confirm')), db.createProductRecord(restore, a, options('reactivate-confirm'))]);
+    assert.deepEqual(results[0], results[1]);
+    assert.deepEqual([results[0].id, results[0].status, results[0].stockAvailable, results[0].stockReserved, results[0].price, results[0].revision], [original.id, 'active', 4, 0, 120, snapshot.revision + 1]);
+    assert.equal((await rows()).filter(value => value.id === original.id).length, 1);
+    const entries = await movements('product-create:reactivate-confirm');
+    assert.deepEqual(entries.map(value => [Number(value.delta_available), Number(value.delta_reserved)]), [[1, 0]]);
+    const receipt = (await sql.query('SELECT result_json FROM inventory_operations WHERE owner_phone=$1 AND operation_id=$2', [a, 'product-create:reactivate-confirm'])).rows[0].result_json;
+    assert.equal(receipt.items[0].reactivated, true); assert.equal(receipt.items[0].created, false);
+    assert.equal((await movements('reactivate-archive')).length, 1);
+    await execute('reactivate-later-sale', [{ itemId: 'sell', type: 'stock.sell', target: { kind: 'existing', skuId: original.id }, quantity: { value: 1, unit: 'unit' } }]);
+    assert.deepEqual(await db.createProductRecord(restore, a, options('reactivate-confirm')), results[0]);
+    assert.equal(Number((await row(original.id)).stock_available), 3);
+    await assert.rejects(db.createProductRecord(restore, a, options('reactivate-again')), { code: 'REVISION_MISMATCH' });
+  });
   return completed;
 }

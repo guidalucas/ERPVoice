@@ -10,6 +10,7 @@ export type PersistedState = {
 };
 
 export type ProductInput = {
+  reactivate?: { skuId: string; expectedRevision: number; expectedFingerprint: string };
   name: string;
   productType?: string | null;
   productModel?: string | null;
