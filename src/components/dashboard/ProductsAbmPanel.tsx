@@ -90,10 +90,14 @@ const compareVariantValues = (left: string | null | undefined, right: string | n
 const productLineName = (product: ProductRow) => {
   const typePart = product.productType?.trim() ?? '';
   const modelPart = product.productModel?.trim() ?? '';
-  if (typePart || modelPart) {
-    return [typePart, modelPart].filter(Boolean).join(' ');
-  }
-  return product.name;
+  // The saved name is the primary label, even with complete model metadata.
+  // Only omit the variant suffix when naming the model group.
+  const name = product.name.trim();
+  const size = product.size?.trim() ?? '';
+  const nameWithoutSize = size && name.toLowerCase().endsWith(` ${size.toLowerCase()}`)
+    ? name.slice(0, -(size.length + 1)).trim()
+    : name;
+  return nameWithoutSize || name || [typePart, modelPart].filter(Boolean).join(' ');
 };
 
 const productSearchHaystack = (product: ProductRow) =>
@@ -113,10 +117,10 @@ const buildProductGroups = (products: ProductRow[]): ProductGroup[] => {
   for (const product of products) {
     const typePart = product.productType?.trim() ?? '';
     const modelPart = product.productModel?.trim() ?? '';
-    const key = typePart || modelPart
+    const displayName = productLineName(product);
+    const key = typePart && modelPart
       ? `model||${normalizeSearch(typePart)}||${normalizeSearch(modelPart)}`
-      : `model||name||${normalizeSearch(product.name)}`;
-    const displayName = typePart || modelPart ? [typePart, modelPart].filter(Boolean).join(' ') : product.name;
+      : `model||name||${normalizeSearch(typePart)}||${normalizeSearch(displayName)}`;
     groups[key] = groups[key] ?? {
       key,
       displayName,
@@ -130,6 +134,7 @@ const buildProductGroups = (products: ProductRow[]): ProductGroup[] => {
   return Object.values(groups)
     .map((group) => ({
       ...group,
+      displayName: [...new Set(group.products.map(productLineName))].join(' / '),
       products: group.products.slice().sort((left, right) => compareVariantValues(left.size, right.size)),
     }))
     .sort((left, right) => left.displayName.localeCompare(right.displayName, 'es', { sensitivity: 'base' }));
@@ -949,7 +954,7 @@ export function ProductsAbmPanel({
       render: (row) => row.kind === 'model' ? <button type="button" className="flex w-full items-start gap-2.5 text-left" aria-label={(isGroupExpanded(row.group) ? 'Ocultar' : 'Ver') + ' ' + variantLabelPlural + ' de ' + row.group.displayName} aria-expanded={isGroupExpanded(row.group)} onClick={() => toggleGroup(row.group)}>
         <span className="mt-1 shrink-0 text-[color:var(--muted)]">{isGroupExpanded(row.group) ? <CaretDown size={16} /> : <CaretRight size={16} />}</span>
         <span className="min-w-0"><span className="type-subtitle block leading-snug">{row.group.displayName}</span><span className="mt-1 block text-xs text-[color:var(--muted)]">{row.group.products.length}{row.group.products.length < fullGroupFor(row.group).products.length ? ' de ' + fullGroupFor(row.group).products.length : ''} {fullGroupFor(row.group).products.length === 1 ? variantWord : variantLabelPlural}</span></span>
-      </button> : <span className="type-subtitle leading-snug">{preset.useVariants ? productLineName(row.product) : row.product.name}</span>,
+      </button> : <span className="type-subtitle leading-snug">{row.product.name.trim() || productLineName(row.product)}</span>,
     },
     {
       id: 'type', label: preset.productTypeLabel, width: 155, minWidth: 110, hidden: true,

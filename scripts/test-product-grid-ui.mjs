@@ -16,7 +16,7 @@ const products = [
   ['loose', 'Accesorio', 'Gorra', null, 3, 0, 10000],
 ].map(([id, productType, productModel, size, stockAvailable, stockReserved, price]) => ({ id, productType, productModel, size, name: [productType, productModel, size].filter(Boolean).join(' '), stockAvailable, stockReserved, price, revision: 1, identityFingerprint: 'fingerprint-' + id, unit: 'unit', priceCurrency: 'ARS' }));
 
-async function fixture(category = 'indumentaria') {
+async function fixture(category = 'indumentaria', inventory = products) {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } });
   page.on('pageerror', (error) => errors.push(error.message));
   const writes = [];
@@ -29,7 +29,7 @@ async function fixture(category = 'indumentaria') {
     const request = route.request(), path = new URL(request.url()).pathname;
     const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/api/auth/me') return json({ phoneNumber: '5491100000000', tenantPhone: '5491100000000', role: 'owner', businessName: 'Inventario de prueba', businessCategory: category, needsOnboarding: false, pendingInvite: null, hasOwnBusiness: true });
-    if (path === '/api/state') return json({ products, clients: [], proveedores: [], pedidos: [], transactions: [] });
+    if (path === '/api/state') return json({ products: inventory, clients: [], proveedores: [], pedidos: [], transactions: [] });
     if (request.method() !== 'GET') writes.push({ path, body: request.postDataJSON() });
     return json({});
   });
@@ -161,6 +161,63 @@ try {
   await flat.grid.locator('.data-grid-group').getByText('Accesorio', { exact: true }).waitFor();
   assert.equal(await flat.grid.locator('.data-grid-group').count(), 3);
   await flat.page.close();
+
+  // Incomplete model metadata must keep the saved name visible and must not
+  // combine unrelated shirts into one model or bulk selection.
+  const legacyProducts = [
+    { ...products[0], id: 'boca-l', name: 'Boca Titular 2026', productModel: null, size: 'L' },
+    { ...products[0], id: 'boca-xl', name: 'Boca Titular 2026 XL', productModel: '', size: 'XL' },
+    { ...products[0], id: 'river-l', name: 'Camiseta River Titular 2026 L', productModel: '  ', size: 'L' },
+    { ...products[0], id: 'river-xl', name: 'Camiseta River Titular 2026 XL', productModel: undefined, size: 'XL' },
+    { ...products[0], id: 'no-type', name: 'Uruguay Suplente 2026 M', productType: null, productModel: 'Suplente', size: 'M' },
+  ];
+  const legacy = await fixture('indumentaria', legacyProducts);
+  const bocaModel = legacy.grid.getByRole('button', { name: 'Ver talles de Boca Titular 2026', exact: true });
+  await bocaModel.waitFor();
+  await legacy.grid.getByRole('button', { name: 'Ver talles de Camiseta River Titular 2026', exact: true }).waitFor();
+  await legacy.grid.getByRole('button', { name: 'Ver talles de Uruguay Suplente 2026', exact: true }).waitFor();
+  assert.equal(await legacy.grid.locator('td[data-column="name"]').count(), 3);
+  await bocaModel.click();
+  const bocaVariants = legacy.page.getByRole('table', { name: 'talles de Boca Titular 2026', exact: true });
+  assert.equal(await bocaVariants.locator('tbody > tr').count(), 2);
+  await legacy.page.getByRole('checkbox', { name: 'Seleccionar modelo Boca Titular 2026', exact: true }).check();
+  await legacy.page.getByRole('toolbar', { name: 'Acciones de selección' }).getByText('2 talles seleccionados', { exact: true }).waitFor();
+  assert.equal(await legacy.page.getByRole('checkbox', { name: 'Seleccionar modelo Camiseta River Titular 2026', exact: true }).isChecked(), false);
+  await legacy.page.getByRole('button', { name: 'Limpiar selección', exact: true }).click();
+  await screenshot(legacy.page, 'products-incomplete-models');
+  await legacy.page.getByLabel('Agrupar por').selectOption('none');
+  for (const product of legacyProducts) {
+    await legacy.grid.locator('td[data-column="name"]').getByText(product.name, { exact: true }).waitFor();
+  }
+  assert.equal(await legacy.grid.locator('td[data-column="name"]').getByText('Camiseta', { exact: true }).count(), 0);
+  await screenshot(legacy.page, 'products-incomplete-models-flat');
+  await legacy.grid.getByRole('button', { name: 'Desactivar producto Boca Titular 2026', exact: true }).click();
+  const deactivation = legacy.page.getByRole('dialog', { name: 'Desactivar productos' });
+  await deactivation.getByText('Boca Titular 2026', { exact: true }).waitFor();
+  await deactivation.getByRole('button', { name: 'No, cancelar', exact: true }).click();
+  assert.equal(legacy.writes.length, 0, 'Naming and grouping must never modify inventory');
+  await legacy.page.close();
+
+  // A saved product name takes precedence even when type and model are set.
+  const namedProducts = [
+    { ...products[0], id: 'named-l', name: 'Boca Titular 2026 edición especial L', productModel: 'Titular', size: 'L' },
+    { ...products[0], id: 'named-xl', name: 'Boca Titular 2026 edición especial XL', productModel: 'Titular', size: 'XL' },
+    { ...products[0], id: 'named-xxl', name: 'Boca Titular 2026 versión jugador XXL', productModel: 'Titular', size: 'XXL' },
+  ];
+  const named = await fixture('indumentaria', namedProducts);
+  const savedNames = 'Boca Titular 2026 edición especial / Boca Titular 2026 versión jugador';
+  await named.grid.getByText(savedNames, { exact: true }).waitFor();
+  assert.equal(await named.grid.locator('td[data-column="name"]').getByText('Camiseta Titular', { exact: true }).count(), 0);
+  await named.page.getByLabel('Agrupar por').selectOption('none');
+  for (const grouping of ['none', 'size', 'productType']) {
+    await named.page.getByLabel('Agrupar por').selectOption(grouping);
+    for (const product of namedProducts) {
+      await named.grid.locator('td[data-column="name"]').getByText(product.name, { exact: true }).waitFor();
+    }
+  }
+  await screenshot(named.page, 'products-saved-names');
+  assert.equal(named.writes.length, 0);
+  await named.page.close();
   assert.deepEqual(errors, []);
   console.log('Product grid: headings, filter spacing, exact size/type/stock filters, grouping, filtered selection, resize, persisted columns, mobile and flat view passed.');
 } finally { await browser.close(); }
