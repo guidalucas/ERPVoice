@@ -86,6 +86,7 @@ export function createCommerceRouter({ runtime, contextOf, autoStories, media = 
   router.patch('/products/:id/images/:imageId', handle(req => media.update(req.commerceContext, req.params.id, req.params.imageId, req.body)));
   router.put('/products/:id/gallery', handle(req => media.gallery(req.commerceContext, req.params.id, req.body)));
   router.patch('/products/:id', handle(req => products.update(req.commerceContext, req.params.id, req.body)));
+  router.delete('/products/:id', handle(req => products.remove(req.commerceContext, req.params.id, req.body)));
   router.put('/products/:id/sku-links', handle(req => products.link(req.commerceContext, req.params.id, req.body)));
   router.post('/products/:id/status', handle(req => products.setStatus(req.commerceContext, req.params.id, req.body)));
   router.get('/inventory-candidates', handle(req => products.candidates(req.commerceContext, req.query)));

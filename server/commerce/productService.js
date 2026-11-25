@@ -57,6 +57,15 @@ async function insertDraft(client, context, product) {
   return id;
 }
 
+async function hidePublication(client, context, id, reason) {
+  // Catalog is optional for installations with only the commerce foundation.
+  if ((await client.query("SELECT to_regclass('public.commercial_publications') AS name")).rows[0].name) {
+    await client.query(`UPDATE commercial_publications SET status='hidden',reason=$3,revision=revision+1,
+      updated_by=$4,updated_at=NOW() WHERE owner_phone=$1 AND commercial_product_id=$2 AND status='published'`,
+    [context.businessId, id, reason, context.actorId]);
+  }
+}
+
 /** Private use only. SKU metadata edits use the inventory executor atomically. */
 export function createCommerceProductService(runtime) {
   let ready;
@@ -183,15 +192,38 @@ export function createCommerceProductService(runtime) {
         await lockInventoryLinks(client, context.businessId);
         const row = await requireProduct(client, context.businessId, id, { lock: true }); requireRevision(row, command.expectedRevision);
         if (row.status === 'archived') fail('PRODUCT_ARCHIVED', 'Restaurá la ficha antes de modificar variantes.', 409);
+        const previous = (await client.query('SELECT sku_id FROM commercial_product_skus WHERE owner_phone=$1 AND commercial_product_id=$2', [context.businessId, id])).rows;
+        const onlyRemoving = command.skuLinks.length < previous.length && command.skuLinks.every(link => previous.some(item => item.sku_id === link.skuId));
         await replaceLinks(client, context, id, command.skuLinks);
-        // A valid size addition must not take an existing publication offline.
-        // Reject invalid changes atomically so its previous variants stay public.
+        // Invalid additions roll back; explicit removals may return the ficha to draft.
         if (row.status === 'ready') {
           const detail = await readProductDetail(client, context.businessId, id);
-          if (!detail.readiness.canPrepare) fail('PRODUCT_NOT_READY', 'No se guardaron los vínculos. Revisá que los talles no se repitan y que tengan precio y moneda confirmados.', 422, { blockers: detail.readiness.blockers });
+          if (!detail.readiness.canPrepare) {
+            if (!onlyRemoving) fail('PRODUCT_NOT_READY', 'No se guardaron los vínculos. Revisá que los talles no se repitan y que tengan precio y moneda confirmados.', 422, { blockers: detail.readiness.blockers });
+            await client.query("UPDATE commercial_products SET status='draft' WHERE owner_phone=$1 AND id=$2", [context.businessId, id]);
+            await hidePublication(client, context, id, 'Ficha pendiente de preparación tras desvincular SKU');
+          }
         }
         await client.query('UPDATE commercial_products SET revision=revision+1,updated_at=NOW(),updated_by=$3 WHERE owner_phone=$1 AND id=$2', [context.businessId, id, context.actorId]);
         return readProductDetail(client, context.businessId, id);
+      });
+    },
+    remove: async (context, id, input) => {
+      id = uuid(id);
+      const data = record(input, ['operationId', 'expectedRevision']);
+      const command = { operationId: uuid(data.operationId), expectedRevision: integer(data.expectedRevision, 1) };
+      return mutate(context, { operationId: command.operationId, type: 'product.delete', entityId: id, command }, async client => {
+        await lockInventoryLinks(client, context.businessId);
+        const row = await requireProduct(client, context.businessId, id, { lock: true }); requireRevision(row, command.expectedRevision);
+        const released = (await client.query('DELETE FROM commercial_product_skus WHERE owner_phone=$1 AND commercial_product_id=$2 RETURNING sku_id', [context.businessId, id])).rows;
+        if ((await client.query("SELECT to_regclass('public.commercial_publications') AS name")).rows[0].name) {
+          await client.query('DELETE FROM commercial_publications WHERE owner_phone=$1 AND commercial_product_id=$2', [context.businessId, id]);
+        }
+        await client.query('UPDATE commercial_products SET cover_image_id=NULL WHERE owner_phone=$1 AND id=$2', [context.businessId, id]);
+        // Unreferenced files are collected by the existing media maintenance grace period.
+        await client.query('DELETE FROM commercial_product_images WHERE owner_phone=$1 AND commercial_product_id=$2', [context.businessId, id]);
+        await client.query('DELETE FROM commercial_products WHERE owner_phone=$1 AND id=$2', [context.businessId, id]);
+        return { id, deleted: true, releasedSkuIds: released.map(item => item.sku_id).sort() };
       });
     },
     setStatus: async (context, id, input) => {

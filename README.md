@@ -16,6 +16,8 @@ o escribí `agregar fotos a <ficha>` antes de enviarlas. Revisá la ficha propue
 
 Personalización de marca y funcionamiento de las plantillas: [Guía de Stocky Studio](docs/STUDIO_CUSTOMIZATION.md). La personalización requiere la migración comercial 4, incluida en el bundle SQL.
 
+Desde una ficha de Studio, **Eliminar ficha** retira la ficha y sus fotos del catálogo y devuelve sus SKU a **Pendientes**, conservando el inventario y los recibos de operaciones. En **SKU vinculados**, desmarcar variantes y guardar libera esos SKU; **Desvincular todos** permite liberar la ficha completa. Si una ficha preparada queda sin SKU activos, pasa a borrador y su publicación queda oculta. Las adiciones válidas y las desvinculaciones parciales que mantienen la ficha preparada conservan la publicación. Validación en PostgreSQL y navegador con datos descartables: `npm run test:studio:delete-unlink` y `npm run test:studio:attach-publication`.
+
 La transición a arquitectura C se sigue en [STOCKY_REENGINEERING_PLAN.md](STOCKY_REENGINEERING_PLAN.md).
 El panel confirma contra el backend y solo hidrata snapshots persistidos; se retiró el
 ejecutor local anterior de inventario/cuentas/pedidos.
