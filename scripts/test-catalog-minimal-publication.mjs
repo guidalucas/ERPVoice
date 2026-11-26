@@ -59,12 +59,12 @@ try {
     await page.screenshot({ path: path.join(output, `generic-product-${width}.png`), fullPage: true });
     const request = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/api/commerce/v1/products');
     await page.getByRole('button', { name: 'Crear ficha', exact: true }).click();
-    assert.deepEqual((await request).postDataJSON().product, { title, description });
+    assert.deepEqual((await request).postDataJSON().product, { title, description, titleSource: 'custom' });
     await page.waitForURL(/#\/products\/[a-f0-9-]{36}$/);
     const id = new URL(page.url()).hash.split('/').at(-1), created = await api(`/products/${id}`);
     assert.equal(created.title, title); assert.equal(created.description, description);
     for (const field of sportsFields) assert.equal(created[field], null);
-    await page.reload(); await page.getByRole('button', { name: 'Guardar cambios', exact: true }).waitFor();
+    await page.reload(); await page.getByRole('heading', { name: title, exact: true, level: 1 }).waitFor();
     assert.equal(await page.getByLabel('Descripción · opcional', { exact: true }).inputValue(), description);
   }
   console.log('PASS: indumentaria creates jeans and shirts with generic fields on desktop/mobile, including legacy draft recovery');
@@ -75,7 +75,7 @@ try {
   await page.getByLabel('Descripción · opcional', { exact: true }).fill('Descripción actualizada desde la ficha genérica.');
   const patch = page.waitForRequest(request => request.method() === 'PATCH' && new URL(request.url()).pathname.endsWith(`/products/${legacyId}`));
   await page.getByRole('button', { name: 'Guardar cambios', exact: true }).click();
-  assert.deepEqual(Object.keys((await patch).postDataJSON().changes).sort(), ['description', 'title']);
+  assert.deepEqual(Object.keys((await patch).postDataJSON().changes).sort(), ['description', 'title', 'titleSource']);
   await page.getByText('Ficha guardada.', { exact: true }).waitFor();
   const legacyAfter = await api(`/products/${legacyId}`);
   for (const field of [...sportsFields, 'identityKey']) assert.equal(legacyAfter[field], legacyBefore[field]);

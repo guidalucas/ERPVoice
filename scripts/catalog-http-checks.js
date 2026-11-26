@@ -57,7 +57,7 @@ export async function runCatalogHttpChecks({ sql, check, request, req, product, 
     assert.equal(enabled.status, 200, enabled.text); config = enabled.json.result;
     assert.equal((await get(photoPath())).status, 200);
   });
-  await run('stock is live; invalid money and changed identity suppress public records and media', async () => {
+  await run('stock and SKU metadata are live; invalid money suppresses public records and media', async () => {
     await sql.query('UPDATE products SET stock_available=0 WHERE owner_phone=$1 AND id=$2', [owner, sku.id]);
     const sold = await get(`${base}/products/${current.slug}`); assert.equal(sold.status, 200); assert.equal(sold.json.product.available, false); assert.equal(sold.json.product.sizes[0].available, false);
     await sql.query('UPDATE products SET stock_available=2,stock_reserved=1 WHERE owner_phone=$1 AND id=$2', [owner, sku.id]);
@@ -65,7 +65,9 @@ export async function runCatalogHttpChecks({ sql, check, request, req, product, 
     await sql.query("UPDATE products SET price_currency='XXX' WHERE owner_phone=$1 AND id=$2", [owner, sku.id]);
     assert.equal((await get(`${base}/products/${current.slug}`)).status, 404); assert.equal((await get(photoPath())).status, 404); assert.equal((await get(`${base}/products`)).json.items.length, 0);
     await sql.query("UPDATE products SET price_currency='ARS',size='XXL' WHERE owner_phone=$1 AND id=$2", [owner, sku.id]);
-    assert.equal((await get(photoPath())).status, 404);
+    assert.equal((await get(photoPath())).status, 200);
+    const edited = await get(`${base}/products/${current.slug}`);
+    assert.equal(edited.status, 200); assert.equal(edited.json.product.sizes[0].size, 'XXL');
     await sql.query("UPDATE products SET size='S' WHERE owner_phone=$1 AND id=$2", [owner, sku.id]);
     assert.equal((await get(photoPath())).status, 200);
     await sql.query('UPDATE commerce_profiles SET enabled=false WHERE owner_phone=$1', [owner]); assert.equal((await get(base)).status, 404);

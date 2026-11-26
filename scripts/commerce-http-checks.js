@@ -126,7 +126,7 @@ export async function runCommerceHttpChecks({ db, sql, check, request }) {
     updated = responses.find(response => response.status === 200).json.result;
     assert.equal(updated.slug, before.slug); assert.equal(updated.revision, before.revision + 1);
   });
-  await run('live SKU identity changes invalidate preparation while stock and price remain authoritative', async () => {
+  await run('live SKU edits preserve preparation while stock and price remain authoritative', async () => {
     // Simulated ready metadata only; this does not claim image upload/processing has been implemented.
     const imageId = randomUUID();
     await sql.query(`INSERT INTO commercial_product_images(owner_phone,commercial_product_id,id,status,source_sha256,
@@ -146,8 +146,9 @@ export async function runCommerceHttpChecks({ db, sql, check, request }) {
     assert.equal(detail.readiness.canGenerateStory, true);
     await sql.query("UPDATE products SET size='XL',inventory_revision=inventory_revision+1 WHERE owner_phone=$1 AND id=$2", [owner, sku.id]);
     detail = (await req(`/products/${created.id}`)).json;
-    assert.equal(detail.readiness.canGenerateStory, false); assert.ok(detail.readiness.blockers.includes('SKU_IDENTITY_CHANGED'));
-    assert.equal(detail.availableQuantity, 2);
+    assert.equal(detail.readiness.canGenerateStory, true); assert.deepEqual(detail.readiness.blockers, []);
+    assert.equal(detail.variants.find(item => item.skuId === sku.id).size, 'XL');
+    assert.equal(detail.availableQuantity, 9);
     assert.ok(!JSON.stringify(detail).includes('fixture/master'));
   });
   let photoProduct, imageId, imageBytes;

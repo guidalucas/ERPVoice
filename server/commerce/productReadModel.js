@@ -1,6 +1,7 @@
 import { inventoryRowToProduct } from '../inventoryPostgres.js';
 import { rowToCommercialProduct } from './productRepository.js';
 import { buildCommercialReadiness } from './readiness.js';
+import { applyProductTitle } from './productTitle.js';
 
 export const linkedRows = mediaKeys => `sku_rows AS (SELECT l.commercial_product_id,l.identity_fingerprint_at_link,l.sort_order AS link_sort_order,
     p.id,p.owner_phone,p.name,p.product_type,p.product_model,p.size,p.attributes_json,p.inventory_unit,
@@ -17,15 +18,16 @@ export const linkedProjection = `COALESCE((SELECT jsonb_agg(to_jsonb(s) ORDER BY
       (SELECT jsonb_build_object('currency',currency,'storageUnit',storage_unit,'fractionDigits',fraction_digits,'revision',revision)
         FROM inventory_money_policies WHERE owner_phone=(SELECT owner_phone FROM product_scope LIMIT 1)) AS policy`;
 
-// Keep the same readiness rules as Studio, including changed SKU identities and money.
+// Keep the same live inventory and readiness rules as Studio.
 export function assembleProducts(rows, { skus, images, policy }, mediaKeys) {
   const group = values => { const map = new Map(); for (const value of values) {
     const list = map.get(value.commercial_product_id) ?? []; list.push(value); map.set(value.commercial_product_id, list);
   } return map; };
   const skuGroups = group(skus), imageGroups = group(images);
   return rows.map(row => {
-    const product = rowToCommercialProduct(row);
+    const storedProduct = rowToCommercialProduct(row);
     const variants = (skuGroups.get(row.id) ?? []).map(sku => ({ ...inventoryRowToProduct(sku), linkFingerprint: sku.identity_fingerprint_at_link }));
+    const product = applyProductTitle(storedProduct, variants);
     const photos = (imageGroups.get(row.id) ?? []).map(image => ({ id: image.id, status: image.status, altText: image.alt_text,
       sortOrder: image.sort_order, focalX: Number(image.focal_x), focalY: Number(image.focal_y), revision: Number(image.revision),
       width: image.width, height: image.height, errorCode: image.error_code,

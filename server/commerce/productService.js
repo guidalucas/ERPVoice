@@ -4,7 +4,8 @@ import { inventoryProductFingerprint } from '../inventoryOperations.js';
 import { inventoryPriceToMoney } from '../inventoryMoneyPolicy.js';
 import { normalizeCommercialProduct, commercialIdentityKey, commercialSlug } from './productIdentity.js';
 import { record, uuid, integer, denseArray, text } from './validation.js';
-import { readProfile, readMoneyPolicy, requireProduct, readProductDetail, rowToCommercialProduct, insertProduct, updateProduct } from './productRepository.js';
+import { readProfile, readMoneyPolicy, requireProduct, readProductDetail, rowToCommercialProduct, insertProduct, updateProduct, saveTitleSource } from './productRepository.js';
+import { productTitleSql } from './productTitle.js';
 import { readProductDetails, readProductSnapshot } from './productReadModel.js';
 import { executeCommerceCommand, requireCommerceAccess } from './operationRepository.js';
 import { inspectCommerceSchema } from './schemaInspection.js';
@@ -97,7 +98,7 @@ export function createCommerceProductService(runtime) {
     detail: (context, id) => read(context, client => detail(client, context.businessId, id)),
     availability: (context, id) => read(context, async client => {
       const product = await detail(client, context.businessId, id);
-      return Object.fromEntries(['revision', 'variants', 'availableQuantity', 'availability', 'priceRange', 'readiness', 'moneyPolicyRevision', 'readAt'].map(key => [key, product[key]]));
+      return Object.fromEntries(['title', 'titleSource', 'inventoryTitle', 'revision', 'variants', 'availableQuantity', 'availability', 'priceRange', 'readiness', 'moneyPolicyRevision', 'readAt'].map(key => [key, product[key]]));
     }),
     moneyReview: (context, query = {}) => read(context, async client => {
       const data = record(query, ['cursor']);
@@ -152,7 +153,7 @@ export function createCommerceProductService(runtime) {
             result.needsReview++;
             continue;
           }
-          const id = await insertDraft(client, context, normalizeCommercialProduct({ title }));
+          const id = await insertDraft(client, context, normalizeCommercialProduct({ title, titleSource: 'inventory' }));
           await insertLinks(client, context, id, variants.map(row => ({
             skuId: row.id, expectedFingerprint: inventoryProductFingerprint(inventoryRowToProduct(row)),
           })));
@@ -165,7 +166,7 @@ export function createCommerceProductService(runtime) {
     update: async (context, id, input) => {
       id = uuid(id);
       const data = record(input, ['operationId', 'expectedRevision', 'changes', 'skuMetadataChanges']);
-      const changes = record(data.changes, ['title', 'description', 'teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey']);
+      const changes = record(data.changes, ['title', 'titleSource', 'description', 'teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey']);
       for (const [key, value] of Object.entries(changes)) {
         if (value !== null && typeof value !== 'string') fail('INVALID_COMMAND', `El campo ${key} debe ser texto.`, 400);
       }
@@ -178,8 +179,11 @@ export function createCommerceProductService(runtime) {
         const updated = await applySkuMetadata(client, context, command.operationId, command.skuMetadataChanges ?? [], links.map(link => link.sku_id));
         for (const link of updated.values()) await client.query('UPDATE commercial_product_skus SET identity_fingerprint_at_link=$3 WHERE owner_phone=$1 AND commercial_product_id=$2 AND sku_id=$4', [context.businessId, id, link.expectedFingerprint, link.skuId]);
         const current = rowToCommercialProduct(row);
-        const fields = Object.fromEntries(['title', 'description', 'teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey'].map(key => [key, current[key]]));
-        const product = normalizeCommercialProduct({ ...fields, ...command.changes }); product.identityKey = commercialIdentityKey(product);
+        const fields = Object.fromEntries(['title', 'titleSource', 'description', 'teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey'].map(key => [key, current[key]]));
+        const product = normalizeCommercialProduct({ ...fields,
+          ...(Object.hasOwn(command.changes, 'title') ? { titleSource: 'custom' } : {}), ...command.changes });
+        product.identityKey = commercialIdentityKey(product);
+        await saveTitleSource(client, context.businessId, id, row, product.titleSource);
         await updateProduct(client, context.businessId, context.actorId, id, product, { invalidate: product.identityKey !== current.identityKey || updated.size > 0 });
         return readProductDetail(client, context.businessId, id);
       });
@@ -266,7 +270,7 @@ export function createCommerceProductService(runtime) {
       for (const [key, column] of Object.entries({ status: 'status', team: 'team_key', season: 'season', version: 'version_key', sleeve: 'sleeve_key' })) if (data[key]) {
         filters.push(text(data[key], 80, key)); conditions.push(`p.${column}=$${filters.length}`);
       }
-      if (data.q) { filters.push(`%${text(data.q, 120, 'query').replace(/[\\%_]/g, '\\$&')}%`); conditions.push(`(p.title ILIKE $${filters.length} OR p.team_name ILIKE $${filters.length})`); }
+      if (data.q) { filters.push(`%${text(data.q, 120, 'query').replace(/[\\%_]/g, '\\$&')}%`); conditions.push(`((${productTitleSql()}) ILIKE $${filters.length} OR p.team_name ILIKE $${filters.length})`); }
       if (data.cursor) {
         let cursor; try { cursor = JSON.parse(Buffer.from(text(data.cursor, 600, 'cursor'), 'base64url').toString()); } catch { fail('INVALID_COMMAND', 'Cursor inválido.', 400); }
         record(cursor, ['at', 'id']); uuid(cursor.id);

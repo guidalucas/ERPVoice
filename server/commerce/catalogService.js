@@ -14,6 +14,7 @@ import { publicCatalogSelect, readPublicProducts, readPublicProductSnapshot } fr
 import { createMediaCache } from '../catalog/mediaCache.js';
 import sharp from 'sharp';
 import { measureCatalogPhase } from '../catalog/timing.js';
+import { productTitleSql } from './productTitle.js';
 
 const catalogDTO = row => row ? { slug: row.slug, publicEnabled: row.public_enabled, revision: Number(row.revision), path: `/c/${row.slug}` } : null;
 const publicationDTO = row => ({ status: row?.status ?? 'hidden', revision: Number(row?.revision ?? 0), publishedAt: row?.published_at?.toISOString() ?? null });
@@ -180,7 +181,7 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
         values.push(text(data[key], 200, key)); conditions.push(`EXISTS(SELECT 1 FROM commercial_product_skus l JOIN products i ON i.owner_phone=l.owner_phone AND i.id=l.sku_id WHERE l.owner_phone=p.owner_phone AND l.commercial_product_id=p.id AND i.inventory_status='active' AND ${expression}=$${values.length})`);
       }
       for (const [key, column] of Object.entries({ team: 'team_key', season: 'season', version: 'version_key', sleeve: 'sleeve_key', kit: 'kit_key' })) if (data[key]) { values.push(text(data[key], 100, key)); conditions.push(`p.${column}=$${values.length}`); }
-      if (data.q) { values.push(`%${text(data.q, 120, 'query').replace(/[\\%_]/g, '\\$&')}%`); conditions.push(`(p.title ILIKE $${values.length} OR p.team_name ILIKE $${values.length})`); }
+      if (data.q) { values.push(`%${text(data.q, 120, 'query').replace(/[\\%_]/g, '\\$&')}%`); conditions.push(`((${productTitleSql()}) ILIKE $${values.length} OR p.team_name ILIKE $${values.length})`); }
       if (data.cursor) { values.push(slug(data.cursor)); conditions.push(`p.slug>$${values.length}`); }
       values.push(limit + 1);
       const rows = (await client.query(`SELECT p.* FROM commercial_products p JOIN commercial_publications s ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id

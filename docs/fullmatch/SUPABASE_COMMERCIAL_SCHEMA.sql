@@ -242,6 +242,21 @@ BEGIN
     INSERT INTO public.commerce_schema_migrations(version, checksum) VALUES (5, '219ccabb12b6f5eed55c11d7382a94c9fa970f089bd05c669d1851fe2fc21860');
   END IF;
 
+
+  -- Migration 9; checksum matches the canonical repository source.
+  SELECT checksum INTO previous_checksum FROM public.commerce_schema_migrations WHERE version = 9;
+  IF FOUND THEN
+    IF NOT (previous_checksum = ANY(ARRAY['98e8b25721fb154d6b7ad0ea6e80aa5cde35b1b97c8555f0475af2562153f4e8', '967eb7ebe6940d6bacc79cfd80237b32f970d7c9bc374ae20bf0ee87ca0de2d3'])) THEN
+      RAISE EXCEPTION 'MIGRATION_CHECKSUM_MISMATCH: version 9';
+    END IF;
+  ELSE
+    -- Keep the stored title as fallback/custom copy; existing fichas follow Stocky.
+    ALTER TABLE commercial_products ADD COLUMN IF NOT EXISTS title_source TEXT NOT NULL DEFAULT 'inventory'
+      CHECK (title_source IN ('inventory','custom'));
+
+    INSERT INTO public.commerce_schema_migrations(version, checksum) VALUES (9, '98e8b25721fb154d6b7ad0ea6e80aa5cde35b1b97c8555f0475af2562153f4e8');
+  END IF;
+
   FOREACH table_name IN ARRAY ARRAY['inventory_money_policies', 'commerce_profiles', 'commercial_products', 'commercial_product_skus', 'commercial_product_images', 'commercial_operations', 'commerce_catalogs', 'commercial_publications', 'commerce_schema_migrations', 'commerce_brand_assets'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', table_name);
@@ -302,6 +317,6 @@ END
 $fullmatch_schema$;
 COMMIT;
 
--- Success: versions 1, 2, 3 and 4. Business/profile enablement is a separate step.
+-- Success: base versions 1 through 5 and inventory titles version 9. Business/profile enablement is a separate step.
 SELECT version, applied_at FROM public.commerce_schema_migrations
-WHERE version IN (1, 2, 3, 4) ORDER BY version;
+WHERE version IN (1, 2, 3, 4, 5, 9) ORDER BY version;

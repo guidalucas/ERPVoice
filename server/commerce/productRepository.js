@@ -1,8 +1,9 @@
 import { inventoryRowToProduct } from '../inventoryPostgres.js';
 import { buildCommercialReadiness } from './readiness.js';
 import { fail } from './errors.js';
+import { applyProductTitle } from './productTitle.js';
 
-export const rowToCommercialProduct = row => ({ id: row.id, title: row.title, description: row.description,
+export const rowToCommercialProduct = row => ({ id: row.id, title: row.title, titleSource: row.title_source ?? 'custom', description: row.description,
   teamKey: row.team_key, teamName: row.team_name, teamKind: row.team_kind, season: row.season,
   kitKey: row.kit_key, versionKey: row.version_key, sleeveKey: row.sleeve_key, identityKey: row.identity_key,
   slug: row.slug, status: row.status, coverImageId: row.cover_image_id, revision: Number(row.revision),
@@ -21,11 +22,12 @@ export async function requireProduct(client, businessId, id, { lock = false } = 
   return row;
 }
 export async function readProductDetail(client, businessId, id) {
-  const product = rowToCommercialProduct(await requireProduct(client, businessId, id));
+  let product = rowToCommercialProduct(await requireProduct(client, businessId, id));
   const rows = (await client.query(`SELECT p.*,l.identity_fingerprint_at_link FROM commercial_product_skus l
     JOIN products p ON p.owner_phone=l.owner_phone AND p.id=l.sku_id
     WHERE l.owner_phone=$1 AND l.commercial_product_id=$2 ORDER BY l.sort_order,p.id`, [businessId, id])).rows;
   const skus = rows.map(row => ({ ...inventoryRowToProduct(row), linkFingerprint: row.identity_fingerprint_at_link }));
+  product = applyProductTitle(product, skus);
   const images = (await client.query(`SELECT id,status,alt_text,sort_order,focal_x,focal_y,revision,width,height,error_code
     FROM commercial_product_images WHERE owner_phone=$1 AND commercial_product_id=$2 AND status<>'deleted'
     ORDER BY sort_order,id`, [businessId, id])).rows.map(row => ({ id: row.id, status: row.status, altText: row.alt_text,
@@ -39,9 +41,17 @@ export async function readProductDetail(client, businessId, id) {
 const productValues = data => [data.title, data.description, data.teamKey, data.teamName, data.teamKind,
   data.season, data.kitKey, data.versionKey, data.sleeveKey, data.identityKey];
 export async function insertProduct(client, businessId, actorId, id, slug, data) {
-  await client.query(`INSERT INTO commercial_products(owner_phone,id,slug,title,description,team_key,team_name,team_kind,
+  const saved = (await client.query(`INSERT INTO commercial_products(owner_phone,id,slug,title,description,team_key,team_name,team_kind,
     season,kit_key,version_key,sleeve_key,identity_key,created_by,updated_by)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14)`, [businessId, id, slug, ...productValues(data), actorId]);
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14) RETURNING *`, [businessId, id, slug, ...productValues(data), actorId])).rows[0];
+  await saveTitleSource(client, businessId, id, saved, data.titleSource ?? 'custom');
+}
+export async function saveTitleSource(client, businessId, id, row, source) {
+  if (!Object.hasOwn(row, 'title_source')) {
+    if (source === 'inventory') fail('INVENTORY_TITLES_SCHEMA_NOT_READY', 'Falta aplicar la actualización de nombres del catálogo.', 503);
+    return;
+  }
+  if (row.title_source !== source) await client.query('UPDATE commercial_products SET title_source=$3 WHERE owner_phone=$1 AND id=$2', [businessId, id, source]);
 }
 export async function updateProduct(client, businessId, actorId, id, data, { invalidate = true } = {}) {
   await client.query(`UPDATE commercial_products SET title=$3,description=$4,team_key=$5,team_name=$6,team_kind=$7,

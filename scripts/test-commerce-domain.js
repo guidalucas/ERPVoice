@@ -30,6 +30,7 @@ test('contracts reject authority, stock/price fields, getters and sparse arrays 
   assert.throws(() => denseArray(new Array(3), 10, 'links'));
   assert.throws(() => record(JSON.parse('{"__proto__":{}}'), ['__proto__']));
   assert.throws(() => normalizeCommercialProduct({ ...product, season: 'retro' }));
+  assert.throws(() => normalizeCommercialProduct({ ...product, titleSource: 'unknown' }), { code: 'INVALID_COMMAND' });
 });
 
 test('money requires confirmed meaning, preserves exact large integers and never assumes XXX', () => {

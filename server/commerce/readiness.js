@@ -14,8 +14,10 @@ export function buildCommercialReadiness(product, skus, images, policy) {
     const validStock = [sku.stockAvailable, sku.stockReserved].every(value => Number.isSafeInteger(value) && value >= 0);
     if (!validStock) blockers.add('INVENTORY_INVALID');
     const active = sku.status === 'active';
-    const identityReviewed = fingerprint !== null && fingerprint === sku.linkFingerprint;
-    if (active && !identityReviewed) blockers.add('SKU_IDENTITY_CHANGED');
+    // Links reference an immutable SKU ID. Stocky's current metadata is authoritative;
+    // the fingerprint saved when linking is a write precondition, not a public snapshot.
+    // Requiring it to match here silently hid published products after ordinary edits.
+    const identityReviewed = fingerprint !== null;
     if (active && !(sku.unit ?? 'unit').trim()) blockers.add('INVALID_VARIANT');
     if (active) {
       const size = variantLabel(sku).normalize('NFC').trim().toLowerCase();

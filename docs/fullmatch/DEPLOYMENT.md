@@ -54,16 +54,22 @@ Guardar variables y desplegar el servicio para activarlas. No cambiar `PORT` ni 
 
 ### Alternativa sin Shell: SQL Editor de Supabase
 
-El archivo [SUPABASE_COMMERCIAL_SCHEMA.sql](SUPABASE_COMMERCIAL_SCHEMA.sql) contiene las cuatro migraciones y su registro de versiones. Se genera desde los SQL originales con `npm run commerce:schema:sql`; no incluye claves ni datos DEMO.
+El archivo [SUPABASE_COMMERCIAL_SCHEMA.sql](SUPABASE_COMMERCIAL_SCHEMA.sql) contiene las migraciones base 1 a 5 y la de nombres 9, con su registro de versiones. Se genera desde los SQL originales con `npm run commerce:schema:sql`; no incluye claves ni datos DEMO.
 
 1. Verificar el respaldo y seleccionar en Supabase el proyecto que usa la base de Stocky.
 2. Abrir **SQL Editor → New query** con el rol administrador del proyecto.
 3. Abrir el archivo local y copiar **todo** su contenido, desde `BEGIN` hasta el `SELECT` final, incluyendo los comentarios si se desea. Ejecutar el archivo completo una sola vez con **Run**, sin seleccionar una parte del texto.
-4. El resultado debe mostrar las versiones **1, 2, 3 y 4**. Recargar Studio para volver a comprobar el esquema.
+4. El resultado debe mostrar las versiones **1, 2, 3, 4, 5 y 9**. Recargar Studio para volver a comprobar el esquema.
 
 El script usa una sola transacción, comprueba las huellas del inventario antes/después, limita tiempos de espera, registra los mismos checksums que las herramientas CLI, activa RLS y retira acceso directo de los roles API sobre las tablas comerciales. Una excepción cancela toda la instalación; si el editor conserva una transacción fallida, ejecutar `ROLLBACK;` antes de reintentar. Los checksums anteriores con saltos de línea de Windows también se reconocen; un checksum desconocido se rechaza. No elimina tablas ni incorpora perfiles, políticas monetarias o publicaciones.
 
 Las doce pruebas de `npm run test:commerce:sql` usan PostgreSQL descartable: instalación inicial, repetición/compatibilidad con CLI, preservación de datos existentes, instalación parcial, compatibilidad CRLF, rollback por fuente desconocida, permisos de roles API, base incorrecta, relaciones dañadas, habilitación explícita de negocio y corrección administrativa de moneda con aislamiento/recibo/repetición. Son evidencia local; el archivo no fue ejecutado en producción desde este chat.
+
+### Nombres conectados a Stocky
+
+Aplicar la migración comercial **9** antes de publicar el frontend con sincronización de nombres. En una instalación existente también puede aplicarse solo esa migración con `npm run commerce:titles:schema:apply` y una `COMMERCE_DATABASE_URL` explícita; las conexiones remotas requieren `-- --allow-remote-database`. `npm run commerce:titles:schema:check` solo consulta su estado. El servidor no la aplica automáticamente.
+
+Las fichas existentes pasan a tomar el nombre actual de su primer SKU activo vinculado, según el orden de vínculos; si no hay ninguno activo, se usa el primero restante. El título guardado se conserva como respaldo. Stock, precios y nombres se leen del inventario actual, sin volver a guardar vínculos ni cambiar URL, fotos o publicación. En Studio, escribir en **Título comercial** guarda una excepción para esa ficha y el catálogo; **Usar nombre de Stocky** restablece la sincronización. Los datos inválidos, las presentaciones duplicadas y la falta de variantes activas siguen bloqueando la publicación efectiva. Verificación local: `npm run test:commerce:inventory-sync`.
 
 ### Alta autoservicio de cada negocio
 

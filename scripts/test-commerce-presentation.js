@@ -7,6 +7,7 @@ import { commercialSpecifications } from '../server/commerce/presentation.js';
 import { publicProductProjection } from '../server/commerce/catalogService.js';
 import { renderCatalogList, renderCatalogProduct } from '../server/catalog/render.js';
 import { catalogThemeCss, defaultHeroLayout } from '../src/shared/catalogAppearance.js';
+import { applyProductTitle } from '../server/commerce/productTitle.js';
 
 const policy = { currency: 'UYU', storageUnit: 'major_integer', fractionDigits: 2, revision: 1 };
 const sku = patch => { const item = { id: 'fixture', name: 'Producto', size: null, unit: 'unit', status: 'active', revision: 1, attributes: {}, price: 150, priceCurrency: 'UYU', stockAvailable: 2, stockReserved: 0, ...patch }; return { ...item, linkFingerprint: inventoryProductFingerprint(item) }; };
@@ -61,11 +62,30 @@ test('universal readiness permits no size, non-unit sales and no photo; stories 
   }
 });
 test('inventory, price and identity checks still block unsafe publication', () => {
-  for (const [patch, code] of [[{ stockAvailable: -1 }, 'INVENTORY_INVALID'], [{ priceCurrency: 'XXX' }, 'MONEY_UNCONFIRMED'], [{ price: 0 }, 'PRICE_NOT_READY'], [{ linkFingerprint: 'changed' }, 'SKU_IDENTITY_CHANGED']]) {
+  for (const [patch, code] of [[{ stockAvailable: -1 }, 'INVENTORY_INVALID'], [{ priceCurrency: 'XXX' }, 'MONEY_UNCONFIRMED'], [{ price: 0 }, 'PRICE_NOT_READY'], [{ name: '' }, 'SKU_IDENTITY_INVALID']]) {
     const item = { ...sku(), ...patch };
     assert.ok(buildCommercialReadiness({ title: 'Producto', status: 'ready' }, [item], [], policy).readiness.blockers.includes(code));
   }
   assert.ok(buildCommercialReadiness({ title: 'Producto' }, [sku(), sku({ id: 'other' })], [], policy).readiness.blockers.includes('DUPLICATE_SIZE'));
+});
+
+test('existing links follow live SKU edits without requiring a manual relink', () => {
+  const original = sku({ size: 'S' });
+  for (const changes of [{ name: 'Producto actualizado' }, { productModel: 'Modelo nuevo' }, { size: 'XL' }, { stockAvailable: 8 }]) {
+    const result = buildCommercialReadiness({ title: 'Producto', status: 'ready' }, [{ ...original, ...changes }], [], policy);
+    assert.equal(result.readiness.canPrepare, true);
+    assert.equal(result.variants[0].identityReviewed, true);
+    assert.equal(result.availableQuantity, changes.stockAvailable ?? original.stockAvailable);
+  }
+});
+
+test('Stocky names stay live while explicit commercial titles and unlinked drafts are preserved', () => {
+  const product = { title: 'Título guardado', titleSource: 'inventory' };
+  const variants = [sku({ name: 'Variante dada de baja', status: 'inactive' }), sku({ name: 'Nombre actual de Stocky', stockAvailable: 0 })];
+  assert.equal(applyProductTitle(product, variants).title, 'Nombre actual de Stocky');
+  assert.equal(applyProductTitle({ ...product, titleSource: 'custom' }, variants).title, 'Título guardado');
+  assert.equal(applyProductTitle(product, []).title, 'Título guardado');
+  assert.equal(applyProductTitle(product, [variants[0]]).title, 'Variante dada de baja');
 });
 test('only known, explicitly public specifications leave the inventory boundary', () => {
   assert.deepEqual(commercialSpecifications({ potencia: { state: 'known', type: 'number', value: 650, unit: 'w' }, proveedor: { state: 'known', type: 'text', value: 'privado' }, color: { state: 'unknown', type: 'text' } }), [{ label: 'potencia', value: '650 w' }]);

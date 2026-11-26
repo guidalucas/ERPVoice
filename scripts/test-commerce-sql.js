@@ -10,6 +10,7 @@ import { inspectContentSchema, migrateContent } from '../server/commerce/content
 import { migrateCommerce } from '../server/commerce/migration.js';
 import { migrateAppearance, inspectAppearanceSchema } from '../server/commerce/appearanceMigration.js';
 import { migrateUniversalCommerce } from '../server/commerce/universalMigration.js';
+import { migrateInventoryTitles } from '../server/commerce/inventoryTitlesMigration.js';
 import { readCommerceMigration } from '../server/commerce/migrationSource.js';
 import { buildBusinessEnableSql } from './generate-commerce-business-sql.js';
 import { buildCurrencyCorrectionSql } from './generate-commerce-currency-sql.js';
@@ -56,7 +57,7 @@ try {
     await client.query(bundle); await readiness(client);
     assert.deepEqual((await client.query('SELECT * FROM commerce_schema_migrations ORDER BY version')).rows, ledger);
     assert.deepEqual(await snapshot(client), before);
-    for (const migrate of [migrateCommerce, migrateCatalog, migrateContent, migrateAppearance, migrateUniversalCommerce]) assert.equal((await migrate(client)).changed, false);
+    for (const migrate of [migrateCommerce, migrateCatalog, migrateContent, migrateAppearance, migrateUniversalCommerce, migrateInventoryTitles]) assert.equal((await migrate(client)).changed, false);
   });
   await check('existing populated Studio survives SQL rerun unchanged', async () => {
     const before = await snapshot(admin);

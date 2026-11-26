@@ -8,8 +8,9 @@ const choice = (value, choices, field) => {
   return value;
 };
 export function normalizeCommercialProduct(input) {
-  const data = record(input, ['title', 'description', 'teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey']);
+  const data = record(input, ['title', 'titleSource', 'description', 'teamKey', 'teamName', 'teamKind', 'season', 'kitKey', 'versionKey', 'sleeveKey']);
   const result = { title: text(data.title, 120, 'title'), description: text(data.description ?? '', 4000, 'description', { empty: true }) };
+  result.titleSource = choice(data.titleSource ?? 'custom', ['inventory', 'custom'], 'title source');
   for (const field of [...identityFields, 'teamName', 'teamKind']) {
     const value = data[field];
     result[field] = value == null || value === '' ? null : text(value, field === 'teamName' ? 100 : 80, field);
