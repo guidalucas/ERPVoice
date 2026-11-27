@@ -8,32 +8,39 @@ import { businessDate, nextStoryAttempt, storyWindow } from '../server/commerce/
 import { createInstagramStoryPublisher } from '../server/commerce/instagramStoryPublisher.js';
 import { originalClaimTime, waitForApi } from './instagram-auto-story.mjs';
 
-test('commercial day and the four UTC opportunities use Argentina time', () => {
+test('five daily windows run every three hours at UTC-3, including UTC midnight', () => {
   const at = value => Date.parse(value);
   assert.equal(businessDate(at('2026-11-16T02:55:00Z')), '2026-11-15');
   assert.equal(businessDate(at('2026-11-16T03:00:00Z')), '2026-11-16');
-  assert.equal(nextStoryAttempt(at('2026-11-16T16:00:00Z')), '2026-11-16T19:17:00.000Z');
-  assert.equal(nextStoryAttempt(at('2026-11-16T23:17:00Z')), '2026-11-17T12:17:00.000Z');
-  assert.deepEqual(['12:17', '15:17', '19:17', '23:17'].map(time => storyWindow(at(`2026-11-16T${time}:00Z`))), [1, 2, 3, 4]);
-  assert.equal(storyWindow(at('2026-11-17T02:59:59Z')), 4);
+  assert.equal(nextStoryAttempt(at('2026-11-16T16:00:00Z')), '2026-11-16T18:30:00.000Z');
+  assert.equal(nextStoryAttempt(at('2026-11-16T23:17:00Z')), '2026-11-17T00:30:00.000Z');
+  assert.equal(nextStoryAttempt(at('2026-11-17T00:30:00Z')), '2026-11-17T12:30:00.000Z');
+  for (const [i, instant] of ['2026-11-16T12:30:00Z','2026-11-16T15:30:00Z','2026-11-16T18:30:00Z',
+    '2026-11-16T21:30:00Z','2026-11-17T00:30:00Z'].entries()) {
+    assert.equal(storyWindow(at(instant)), i + 1);
+    assert.equal(businessDate(at(instant)), '2026-11-16');
+    assert.equal(nextStoryAttempt(at(instant) - 1), instant.replace('Z', '.000Z'));
+    if (i) assert.equal(storyWindow(at(instant) - 1), i);
+  }
+  assert.equal(storyWindow(at('2026-11-17T02:59:59Z')), 5);
   assert.equal(storyWindow(at('2026-11-17T03:00:00Z')), 1);
 });
 
 test('a delayed Actions run keeps the original cron window across UTC midnight', () => {
-  assert.equal(originalClaimTime('2026-11-17T00:05:00Z', '17 23 * * *'), Date.parse('2026-11-16T23:17:00Z'));
-  assert.equal(originalClaimTime('2026-11-16T16:12:00Z', '17 12 * * *'), Date.parse('2026-11-16T12:17:00Z'));
+  assert.equal(originalClaimTime('2026-11-17T01:05:00Z', '30 0 * * *'), Date.parse('2026-11-17T00:30:00Z'));
+  assert.equal(originalClaimTime('2026-11-16T16:12:00Z', '30 12 * * *'), Date.parse('2026-11-16T12:30:00Z'));
   assert.equal(originalClaimTime('2026-11-16T16:12:00Z'), Date.parse('2026-11-16T16:12:00Z'));
-  assert.equal(originalClaimTime('2026-11-17T12:38:00Z', '17,37,57 12 * * *'), Date.parse('2026-11-17T12:17:00Z'));
-  assert.equal(originalClaimTime('2026-11-17T00:05:00Z', '17,37,57 23 * * *'), Date.parse('2026-11-16T23:17:00Z'));
+  assert.equal(originalClaimTime('2026-11-17T12:51:00Z', '30,50 12 * * *'), Date.parse('2026-11-17T12:30:00Z'));
+  assert.equal(originalClaimTime('2026-11-17T00:05:00Z', '30,50 0 * * *'), Date.parse('2026-11-16T00:30:00Z'));
 });
 
 test('Supabase dispatch preserves the requested window when GitHub accepts a delayed request', () => {
-  assert.equal(originalClaimTime('2026-11-17T00:05:00Z', '', '2026-11-16T23:17:00Z'),
-    Date.parse('2026-11-16T23:17:00Z'));
-  assert.equal(originalClaimTime('2026-11-17T19:40:00Z', '', '2026-11-17T15:17:00Z'),
-    Date.parse('2026-11-17T15:17:00Z'));
-  for (const value of ['invalid', '2026-02-30T12:17:00Z', '2026-11-17T13:17:00Z',
-    '2026-11-17T12:37:00Z', '2026-11-18T12:17:00Z']) {
+  assert.equal(originalClaimTime('2026-11-17T01:10:00Z', '', '2026-11-17T00:30:00Z'),
+    Date.parse('2026-11-17T00:30:00Z'));
+  assert.equal(originalClaimTime('2026-11-17T19:40:00Z', '', '2026-11-17T15:30:00Z'),
+    Date.parse('2026-11-17T15:30:00Z'));
+  for (const value of ['invalid', '2026-02-30T12:30:00Z', '2026-11-17T13:30:00Z',
+    '2026-11-17T12:50:00Z', '2026-11-18T12:30:00Z', '2026-11-17T12:17:00Z']) {
     assert.throws(() => originalClaimTime('2026-11-17T19:40:00Z', '', value),
       { message: 'RUNNER_CONFIGURATION_INVALID' });
   }

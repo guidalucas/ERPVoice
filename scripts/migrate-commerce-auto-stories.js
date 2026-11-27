@@ -20,7 +20,7 @@ try {
     throw new Error('COMMERCE_UNIVERSAL_REQUIRED');
   }
   let ready = true, changed = false;
-  for (const version of [6, 7, 8]) {
+  for (const version of [6, 7, 8, 10]) {
     stage = `READ_${version}`;
     const { sql, checksum, acceptedChecksums } = await readCommerceMigration(version);
     stage = `CHECK_${version}`;
@@ -37,7 +37,7 @@ try {
   }
   stage = 'COMMIT';
   await client.query('COMMIT');
-  console.log(JSON.stringify({ ready, changed, version: 8 }));
+  console.log(JSON.stringify({ ready, changed, version: 10 }));
 } catch (error) {
   const code = [error.code, error.message].find(value => typeof value === 'string' && /^[A-Z0-9_]{2,64}$/.test(value));
   console.error(JSON.stringify({ error: 'AUTO_STORY_MIGRATION_FAILED', stage, code: code ?? 'UNKNOWN' }));

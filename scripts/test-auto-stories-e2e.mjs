@@ -5,6 +5,8 @@ import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
+import { Client } from 'pg';
+import { readCommerceMigration } from '../server/commerce/migrationSource.js';
 import express from 'express';
 import sharp from 'sharp';
 import { chromium } from 'playwright';
@@ -28,9 +30,33 @@ const configureApi = async ({ connection }) => {
     return JSON.parse(stdout);
   };
   assert.equal((await run()).ready, false);
+  const client = new Client({ connectionString: connection });
+  await client.connect();
+  try {
+    for (const version of [6, 7, 8]) {
+      const { sql, checksum } = await readCommerceMigration(version);
+      await client.query(sql);
+      await client.query('INSERT INTO commerce_schema_migrations(version,checksum) VALUES($1,$2)', [version, checksum]);
+    }
+    await client.query('INSERT INTO commerce_auto_story_settings(owner_phone) VALUES($1)', [owner]);
+    await client.query(`INSERT INTO commerce_auto_story_jobs(id,owner_phone,instagram_id,business_date,created_at,status,published_at)
+      SELECT gen_random_uuid(),$1,'123','2026-11-15'::date,instant,'published',instant
+      FROM unnest(ARRAY['2026-11-15T12:17:00Z','2026-11-15T15:17:00Z','2026-11-15T19:17:00Z','2026-11-15T23:17:00Z']::timestamptz[]) instant`, [owner]);
+  } finally { await client.end(); }
   assert.equal((await run('--apply')).changed, true);
   assert.equal((await run('--apply')).changed, false);
   assert.equal((await run()).ready, true);
+  const migrated = new Client({ connectionString: connection });
+  await migrated.connect();
+  try {
+    assert.deepEqual((await migrated.query('SELECT publication_window FROM commerce_auto_story_jobs ORDER BY created_at')).rows.map(row => row.publication_window), [1,2,3,4]);
+    await assert.rejects(migrated.query(`INSERT INTO commerce_auto_story_jobs(id,owner_phone,instagram_id,business_date,publication_window,status,published_at)
+      VALUES(gen_random_uuid(),$1,'123','2026-11-15',1,'published',now())`, [owner]), { code: '23505' });
+    await migrated.query('DELETE FROM commerce_auto_story_jobs');
+    await migrated.query('DELETE FROM commerce_auto_story_settings');
+    // The test clock runs in the past; this models installing the timetable before enabling it.
+    await migrated.query("UPDATE commerce_schema_migrations SET applied_at=now()-interval '10 days' WHERE version=10");
+  } finally { await migrated.end(); }
   return { AUTO_STORY_OWNER: owner, AUTO_STORY_RUNNER_KEY: workerKey.toString('hex'), AUTO_STORY_MEDIA_KEY: '',
     AUTO_STORY_META_TOKEN: '', AUTO_STORY_TOKEN_KEY: '' };
 };
@@ -75,8 +101,8 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
     return Buffer.from(await response.arrayBuffer());
   } };
   const app = express();
-  const firstWindow = new Date(Date.now() - 2 * 86_400_000).setUTCHours(12, 17, 0, 0);
-  const windowStarts = [0, 3, 7, 11, 24].map(hours => firstWindow + hours * 3_600_000);
+  const firstWindow = new Date(Date.now() - 2 * 86_400_000).setUTCHours(12, 30, 0, 0);
+  const windowStarts = [0, 3, 6, 9, 12, 24].map(hours => firstWindow + hours * 3_600_000);
   let current = firstWindow + 60_000;
   const routes = createAutoStoryRoutes(runtime, media, config, { meta, now: () => current });
   app.use(routes.runnerPath, routes.runner);
@@ -245,20 +271,29 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
     assert.equal((await worker('/claim')).status, 'published');
     assert.equal((await worker('/claim')).code, 'ALREADY_PUBLISHED');
     assert.equal(publishCalls, 4);
+    current = windowStarts[4] + 60_000;
+    assert.equal((await worker(`/claim?at=${windowStarts[3]}`)).code, 'STORY_WINDOW_CLOSED');
+    const fifth = await claim();
+    await upload(fifth);
+    publishFailure = false;
+    metaStatus = 'FINISHED';
+    assert.equal((await advance(fifth)).status, 'published');
+    assert.equal((await worker('/claim')).code, 'ALREADY_PUBLISHED');
+    assert.equal(publishCalls, 5);
     const published = (await sql(`SELECT business_date::text, publication_window FROM commerce_auto_story_jobs
       WHERE status='published' ORDER BY publication_window`)).rows;
-    assert.deepEqual(published.map(job => job.publication_window), [1, 2, 3, 4]);
+    assert.deepEqual(published.map(job => job.publication_window), [1, 2, 3, 4, 5]);
     assert.equal(new Set(published.map(job => job.business_date)).size, 1);
     await sql("UPDATE commerce_auto_story_jobs SET jpeg_expires_at=now()-interval '1 minute' WHERE id=$1", [replacement.id]);
     await worker('/claim');
     assert.equal((await sql('SELECT jpeg FROM commerce_auto_story_jobs WHERE id=$1', [replacement.id])).rows[0].jpeg, null);
     assert.equal((await privateRequest('', otherAuth)).status, 403);
 
-    current = windowStarts[4] + 60_000;
-    assert.equal((await worker(`/claim?at=${windowStarts[3]}`)).code, 'STORY_WINDOW_CLOSED');
+    current = windowStarts[5] + 60_000;
+    assert.equal((await worker(`/claim?at=${windowStarts[4]}`)).code, 'STORY_WINDOW_CLOSED');
     await sql("UPDATE products SET stock_available=0 WHERE owner_phone=$1", [owner]);
     assert.equal((await worker('/claim')).code, 'NO_ELIGIBLE_PRODUCT');
-    assert.equal(publishCalls, 4);
+    assert.equal(publishCalls, 5);
     await sql("UPDATE products SET stock_available=1 WHERE owner_phone=$1", [owner]);
     await sql("UPDATE commercial_products SET auto_story_enabled=false WHERE owner_phone=$1", [owner]);
     assert.equal((await worker('/simulate')).code, 'NO_ELIGIBLE_PRODUCT');
@@ -268,12 +303,12 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
     await upload(revoked);
     assert.equal((await advance(revoked)).code, 'META_TOKEN_REVOKED');
     assert.equal((await routes.service.status(context)).connection, 'revoked');
-    assert.equal(publishCalls, 4);
+    assert.equal(publishCalls, 5);
 
-    const missedWindow = windowStarts[4] + 3 * 3_600_000;
+    const missedWindow = windowStarts[5] + 3 * 3_600_000;
     current = missedWindow + 60_000;
     assert.ok(!(await routes.service.status(context)).history.some(job => job.error_code === 'STORY_NO_ATTEMPT_RECORDED'));
-    current += 4 * 3_600_000;
+    current += 3 * 3_600_000;
     const missed = await Promise.all([routes.service.status(context), routes.service.status(context), worker('/claim')]);
     for (const { history } of missed.slice(0, 2)) {
       const omissions = history.filter(job => job.error_code === 'STORY_NO_ATTEMPT_RECORDED');
@@ -288,7 +323,7 @@ test('Studio, the signed runner, PostgreSQL and the Instagram publisher work tog
     failAuthorization = false;
     await routes.service.configure(context, { enabled: true, verifyBusiness: true });
     assert.equal((await routes.service.status(context)).history.filter(job => job.error_code === 'STORY_NO_ATTEMPT_RECORDED').length, 1);
-    assert.equal(publishCalls, 4);
+    assert.equal(publishCalls, 5);
   } finally {
     await browser?.close();
     if (listener) await new Promise(resolve => listener.close(resolve));
