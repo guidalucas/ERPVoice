@@ -49,11 +49,11 @@ DECLARE
   scheduled_at timestamptz;
   request_id bigint;
 BEGIN
-  IF utc_hour NOT IN (12, 15, 19, 23) OR utc_hour IS NULL OR dry_run IS NULL THEN
+  IF utc_hour NOT IN (0, 12, 15, 18, 21) OR utc_hour IS NULL OR dry_run IS NULL THEN
     RAISE EXCEPTION 'INVALID_STORY_SCHEDULE';
   END IF;
   scheduled_at := (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
-    + make_interval(hours => utc_hour, mins => 17);
+    + make_interval(hours => utc_hour, mins => 30);
   IF scheduled_at > now() THEN
     scheduled_at := scheduled_at - interval '1 day';
   END IF;
@@ -93,13 +93,27 @@ DECLARE
   job_name text;
   job_id bigint;
   was_active boolean;
+  previous_active boolean;
+  window_active boolean;
 BEGIN
-  FOREACH utc_hour IN ARRAY ARRAY[12, 15, 19, 23] LOOP
+  SELECT bool_or(active) INTO previous_active FROM cron.job
+    WHERE jobname IN ('stocky-instagram-story-0','stocky-instagram-story-12','stocky-instagram-story-15',
+      'stocky-instagram-story-18','stocky-instagram-story-19','stocky-instagram-story-21','stocky-instagram-story-23')
+      AND username=current_user;
+  -- Retire the previous 16:17 and 20:17 local jobs so they cannot dispatch stale windows.
+  PERFORM cron.unschedule(jobid) FROM cron.job
+    WHERE jobname IN ('stocky-instagram-story-19','stocky-instagram-story-23') AND username=current_user;
+  FOREACH utc_hour IN ARRAY ARRAY[0, 12, 15, 18, 21] LOOP
     job_name := 'stocky-instagram-story-' || utc_hour::text;
     SELECT active INTO was_active FROM cron.job WHERE jobname = job_name AND username = current_user;
-    SELECT cron.schedule(job_name, format('17,37,57 %s * * *', utc_hour),
+    SELECT cron.schedule(job_name, format('30,50 %s * * *', utc_hour),
       format('SELECT stocky_automation.dispatch_instagram_story(%s, false);', utc_hour)) INTO job_id;
-    PERFORM cron.alter_job(job_id, active := COALESCE(was_active, false));
+    window_active := COALESCE(was_active, previous_active, false);
+    PERFORM cron.alter_job(job_id, active := window_active);
+    SELECT active INTO was_active FROM cron.job WHERE jobname=job_name || '-retry' AND username=current_user;
+    SELECT cron.schedule(job_name || '-retry', format('10 %s * * *', (utc_hour+1)%24),
+      format('SELECT stocky_automation.dispatch_instagram_story(%s, false);', utc_hour)) INTO job_id;
+    PERFORM cron.alter_job(job_id, active := COALESCE(was_active, window_active));
   END LOOP;
   SELECT cron.schedule('stocky-instagram-story-responses', '*/5 * * * *',
     'SELECT stocky_automation.collect_instagram_story_responses();') INTO job_id;

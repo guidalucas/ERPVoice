@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 
 const files = { 1: '001_foundation.sql', 2: '002_catalog.sql', 3: '003_content_library.sql', 4: '004_appearance.sql', 5: '005_universal_presentation.sql', 6: '006_automatic_stories.sql',
-  7: '007_automatic_story_windows.sql', 8: '008_automatic_story_missed_windows.sql', 9: '009_inventory_titles.sql' };
+  7: '007_automatic_story_windows.sql', 8: '008_automatic_story_missed_windows.sql', 9: '009_inventory_titles.sql',
+  10: '010_five_daily_story_windows.sql' };
 export async function readCommerceMigration(version) {
   if (!Object.hasOwn(files, version)) throw new Error('UNKNOWN_COMMERCE_MIGRATION');
   const sql = (await fs.readFile(new URL(`../migrations/commerce/${files[version]}`, import.meta.url), 'utf8')).replace(/\r\n/g, '\n');

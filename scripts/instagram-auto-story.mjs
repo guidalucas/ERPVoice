@@ -13,17 +13,17 @@ export function originalClaimTime(createdAt, schedule, scheduledAt) {
   if (!Number.isFinite(created)) throw new Error('RUNNER_CONFIGURATION_INVALID');
   if (scheduledAt) {
     const requested = Date.parse(scheduledAt);
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:17:00Z$/.test(scheduledAt) ||
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:30:00Z$/.test(scheduledAt) ||
       !Number.isFinite(requested) || new Date(requested).toISOString() !== scheduledAt.replace('Z', '.000Z') ||
-      ![12, 15, 19, 23].includes(new Date(requested).getUTCHours()) || requested > created) {
+      ![0, 12, 15, 18, 21].includes(new Date(requested).getUTCHours()) || requested > created) {
       throw new Error('RUNNER_CONFIGURATION_INVALID');
     }
     return requested;
   }
   if (!schedule) return created;
-  const hour = /^17(?:,37,57)? (12|15|19|23) \* \* \*$/.exec(schedule)?.[1];
+  const hour = /^30(?:,50)? (0|12|15|18|21) \* \* \*$/.exec(schedule)?.[1];
   if (!hour) throw new Error('RUNNER_CONFIGURATION_INVALID');
-  const scheduled = new Date(created).setUTCHours(Number(hour), 17, 0, 0);
+  const scheduled = new Date(created).setUTCHours(Number(hour), 30, 0, 0);
   return scheduled <= created ? scheduled : scheduled - 86_400_000;
 }
 

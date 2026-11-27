@@ -23,7 +23,7 @@ El modo de prueba de Actions y la simulación en Studio generan un JPG sin crear
 
 ## Migración
 
-Aplicá las migraciones de historias después de la 005. El comando aplica de la 006 a la 008 en orden y conserva las ya registradas. El backend requiere la 007 para publicar por ventana. La 008 habilita el registro de ventanas omitidas y puede aplicarse después de desplegar el backend. Usá el destino explícito en `COMMERCE_DATABASE_URL` desde un entorno de mantenimiento autorizado. Para un destino remoto, agregá `-- --allow-remote-database` a cada comando.
+Aplicá las migraciones de historias después de la 005. El comando aplica la 006, 007, 008 y 010 en orden y conserva las ya registradas. El backend requiere la 010 para publicar en cinco ventanas diarias. Usá el destino explícito en `COMMERCE_DATABASE_URL` desde un entorno de mantenimiento autorizado. Para un destino remoto, agregá `-- --allow-remote-database` a cada comando.
 
 ```sh
 npm run commerce:auto-stories:schema:check
@@ -34,6 +34,7 @@ npm run commerce:auto-stories:schema:check
 La migración crea `commerce_auto_story_settings`, `commerce_auto_story_jobs` y `commerce_auto_story_requests`, y agrega `commercial_products.auto_story_enabled`. Las fichas existentes quedan incluidas si cumplen las reglas. Cada comercio empieza con la automatización desactivada.
 La 007 asigna los intentos existentes a la ventana correspondiente a la hora en que se reclamaron y conserva el historial.
 La 008 guarda desde cuándo está activada la automatización. Para configuraciones que ya estaban activadas toma como referencia la última autorización registrada.
+La 010 habilita cinco ventanas diarias conservando los números de ventana y el índice de publicaciones del historial anterior. El backend nuevo guarda explícitamente la ventana de cada intento; un trigger mantiene compatibles los INSERT del backend anterior durante el despliegue. El registro de omisiones del nuevo horario empieza desde la aplicación de la 010 y no inventa ventanas en el historial previo. La migración 009 de nombres de inventario tiene su propio comando y no es requisito para la 010.
 
 ## Configuración del backend
 
@@ -69,17 +70,19 @@ Meta documenta JPEG y descarga pública, `media_type=STORIES`, creación del con
 2. Aplicá la migración y desplegá el backend y Studio mediante el proceso habitual cuando lo autorices. Con la publicación desactivada, probá **Simular historia** en Studio. Verificá nombre, precio, talles, portada y marca.
 3. En **Actions → Instagram automatic story → Run workflow**, elegí `main` y dejá `dry_run` marcado. El resumen debe mostrar `simulated`. `NO_ELIGIBLE_PRODUCT` indica que ninguna ficha cumplió los criterios.
 4. Para un primer envío real, elegí un horario entre las ejecuciones previstas y autorizalo expresamente. Verificá la cuenta, activá la automatización en Studio y ejecutá el workflow con `dry_run` desmarcado. Comprobá el historial y el Instagram del comercio. Si la prueba debe terminar con un solo envío, desactivá la automatización desde Studio al confirmar el resultado.
-5. Supabase Cron dispara el workflow por API a las 09:17, 12:17, 16:17 y 20:17 de Argentina. Cada ventana tiene reintentos a los minutos :37 y :57. PostgreSQL limita la publicación a una historia por ventana. El campo `scheduled_at` conserva el inicio de la ventana aunque GitHub demore la ejecución. Una ejecución manual que deja ese campo vacío usa la hora en que se solicitó. El runner espera el arranque del backend y descarta los trabajos cuya ventana cerró.
+5. Supabase Cron dispara el workflow por API a las **09:30, 12:30, 15:30, 18:30 y 21:30**, todos los días, en UTC−3 (Uruguay y Argentina): cinco historias, separadas por tres horas. Cada ventana tiene reintentos 20 y 40 minutos después; PostgreSQL permite una sola publicación confirmada por ventana. Las horas UTC son 12:30, 15:30, 18:30, 21:30 y 00:30; esta última pertenece al día comercial anterior. El campo `scheduled_at` conserva el inicio de la ventana aunque GitHub demore la ejecución. Una ejecución manual que deja ese campo vacío usa la hora en que se solicitó. El runner espera el arranque del backend y descarta los trabajos cuya ventana cerró. Los horarios indican el disparo: el inicio de Actions, el render y Meta pueden demorar la publicación.
 
 ## Configurar Supabase Cron
 
 El comando de configuración usa el destino explícito `COMMERCE_DATABASE_URL`. Para Supabase agregá `--allow-remote-database` y usá la cadena de confianza TLS habitual del proyecto. En Windows, si GitHub requiere los certificados del sistema, iniciá Node con `--use-system-ca`.
 
-1. Ejecutá `node scripts/configure-instagram-story-cron.mjs --apply --allow-remote-database`. Instala `pg_cron`, `pg_net` y el esquema privado `stocky_automation`. Crea los cuatro trabajos de publicación desactivados y un trabajo que conserva las respuestas HTTP cada cinco minutos.
+1. Ejecutá `node scripts/configure-instagram-story-cron.mjs --validate --allow-remote-database` para comprobar la configuración dentro de una transacción que se revierte, sin disparar el workflow. `--apply` instala `pg_cron`, `pg_net` y el esquema privado `stocky_automation`: crea cinco trabajos principales, cinco de segundo reintento y un recolector de respuestas. Los nuevos horarios empiezan desactivados en una instalación nueva; al actualizar se conserva la activación existente y se retiran los horarios antiguos de 16:17 y 20:17.
 2. Creá un token fine-grained de GitHub limitado a `guidalucas/ERPVoice`, con permiso `Actions: Read and write`. Guardalo en Supabase Vault con el nombre `stocky_instagram_actions_token`. El token debe renovarse antes de su vencimiento.
 3. Integrá el workflow con el input `scheduled_at` en `main`. Ejecutá `node scripts/configure-instagram-story-cron.mjs --simulate --allow-remote-database`. Verificá una respuesta HTTP 200 o 204 y el resultado `simulated` en Actions.
-4. Ejecutá `node scripts/configure-instagram-story-cron.mjs --activate --allow-remote-database` para activar los horarios. El comando verifica que exista el secreto y que `main` incluya el input. `--pause` desactiva los cuatro horarios.
+4. Ejecutá `node scripts/configure-instagram-story-cron.mjs --activate --allow-remote-database` para activar los horarios. El comando verifica la migración 010, el secreto y el input de `main`. `--pause` desactiva tanto los horarios principales como sus reintentos.
 5. Ejecutá el comando sin ninguna acción para consultar horarios, activación y las últimas solicitudes. `stocky_automation.instagram_story_dispatches` guarda la hora solicitada, el identificador de pg_net y la respuesta HTTP. Un HTTP 200 o 204 confirma que GitHub recibió el disparo. El resultado de publicación se consulta en Actions y en el historial de Stocky.
+
+Para actualizar una instalación activa: pausá los horarios con el comando anterior, aplicá las migraciones de historias hasta la 010, desplegá backend y runner nuevos en `main`, aplicá la configuración de Cron y reactivá. No dispares una historia real como prueba fuera de los horarios acordados. La historia ya publicada en la primera ventana del día se conserva y ocupa ese turno, aunque haya sido enviada a las 09:17 del horario anterior.
 
 ## Operación
 

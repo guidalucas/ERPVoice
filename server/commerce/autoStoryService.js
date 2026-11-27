@@ -16,7 +16,7 @@ export const businessDate = now => {
 };
 export function nextStoryAttempt(now) {
   const day = new Date(now).setUTCHours(0, 0, 0, 0);
-  const times = [12, 15, 19, 23, 36].map(hour => day + (hour * 60 + 17) * 60_000);
+  const times = [0, 12, 15, 18, 21, 24].map(hour => day + (hour * 60 + 30) * 60_000);
   return new Date(times.find(time => time > now)).toISOString();
 }
 const windowClock = new Intl.DateTimeFormat('en-GB', {
@@ -24,9 +24,10 @@ const windowClock = new Intl.DateTimeFormat('en-GB', {
 });
 export function storyWindow(now) {
   const time = windowClock.format(now);
-  if (time >= '20:17') return 4;
-  if (time >= '16:17') return 3;
-  if (time >= '12:17') return 2;
+  if (time >= '21:30') return 5;
+  if (time >= '18:30') return 4;
+  if (time >= '15:30') return 3;
+  if (time >= '12:30') return 2;
   return 1;
 }
 const isCurrentWindow = (job, time) => job.business_date === businessDate(time) && job.publication_window === storyWindow(time);
@@ -34,7 +35,10 @@ const missedWindowLookback = 7 * 86_400_000;
 async function recordMissedWindows(client, settings, time) {
   if (!settings?.enabled || !settings.enabled_at) return;
   const starts = [], dates = [], windows = [];
-  const firstCheck = Math.max(+settings.enabled_at, time - missedWindowLookback);
+  // The new timetable must not invent omissions in the previous four-window history.
+  const { rows: [schedule] } = await client.query('SELECT applied_at FROM commerce_schema_migrations WHERE version=10');
+  if (!schedule) return;
+  const firstCheck = Math.max(+settings.enabled_at, +schedule.applied_at, time - missedWindowLookback);
   for (let start = Date.parse(nextStoryAttempt(firstCheck - 1)); start < time;
     start = Date.parse(nextStoryAttempt(start))) {
     const slot = { business_date: businessDate(start), publication_window: storyWindow(start) };
@@ -46,8 +50,8 @@ async function recordMissedWindows(client, settings, time) {
   if (!starts.length) return;
   // The caller locks settings so status refreshes and claims cannot insert the same omission.
   await client.query(`
-    INSERT INTO commerce_auto_story_jobs (id,owner_phone,instagram_id,business_date,created_at,status,error_code)
-    SELECT gen_random_uuid(),$1,$2,slot.business_date,slot.starts_at,'skipped','STORY_NO_ATTEMPT_RECORDED'
+    INSERT INTO commerce_auto_story_jobs (id,owner_phone,instagram_id,business_date,created_at,publication_window,status,error_code)
+    SELECT gen_random_uuid(),$1,$2,slot.business_date,slot.starts_at,slot.publication_window,'skipped','STORY_NO_ATTEMPT_RECORDED'
     FROM unnest($3::timestamptz[],$4::date[],$5::smallint[]) AS slot(starts_at,business_date,publication_window)
     WHERE NOT EXISTS (
       SELECT 1 FROM commerce_auto_story_jobs
@@ -170,7 +174,7 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
     }),
     status: context => transaction(async client => {
       await requireCommerceAccess(client, context, 'commerce:story');
-      const present = await client.query("SELECT 1 FROM commerce_schema_migrations WHERE version=7");
+      const present = await client.query("SELECT 1 FROM commerce_schema_migrations WHERE version=10");
       if (!present.rowCount) return { ready: false, enabled: false, connection: 'not_configured', history: [], lastPublished: null };
       const row = await readSettings(client, context.businessId, true);
       const time = now();
@@ -250,7 +254,7 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
       const owner = worker.businessId;
       const result = await transaction(async client => {
         await requireCommerceAccess(client, worker, 'commerce:story');
-        if (!(await client.query('SELECT 1 FROM commerce_schema_migrations WHERE version=7')).rowCount) {
+        if (!(await client.query('SELECT 1 FROM commerce_schema_migrations WHERE version=10')).rowCount) {
           fail('AUTO_STORY_MIGRATION_REQUIRED', 'Falta aplicar la migración de ventanas de publicación.', 503);
         }
         await ensureSettings(client, owner);
@@ -288,10 +292,10 @@ export function createAutoStoryService(runtime, media, config, { meta = createIn
         const id = randomUUID();
         const selection = await selectAutoStory(client, worker, id, row.instagram_id);
         await client.query(`INSERT INTO commerce_auto_story_jobs
-          (id,owner_phone,instagram_id,business_date,product_id,cycle,snapshot,status,error_code,lease_until,created_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now()+interval '10 minutes',$10)`, [id, owner, row.instagram_id, day,
+          (id,owner_phone,instagram_id,business_date,product_id,cycle,snapshot,status,error_code,lease_until,created_at,publication_window)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now()+interval '10 minutes',$10,$11)`, [id, owner, row.instagram_id, day,
           selection?.snapshot.content.productId ?? null, selection?.cycle ?? null, selection?.snapshot ?? null,
-          selection ? 'rendering' : 'skipped', selection ? null : 'NO_ELIGIBLE_PRODUCT', new Date(time)]);
+          selection ? 'rendering' : 'skipped', selection ? null : 'NO_ELIGIBLE_PRODUCT', new Date(time), window]);
         return { selection };
       });
       if (result.reconcile) return reconcile(owner, result.reconcile);
