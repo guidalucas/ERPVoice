@@ -14,6 +14,7 @@
     "test:catalog:order": "node scripts/test-catalog-order.mjs",
     "test:catalog:performance": "node scripts/test-catalog-performance.mjs",
     "test:catalog:navigation": "node scripts/test-catalog-navigation.mjs",
+    "test:catalog:filters": "node --test scripts/test-catalog-identity.js && node scripts/test-catalog-filters.mjs",
     "test:catalog:timing": "node --test scripts/test-catalog-timing.js",
     "measure:catalog": "node scripts/measure-catalog-performance.mjs",
     "test:commerce:minimal-publication": "node scripts/test-catalog-minimal-publication.mjs",

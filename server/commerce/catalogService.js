@@ -15,6 +15,7 @@ import { createMediaCache } from '../catalog/mediaCache.js';
 import sharp from 'sharp';
 import { measureCatalogPhase } from '../catalog/timing.js';
 import { productTitleSql } from './productTitle.js';
+import { catalogIdentity } from './catalogIdentity.js';
 
 const catalogDTO = row => row ? { slug: row.slug, publicEnabled: row.public_enabled, revision: Number(row.revision), path: `/c/${row.slug}` } : null;
 const publicationDTO = row => ({ status: row?.status ?? 'hidden', revision: Number(row?.revision ?? 0), publishedAt: row?.published_at?.toISOString() ?? null });
@@ -25,10 +26,11 @@ const photoUrl = (shop, product, image, thumbnail = false) => `/api/catalog/v1/$
 
 /** Deliberate allowlist; never spread a private product/profile in a public DTO. */
 export function publicProductProjection(product, shop) {
-  return { slug: product.slug, title: product.title, description: product.description, teamKey: product.teamKey, teamName: product.teamName,
-    teamKind: product.teamKind, season: product.season, kitKey: product.kitKey, versionKey: product.versionKey, sleeveKey: product.sleeveKey,
+  const identity = catalogIdentity(product, product.variants);
+  return { slug: product.slug, title: product.title, description: product.description, teamKey: identity.teamKey, teamName: identity.teamName,
+    teamKind: product.teamKind, season: product.season, kitKey: product.kitKey, versionKey: identity.versionKey, sleeveKey: product.sleeveKey,
     priceRange: product.priceRange, available: product.availability === 'in_stock',
-    category: [...new Set(product.variants.filter(item => item.active).map(item => item.productType).filter(Boolean))].join(' · '),
+    category: identity.categories.join(' · '),
     variantLabel: publicVariantTitle(product),
     sizes: product.variants.filter(item => item.active).map(item => ({ size: item.label, unit: item.unit, specifications: item.specifications, available: item.stockAvailable > 0, price: item.price })),
     photos: product.images.filter(image => image.status === 'ready').map(image => ({ id: image.id, alt: image.altText,
@@ -176,11 +178,38 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
     list: (shop, query = {}) => publicRead(shop, async (client, catalog) => {
       const data = record(query, ['q', 'category', 'variant', 'team', 'season', 'version', 'sleeve', 'kit', 'cursor', 'limit']);
       const limit = data.limit === undefined ? 24 : Number(data.limit); if (!Number.isSafeInteger(limit) || limit < 1 || limit > 48) fail('INVALID_COMMAND', 'Límite de catálogo inválido.', 400);
+      // Read all published identities before pagination/search. Many existing fichas
+      // have only generic fields, so resolve the same live SKU names as detail reads.
+      const facetRows = (await client.query(`SELECT p.id,p.title,p.team_key,p.team_name,p.version_key,
+        i.name,i.product_type,i.size FROM commercial_products p
+        JOIN commercial_publications s ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id
+        JOIN commercial_product_skus l ON l.owner_phone=p.owner_phone AND l.commercial_product_id=p.id
+        JOIN products i ON i.owner_phone=l.owner_phone AND i.id=l.sku_id
+        WHERE p.owner_phone=$1 AND p.status='ready' AND s.status='published' AND i.inventory_status='active'
+        ORDER BY p.id,l.sort_order,i.id`, [catalog.owner_phone])).rows;
+      const groups = new Map();
+      for (const row of facetRows) {
+        if (!groups.has(row.id)) groups.set(row.id, { row, skus: [] });
+        groups.get(row.id).skus.push({ name: row.name, productType: row.product_type, size: row.size, active: true });
+      }
+      const identities = [...groups.values()].map(({ row, skus }) => ({ id: row.id, skus,
+        ...catalogIdentity({ title: row.title, teamKey: row.team_key, teamName: row.team_name, versionKey: row.version_key }, skus) }));
+      const unique = values => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+      const facets = { categories: unique(identities.flatMap(item => item.categories)),
+        variants: unique(identities.flatMap(item => item.skus.map(variantLabel))), versions: unique(identities.map(item => item.versionKey)),
+        teams: [...new Map(identities.filter(item => item.teamKey).map(item => [item.teamKey, { key: item.teamKey, name: item.teamName || item.teamKey }])).values()]
+          .sort((a, b) => a.name.localeCompare(b.name, 'es')) };
       const values = [catalog.owner_phone], conditions = ["p.owner_phone=$1", "p.status='ready'", "s.status='published'"];
-      for (const [key, expression] of Object.entries({ category: 'i.product_type', variant: "COALESCE(NULLIF(trim(i.size),''),trim(i.name))" })) if (data[key]) {
+      for (const [key, field] of Object.entries({ team: 'teamKey', version: 'versionKey', category: 'categories' })) if (data[key]) {
+        const selected = text(data[key], key === 'category' ? 200 : 100, key);
+        values.push(identities.filter(item => key === 'category' ? item.categories.includes(selected) : item[field] === selected).map(item => item.id));
+        conditions.push(`p.id=ANY($${values.length}::uuid[])`);
+      }
+      if (data.variant) {
+        const expression = "COALESCE(NULLIF(trim(i.size),''),trim(i.name))", key = 'variant';
         values.push(text(data[key], 200, key)); conditions.push(`EXISTS(SELECT 1 FROM commercial_product_skus l JOIN products i ON i.owner_phone=l.owner_phone AND i.id=l.sku_id WHERE l.owner_phone=p.owner_phone AND l.commercial_product_id=p.id AND i.inventory_status='active' AND ${expression}=$${values.length})`);
       }
-      for (const [key, column] of Object.entries({ team: 'team_key', season: 'season', version: 'version_key', sleeve: 'sleeve_key', kit: 'kit_key' })) if (data[key]) { values.push(text(data[key], 100, key)); conditions.push(`p.${column}=$${values.length}`); }
+      for (const [key, column] of Object.entries({ season: 'season', sleeve: 'sleeve_key', kit: 'kit_key' })) if (data[key]) { values.push(text(data[key], 100, key)); conditions.push(`p.${column}=$${values.length}`); }
       if (data.q) { values.push(`%${text(data.q, 120, 'query').replace(/[\\%_]/g, '\\$&')}%`); conditions.push(`((${productTitleSql()}) ILIKE $${values.length} OR p.team_name ILIKE $${values.length})`); }
       if (data.cursor) { values.push(slug(data.cursor)); conditions.push(`p.slug>$${values.length}`); }
       values.push(limit + 1);
@@ -188,16 +217,6 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
         WHERE ${conditions.join(' AND ')} ORDER BY p.slug LIMIT $${values.length}`, values)).rows;
       const batch = rows.slice(0, limit), items = [];
       for (const detail of await readPublicProducts(client, catalog.owner_phone, batch)) if (detail.readiness.canPrepare) items.push(publicProductProjection(detail, shop));
-      // Facets come from this business's entire published catalog, independent of pagination/search.
-      const facetRows = (await client.query(`SELECT DISTINCT p.team_key,p.team_name,p.version_key,i.product_type,
-        COALESCE(NULLIF(trim(i.size),''),trim(i.name)) AS variant FROM commercial_products p
-        JOIN commercial_publications s ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id
-        JOIN commercial_product_skus l ON l.owner_phone=p.owner_phone AND l.commercial_product_id=p.id
-        JOIN products i ON i.owner_phone=l.owner_phone AND i.id=l.sku_id
-        WHERE p.owner_phone=$1 AND p.status='ready' AND s.status='published' AND i.inventory_status='active'`, [catalog.owner_phone])).rows;
-      const unique = key => [...new Set(facetRows.map(row => row[key]).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'es'));
-      const facets = { categories: unique('product_type'), variants: unique('variant'), versions: unique('version_key'),
-        teams: [...new Map(facetRows.filter(row => row.team_key).map(row => [row.team_key, { key: row.team_key, name: row.team_name }])).values()] };
       return { catalog: publicBrand(catalog), items, facets, nextCursor: rows.length > limit ? batch.at(-1).slug : null };
     }),
     image: async (shop, productSlug, imageId, variant = 'master', format = 'jpeg', ifNoneMatch = null) => {
