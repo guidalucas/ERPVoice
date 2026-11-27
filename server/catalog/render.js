@@ -4,30 +4,41 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': 
 const json = value => JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
 const price = product => product.priceRange ? `${product.priceRange.minAmountMinor !== product.priceRange.maxAmountMinor ? 'Desde ' : ''}${money(product.priceRange.minAmountMinor, product.priceRange.currency, product.priceRange.fractionDigits)}` : 'Precio a confirmar';
 const decimal = (amount, digits) => { const value = BigInt(amount), scale = 10n ** BigInt(digits); return `${value / scale}.${(value % scale).toString().padStart(digits, '0')}`; };
-const labels = { home: 'Titular', away: 'Suplente', third: 'Tercera', goalkeeper: 'Arquero', special: 'Especial', fan: 'Hincha', player: 'Jugador', short: 'Manga corta', long: 'Manga larga', sleeveless: 'Sin mangas' };
+const labels = { home: 'Titular', away: 'Suplente', third: 'Tercera', goalkeeper: 'Arquero', special: 'Especial', fan: 'Hincha', player: 'Jugador', national: 'Nacional', retro: 'Retro', short: 'Manga corta', long: 'Manga larga', sleeveless: 'Sin mangas', newest: 'Últimos ingresos', 'price-asc': 'Precio: menor a mayor', 'price-desc': 'Precio: mayor a menor', featured: 'Destacados', promotions: 'Promociones' };
 const whatsapp = (catalog, title = '') => catalog.salesWhatsapp ? `https://wa.me/${catalog.salesWhatsapp}?text=${encodeURIComponent(title ? `Hola, quiero pedir ${title}.` : 'Hola, quiero hacer un pedido.')}` : null;
 const initials = name => name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase();
 const assetUrl = (catalog, id) => `/api/catalog/v1/${catalog.slug}/brand-assets/${id}`;
 const brandMark = catalog => appearanceOf(catalog).logoId ? `<img class="shop-logo" src="${escape(assetUrl(catalog, appearanceOf(catalog).logoId))}" alt="${escape(catalog.brandName)}">` : `<span class="fm">${escape(initials(catalog.brandName))}</span>`;
 const cover = product => product.photos.find(photo => photo.cover) ?? product.photos[0];
-function layout({ catalog, title, description, path, image, origin = '', content, schema, searchQuery = '' }) {
+function buyingInformation(catalog, garments) {
+  const info = appearanceOf(catalog).storeInfo ?? {}, chat = whatsapp(catalog);
+  const instagram = info.instagram?.replace(/^@/, '');
+  return `<section class="buying-information" id="como-comprar" aria-labelledby="buying-title"><h2 id="buying-title">Comprá con confianza</h2><div class="buying-grid">
+    <details><summary>Cómo comprar</summary><p>Elegí tus productos, agregalos a Mi pedido y revisá el total. Al finalizar se abre WhatsApp con el detalle listo para enviar. Confirmamos disponibilidad, envío y pago por ese medio.</p></details>
+    <details><summary>Envíos</summary><p>${escape(info.shipping || 'Consultanos las opciones, el costo y el plazo para tu localidad antes de confirmar el pedido.')}</p>${chat ? `<a href="${escape(chat)}" target="_blank" rel="noopener noreferrer">Consultar envío por WhatsApp</a>` : ''}</details>
+    <details><summary>Medios de pago</summary><p>${escape(info.payments || 'Consultá los medios de pago disponibles por WhatsApp antes de confirmar tu pedido.')}</p></details>
+    ${garments ? `<details id="guia-talles"><summary>Guía de talles</summary><p>${escape(info.sizeGuide || 'El calce puede cambiar entre modelos y versiones. Medí el ancho de axila a axila y el largo de una prenda que te quede cómoda, extendida sobre una superficie plana. Pedinos las medidas del modelo que te interesa antes de elegir tu talle.')}</p></details><details><summary>Versión jugador e hincha</summary><p>La versión jugador suele tener un corte más ajustado. La versión hincha suele ofrecer un calce más holgado para uso diario. Los materiales y las medidas dependen de cada modelo; consultá los detalles de la publicación antes de elegir.</p></details>` : ''}
+    ${info.address ? `<details><summary>Ubicación y retiro</summary><p>${escape(info.address)}</p><p>Consultanos cómo coordinar el retiro.</p><a href="https://www.google.com/maps/search/?api=1&amp;query=${escape(encodeURIComponent(info.address))}" target="_blank" rel="noopener noreferrer">Ver ubicación en el mapa</a></details>` : ''}
+    </div>${instagram ? `<a class="store-instagram" href="https://www.instagram.com/${escape(encodeURIComponent(instagram))}/" target="_blank" rel="noopener noreferrer">Encontranos en Instagram · @${escape(instagram)}</a>` : ''}</section>`;
+}
+function layout({ catalog, title, description, path, image, origin = '', content, schema, searchQuery = '', garments = false }) {
   const appearance = appearanceOf(catalog);
   const themeVersion = catalog.appearanceRevision ?? 0;
   const canonical = origin ? `${origin}${path}` : '', chat = whatsapp(catalog);
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="${escape(appearance.primaryColor)}">
-    <title>${escape(title)}</title><meta name="description" content="${escape(description)}"><meta property="og:type" content="${schema ? 'product' : 'website'}"><meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}">${canonical ? `<link rel="canonical" href="${escape(canonical)}"><meta property="og:url" content="${escape(canonical)}">` : ''}${image ? `<meta property="og:image" content="${escape(origin + image)}">` : ''}<link rel="stylesheet" href="/catalog-assets/catalog.css?v=1"><link rel="stylesheet" href="/catalog-assets/templates.css?v=1"><link rel="stylesheet" href="/catalog-assets/${escape(catalog.slug)}/theme.css?v=${themeVersion}">${schema ? `<script type="application/ld+json">${json(schema)}</script>` : ''}</head>
-    <body data-catalog="${escape(catalog.slug)}" data-preset="${escape(['editorial', 'technical', 'local'].includes(appearance.preset) ? appearance.preset : 'classic')}"><header class="shop-header"><a class="shop-brand" href="${escape(catalog.path)}">${brandMark(catalog)}<span>${escape(catalog.brandName)}<small>${escape(appearance.tagline)}</small></span></a>${appearance.preset === 'technical' ? `<form class="header-search" method="get" action="${escape(catalog.path)}"><label><span class="sr-only">Buscar en toda la tienda</span><input type="search" name="q" value="${escape(searchQuery)}" placeholder="Buscar en toda la tienda…" maxlength="120"></label><button type="submit">Buscar</button></form>` : ''}<nav aria-label="Navegación del catálogo"><a href="${escape(catalog.path)}">Catálogo</a><a class="shop-cart" href="${escape(catalog.path)}/pedido">Mi pedido <span data-cart-count>0</span></a>${chat ? `<a class="header-chat" href="${escape(chat)}" target="_blank" rel="noopener noreferrer">Pedidos ↗</a>` : ''}</nav></header><main>${content}</main><footer><span>${escape(catalog.brandName)}</span><p>Disponibilidad actualizada desde nuestro inventario. Armá tu pedido y finalizalo por WhatsApp.</p>${chat ? `<a href="${escape(chat)}" target="_blank" rel="noopener noreferrer">Hablemos por WhatsApp ↗</a>` : ''}</footer><script src="/catalog-assets/catalog.js?v=2" defer></script></body></html>`;
+    <title>${escape(title)}</title><meta name="description" content="${escape(description)}"><meta property="og:type" content="${schema ? 'product' : 'website'}"><meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}">${canonical ? `<link rel="canonical" href="${escape(canonical)}"><meta property="og:url" content="${escape(canonical)}">` : ''}${image ? `<meta property="og:image" content="${escape(origin + image)}">` : ''}<link rel="stylesheet" href="/catalog-assets/catalog.css?v=1"><link rel="stylesheet" href="/catalog-assets/templates.css?v=2"><link rel="stylesheet" href="/catalog-assets/${escape(catalog.slug)}/theme.css?v=${themeVersion}">${schema ? `<script type="application/ld+json">${json(schema)}</script>` : ''}</head>
+    <body data-catalog="${escape(catalog.slug)}" data-preset="${escape(['editorial', 'technical', 'local'].includes(appearance.preset) ? appearance.preset : 'classic')}"><header class="shop-header"><a class="shop-brand" href="${escape(catalog.path)}">${brandMark(catalog)}<span>${escape(catalog.brandName)}<small>${escape(appearance.tagline)}</small></span></a>${appearance.preset === 'technical' ? `<form class="header-search" method="get" action="${escape(catalog.path)}"><label><span class="sr-only">Buscar en toda la tienda</span><input type="search" name="q" value="${escape(searchQuery)}" placeholder="Buscar en toda la tienda…" maxlength="120"></label><button type="submit">Buscar</button></form>` : ''}<nav aria-label="Navegación del catálogo"><a href="${escape(catalog.path)}">Catálogo</a><a class="shop-cart" href="${escape(catalog.path)}/pedido">Mi pedido <span data-cart-count>0</span></a>${chat ? `<a class="header-chat" href="${escape(chat)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ''}</nav></header><main>${content}${buyingInformation(catalog, garments)}</main><footer><span>${escape(catalog.brandName)}</span><p>Disponibilidad actualizada desde nuestro inventario. Armá tu pedido y finalizalo por WhatsApp.</p>${chat ? `<a href="${escape(chat)}" target="_blank" rel="noopener noreferrer">Hablemos por WhatsApp</a>` : ''}</footer><script src="/catalog-assets/catalog.js?v=3" defer></script></body></html>`;
 }
 const option = (value, label, selected) => `<option value="${escape(value)}"${value === selected ? ' selected' : ''}>${escape(label)}</option>`;
 export function renderCatalogList(data, query, origin) {
   const { catalog, items, nextCursor, facets = {} } = data, appearance = appearanceOf(catalog);
   const next = new URLSearchParams(query); if (nextCursor) next.set('cursor', nextCursor);
-  const active = Object.entries(query).filter(([key, value]) => !['cursor', 'limit'].includes(key) && value);
+  const active = Object.entries(query).filter(([key, value]) => !['cursor', 'limit', 'sort'].includes(key) && value);
   const filter = (key, label, values) => values?.length ? `<label><span>${escape(label)}</span><select name="${key}">${option('', label, query[key])}${values.map(value => option(value.key ?? value, value.name ?? labels[value] ?? value, query[key])).join('')}</select></label>` : '';
-  const cards = items.map((product, index) => {
+  const productCard = (product, index, cardClass = 'catalog-card') => {
     const photo = cover(product);
     const redundant = product.sizes.length === 1 && product.sizes[0].size.trim().toLocaleLowerCase('es') === product.title.trim().toLocaleLowerCase('es');
-    return `<article class="catalog-card"><a href="${escape(product.path)}">
+    return `<article class="${cardClass}"><a href="${escape(product.path)}">
       <div class="catalog-card-photo${photo ? '' : ' without-photo'}">${photo ? `<img src="${escape(photo.thumbnailWebpUrl || photo.thumbnailUrl)}" alt="${escape(photo.alt || product.title)}" loading="${index < 2 ? 'eager' : 'lazy'}" decoding="async" width="480" height="560">` : '<span class="no-photo">Sin fotografía</span>'}<span class="availability ${product.available ? '' : 'sold-out'}">${product.available ? 'Disponible' : 'Sin stock'}</span></div>
       <div class="catalog-card-body"><p class="team">${escape(product.teamName || product.category || catalog.brandName)} <span aria-hidden="true">↗</span></p><h2>${escape(product.title)}</h2>
         ${[product.season, labels[product.versionKey]].some(Boolean) ? `<p class="product-meta">${escape([product.season, labels[product.versionKey]].filter(Boolean).join(' · '))}</p>` : ''}
@@ -36,11 +47,18 @@ export function renderCatalogList(data, query, origin) {
         ${product.sizes[0]?.specifications?.length ? `<p class="card-specs">${escape(product.sizes[0].specifications.slice(0, 3).map(spec => spec.label + ': ' + spec.value).join(' · '))}</p>` : ''}
         <span class="card-link">Ver producto ↗</span>
       </div></a></article>`;
-  }).join('');
+  };
+  const cards = items.map((product, index) => productCard(product, index)).join('');
+  const collectionUrl = (key, extra = {}) => `${escape(catalog.path)}?${escape(new URLSearchParams(key === 'newest' ? { sort: 'newest', ...extra } : { collection: key, ...extra }).toString())}#coleccion`;
+  const discovery = `<nav class="discovery-nav" aria-label="Colecciones"><a href="${collectionUrl('newest')}">Novedades</a>${appearance.featuredSlugs?.length ? `<a href="${collectionUrl('featured')}">Destacados</a>` : ''}${appearance.promotionSlugs?.length ? `<a href="${collectionUrl('promotions')}">Promociones</a>` : ''}<a href="#como-comprar">Cómo comprar</a></nav>`;
+  const shelves = ['newest', 'featured', 'promotions'].filter(key => data.collections?.[key]?.length).map(key => `<section class="storefront-shelf" aria-label="${escape(key === 'newest' ? 'Novedades' : labels[key])}"><div class="collection-heading"><h2>${escape(key === 'newest' ? 'Novedades' : labels[key])}</h2><a href="${collectionUrl(key)}">Ver todos</a></div><div class="shelf-grid shelf-count-${data.collections[key].length}">${data.collections[key].map((product, index) => productCard(product, index, 'discovery-product')).join('')}</div></section>`).join('');
   const heroVisible = appearance.heroContentVisible !== false;
   const heroCopy = heroVisible ? `<div class="hero-copy">${appearance.tagline ? `<p class="eyebrow" data-hero-block="tagline">${escape(appearance.tagline)}</p>` : ''}${appearance.heroTitle ? `<h1 data-hero-block="title">${escape(appearance.heroTitle)}</h1>` : ''}${appearance.heroDescription ? `<p data-hero-block="description">${escape(appearance.heroDescription)}</p>` : ''}${appearance.heroButtonVisible !== false ? '<a class="primary" data-hero-block="button" href="#coleccion">Explorar catálogo ↓</a>' : ''}</div>` : '';
   const hasContent = heroVisible && (appearance.tagline || appearance.heroTitle || appearance.heroDescription || appearance.heroButtonVisible !== false);
-  const categoryLink = category => `${escape(catalog.path)}?${escape(new URLSearchParams({ category }).toString())}#coleccion`;
+  const categoryLink = category => {
+    const parameters = new URLSearchParams(query); parameters.set('category', category); parameters.delete('cursor');
+    return `${escape(catalog.path)}?${escape(parameters.toString())}#coleccion`;
+  };
   const categoryNav = facets.categories?.length > 1 ? `<nav class="category-nav" aria-label="Categorías"><a href="${escape(catalog.path)}#coleccion"${!query.category ? ' aria-current="page"' : ''}>Todo el catálogo</a>${facets.categories.map(category => `<a href="${categoryLink(category)}"${category === query.category ? ' aria-current="page"' : ''}>${escape(category)}</a>`).join('')}</nav>` : '';
   // Category artwork comes from products on this page; never invent promotions or categories.
   const categoryTiles = appearance.preset === 'local' && facets.categories?.length ? `<nav class="category-tiles" aria-label="Explorar por categoría">${facets.categories.map(category => {
@@ -48,13 +66,15 @@ export function renderCatalogList(data, query, origin) {
     return `<a href="${categoryLink(category)}"${category === query.category ? ' aria-current="page"' : ''}><span class="category-tile-image">${photo ? `<img src="${escape(photo.thumbnailUrl)}" alt="" loading="lazy" width="120" height="120">` : `<span>${escape(category.slice(0, 1).toLocaleUpperCase('es'))}</span>`}</span><span>${escape(category)}</span><span aria-hidden="true">↗</span></a>`;
   }).join('')}</nav>` : '';
   const content = `<section aria-label="Portada del catálogo" class="catalog-hero ${appearance.coverId ? 'has-cover' : ''} ${!hasContent ? 'image-only' : ''} ${appearance.heroLayout ? 'custom-layout' : ''} ${appearance.heroTextBackground === false ? 'text-on-image' : ''} ${active.length ? 'filtered-hero' : ''}">${appearance.coverId ? `<img class="catalog-cover" fetchpriority="high" src="${escape(assetUrl(catalog, appearance.coverId))}" alt="">` : ''}${heroCopy}</section>
-    <section id="coleccion" class="collection"><div class="collection-heading"><div><h2>${escape(appearance.collectionTitle)}</h2><p class="shopping-help">Elegí tus productos y finalizá tu pedido por WhatsApp.</p></div><small>Stock y precios actualizados</small></div>
+    ${discovery}${shelves}<section id="coleccion" class="collection"><div class="collection-heading"><div><h2>${escape(query.collection ? labels[query.collection] : query.sort === 'newest' ? 'Últimos ingresos' : appearance.collectionTitle)}</h2><p class="shopping-help">Elegí tus productos y finalizá tu pedido por WhatsApp.</p></div><small>Stock y precios actualizados</small></div>
       ${categoryTiles}<div class="catalog-browser"><aside class="catalog-controls" aria-label="Navegación y filtros"><h3 class="catalog-controls-title">Explorá el catálogo</h3>${categoryNav}
       <form class="catalog-filters" method="get" action="${escape(catalog.path)}#coleccion">
+        ${query.collection ? `<input type="hidden" name="collection" value="${escape(query.collection)}">` : ''}
         <label class="search"><span class="sr-only">Buscar productos</span><input type="search" name="q" value="${escape(query.q)}" placeholder="¿Qué estás buscando?" maxlength="120"></label>
         <button type="submit">Buscar</button>
+        <label class="catalog-sort"><span>Ordenar por</span><select name="sort">${option('catalog', 'Orden del catálogo', query.sort || 'catalog')}${['newest', 'price-asc', 'price-desc'].map(value => option(value, labels[value], query.sort)).join('')}</select></label>
         <details class="catalog-filter-options"${active.some(([key]) => key !== 'q') ? ' open' : ''}><summary>Filtros${active.length ? ' · ' + active.length + ' activos' : ''}</summary><div class="catalog-filter-fields">
-          ${filter('category', 'Todas las categorías', facets.categories)}${filter('team', 'Todos los equipos', facets.teams)}${filter('version', 'Todas las versiones', facets.versions)}${filter('variant', 'Todas las presentaciones', facets.variants)}
+          ${filter('category', 'Todas las categorías', facets.categories)}${filter('team', 'Todos los equipos', facets.teams)}${filter('version', 'Todas las versiones', facets.versions)}${filter('variant', facets.variantLabel === 'Talle' ? 'Todos los talles' : 'Todas las presentaciones', facets.variants)}
           <button type="submit">Aplicar filtros</button>
         </div></details>
       </form>
@@ -64,7 +84,7 @@ export function renderCatalogList(data, query, origin) {
       ${nextCursor ? `<a class="more" href="${escape(catalog.path)}?${escape(next.toString())}#coleccion">Ver más productos ↓</a>` : ''}
       </div></div>
     </section>`;
-  return layout({ catalog, origin, path: catalog.path, searchQuery: query.q, title: `${catalog.brandName} · Catálogo`, description: appearance.heroDescription || `Explorá los productos de ${catalog.brandName}. Precios y disponibilidad actualizados.`, image: items[0] && cover(items[0])?.url, content });}
+  return layout({ catalog, origin, path: catalog.path, searchQuery: query.q, garments: facets.variantLabel === 'Talle', title: `${catalog.brandName} · Catálogo`, description: appearance.heroDescription || `Explorá los productos de ${catalog.brandName}. Precios y disponibilidad actualizados.`, image: items[0] && cover(items[0])?.url, content });}
 export function renderCatalogProduct(data, origin) {
   const { catalog, product } = data, photo = cover(product), chat = whatsapp(catalog, product.title), variantTitle = product.variantLabel || 'Presentación';
   const schema = { '@context': 'https://schema.org', '@type': 'Product', name: product.title, description: product.description || product.title,
@@ -92,6 +112,7 @@ export function renderCatalogProduct(data, origin) {
           <label>Cantidad<input type="number" name="quantity" min="1" max="10" step="1" value="1" required aria-label="Cantidad para tu pedido"></label>
           <button type="submit"${product.available ? '' : ' disabled'}>Agregar a mi pedido ＋</button><small data-inquiry-status role="status"></small>
         </form>
+        ${variantTitle === 'Talle' ? '<a class="size-guide-link" href="#guia-talles">Cómo elegir tu talle</a>' : ''}
         <p class="stock-help">Sumá productos a Mi pedido y finalizalo por WhatsApp. El comercio confirma disponibilidad, envío y pago.</p>
         ${chat ? `<a class="inquiry direct-inquiry" data-direct-inquiry href="${escape(chat)}" target="_blank" rel="noopener noreferrer">${product.available ? 'Pedir por WhatsApp' : 'Preguntar por reposición'} ↗</a>` : ''}
         ${!product.available ? '<p class="stock-help">Este producto no puede agregarse a tu pedido mientras no tenga stock.</p>' : ''}
@@ -103,7 +124,7 @@ export function renderCatalogProduct(data, origin) {
       </div>
     </div>
   </section>`;
-  return layout({ catalog, origin, path: product.path, title: `${product.title} · ${catalog.brandName}`, description: (product.description || `${product.title}. ${price(product)}. ${variantTitle === 'Talle' ? 'Talles' : 'Presentaciones'} y disponibilidad actualizadas.`).slice(0, 300), image: photo?.url, content, schema });
+  return layout({ catalog, origin, path: product.path, garments: variantTitle === 'Talle', title: `${product.title} · ${catalog.brandName}`, description: (product.description || `${product.title}. ${price(product)}. ${variantTitle === 'Talle' ? 'Talles' : 'Presentaciones'} y disponibilidad actualizadas.`).slice(0, 300), image: photo?.url, content, schema });
 }
 export function renderCatalogError(status, catalogPath = '/') {
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Catálogo no disponible · Stocky</title><link rel="stylesheet" href="/catalog-assets/catalog.css"></head><body><main class="catalog-error"><span class="fm">S<i>／</i></span><h1>${status === 404 ? 'Este enlace no está disponible.' : 'Volvé a intentarlo en un momento.'}</h1><p>${status === 404 ? 'El catálogo o el producto puede estar oculto temporalmente.' : 'No pudimos cargar la colección.'}</p><a class="primary" href="${escape(catalogPath)}">Volver al catálogo</a></main></body></html>`;

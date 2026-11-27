@@ -7,6 +7,7 @@
   const shop = document.body.dataset.catalog;
   if (!shop || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(shop)) return;
   const key = `fullmatch.inquiry.${shop}`, isInquiry = Boolean(document.getElementById('inquiry-lines'));
+  const productKey = slug => slug.match(/-([a-f0-9]{10})$/)?.[1] ?? slug;
   let cart = read(), quote = null, generation = 0, busy = false;
   dispose = () => { generation++; lifetime.abort(); };
   function read() {
@@ -127,7 +128,7 @@
     try {
       const productSlug = form.dataset.product, size = form.elements.namedItem('size').value, quantity = Number(form.elements.namedItem('quantity').value);
       if (!size || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10) throw new Error(`Elegí ${variant === 'talle' ? 'un talle' : 'una presentación'} y una cantidad válida.`);
-      const next = read(), existing = next.find(item => item.productSlug === productSlug && item.size === size);
+      const next = read(), existing = next.find(item => productKey(item.productSlug) === productKey(productSlug) && item.size.normalize('NFC').toLocaleLowerCase('es') === size.normalize('NFC').toLocaleLowerCase('es'));
       if (existing) { if (existing.quantity + quantity > 10) throw new Error('Podés pedir hasta diez unidades por variante.'); existing.quantity += quantity; }
       else { if (next.length >= 20) throw new Error('Podés incluir hasta veinte variantes en un pedido.'); next.push({ productSlug, size, quantity }); }
       store(next); status.textContent = 'Producto agregado a tu pedido. Podés seguir eligiendo o revisar el resumen.';

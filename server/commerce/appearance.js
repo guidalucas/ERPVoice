@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import { randomUUID } from 'node:crypto';
-import { record, text, uuid } from './validation.js';
+import { record, text, uuid, denseArray } from './validation.js';
 import { fail } from './errors.js';
 import { requireCommerceAccess } from './operationRepository.js';
 import { MAX_IMAGE_PIXELS, processCommercialImage } from './imageProcessor.js';
@@ -8,8 +8,23 @@ import { defaultAppearance, defaultHeroLayout } from '../../src/shared/catalogAp
 export { defaultAppearance, appearanceOf, textOnColor } from '../../src/shared/catalogAppearance.js';
 
 export function normalizeAppearance(input) {
-  const data = record(input, [...Object.keys(defaultAppearance), 'preset', 'heroContentVisible', 'heroButtonVisible', 'heroTextBackground', 'heroTextTone', 'heroLayout'], 'appearance');
+  const data = record(input, [...Object.keys(defaultAppearance), 'preset', 'heroContentVisible', 'heroButtonVisible', 'heroTextBackground', 'heroTextTone', 'heroLayout', 'storeInfo', 'featuredSlugs', 'promotionSlugs'], 'appearance');
   const result = {};
+  if (Object.hasOwn(data, 'storeInfo')) {
+    const info = record(data.storeInfo, ['address', 'instagram', 'payments', 'shipping', 'sizeGuide'], 'storeInfo');
+    result.storeInfo = {};
+    for (const [field, max] of Object.entries({ address: 300, instagram: 30, payments: 1000, shipping: 1500, sizeGuide: 3000 }))
+      result.storeInfo[field] = text(info[field] ?? '', max, field, { empty: true });
+    result.storeInfo.instagram = result.storeInfo.instagram.replace(/^@/, '');
+    if (result.storeInfo.instagram && !/^[a-z0-9_](?:[a-z0-9_.]{0,28}[a-z0-9_])?$/i.test(result.storeInfo.instagram)) fail('INVALID_COMMAND', 'Ingresá el usuario de Instagram, por ejemplo fmcasacas.', 400);
+  }
+  for (const field of ['featuredSlugs', 'promotionSlugs']) if (Object.hasOwn(data, field)) {
+    result[field] = denseArray(data[field], 24, field).map(value => {
+      if (typeof value !== 'string' || value.length > 120 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) fail('INVALID_COMMAND', 'Elegí enlaces válidos para la colección.', 400);
+      return value;
+    });
+    if (new Set(result[field]).size !== result[field].length) fail('INVALID_COMMAND', 'No repitas productos en la colección.', 400);
+  }
   for (const key of ['heroContentVisible', 'heroButtonVisible', 'heroTextBackground']) if (Object.hasOwn(data, key)) {
     if (typeof data[key] !== 'boolean') fail('INVALID_COMMAND', 'Elegí si querés mostrar el contenido del banner.', 400);
     result[key] = data[key];

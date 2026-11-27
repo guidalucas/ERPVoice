@@ -16,6 +16,8 @@ import sharp from 'sharp';
 import { measureCatalogPhase } from '../catalog/timing.js';
 import { productTitleSql } from './productTitle.js';
 import { catalogIdentity } from './catalogIdentity.js';
+import { salesWhatsapp } from './salesWhatsapp.js';
+import { publicProductSlug, productSlugPrefix } from './productIdentity.js';
 
 const catalogDTO = row => row ? { slug: row.slug, publicEnabled: row.public_enabled, revision: Number(row.revision), path: `/c/${row.slug}` } : null;
 const publicationDTO = row => ({ status: row?.status ?? 'hidden', revision: Number(row?.revision ?? 0), publishedAt: row?.published_at?.toISOString() ?? null });
@@ -27,6 +29,7 @@ const photoUrl = (shop, product, image, thumbnail = false) => `/api/catalog/v1/$
 /** Deliberate allowlist; never spread a private product/profile in a public DTO. */
 export function publicProductProjection(product, shop) {
   const identity = catalogIdentity(product, product.variants);
+  product = { ...product, slug: publicProductSlug(product) };
   return { slug: product.slug, title: product.title, description: product.description, teamKey: identity.teamKey, teamName: identity.teamName,
     teamKind: product.teamKind, season: product.season, kitKey: product.kitKey, versionKey: identity.versionKey, sleeveKey: product.sleeveKey,
     priceRange: product.priceRange, available: product.availability === 'in_stock',
@@ -77,11 +80,13 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
   const publicProduct = async (client, catalog, productSlug) => {
     slug(productSlug);
     const row = (await client.query(`SELECT p.* FROM commercial_products p JOIN commercial_publications s
-      ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id WHERE p.owner_phone=$1 AND p.slug=$2 AND p.status='ready' AND s.status='published'`, [catalog.owner_phone, productSlug])).rows[0];
+      ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id WHERE p.owner_phone=$1
+      AND (p.slug=$2 OR ($3::text IS NOT NULL AND left(replace(p.id::text,'-',''),10)=$3)) AND p.status='ready' AND s.status='published'
+      ORDER BY (p.slug=$2) DESC LIMIT 1`, [catalog.owner_phone, productSlug, productSlugPrefix(productSlug)])).rows[0];
     if (!row) notFound(); const [detail] = await readPublicProducts(client, catalog.owner_phone, [row]);
     if (!detail.readiness.canPrepare) notFound(); return detail;
   };
-  const publicBrand = row => ({ slug: row.slug, brandName: row.brand_name, brandPreset: row.brand_preset, salesWhatsapp: row.sales_whatsapp,
+  const publicBrand = row => ({ slug: row.slug, brandName: row.brand_name, brandPreset: row.brand_preset, salesWhatsapp: salesWhatsapp(row.sales_whatsapp, row.owner_phone),
     appearance: appearanceOf(row), appearanceRevision: Number(row.revision), path: `/c/${row.slug}` });
   return {
     brandAsset: (shop, id) => publicRead(shop, async (client, row) => {
@@ -148,13 +153,16 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
       const previous = data.previousFingerprint == null ? null : text(data.previousFingerprint, 64, 'previous fingerprint');
       if (previous && !/^[a-f0-9]{64}$/.test(previous)) fail('INVALID_COMMAND', 'Huella de pedido inválida.', 400);
       return publicRead(shop, async (client, catalog) => {
-        const lines = [];
+        const lines = [], seenVariants = new Set();
         for (const item of items) {
           let product;
           try { product = await publicProduct(client, catalog, item.productSlug); }
           catch (error) { if (error.status !== 404) throw error; }
           const variant = product?.variants.find(variant => variant.active && variantLabel(variant).normalize('NFC').trim().toLocaleLowerCase('es') === item.size.toLocaleLowerCase('es'));
           if (!product || !variant) { lines.push({ ...item, title: 'Producto o variante no disponible', variantLabel: 'Variante', photo: null, available: false, unitPrice: null, lineTotal: null, path: null }); continue; }
+          const identity = JSON.stringify([product.id, variant.skuId]);
+          if (seenVariants.has(identity)) fail('INQUIRY_ITEMS_INVALID', 'La misma variante aparece con dos enlaces distintos. Retirá una de las líneas del pedido.', 400);
+          seenVariants.add(identity);
           const image = product.images.find(image => image.status === 'ready' && image.id === product.coverImageId) ?? product.images.find(image => image.status === 'ready');
           const total = (BigInt(variant.price.amountMinor) * BigInt(item.quantity)).toString();
           lines.push({ ...item, size: variantLabel(variant), title: product.title, variantLabel: publicVariantTitle(product),
@@ -162,7 +170,7 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
             unitPrice: variant.price, lineTotal: { ...variant.price, amountMinor: total }, path: `/c/${shop}/p/${product.slug}` });
         }
         const currencies = new Set(lines.filter(line => line.unitPrice).map(line => line.unitPrice.currency));
-        const canContact = lines.every(line => line.available) && currencies.size === 1;
+        const canContact = Boolean(salesWhatsapp(catalog.sales_whatsapp, catalog.owner_phone)) && lines.every(line => line.available) && currencies.size === 1;
         const total = canContact ? { ...lines[0].unitPrice, amountMinor: lines.reduce((sum, line) => sum + BigInt(line.lineTotal.amountMinor), 0n).toString() } : null;
         const brand = publicBrand(catalog), fingerprint = operationRequestDigest({ catalog: brand, lines, total });
         const format = amount => formatMoneyAmount(amount.amountMinor, amount.currency, amount.fractionDigits);
@@ -176,7 +184,10 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
       return { catalog: publicBrand(catalog), product: publicProductProjection(product, shop) };
     },
     list: (shop, query = {}) => publicRead(shop, async (client, catalog) => {
-      const data = record(query, ['q', 'category', 'variant', 'team', 'season', 'version', 'sleeve', 'kit', 'cursor', 'limit']);
+      const data = record(query, ['q', 'category', 'variant', 'team', 'season', 'version', 'sleeve', 'kit', 'cursor', 'limit', 'sort', 'collection']);
+      const sort = data.sort || 'catalog';
+      if (!['catalog', 'newest', 'price-asc', 'price-desc'].includes(sort)) fail('INVALID_COMMAND', 'Orden de catálogo inválido.', 400);
+      if (data.collection && !['featured', 'promotions'].includes(data.collection)) fail('INVALID_COMMAND', 'Colección inválida.', 400);
       const limit = data.limit === undefined ? 24 : Number(data.limit); if (!Number.isSafeInteger(limit) || limit < 1 || limit > 48) fail('INVALID_COMMAND', 'Límite de catálogo inválido.', 400);
       // Read all published identities before pagination/search. Many existing fichas
       // have only generic fields, so resolve the same live SKU names as detail reads.
@@ -196,13 +207,19 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
         ...catalogIdentity({ title: row.title, teamKey: row.team_key, teamName: row.team_name, versionKey: row.version_key }, skus) }));
       const unique = values => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
       const facets = { categories: unique(identities.flatMap(item => item.categories)),
-        variants: unique(identities.flatMap(item => item.skus.map(variantLabel))), versions: unique(identities.map(item => item.versionKey)),
+        variantLabel: identities.length && identities.every(item => item.skus.every(sku => sku.size?.trim())) ? 'Talle' : 'Presentación',
+        variants: unique(identities.flatMap(item => item.skus.map(variantLabel))), versions: unique(identities.flatMap(item => item.versionKeys)),
         teams: [...new Map(identities.filter(item => item.teamKey).map(item => [item.teamKey, { key: item.teamKey, name: item.teamName || item.teamKey }])).values()]
           .sort((a, b) => a.name.localeCompare(b.name, 'es')) };
       const values = [catalog.owner_phone], conditions = ["p.owner_phone=$1", "p.status='ready'", "s.status='published'"];
+      if (data.collection) {
+        const appearance = appearanceOf(catalog);
+        values.push(appearance[data.collection === 'featured' ? 'featuredSlugs' : 'promotionSlugs'] ?? []);
+        conditions.push(`p.slug=ANY($${values.length}::text[])`);
+      }
       for (const [key, field] of Object.entries({ team: 'teamKey', version: 'versionKey', category: 'categories' })) if (data[key]) {
         const selected = text(data[key], key === 'category' ? 200 : 100, key);
-        values.push(identities.filter(item => key === 'category' ? item.categories.includes(selected) : item[field] === selected).map(item => item.id));
+        values.push(identities.filter(item => key === 'category' ? item.categories.includes(selected) : key === 'version' ? item.versionKeys.includes(selected) : item[field] === selected).map(item => item.id));
         conditions.push(`p.id=ANY($${values.length}::uuid[])`);
       }
       if (data.variant) {
@@ -211,13 +228,48 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
       }
       for (const [key, column] of Object.entries({ season: 'season', sleeve: 'sleeve_key', kit: 'kit_key' })) if (data[key]) { values.push(text(data[key], 100, key)); conditions.push(`p.${column}=$${values.length}`); }
       if (data.q) { values.push(`%${text(data.q, 120, 'query').replace(/[\\%_]/g, '\\$&')}%`); conditions.push(`((${productTitleSql()}) ILIKE $${values.length} OR p.team_name ILIKE $${values.length})`); }
-      if (data.cursor) { values.push(slug(data.cursor)); conditions.push(`p.slug>$${values.length}`); }
+      const sortField = sort === 'newest' ? 'p.created_at' : 'prices.sort_price';
+      const operator = sort === 'price-asc' ? '>' : '<';
+      if (data.cursor) {
+        if (sort === 'catalog') { values.push(slug(data.cursor)); conditions.push(`p.slug>$${values.length}`); }
+        else {
+          let cursor;
+          try { cursor = JSON.parse(Buffer.from(text(data.cursor, 600, 'cursor'), 'base64url').toString()); } catch { fail('INVALID_COMMAND', 'Cursor inválido.', 400); }
+          record(cursor, ['sort', 'value', 'slug']);
+          if (cursor.sort !== sort || typeof cursor.value !== 'string' || (sort === 'newest' ? !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/.test(cursor.value) || !Number.isFinite(Date.parse(cursor.value)) : !/^\d{1,18}(?:\.\d{1,6})?$/.test(cursor.value))) fail('INVALID_COMMAND', 'Cursor inválido.', 400);
+          values.push(cursor.value, slug(cursor.slug));
+          conditions.push(`(${sortField},p.slug)${operator}($${values.length - 1}::${sort === 'newest' ? 'timestamptz' : 'numeric'},$${values.length}::text)`);
+        }
+      }
       values.push(limit + 1);
-      const rows = (await client.query(`SELECT p.* FROM commercial_products p JOIN commercial_publications s ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id
-        WHERE ${conditions.join(' AND ')} ORDER BY p.slug LIMIT $${values.length}`, values)).rows;
+      const byPrice = sort.startsWith('price-');
+      const rows = (await client.query(`SELECT p.*${sort === 'newest' ? `,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS sort_value` : byPrice ? ',prices.sort_price::text AS sort_value' : ''}
+        FROM commercial_products p JOIN commercial_publications s ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id
+        ${byPrice ? `JOIN LATERAL (SELECT COALESCE(min(i.price::numeric) FILTER (WHERE i.stock_available>0),min(i.price::numeric)) AS sort_price
+          FROM commercial_product_skus l JOIN products i ON i.owner_phone=l.owner_phone AND i.id=l.sku_id
+          WHERE l.owner_phone=p.owner_phone AND l.commercial_product_id=p.id AND i.inventory_status='active') prices ON prices.sort_price IS NOT NULL` : ''}
+        WHERE ${conditions.join(' AND ')} ORDER BY ${sort === 'catalog' ? 'p.slug' : `${sortField} ${sort === 'price-asc' ? 'ASC' : 'DESC'},p.slug ${sort === 'price-asc' ? 'ASC' : 'DESC'}`} LIMIT $${values.length}`, values)).rows;
       const batch = rows.slice(0, limit), items = [];
       for (const detail of await readPublicProducts(client, catalog.owner_phone, batch)) if (detail.readiness.canPrepare) items.push(publicProductProjection(detail, shop));
-      return { catalog: publicBrand(catalog), items, facets, nextCursor: rows.length > limit ? batch.at(-1).slug : null };
+      const last = batch.at(-1);
+      const collections = {};
+      // Small shelves are independent of the first alphabetical catalog page.
+      // Only the unfiltered storefront pays for these two bounded reads.
+      if (!Object.entries(data).some(([key, value]) => value && !(key === 'sort' && value === 'catalog'))) {
+        const appearance = appearanceOf(catalog);
+        const shelfRows = (await client.query(`SELECT p.*,shelf.key AS shelf FROM
+          (VALUES ('newest',ARRAY[]::text[]),('featured',$2::text[]),('promotions',$3::text[])) AS shelf(key,slugs)
+          CROSS JOIN LATERAL (SELECT p.* FROM commercial_products p JOIN commercial_publications s
+            ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id
+            WHERE p.owner_phone=$1 AND p.status='ready' AND s.status='published' AND (shelf.key='newest' OR p.slug=ANY(shelf.slugs))
+            ORDER BY p.created_at DESC,p.slug LIMIT 4) p ORDER BY shelf.key,p.created_at DESC,p.slug`,
+        [catalog.owner_phone, appearance.featuredSlugs ?? [], appearance.promotionSlugs ?? []])).rows;
+        const shelfProducts = await readPublicProducts(client, catalog.owner_phone, [...new Map(shelfRows.map(row => [row.id, row])).values()]);
+        const productsById = new Map(shelfProducts.filter(product => product.readiness.canPrepare).map(product => [product.id, publicProductProjection(product, shop)]));
+        for (const row of shelfRows) if (productsById.has(row.id)) (collections[row.shelf] ??= []).push(productsById.get(row.id));
+      }
+      return { catalog: publicBrand(catalog), items, facets, collections, nextCursor: rows.length > limit ? sort === 'catalog' ? last.slug
+        : Buffer.from(JSON.stringify({ sort, value: last.sort_value, slug: last.slug })).toString('base64url') : null };
     }),
     image: async (shop, productSlug, imageId, variant = 'master', format = 'jpeg', ifNoneMatch = null) => {
       uuid(imageId); if (!['master', 'thumbnail', 'detail'].includes(variant) || !['jpeg', 'webp'].includes(format)) notFound();

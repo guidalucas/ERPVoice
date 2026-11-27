@@ -26,7 +26,8 @@ function garmentIdentity(name, productType) {
   const end = Math.min(...[stop, qualifier, rest.length].filter(index => index >= 0));
   const candidate = rest.slice(0, end).replace(/[\s.,-]+$/, '').replace(/\s+(?:en|con)$/i, '').trim(), normalizedCandidate = normalize(candidate);
   const alias = aliases.get(normalizedCandidate);
-  const version = normalized.match(/\bversion\s+(jugador|player|hincha|fan)\b/)?.[1];
+  const version = normalized.match(/\bversion\s+(jugador|player|hincha|fan|nacional|national|retro)\b/)?.[1]
+    ?? (normalized.match(/\b(retro)\b/)?.[1]);
   const category = /^camiseta/.test(type) ? 'Camiseta' : /^remera/.test(type) ? 'Remera' : /^buzo/.test(type) ? 'Buzo'
     : /^campera/.test(type) ? 'Campera' : /^short/.test(type) ? 'Short' : 'Conjunto de abrigo';
   // Generic clothing (e.g. "Remera de algodón mangas largas") has a category,
@@ -34,17 +35,20 @@ function garmentIdentity(name, productType) {
   const sportsContext = /\b(?:titular|suplente|tercera|tercero|cuarta|arquero|version (?:jugador|player|hincha|fan))\b/.test(normalizedRest);
   const team = candidate && (alias || knownTeams.has(normalizedCandidate) || sportsContext)
     ? alias ?? [keyOf(candidate), titleCase(candidate)] : [];
-  return { teamKey: team[0], teamName: team[1], versionKey: version ? ['jugador', 'player'].includes(version) ? 'player' : 'fan' : null, category };
+  const versions = { jugador: 'player', player: 'player', hincha: 'fan', fan: 'fan', nacional: 'national', national: 'national', retro: 'retro' };
+  return { teamKey: team[0], teamName: team[1], versionKey: versions[version] ?? null, retro: /\bretro\b/.test(normalized), category };
 }
 
 export function catalogIdentity(product, skus = []) {
   const active = skus.filter(sku => sku.active ?? (sku.status === 'active'));
   const source = active.find(sku => sku.name?.trim());
   const inferred = garmentIdentity(source?.name || product.title, source?.productType);
+  const versionKey = product.versionKey || inferred.versionKey || null;
   return {
     teamKey: product.teamKey || inferred.teamKey || null,
     teamName: product.teamName || (product.teamKey && product.teamKey !== inferred.teamKey ? product.teamKey : inferred.teamName) || null,
-    versionKey: product.versionKey || inferred.versionKey || null,
+    versionKey,
+    versionKeys: [...new Set([versionKey, ...(inferred.retro ? ['retro'] : [])].filter(Boolean))],
     categories: [...new Set(active.map(sku => sku.productType?.trim() || garmentIdentity(sku.name, sku.productType).category).filter(Boolean))],
   };
 }

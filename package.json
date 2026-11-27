@@ -99,7 +99,8 @@
     "commerce:titles:schema:check": "node scripts/migrate-commerce-inventory-titles.js",
     "commerce:titles:schema:apply": "node scripts/migrate-commerce-inventory-titles.js --apply",
     "test:commerce:inventory-sync": "node scripts/test-commerce-inventory-sync.mjs",
-    "commerce:titles:schema:sql": "node scripts/generate-commerce-inventory-titles-sql.js"
+    "commerce:titles:schema:sql": "node scripts/generate-commerce-inventory-titles-sql.js",
+    "test:catalog:storefront": "node --test scripts/test-storefront-domain.js && node scripts/test-storefront.mjs"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.3.0",

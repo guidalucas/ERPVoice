@@ -12,6 +12,7 @@ import { inspectCommerceSchema } from './schemaInspection.js';
 import { fail } from './errors.js';
 import { appearanceOf, normalizeAppearance, requireAppearanceSchema, validateAppearanceAssets } from './appearance.js';
 import { normalizeSkuMetadataChanges, applySkuMetadata } from './skuMetadata.js';
+import { salesWhatsapp } from './salesWhatsapp.js';
 
 const skuLinkLimit = 100;
 const inventoryGroupColumns = ['name', 'product_model', 'product_type', 'inventory_unit'];
@@ -330,8 +331,8 @@ export function createCommerceProductService(runtime) {
     updateProfile: async (context, input) => {
       const data = record(input, ['operationId', 'expectedRevision', 'brandName', 'salesWhatsapp', 'appearance']);
       const command = { operationId: uuid(data.operationId), expectedRevision: integer(data.expectedRevision, 1),
-        brandName: text(data.brandName, 80, 'brand name'), salesWhatsapp: data.salesWhatsapp === null ? null : text(data.salesWhatsapp, 15, 'sales WhatsApp') };
-      if (command.salesWhatsapp !== null && !/^\d{8,15}$/.test(command.salesWhatsapp)) fail('INVALID_COMMAND', 'WhatsApp comercial inválido.', 400);
+        brandName: text(data.brandName, 80, 'brand name'), salesWhatsapp: salesWhatsapp(data.salesWhatsapp, context.businessId) };
+      if (data.salesWhatsapp !== null && !command.salesWhatsapp) fail('INVALID_COMMAND', 'Ingresá WhatsApp con código de país. Para Argentina: 549 seguido de los 10 dígitos del número.', 400);
       if (Object.hasOwn(data, 'appearance')) command.appearance = normalizeAppearance(data.appearance);
       return mutate(context, { operationId: command.operationId, type: 'profile.update', command, permission: 'commerce:settings' }, async client => {
         const row = (await client.query('SELECT * FROM commerce_profiles WHERE owner_phone=$1 FOR UPDATE', [context.businessId])).rows[0];

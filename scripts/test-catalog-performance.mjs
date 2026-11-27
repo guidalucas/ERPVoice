@@ -21,7 +21,7 @@ const service = createCatalogService(measured);
 const shop = 'fullmatch-demo', base = `${fixture.apiUrl}/api/catalog/v1/${shop}`;
 try {
   await sql.connect(); await service.brand(shop); queries = 0;
-  const listing = await service.list(shop); assert.equal(queries, 4);
+  const listing = await service.list(shop); assert.equal(queries, 6);
   for (const item of listing.items) {
     const id = fixture.products.find(product => product.title === item.title).id;
     assert.deepEqual(item, publicProductProjection(await readProductDetail(sql, fixture.owner, id), shop));
@@ -36,7 +36,7 @@ try {
     await sql.query(`INSERT INTO commercial_product_skus(owner_phone,commercial_product_id,sku_id,identity_fingerprint_at_link,linked_by) SELECT owner_phone,$3,$4,identity_fingerprint_at_link,linked_by FROM commercial_product_skus WHERE owner_phone=$1 AND commercial_product_id=$2 AND sku_id=$5`, [fixture.owner, original.id, id, sku, original.skuIds[0]]);
     await sql.query(`INSERT INTO commercial_publications(owner_phone,commercial_product_id,status,updated_by,reason,published_at) VALUES($1,$2,'published',$1,'Isolated performance fixture',NOW())`, [fixture.owner, id]);
   }
-  queries = 0; assert.equal((await service.list(shop)).items.length, 24); assert.equal(queries, 4);
+  queries = 0; assert.equal((await service.list(shop)).items.length, 24); assert.equal(queries, 6);
   queries = 0; transactions = 0;
   assert.deepEqual(await service.detail(shop, product.slug), { catalog: listing.catalog, product });
   assert.equal(queries, 1); assert.equal(transactions, 0);
@@ -46,7 +46,7 @@ try {
   assert.equal((await service.list(shop, { q: '%' })).items.length, 0);
   assert.equal((await service.list(shop, { team: 'argentina', version: 'player', category: 'Camiseta' })).items.length, 1);
   assert.equal((await service.detail(shop, 'performance-0')).product.photos.length, 0);
-  console.log('PASS bounded queries: 4 SELECTs for both 3 and 24 products; detail 1 without an explicit transaction; DTO/readiness parity');
+  console.log('PASS bounded queries: 6 SELECTs including storefront shelves for both 3 and 24 products; detail 1 without an explicit transaction; DTO/readiness parity');
 
   const image = product.photos[0], detailUrl = fixture.apiUrl + image.detailUrl;
   const first = await fetch(detailUrl), bytes = Buffer.from(await first.arrayBuffer()), etag = first.headers.get('etag');

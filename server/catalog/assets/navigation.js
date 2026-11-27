@@ -81,6 +81,9 @@
     const link = event.target.closest('a[href]');
     if (!link || link.target || link.hasAttribute('download') || link.closest('.public-gallery')) return;
     let url = new URL(link.href);
+    if (url.pathname === location.pathname && url.hash === '#guia-talles') {
+      const guide = document.getElementById('guia-talles'); if (guide) guide.open = true;
+    }
     if (!eligible(url) || (url.pathname === location.pathname && url.search === location.search && url.hash)) return;
     if (link.matches('a.back')) {
       const prior = [...snapshots.entries()].reverse().find(([path]) => path.split('?')[0] === root);
@@ -94,6 +97,9 @@
     const url = new URL(form.action); if (!eligible(url)) return;
     url.search = new URLSearchParams(new FormData(form)).toString();
     event.preventDefault(); void navigate(url);
+  });
+  document.addEventListener('change', event => {
+    if (event.target.matches('.catalog-sort select')) event.target.form?.requestSubmit();
   });
   addEventListener('popstate', event => {
     const url = new URL(location.href);

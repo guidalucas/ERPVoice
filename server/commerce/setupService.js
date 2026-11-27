@@ -6,6 +6,7 @@ import { readProfile, readMoneyPolicy } from './productRepository.js';
 import { record, uuid, integer, text } from './validation.js';
 import { fail } from './errors.js';
 import { appearanceOf } from './appearance.js';
+import { salesWhatsapp } from './salesWhatsapp.js';
 
 // Activation only writes business configuration. DDL and inventory corrections
 // belong to their explicit migration and reviewed inventory-operation flows.
@@ -34,10 +35,10 @@ export function createCommerceSetupService(runtime) {
     activate: async (context, input) => {
       const data = record(input, ['operationId', 'expectedProfileRevision', 'expectedPolicyRevision', 'brandName', 'salesWhatsapp', 'currency', 'confirmedMajorInteger']);
       const command = { operationId: uuid(data.operationId), expectedProfileRevision: integer(data.expectedProfileRevision), expectedPolicyRevision: integer(data.expectedPolicyRevision),
-        brandName: text(data.brandName, 80, 'nombre comercial'), salesWhatsapp: data.salesWhatsapp === null ? null : text(data.salesWhatsapp, 15, 'WhatsApp comercial'),
+        brandName: text(data.brandName, 80, 'nombre comercial'), salesWhatsapp: salesWhatsapp(data.salesWhatsapp, context.businessId),
         currency: text(data.currency, 3, 'moneda'), confirmedMajorInteger: data.confirmedMajorInteger };
       if (!['ARS', 'UYU', 'USD'].includes(command.currency) || command.confirmedMajorInteger !== true) fail('MONEY_CONFIRMATION_REQUIRED', 'Elegí la moneda y confirmá que los precios se cargan en unidades enteras, no en centavos.', 422);
-      if (command.salesWhatsapp !== null && !/^\d{8,15}$/.test(command.salesWhatsapp)) fail('INVALID_COMMAND', 'Ingresá WhatsApp con código de país, solo números (8 a 15 dígitos).', 422);
+      if (data.salesWhatsapp !== null && !command.salesWhatsapp) fail('INVALID_COMMAND', 'Ingresá WhatsApp con código de país. Para Argentina: 549 seguido de los 10 dígitos del número.', 422);
       const hash = operationRequestDigest({ type: 'business.activate', command });
       return runtime.transaction(async client => {
         await access(client, context, true);

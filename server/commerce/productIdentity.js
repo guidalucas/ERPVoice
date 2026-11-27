@@ -31,3 +31,8 @@ export function commercialSlug(title, id) {
   const base = title.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-/, '').slice(0, 90).replace(/-$/, '') || 'producto';
   return `${base}-${id.replaceAll('-', '').slice(0, 10)}`;
 }
+
+// The stable ID suffix resolves current titles and past shared titles alike.
+// The public reader always scopes this lookup to published products in the shop.
+export const publicProductSlug = product => product.id ? commercialSlug(product.title, product.id) : product.slug;
+export const productSlugPrefix = value => value.match(/-([a-f0-9]{10})$/)?.[1] ?? null;
