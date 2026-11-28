@@ -76,15 +76,19 @@ try {
   await studio.getByLabel('Instagram · usuario', { exact: true }).fill('@fmcasacas');
   await studio.getByLabel('Envíos', { exact: true }).fill('Consultanos costo y plazo para tu localidad.');
   await studio.getByLabel('WhatsApp de ventas · código de país y número', { exact: true }).fill('+54 9 345 4326660');
-  const featured = studio.getByLabel('Destacados · hasta 24 publicaciones', { exact: true });
-  await featured.locator(`option[value="${original.slug}"]`).waitFor({ state: 'attached' });
-  await featured.selectOption(original.slug);
-  await studio.getByLabel('Promociones · hasta 24 publicaciones', { exact: true }).selectOption(stored[1].slug);
+  const featured = studio.getByRole('group', { name: 'Destacados', exact: true });
+  const featureProduct = featured.getByRole('checkbox', { name: `Destacados: ${renamed.product.title}`, exact: true });
+  await featureProduct.check(); await featureProduct.uncheck();
+  assert.equal(await featureProduct.isChecked(), false);
+  await featureProduct.check();
+  const promotions = studio.getByRole('group', { name: 'Promociones', exact: true });
+  await promotions.getByRole('checkbox').first().check();
   await studio.getByRole('button', { name: 'Guardar configuración', exact: true }).click();
   await studio.getByText('Configuración guardada.', { exact: true }).waitFor();
   await studio.reload();
   assert.equal(await studio.getByLabel('Dirección y retiro', { exact: true }).inputValue(), 'Alvear 818 · Concordia, Entre Ríos');
   assert.equal(await studio.getByLabel('WhatsApp de ventas · código de país y número', { exact: true }).inputValue(), '5493454326660');
+  assert.equal(await studio.getByRole('checkbox', { name: `Destacados: ${renamed.product.title}`, exact: true }).isChecked(), true);
   const home = await list();
   assert.equal(home.catalog.appearance.storeInfo.instagram, 'fmcasacas');
   assert.equal(home.collections.featured[0].slug, renamed.product.slug);
@@ -120,6 +124,17 @@ try {
   }
   assert.deepEqual(errors, []);
   console.log('PASS mobile/desktop WhatsApp destinations, real collection shelves, size guidance, sorting with combined filters and no horizontal overflow');
+  await studio.setViewportSize({ width: 1440, height: 1000 });
+  await studio.getByRole('button', { name: 'Quitar todos de Destacados', exact: true }).click();
+  assert.equal(await studio.getByRole('group', { name: 'Destacados', exact: true }).getByRole('checkbox', { checked: true }).count(), 0);
+  await studio.getByRole('button', { name: 'Guardar configuración', exact: true }).click();
+  await studio.getByText('Configuración guardada.', { exact: true }).waitFor();
+  await studio.reload();
+  await studio.getByRole('group', { name: 'Destacados', exact: true }).getByRole('checkbox').first().waitFor();
+  assert.equal(await studio.getByRole('group', { name: 'Destacados', exact: true }).getByRole('checkbox', { checked: true }).count(), 0);
+  assert.equal((await list()).collections.featured, undefined);
+  assert.equal((await list()).collections.promotions.length, 1);
+  console.log('PASS check/uncheck without modifier keys and clear-all persist after saving and reloading; other collection preserved');
   await context.close();
 } catch (error) {
   if (studioPage && !studioPage.isClosed()) {

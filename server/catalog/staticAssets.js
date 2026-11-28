@@ -6,7 +6,7 @@ import { gzipSync, brotliCompressSync, constants } from 'node:zlib';
 export function createCatalogAssetHandler(asset) {
   let prepared;
   const prepare = () => prepared ??= (async () => {
-    const sources = asset === 'catalog.js' ? ['cart.js', 'navigation.js'] : [asset];
+    const sources = asset === 'catalog.js' ? ['cart.js', 'navigation.js', 'carousel.js'] : [asset];
     const content = Buffer.from((await Promise.all(sources.map(name => readFile(new URL(`./assets/${name}`, import.meta.url), 'utf8')))).join('\n;\n'));
     return { identity: content, gzip: gzipSync(content), br: brotliCompressSync(content, { params: { [constants.BROTLI_PARAM_QUALITY]: 4 } }),
       etag: `W/"${createHash('sha256').update(content).digest('hex')}"` };

@@ -254,19 +254,39 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
       const last = batch.at(-1);
       const collections = {};
       // Small shelves are independent of the first alphabetical catalog page.
-      // Only the unfiltered storefront pays for these two bounded reads.
+      // Only the unfiltered storefront reads these small shelves. Invalid live
+      // identities are refilled in batches after the initial two reads.
       if (!Object.entries(data).some(([key, value]) => value && !(key === 'sort' && value === 'catalog'))) {
         const appearance = appearanceOf(catalog);
+        const newestEligibility = `EXISTS(SELECT 1 FROM commercial_product_skus l JOIN products i ON i.owner_phone=l.owner_phone AND i.id=l.sku_id
+          WHERE l.owner_phone=p.owner_phone AND l.commercial_product_id=p.id AND i.inventory_status='active')
+          AND EXISTS(SELECT 1 FROM commercial_product_images image WHERE image.owner_phone=p.owner_phone AND image.commercial_product_id=p.id AND image.status='ready')`;
         const shelfRows = (await client.query(`SELECT p.*,shelf.key AS shelf FROM
           (VALUES ('newest',ARRAY[]::text[]),('featured',$2::text[]),('promotions',$3::text[])) AS shelf(key,slugs)
-          CROSS JOIN LATERAL (SELECT p.* FROM commercial_products p JOIN commercial_publications s
+          CROSS JOIN LATERAL (SELECT p.*,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS shelf_cursor_at
+            FROM commercial_products p JOIN commercial_publications s
             ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id
             WHERE p.owner_phone=$1 AND p.status='ready' AND s.status='published' AND (shelf.key='newest' OR p.slug=ANY(shelf.slugs))
-            ORDER BY p.created_at DESC,p.slug LIMIT 4) p ORDER BY shelf.key,p.created_at DESC,p.slug`,
+            AND (shelf.key<>'newest' OR (${newestEligibility}))
+            ORDER BY p.created_at DESC,p.slug DESC LIMIT CASE WHEN shelf.key='newest' THEN 8 ELSE 24 END
+          ) p ORDER BY shelf.key,p.created_at DESC,p.slug DESC`,
         [catalog.owner_phone, appearance.featuredSlugs ?? [], appearance.promotionSlugs ?? []])).rows;
         const shelfProducts = await readPublicProducts(client, catalog.owner_phone, [...new Map(shelfRows.map(row => [row.id, row])).values()]);
         const productsById = new Map(shelfProducts.filter(product => product.readiness.canPrepare).map(product => [product.id, publicProductProjection(product, shop)]));
-        for (const row of shelfRows) if (productsById.has(row.id)) (collections[row.shelf] ??= []).push(productsById.get(row.id));
+        for (const row of shelfRows) if (productsById.has(row.id) && (collections[row.shelf]?.length ?? 0) < 8) (collections[row.shelf] ??= []).push(productsById.get(row.id));
+        // Live SKU edits may invalidate a published ficha. Fill the shelf after
+        // readiness checks, seeking in small batches instead of leaving holes.
+        let newestBatch = shelfRows.filter(row => row.shelf === 'newest');
+        while (newestBatch.length === 8 && (collections.newest?.length ?? 0) < 8) {
+          const cursor = newestBatch.at(-1);
+          newestBatch = (await client.query(`SELECT p.*,to_char(p.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS shelf_cursor_at
+            FROM commercial_products p JOIN commercial_publications s ON s.owner_phone=p.owner_phone AND s.commercial_product_id=p.id
+            WHERE p.owner_phone=$1 AND p.status='ready' AND s.status='published' AND ${newestEligibility}
+            AND (p.created_at,p.slug)<($2::timestamptz,$3::text) ORDER BY p.created_at DESC,p.slug DESC LIMIT 8`,
+          [catalog.owner_phone, cursor.shelf_cursor_at, cursor.slug])).rows;
+          for (const product of await readPublicProducts(client, catalog.owner_phone, newestBatch))
+            if (product.readiness.canPrepare && (collections.newest?.length ?? 0) < 8) (collections.newest ??= []).push(publicProductProjection(product, shop));
+        }
       }
       return { catalog: publicBrand(catalog), items, facets, collections, nextCursor: rows.length > limit ? sort === 'catalog' ? last.slug
         : Buffer.from(JSON.stringify({ sort, value: last.sort_value, slug: last.slug })).toString('base64url') : null };

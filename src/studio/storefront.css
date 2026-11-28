@@ -1,0 +1,11 @@
+.settings .storefront-picker{margin:24px 0;padding:16px;border:1px solid var(--border);border-radius:8px}
+.storefront-picker legend{padding:0 6px;font-size:16px;font-weight:600}
+.storefront-picker-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.storefront-picker-heading>span{font-size:14px;color:var(--subtle)}
+.storefront-picker-heading>button{flex:none}
+.storefront-picker-list{max-height:280px;overflow-y:auto;overscroll-behavior-y:contain}
+.storefront-picker-option{display:flex;align-items:center;gap:12px;padding:10px 6px;min-height:44px;border-bottom:1px solid var(--border);cursor:pointer}
+.storefront-picker-option:last-child{border-bottom:0}
+.storefront-picker-option:has(input:checked){background:var(--selected)}
+.storefront-picker-option input[type=checkbox]{width:20px;height:20px;min-width:20px;flex:none;margin:0}
+.storefront-picker-option>span{font-size:14px;overflow-wrap:anywhere}

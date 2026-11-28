@@ -4,7 +4,11 @@
 
 En **Configuración → Información para tus clientes** se editan dirección/retiro, Instagram, medios de pago, envíos y guía de talles. Los campos vacíos usan una invitación a consultar por WhatsApp; no se inventan costos, plazos ni medidas. La explicación del calce jugador/hincha se muestra en catálogos de prendas con talles.
 
-En **Colecciones comerciales** se seleccionan hasta 24 fichas preparadas para Destacados y Promociones. Solo las publicaciones públicas y válidas aparecen para clientes. Esta selección no cambia precios ni aplica descuentos. Las portadas muestran hasta cuatro productos por sección; **Ver todos** abre la colección completa. Novedades usa la fecha de creación de la ficha, no su última edición ni una reposición de stock.
+En **Colecciones comerciales** se seleccionan hasta 24 fichas preparadas para Destacados y Promociones usando casillas individuales. Se pueden buscar por nombre, desmarcar sin usar Ctrl o quitar todas juntas. Solo las publicaciones públicas y válidas aparecen para clientes. Esta selección no cambia precios ni aplica descuentos.
+
+Las secciones muestran hasta ocho productos en un carrusel manual: flechas en escritorio, desplazamiento táctil en celular y navegación con teclado. No hay avance automático. Los controles se ocultan si todos los productos entran; **Ver todas** abre la colección completa. Las imágenes conservan una proporción de 3:4 y el ancho se alinea con el catálogo, incluida la plantilla Editorial.
+
+Novedades usa la fecha de creación de la ficha, no su última edición ni una reposición de stock. Se eligen fichas publicadas con fotos y variantes activas; después de comprobar su validez, se completa la selección con las siguientes fichas en orden de fecha hasta reunir ocho o agotar las candidatas. Los productos sin fotografía siguen disponibles en el catálogo general.
 
 La Mystery Box se crea y publica como un producto común, con su descripción, variantes, precio y stock. No se publica una caja ni una promoción ficticia.
 
@@ -37,9 +41,10 @@ Después del despliegue conjunto, agregar `--apply` guarda los datos confirmados
 ```powershell
 npm run build
 npm run test:catalog:storefront
+npm run test:catalog:carousel
 npm run test:catalog:filters
 npm run test:catalog:performance
 npm run test:catalog:order
 ```
 
-Las pruebas usan PostgreSQL descartable y Edge local. La portada agrega dos lecturas acotadas para las secciones comerciales (seis SELECT en total, independientemente del número de tarjetas de la página); los listados filtrados conservan cuatro y el detalle una. Las capturas del flujo nuevo se escriben en `.fullmatch-runtime/storefront`.
+Las pruebas usan PostgreSQL descartable y Edge local. La portada agrega dos lecturas acotadas para las secciones comerciales (seis SELECT normalmente); puede buscar tandas adicionales cuando hay fichas invalidadas por cambios del inventario. Los listados filtrados conservan cuatro y el detalle una. Las capturas se escriben en `.fullmatch-runtime/storefront` y `.fullmatch-runtime/carousel`.
