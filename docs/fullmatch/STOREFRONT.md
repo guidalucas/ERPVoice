@@ -36,9 +36,17 @@ Después del despliegue conjunto, agregar `--apply` guarda los datos confirmados
 
 - Los atributos explícitos siguen teniendo prioridad. En fichas antiguas sin esos atributos se recuperan equipo y versión desde los nombres activos del inventario. Nacional y Retro aparecen cuando existen; una camiseta retro versión jugador participa en ambos filtros.
 - El filtro dice **Todos los talles** cuando todas las variantes tienen talle. Otros rubros conservan **Presentaciones**.
+- Las equivalencias del filtro se definen en `src/shared/catalogSizes.js`: `2XL`/`XXL` se muestran como **XXL**, `XXXL`/`3XL` como **3XL**, y `XXXXL`/`4XL` como **4XL**. También se reconocen XS, XXS y sus equivalentes numéricos, hasta 9XL. Se ordenan por escala de talle y se conserva el orden natural de los talles numéricos. Las presentaciones no reconocidas conservan su texto.
+- Los enlaces existentes con `variant=2XL` siguen funcionando y muestran **XXL** seleccionado. Ambas grafías buscan los mismos productos, incluso al combinar filtros o paginar. No se cambian etiquetas, IDs, precios ni stock del inventario; tampoco se fusionan SKU distintos.
 - El orden por precio usa el menor precio disponible que se muestra en la ficha; si está agotada, usa el menor precio de sus variantes activas. El cursor incluye orden, valor y enlace almacenado para resolver empates sin repetir productos. Conserva los filtros al paginar.
 - Los enlaces públicos usan el título actual y el sufijo estable del ID. El enlace guardado y los títulos compartidos anteriormente resuelven la misma publicación dentro del catálogo y redirigen al nombre actual. No se intercambian IDs, fotos, variantes ni publicaciones al corregir el nombre del enlace. Los accesos siguen comprobando publicación y disponibilidad de la ficha antes de servir datos o imágenes.
 - El pedido reconoce enlaces anteriores de la misma variante al agregar productos. El servidor rechaza líneas duplicadas que usen diferentes nombres para la misma variante.
+
+## Imagen al compartir
+
+El catálogo utiliza la portada para `og:image`; si no hay portada, usa el logo, y después la primera fotografía disponible. Esa selección no depende de que el primer producto tenga foto ni de que una búsqueda devuelva resultados. Cada ficha prioriza su propia fotografía y usa portada/logo como respaldo. Pedido y ayuda también usan la imagen de marca.
+
+Las imágenes sociales incluyen URL absoluta cuando el servidor tiene configurado `COMMERCE_CATALOG_ORIGIN`, descripción alternativa y URL segura si corresponde. Los metadatos se entregan en el HTML del servidor, y las imágenes públicas se pueden descargar sin sesión.
 
 ## Verificación
 
@@ -46,6 +54,7 @@ Después del despliegue conjunto, agregar `--apply` guarda los datos confirmados
 npm run build
 npm run test:catalog:storefront
 npm run test:catalog:carousel
+npm run test:catalog:social-sizes
 npm run test:catalog:filters
 npm run test:catalog:performance
 npm run test:catalog:order

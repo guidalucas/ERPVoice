@@ -18,6 +18,7 @@ import { productTitleSql } from './productTitle.js';
 import { catalogIdentity } from './catalogIdentity.js';
 import { salesWhatsapp } from './salesWhatsapp.js';
 import { publicProductSlug, productSlugPrefix } from './productIdentity.js';
+import { normalizeCatalogSize, sortCatalogSizes } from '../../src/shared/catalogSizes.js';
 
 const catalogDTO = row => row ? { slug: row.slug, publicEnabled: row.public_enabled, revision: Number(row.revision), path: `/c/${row.slug}` } : null;
 const publicationDTO = row => ({ status: row?.status ?? 'hidden', revision: Number(row?.revision ?? 0), publishedAt: row?.published_at?.toISOString() ?? null });
@@ -208,7 +209,7 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
       const unique = values => [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
       const facets = { categories: unique(identities.flatMap(item => item.categories)),
         variantLabel: identities.length && identities.every(item => item.skus.every(sku => sku.size?.trim())) ? 'Talle' : 'Presentación',
-        variants: unique(identities.flatMap(item => item.skus.map(variantLabel))), versions: unique(identities.flatMap(item => item.versionKeys)),
+        variants: sortCatalogSizes(identities.flatMap(item => item.skus.map(variantLabel))), versions: unique(identities.flatMap(item => item.versionKeys)),
         teams: [...new Map(identities.filter(item => item.teamKey).map(item => [item.teamKey, { key: item.teamKey, name: item.teamName || item.teamKey }])).values()]
           .sort((a, b) => a.name.localeCompare(b.name, 'es')) };
       const values = [catalog.owner_phone], conditions = ["p.owner_phone=$1", "p.status='ready'", "s.status='published'"];
@@ -223,8 +224,9 @@ export function createCatalogService(runtime, storage = createMediaStorage()) {
         conditions.push(`p.id=ANY($${values.length}::uuid[])`);
       }
       if (data.variant) {
-        const expression = "COALESCE(NULLIF(trim(i.size),''),trim(i.name))", key = 'variant';
-        values.push(text(data[key], 200, key)); conditions.push(`EXISTS(SELECT 1 FROM commercial_product_skus l JOIN products i ON i.owner_phone=l.owner_phone AND i.id=l.sku_id WHERE l.owner_phone=p.owner_phone AND l.commercial_product_id=p.id AND i.inventory_status='active' AND ${expression}=$${values.length})`);
+        const selected = normalizeCatalogSize(text(data.variant, 200, 'variant'));
+        values.push(identities.filter(item => item.skus.some(sku => normalizeCatalogSize(variantLabel(sku)) === selected)).map(item => item.id));
+        conditions.push(`p.id=ANY($${values.length}::uuid[])`);
       }
       for (const [key, column] of Object.entries({ season: 'season', sleeve: 'sleeve_key', kit: 'kit_key' })) if (data[key]) { values.push(text(data[key], 100, key)); conditions.push(`p.${column}=$${values.length}`); }
       if (data.q) { values.push(`%${text(data.q, 120, 'query').replace(/[\\%_]/g, '\\$&')}%`); conditions.push(`((${productTitleSql()}) ILIKE $${values.length} OR p.team_name ILIKE $${values.length})`); }

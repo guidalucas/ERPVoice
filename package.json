@@ -101,7 +101,8 @@
     "test:commerce:inventory-sync": "node scripts/test-commerce-inventory-sync.mjs",
     "commerce:titles:schema:sql": "node scripts/generate-commerce-inventory-titles-sql.js",
     "test:catalog:storefront": "node --test scripts/test-storefront-domain.js && node scripts/test-storefront.mjs",
-    "test:catalog:carousel": "node scripts/test-catalog-carousel.mjs"
+    "test:catalog:carousel": "node scripts/test-catalog-carousel.mjs",
+    "test:catalog:social-sizes": "node --test scripts/test-catalog-social-sizes.js && node scripts/test-catalog-social-sizes.mjs"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.3.0",

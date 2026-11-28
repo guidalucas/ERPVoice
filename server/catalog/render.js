@@ -1,6 +1,7 @@
 import { appearanceOf } from '../../src/shared/catalogAppearance.js';
 import { formatMoneyAmount as money } from '../commerce/moneyPresentation.js';
 import { renderStorefrontFooter, renderHelpContent } from './storefrontFooter.js';
+import { normalizeCatalogSize } from '../../src/shared/catalogSizes.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const json = value => JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
 const price = product => product.priceRange ? `${product.priceRange.minAmountMinor !== product.priceRange.maxAmountMinor ? 'Desde ' : ''}${money(product.priceRange.minAmountMinor, product.priceRange.currency, product.priceRange.fractionDigits)}` : 'Precio a confirmar';
@@ -15,8 +16,11 @@ function layout({ catalog, title, description, path, image, origin = '', content
   const appearance = appearanceOf(catalog);
   const themeVersion = catalog.appearanceRevision ?? 0;
   const canonical = origin ? `${origin}${path}` : '', chat = whatsapp(catalog);
+  const brandImage = appearance.coverId ? assetUrl(catalog, appearance.coverId) : appearance.logoId ? assetUrl(catalog, appearance.logoId) : null;
+  const socialImage = image || brandImage;
+  const socialImageUrl = socialImage ? origin ? new URL(socialImage, origin).href : socialImage : null;
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="${escape(appearance.primaryColor)}">
-    <title>${escape(title)}</title><meta name="description" content="${escape(description)}"><meta property="og:type" content="${schema ? 'product' : 'website'}"><meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}">${canonical ? `<link rel="canonical" href="${escape(canonical)}"><meta property="og:url" content="${escape(canonical)}">` : ''}${image ? `<meta property="og:image" content="${escape(origin + image)}">` : ''}<link rel="stylesheet" href="/catalog-assets/catalog.css?v=1"><link rel="stylesheet" href="/catalog-assets/templates.css?v=4"><link rel="stylesheet" href="/catalog-assets/${escape(catalog.slug)}/theme.css?v=${themeVersion}">${schema ? `<script type="application/ld+json">${json(schema)}</script>` : ''}</head>
+    <title>${escape(title)}</title><meta name="description" content="${escape(description)}"><meta property="og:type" content="${schema ? 'product' : 'website'}"><meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}">${canonical ? `<link rel="canonical" href="${escape(canonical)}"><meta property="og:url" content="${escape(canonical)}">` : ''}${socialImageUrl ? `<meta property="og:image" content="${escape(socialImageUrl)}"><meta property="og:image:alt" content="${escape(image ? title : catalog.brandName)}">${socialImageUrl.startsWith('https://') ? `<meta property="og:image:secure_url" content="${escape(socialImageUrl)}">` : ''}` : ''}<link rel="stylesheet" href="/catalog-assets/catalog.css?v=1"><link rel="stylesheet" href="/catalog-assets/templates.css?v=4"><link rel="stylesheet" href="/catalog-assets/${escape(catalog.slug)}/theme.css?v=${themeVersion}">${schema ? `<script type="application/ld+json">${json(schema)}</script>` : ''}</head>
     <body data-catalog="${escape(catalog.slug)}" data-preset="${escape(['editorial', 'technical', 'local'].includes(appearance.preset) ? appearance.preset : 'classic')}"><header class="shop-header"><a class="shop-brand" href="${escape(catalog.path)}">${brandMark(catalog)}<span>${escape(catalog.brandName)}<small>${escape(appearance.tagline)}</small></span></a>${appearance.preset === 'technical' ? `<form class="header-search" method="get" action="${escape(catalog.path)}"><label><span class="sr-only">Buscar en toda la tienda</span><input type="search" name="q" value="${escape(searchQuery)}" placeholder="Buscar en toda la tienda…" maxlength="120"></label><button type="submit">Buscar</button></form>` : ''}<nav aria-label="Navegación del catálogo"><a href="${escape(catalog.path)}">Catálogo</a><a class="shop-cart" href="${escape(catalog.path)}/pedido">Mi pedido <span data-cart-count>0</span></a>${chat ? `<a class="header-chat" href="${escape(chat)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ''}</nav></header><main>${content}</main>${renderStorefrontFooter(catalog, garments)}<script src="/catalog-assets/catalog.js?v=4" defer></script></body></html>`;
 }
 const option = (value, label, selected) => `<option value="${escape(value)}"${value === selected ? ' selected' : ''}>${escape(label)}</option>`;
@@ -24,7 +28,10 @@ export function renderCatalogList(data, query, origin) {
   const { catalog, items, nextCursor, facets = {} } = data, appearance = appearanceOf(catalog);
   const next = new URLSearchParams(query); if (nextCursor) next.set('cursor', nextCursor);
   const active = Object.entries(query).filter(([key, value]) => !['cursor', 'limit', 'sort'].includes(key) && value);
-  const filter = (key, label, values) => values?.length ? `<label><span>${escape(label)}</span><select name="${key}">${option('', label, query[key])}${values.map(value => option(value.key ?? value, value.name ?? labels[value] ?? value, query[key])).join('')}</select></label>` : '';
+  const filter = (key, label, values) => {
+    const selected = key === 'variant' ? normalizeCatalogSize(query[key]) : query[key];
+    return values?.length ? `<label><span>${escape(label)}</span><select name="${key}">${option('', label, selected)}${values.map(value => option(value.key ?? value, value.name ?? labels[value] ?? value, selected)).join('')}</select></label>` : '';
+  };
   const productCard = (product, index, cardClass = 'catalog-card') => {
     const photo = cover(product);
     const redundant = product.sizes.length === 1 && product.sizes[0].size.trim().toLocaleLowerCase('es') === product.title.trim().toLocaleLowerCase('es');
@@ -78,12 +85,12 @@ export function renderCatalogList(data, query, origin) {
         </div></details>
       </form>
       </aside><div class="catalog-results">
-      ${active.length ? `<div class="active-filters"><span>${escape(active.map(([key, value]) => key === 'q' ? 'Búsqueda: ' + value : (labels[value] || value)).join(' · '))} · ${items.length}${nextCursor ? '+' : ''} resultados</span><a href="${escape(catalog.path)}#coleccion">Limpiar filtros</a></div>` : ''}
+      ${active.length ? `<div class="active-filters"><span>${escape(active.map(([key, value]) => key === 'q' ? 'Búsqueda: ' + value : key === 'variant' ? normalizeCatalogSize(value) : (labels[value] || value)).join(' · '))} · ${items.length}${nextCursor ? '+' : ''} resultados</span><a href="${escape(catalog.path)}#coleccion">Limpiar filtros</a></div>` : ''}
       <div class="catalog-grid ${!nextCursor && items.length <= 2 ? 'small-collection' : ''}">${cards || (active.length ? `<div class="no-results"><h3>No encontramos productos para esta búsqueda.</h3><p>Probá otro nombre o quitá los filtros.</p><a class="primary" href="${escape(catalog.path)}#coleccion">Ver catálogo completo</a></div>` : '<div class="no-results"><h3>Todavía no hay productos publicados.</h3><p>Los productos de este comercio aparecerán acá.</p></div>')}</div>
       ${nextCursor ? `<a class="more" href="${escape(catalog.path)}?${escape(next.toString())}#coleccion">Ver más productos ↓</a>` : ''}
       </div></div>
     </section>`;
-  return layout({ catalog, origin, path: catalog.path, searchQuery: query.q, garments: facets.variantLabel === 'Talle', title: `${catalog.brandName} · Catálogo`, description: appearance.heroDescription || `Explorá los productos de ${catalog.brandName}. Precios y disponibilidad actualizados.`, image: items[0] && cover(items[0])?.url, content });}
+  return layout({ catalog, origin, path: catalog.path, searchQuery: query.q, garments: facets.variantLabel === 'Talle', title: `${catalog.brandName} · Catálogo`, description: appearance.heroDescription || `Explorá los productos de ${catalog.brandName}. Precios y disponibilidad actualizados.`, image: appearance.coverId ? assetUrl(catalog, appearance.coverId) : appearance.logoId ? assetUrl(catalog, appearance.logoId) : items.map(cover).find(Boolean)?.url, content });}
 export function renderCatalogProduct(data, origin) {
   const { catalog, product } = data, photo = cover(product), chat = whatsapp(catalog, product.title), variantTitle = product.variantLabel || 'Presentación';
   const schema = { '@context': 'https://schema.org', '@type': 'Product', name: product.title, description: product.description || product.title,
