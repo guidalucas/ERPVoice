@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { query } from './api';
 import type { Appearance, Product } from './types';
 import './storefront.css';
+import { paymentMethods, shippingMethods, selectedPaymentMethods } from '../shared/storefrontOptions.js';
 
 const emptyInfo = { address: '', instagram: '', payments: '', shipping: '', sizeGuide: '' };
 function CollectionPicker({ title, products, selected, onChange, loading }: {
@@ -46,6 +47,8 @@ export function StorefrontFields({ value, onChange }: { value: Appearance; onCha
     <h2>Información para tus clientes</h2><p>Se muestra en el catálogo. Completá solo datos confirmados; podés cambiarlos cuando lo necesites.</p>
     {fields.map(([key, label, max, placeholder]) => <label className="field" key={key}><span>{label}</span><textarea aria-label={label} maxLength={max} rows={key === 'sizeGuide' ? 4 : 2} value={info[key]} placeholder={placeholder} onChange={event => onChange({ ...value, storeInfo: { ...info, [key]: event.target.value } })}/></label>)}
     <label className="field"><span>Instagram · usuario</span><input maxLength={30} value={info.instagram} placeholder="@tunegocio" onChange={event => onChange({ ...value, storeInfo: { ...info, instagram: event.target.value } })}/></label>
+    <label className="field"><span>Correo de contacto</span><input type="email" maxLength={254} value={info.email ?? ''} placeholder="ventas@tunegocio.com" onChange={event => onChange({ ...value, storeInfo: { ...info, email: event.target.value } })}/></label>
+    {([['paymentMethods', 'Logos de medios de pago', paymentMethods, selectedPaymentMethods(info)], ['shippingMethods', 'Medios de envío y retiro', shippingMethods, info.shippingMethods ?? []]] as const).map(([key, title, options, selected]) => <fieldset className="storefront-picker" aria-label={title} key={key}><legend>{title}</legend><p>Marcá las opciones que ofrecés. Se muestran en el pie del catálogo.</p><div className="storefront-method-options">{options.map(option => <label className="storefront-picker-option" key={option.key}><input type="checkbox" checked={selected.includes(option.key)} onChange={event => onChange({ ...value, storeInfo: { ...info, [key]: event.target.checked ? [...selected, option.key] : selected.filter(item => item !== option.key) } })}/><span>{option.label}</span></label>)}</div></fieldset>)}
     <h2>Colecciones comerciales</h2><p>Novedades muestra automáticamente las fichas más recientes con foto. Para Destacados y Promociones, marcá o desmarcá las casillas de cada producto. El precio se toma de Stocky; esta selección no aplica descuentos.</p>
     {error && <p role="status">{error}</p>}
     {(['featuredSlugs', 'promotionSlugs'] as const).map(key => <CollectionPicker key={key} title={key === 'featuredSlugs' ? 'Destacados' : 'Promociones'} products={products} selected={value[key] ?? []} loading={loading} onChange={slugs => onChange({ ...value, [key]: slugs })}/>)}

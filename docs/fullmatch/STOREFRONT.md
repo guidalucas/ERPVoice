@@ -2,7 +2,11 @@
 
 ## Configuración en Stocky Studio
 
-En **Configuración → Información para tus clientes** se editan dirección/retiro, Instagram, medios de pago, envíos y guía de talles. Los campos vacíos usan una invitación a consultar por WhatsApp; no se inventan costos, plazos ni medidas. La explicación del calce jugador/hincha se muestra en catálogos de prendas con talles.
+En **Configuración → Información para tus clientes** se editan dirección/retiro, Instagram, correo de contacto, medios de pago, envíos y guía de talles. También se eligen mediante casillas los logos de pago y los medios de envío/retiro. Los campos vacíos usan una invitación a consultar por WhatsApp; no se inventan costos, plazos ni medidas.
+
+El pie del catálogo usa dos columnas en escritorio y una en celular: pagos/envíos y redes/contacto. Los iconos se sirven desde el propio sitio y también se ven en la vista previa de Studio. Las licencias y atribuciones están en `server/catalog/assets/icons`. Si el texto existente dice «Todos los medios de pago» y todavía no se eligieron logos, se muestran las seis opciones disponibles; una selección explícita, incluso vacía, tiene prioridad. Los transportistas específicos aparecen únicamente cuando se seleccionan.
+
+Los enlaces del pie abren `/c/<tienda>/ayuda`, con las instrucciones de compra, la guía de talles y la explicación jugador/hincha para prendas. El enlace junto al selector de talle lleva directamente a la guía. El footer ya no usa el bloque de acordeones «Comprá con confianza».
 
 En **Colecciones comerciales** se seleccionan hasta 24 fichas preparadas para Destacados y Promociones usando casillas individuales. Se pueden buscar por nombre, desmarcar sin usar Ctrl o quitar todas juntas. Solo las publicaciones públicas y válidas aparecen para clientes. Esta selección no cambia precios ni aplica descuentos.
 

@@ -9,3 +9,5 @@
 .storefront-picker-option:has(input:checked){background:var(--selected)}
 .storefront-picker-option input[type=checkbox]{width:20px;height:20px;min-width:20px;flex:none;margin:0}
 .storefront-picker-option>span{font-size:14px;overflow-wrap:anywhere}
+.storefront-method-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
+@media(max-width:600px){.storefront-method-options{grid-template-columns:1fr}}

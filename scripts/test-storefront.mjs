@@ -74,6 +74,12 @@ try {
   await studio.getByLabel('Dirección y retiro', { exact: true }).fill('Alvear 818 · Concordia, Entre Ríos');
   await studio.getByLabel('Medios de pago', { exact: true }).fill('Todos los medios de pago');
   await studio.getByLabel('Instagram · usuario', { exact: true }).fill('@fmcasacas');
+  await studio.getByLabel('Correo de contacto', { exact: true }).fill('ventas@example.com');
+  for (const name of ['Mercado Pago', 'American Express', 'Transferencia bancaria', 'Efectivo'])
+    await studio.getByRole('group', { name: 'Logos de medios de pago', exact: true }).getByRole('checkbox', { name, exact: true }).uncheck();
+  await studio.getByRole('group', { name: 'Logos de medios de pago', exact: true }).getByRole('checkbox', { name: 'Visa', exact: true }).check();
+  await studio.getByRole('group', { name: 'Logos de medios de pago', exact: true }).getByRole('checkbox', { name: 'Mastercard', exact: true }).check();
+  await studio.getByRole('group', { name: 'Medios de envío y retiro', exact: true }).getByRole('checkbox', { name: 'Retiro en el local', exact: true }).check();
   await studio.getByLabel('Envíos', { exact: true }).fill('Consultanos costo y plazo para tu localidad.');
   await studio.getByLabel('WhatsApp de ventas · código de país y número', { exact: true }).fill('+54 9 345 4326660');
   const featured = studio.getByRole('group', { name: 'Destacados', exact: true });
@@ -91,6 +97,9 @@ try {
   assert.equal(await studio.getByRole('checkbox', { name: `Destacados: ${renamed.product.title}`, exact: true }).isChecked(), true);
   const home = await list();
   assert.equal(home.catalog.appearance.storeInfo.instagram, 'fmcasacas');
+  assert.equal(home.catalog.appearance.storeInfo.email, 'ventas@example.com');
+  assert.deepEqual(home.catalog.appearance.storeInfo.paymentMethods, ['visa', 'mastercard']);
+  assert.deepEqual(home.catalog.appearance.storeInfo.shippingMethods, ['pickup']);
   assert.equal(home.collections.featured[0].slug, renamed.product.slug);
   assert.equal(home.collections.promotions.length, 1);
   assert.equal(home.collections.newest.at(-1).slug, renamed.product.slug);
@@ -106,10 +115,20 @@ try {
     assert.equal(await page.getByRole('link', { name: 'Hablemos por WhatsApp', exact: true }).getAttribute('href'), await page.locator('.header-chat').getAttribute('href'));
     assert.equal(await page.locator('.storefront-shelf').count(), 3);
     await page.getByRole('link', { name: 'Encontranos en Instagram · @fmcasacas', exact: true }).waitFor();
-    assert.match(await page.locator('#como-comprar').innerText(), /Comprá con confianza/);
-    assert.equal(await page.locator('summary').filter({ hasText: 'Guía de talles' }).count(), 1);
+    const footer = page.getByRole('contentinfo', { name: 'Información del comercio', exact: true });
+    await footer.getByRole('heading', { name: 'Medios de pago', exact: true }).waitFor();
+    assert.equal(await footer.locator('details').count(), 0);
+    assert.equal(await footer.getByRole('img', { name: 'Visa', exact: true }).count(), 1);
+    assert.equal(await footer.getByRole('img', { name: 'Mastercard', exact: true }).count(), 1);
+    assert.equal(await footer.getByRole('img', { name: 'American Express', exact: true }).count(), 0);
+    assert.match(await footer.innerText(), /Retiro en el local/);
+    assert.equal(await footer.getByRole('link', { name: 'ventas@example.com', exact: true }).getAttribute('href'), 'mailto:ventas%40example.com');
+    assert.equal(await footer.getByRole('link', { name: 'Guía de talles', exact: true }).getAttribute('href'), `/c/${shop}/ayuda#guia-talles`);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await footer.scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => [...document.querySelectorAll('.shop-footer img')].every(image => image.complete && image.naturalWidth > 0));
     await page.screenshot({ path: path.join(output, `catalog-${width}.png`), fullPage: true });
+    await footer.screenshot({ path: path.join(output, `footer-${width}.png`) });
     await page.locator('select[name=sort]').selectOption('price-asc');
     await page.waitForURL(/sort=price-asc/); await page.waitForFunction(() => !document.documentElement.hasAttribute('aria-busy'));
     assert.equal(await page.locator('.catalog-card').count(), 3);
@@ -123,6 +142,13 @@ try {
     await page.close();
   }
   assert.deepEqual(errors, []);
+  const help = await context.newPage(); await help.goto(fixture.apiUrl + `/c/${shop}/ayuda#guia-talles`);
+  await help.getByRole('heading', { name: 'Guía de talles', exact: true }).waitFor();
+  assert.match(await help.locator('#guia-talles').innerText(), /Medí el ancho de axila/);
+  await help.getByRole('heading', { name: 'Versión jugador e hincha', exact: true }).waitFor();
+  const visaAsset = await fetch(fixture.apiUrl + '/catalog-assets/icons/visa.svg');
+  assert.equal(visaAsset.status, 200); assert.match(visaAsset.headers.get('content-type'), /image\/svg\+xml/);
+  await help.close();
   console.log('PASS mobile/desktop WhatsApp destinations, real collection shelves, size guidance, sorting with combined filters and no horizontal overflow');
   await studio.setViewportSize({ width: 1440, height: 1000 });
   await studio.getByRole('button', { name: 'Quitar todos de Destacados', exact: true }).click();

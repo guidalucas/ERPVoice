@@ -5,12 +5,24 @@ import { publicProductSlug } from '../server/commerce/productIdentity.js';
 import { catalogIdentity } from '../server/commerce/catalogIdentity.js';
 import { normalizeAppearance, defaultAppearance } from '../server/commerce/appearance.js';
 import { renderCatalogList } from '../server/catalog/render.js';
+import { renderStorefrontFooter } from '../server/catalog/storefrontFooter.js';
 
 test('sales contact repairs national Argentine mobiles only with Argentine country context', () => {
   for (const phone of ['3454326660', '543454326660', '+54 (345) 432-6660', '5493454326660']) assert.equal(salesWhatsapp(phone, '5491100000000'), '5493454326660');
   assert.equal(salesWhatsapp('+54 9 345 4326660', '59899000088'), '5493454326660');
   assert.equal(salesWhatsapp('59899000088', '59899000088'), '59899000088');
   for (const value of ['3454326660', 'javascript:alert(1)', '5493454326660?text=bad', '', null, {}, '00000000000']) assert.equal(salesWhatsapp(value, '59899000088'), null);
+});
+
+test('footer exposes configured methods and safe contact links without the accordion block', () => {
+  const info = { instagram: 'fmcasacas', address: 'Alvear 818', email: 'ventas@example.com', paymentMethods: ['visa', 'cash'], shippingMethods: ['pickup'] };
+  const normalized = normalizeAppearance({ ...defaultAppearance, storeInfo: info });
+  assert.deepEqual(normalized.storeInfo.paymentMethods, ['visa', 'cash']);
+  for (const patch of [{ email: 'bad\r\n@example.com' }, { paymentMethods: ['javascript:bad'] }, { shippingMethods: ['pickup', 'pickup'] }]) assert.throws(() => normalizeAppearance({ ...defaultAppearance, storeInfo: { ...info, ...patch } }));
+  const html = renderStorefrontFooter({ path: '/c/tienda', brandName: 'Tienda', salesWhatsapp: '5493454326660', appearance: { storeInfo: info } }, true);
+  assert.match(html, /Medios de pago/); assert.match(html, /visa.svg/); assert.match(html, /Retiro en el local/);
+  assert.doesNotMatch(html, /mastercard.svg|Correo Argentino|<details|Comprá con confianza/);
+  assert.match(html, /mailto:ventas%40example.com/); assert.match(html, /\/c\/tienda\/ayuda#guia-talles/);
 });
 
 test('live public links keep a stable product suffix and clean renamed titles', () => {

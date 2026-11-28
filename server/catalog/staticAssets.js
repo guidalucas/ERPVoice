@@ -14,7 +14,7 @@ export function createCatalogAssetHandler(asset) {
   return async (req, res, next) => {
     try {
       const data = await prepare(), encoding = req.acceptsEncodings('br', 'gzip', 'identity');
-      res.vary('Accept-Encoding').type(asset.endsWith('.css') ? 'css' : 'js')
+      res.vary('Accept-Encoding').type(asset.endsWith('.css') ? 'css' : asset.endsWith('.svg') ? 'image/svg+xml' : 'js')
         .set('Cache-Control', 'public, max-age=3600').set('ETag', data.etag).set('X-Content-Type-Options', 'nosniff');
       if (!encoding) return res.status(406).end();
       if (encoding !== 'identity') res.set('Content-Encoding', encoding);

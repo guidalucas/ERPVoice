@@ -6,6 +6,7 @@ import { catalogDesigns, catalogThemeCss, defaultHeroLayout, type Appearance, ty
 import { studioFetch, query, imageBlob } from './api';
 import type { Product } from './types';
 import './catalogDesign.css';
+const footerIconUrls = import.meta.glob<string>('../../server/catalog/assets/icons/*.svg', { eager: true, query: '?url', import: 'default' });
 
 export { catalogDesigns } from '../shared/catalogAppearance.js';
 
@@ -83,6 +84,7 @@ export function CatalogDesignPreview({ value, brandName, assets, miniature = fal
     let html = renderCatalogList({ catalog: { slug: 'preview', brandName: brandName || 'Tu negocio', path: '#', appearance }, items, facets: { categories } }, {});
     html = html.replace(/<link rel="stylesheet"[^>]+>/g, '').replace(/<script[\s\S]*?<\/script>/g, '');
     for (const [id, url] of Object.entries(assets)) html = html.split(`/api/catalog/v1/preview/brand-assets/${id}`).join(url);
+    for (const [file, url] of Object.entries(footerIconUrls)) html = html.split(`/catalog-assets/icons/${file.split('/').pop()}`).join(url);
     const editorCss = editing && !mobile ? '.catalog-hero [data-hero-block]{cursor:grab;touch-action:none;outline:1px dashed currentColor;outline-offset:5px}.catalog-hero [data-hero-block]:focus{outline:3px solid currentColor}.catalog-hero [data-hero-block]:active{cursor:grabbing}' : '';
     return html.replace('</head>', `<style>${catalogCss}\n${templateCss}\n${catalogThemeCss(value)}\n${editorCss}</style></head>`);
   }, [value, brandName, assets, editing, mobile, miniature, products, photos]);

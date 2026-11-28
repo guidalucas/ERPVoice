@@ -341,17 +341,35 @@ body[data-preset=editorial] .storefront-shelf,body[data-preset=editorial] .disco
 @media(max-width:1100px) and (min-width:781px){.shelf-grid{grid-auto-columns:calc((100% - 40px)/3)}}
 @media(max-width:780px){.shelf-grid{grid-auto-columns:44%;gap:12px}body[data-preset] .storefront-shelf{margin-block:24px 32px}body[data-preset=editorial] .storefront-shelf,body[data-preset=editorial] .discovery-nav,body[data-preset=editorial] .buying-information{padding-inline:16px}.buying-grid{grid-template-columns:1fr}}
 @media(max-width:520px){.shelf-grid{grid-auto-columns:78%}}
-.buying-information{border-top:1px solid var(--line);padding:32px 0;margin-top:40px;scroll-margin-top:20px}
-.buying-information>h2{font-size:26px;margin-bottom:20px}
-.buying-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
-.buying-grid details{border:1px solid var(--line);padding:0 18px;border-radius:8px;min-width:0}
-.buying-grid summary{padding:16px 0;cursor:pointer;font-size:16px;font-weight:600}
-.buying-grid p{font-size:16px;white-space:pre-line;overflow-wrap:anywhere}
-.buying-grid a,.store-instagram{font-size:14px;display:inline-flex;align-items:center;min-height:44px;text-decoration:underline;margin-bottom:12px;overflow-wrap:anywhere}
-.store-instagram{margin-top:18px}
 body[data-preset] .catalog-filters .catalog-sort{display:grid;gap:7px;grid-column:1/-1;grid-row:2;width:100%;min-width:0}
 .catalog-sort>span{font-size:14px;color:var(--subtle)}
 .catalog-sort select{width:100%;font-size:16px;min-height:44px}
 body[data-preset] .catalog-filter-fields{grid-row:3}
 .size-guide-link{display:inline-flex;align-items:center;min-height:44px;font-size:14px;text-decoration:underline}
 @media(max-width:780px){body[data-preset] .catalog-filters .catalog-sort{grid-row:3}body[data-preset] .catalog-filter-fields{grid-row:4}}
+
+/* Commerce footer: payment marks and delivery on the left, social/contact on the right. */
+body[data-preset] footer.shop-footer{display:block;max-width:none;margin:48px 0 0;padding:0;border-top:1px solid var(--line);background:var(--surface);color:var(--text);font-size:14px}
+.shop-footer-inner{max-width:1280px;margin:0 auto;padding:36px 32px 16px}
+.shop-footer-columns{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:64px}
+.footer-commerce,.footer-contact{display:grid;gap:26px;align-content:start;min-width:0}
+.shop-footer h2{margin:0 0 12px;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:.7px;text-transform:uppercase}
+body[data-preset] .shop-footer p{width:auto;margin:10px 0 0;font-size:14px;line-height:1.6;white-space:pre-line;overflow-wrap:anywhere;color:var(--subtle)}
+.footer-methods{display:flex;align-items:center;flex-wrap:wrap;gap:10px 16px;list-style:none;padding:0;margin:0}
+.footer-methods li{display:inline-flex;align-items:center;gap:7px;min-height:36px;font-size:14px}
+.footer-methods span,.footer-contact-link span{font-size:14px;overflow-wrap:anywhere}
+.footer-brand-mark>img{width:58px;height:36px;object-fit:contain}
+.footer-icon{width:20px;height:20px;object-fit:contain;flex:none}
+.shop-footer .footer-contact-link{display:flex;align-items:center;gap:10px;min-height:36px;max-width:100%;font-size:14px;line-height:1.5}
+.footer-contact-link:hover span{text-decoration:underline}
+.shop-footer-bottom{border-top:1px solid var(--line);margin-top:30px;padding-top:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px 24px}
+.shop-footer .footer-brand-name{font-size:14px;font-weight:600}
+.shop-footer-bottom nav{display:flex;align-items:center;flex-wrap:wrap;gap:8px 20px}
+.shop-footer-bottom nav a{display:inline-flex;align-items:center;min-height:44px;font-size:14px;text-decoration:underline;text-underline-offset:3px}
+body[data-preset] .shop-footer-bottom p{margin:0;font-size:14px}
+.store-help{max-width:900px;margin:0 auto;padding:32px}
+.store-help h1{font-size:30px;margin:24px 0}
+.store-help>section{padding:24px 0;border-top:1px solid var(--line);scroll-margin-top:24px}
+.store-help h2{font-size:22px;margin:0 0 12px}
+.store-help p{font-size:16px;line-height:1.7;white-space:pre-line}
+@media(max-width:780px){.shop-footer-inner{padding:28px 16px 12px}.shop-footer-columns{grid-template-columns:1fr;gap:28px}.shop-footer .footer-contact-link{min-height:44px}.shop-footer-bottom{align-items:flex-start;flex-direction:column;gap:8px}.shop-footer-bottom nav{gap:0 16px}.store-help{padding:24px 16px}.store-help h1{font-size:26px}}

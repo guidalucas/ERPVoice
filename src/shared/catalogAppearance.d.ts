@@ -5,7 +5,7 @@ export const catalogDesigns: readonly { id: 'classic' | 'editorial' | 'technical
 export type Appearance = { preset?: 'classic' | 'editorial' | 'technical' | 'local'; logoId: string | null; coverId: string | null;
   primaryColor: string; accentColor: string; tagline: string; heroTitle: string; heroDescription: string; collectionTitle: string;
   heroContentVisible?: boolean; heroButtonVisible?: boolean; heroTextBackground?: boolean; heroTextTone?: 'light' | 'dark'; heroLayout?: HeroLayout | null;
-  storeInfo?: { address: string; instagram: string; payments: string; shipping: string; sizeGuide: string };
+  storeInfo?: { address: string; instagram: string; payments: string; shipping: string; sizeGuide: string; email?: string; paymentMethods?: string[]; shippingMethods?: string[] };
   featuredSlugs?: string[]; promotionSlugs?: string[] };
 export const defaultAppearance: Appearance;
 export const defaultHeroLayout: HeroLayout;

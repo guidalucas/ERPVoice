@@ -1,7 +1,8 @@
 import express from 'express';
 import { CommerceError } from '../commerce/errors.js';
 import { createCatalogService } from '../commerce/catalogService.js';
-import { renderCatalogList, renderCatalogProduct, renderCatalogError, renderInquiryPage } from './render.js';
+import { renderCatalogList, renderCatalogProduct, renderCatalogError, renderInquiryPage, renderCatalogHelp } from './render.js';
+import { storefrontIconNames } from '../../src/shared/storefrontOptions.js';
 import { catalogThemeCss } from '../../src/shared/catalogAppearance.js';
 import { sha256 } from '../commerce/imageProcessor.js';
 import { createCatalogAssetHandler } from './staticAssets.js';
@@ -35,6 +36,7 @@ export function createPublicCatalogRouters(runtime) {
   api.use((error, _req, res, _next) => { const known = error instanceof CommerceError; res.status(known ? error.status : 503).json({ error: { code: known ? error.code : 'CATALOG_UNAVAILABLE', message: known ? error.message : 'El catálogo no está disponible.' } }); });
   for (const asset of ['catalog.css', 'templates.css', 'cart.js', 'navigation.js', 'catalog.js'])
     pages.get(`/catalog-assets/${asset}`, createCatalogAssetHandler(asset));
+  for (const icon of storefrontIconNames) pages.get(`/catalog-assets/icons/${icon}.svg`, createCatalogAssetHandler(`icons/${icon}.svg`));
   pages.get('/catalog-assets/:shop/theme.css', headers, async (req, res, next) => {
     try {
       const { appearance } = await catalog.brand(req.params.shop);
@@ -48,6 +50,10 @@ export function createPublicCatalogRouters(runtime) {
     res.type('html').send(measureCatalogPhase('render', () => renderCatalogList(data, filters, origin)));
   } catch (error) { next(error); } });
   pages.get(['/c/:shop/pedido', '/c/:shop/consulta'], async (req, res, next) => { try { res.type('html').send(renderInquiryPage(await catalog.brand(req.params.shop), origin)); } catch (error) { next(error); } });
+  pages.get('/c/:shop/ayuda', async (req, res, next) => { try {
+    const data = await catalog.list(req.params.shop, { limit: '1' });
+    res.type('html').send(renderCatalogHelp(data.catalog, data.facets.variantLabel === 'Talle', origin));
+  } catch (error) { next(error); } });
   pages.get('/c/:shop/p/:slug', async (req, res, next) => { try {
     const data = await catalog.detail(req.params.shop, req.params.slug);
     if (data.product.slug !== req.params.slug) return res.redirect(302, data.product.path);
